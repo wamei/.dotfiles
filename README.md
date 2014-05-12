@@ -1,0 +1,3 @@
+# Mac、Linux用設定ファイル群
+ユーザのホームディレクトリにクローンし
+makeSymbolicLink.shを実行する
