@@ -1,27 +1,3 @@
-cd elpa/
-rm highlight-current-line-readme.txt 
-rm pcmpl-git-readme.txt 
-mv php-completion.el ../elisp/
-cd ../elisp/
-cd ../
-sc 0
-scp -r .emacs.d/ debian-7.1.0:~/
-cd .emacs.d/
-rm -r server/
-cd eshell
-cd ../
-cd info/
-cd ../
-rm -r info/
-sc 0
-cd .emacs.d/
-rm -r ./*.elc
-rm -r ./*/*.elc
-rm -r ./*/*/*.elc
-scp -r ~/.emacs.d/ debian-7.1.0:~/
-nslookup git.gree-dev.net
-sc 0
-octave
 nslookup git.gree-dev.net
 ping intra.gree-office.net
 nslookup intra.gree-office.net
@@ -78,51 +54,75 @@ scp -r ~/.emacs.d/ localdev-kaz:~/
 brew install tmux
 tmux
 ssh localdev-kaz 
-ls
 cd .emacs.d/
-ls
 git init
-ls
 cd elpa/anything-20130605.1746/
-ls
 ruby make-filelist.rb > all.filelist
 cd ../../../
 cd .emacs.d/
-ls
 git init
-ls
-ls
 git add .
-ls
 cd .dotfiles/
-ls
 ./makeSymbolicLink.sh 
 cd ..
-ls
 rm -r .emacs.d/
 cd .dotfiles/
-ls
 ./makeSymbolicLink.sh 
-ls
 git add .
 git commit -m "[追加] emacs設定ファイル"
-ls
 git push
 cd .emacs.d/
-ls
 sudo ruby ./make-filelist.rb
-ls
 cd ../
-ls
 mv ./.emacs.d/.screenrc ./
-ls
 git add .
 git status
-ls
 cd .dotfiles/
-ls
 git add .
 git commit
 git commit -m "[追加] screenの設定"
 git push
+git add .
+git commit -m '[修正] screenのエイリアス'
+git push
+cd ~
+cd .dotfiles
+cd .dotfiles/
+ld
+cd .emacs.d/
+cd ~
+cd .dotfiles/
+cd .emacs.d/
+cd ~
+cd .dotfiles/
+cd ~
+pwd
+cd ~
+cd .dotfiles/
+cd .dotfiles/
+cd /Applications/
+cd /Applications/
+cd ~
+cd ~
+cd .dotfiles/
+cd /Applications/XtraFinder.app/
+cd ~
+cd .dotfiles/
+cd ~
+cd ~
+cd .dotfiles/
+cd ~
+cd .dotfiles/
+cd .dotfiles/
+ls
+cd .dotfiles/
+ls
+pwd
+(vc-git-registered (eshell/pwd))
+(vc-git-registered ((eshell/pwd) "/.bashrc"))
+(vc-git-registered (cancat (eshell/pwd) "/.bashrc"))
+(vc-git-registered (concat (eshell/pwd) "/.bashrc"))
+(vc-git-state (concat (eshell/pwd) "/.bashrc"))
+git status
+ls
 git add .

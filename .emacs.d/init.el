@@ -855,6 +855,41 @@ file is a remote file (include directory)."
 ;; Eshell
 ;;====================
 (setq eshell-banner-message " 可愛い女の子だと思った？ 残念！Eshellちゃんでした！\n\n")
+(require 'vc-git)
+;; prompt文字列
+(setq eshell-prompt-function
+      (lambda ()
+        (concat
+         "[" (format-time-string "%Y/%m/%d(%a) %H:%M") "]" ;; 時間
+         " "
+         (user-login-name) "@" (system-name) " " ;; ユーザ名@ホスト名
+         "\n"
+         (let ((pwd (eshell/pwd))
+               (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
+               )
+           (let ((homelength (length homestring))
+                 (pwdlength (length pwd)))
+             (if (>= pwdlength homelength)
+                 (let ((subhome (substring pwd 0 homelength)))
+                   (if (string= subhome homestring)
+                       (concat "~" (substring pwd homelength (length pwd)))
+                     pwd
+                    )
+                   )
+               pwd)
+           ))
+         " ("
+         (vc-git-mode-line-string (eshell/pwd))
+;;         (vc-git-state (eshell/pwd))
+;;         "[" (vc-git-registered (eshell/pwd)) "]"
+         ")"
+         " "
+         (if (= (user-uid) 0)
+             "#"
+           "$")
+         " "
+         )))
+(setq eshell-prompt-regexp "^[^#$]*[$#] ")
 ;; Emacs 起動時に Eshell を起動
 (add-hook 'after-init-hook  (lambda ()
                               (cd "~")
