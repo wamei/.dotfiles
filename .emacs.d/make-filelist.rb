@@ -20,7 +20,8 @@
 # ==== Customize Variables ====
 # Exclude pathnames (version control system directories and so on)
 $EXCLUDE_PATH = %w[
-. ..  lost+found tmp temp
+. .. backup backup1 backup2 backup-system lost+found tmp temp rubikitch.lost
+.cache w3mtmp proxy-cache trash proc RCS.old ~/Library
 autom4te.cache blib _build .bzr .cdv cover_db CVS _darcs ~.dep ~.dot .git .hg ~.nib .pc ~.plst RCS SCCS _sgbak .svn
 ]
 

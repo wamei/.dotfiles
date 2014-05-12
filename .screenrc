@@ -1,0 +1,3 @@
+defbce on
+term xterm-256color
+escape ^t^t
