@@ -1,5 +1,5 @@
 #! /bin/bash
-ln -s ~/.dotfiles/.inputrc ~/.inputrc
-ln -s ~/.dotfiles/.bashrc ~/.bashrc
-ln -s ~/.dotfiles/.tmux.conf ~/.tmux.conf
-ln -s ~/.dotfiles/.emacs.d/ ~/.emacs.d
+ln -sf ~/.dotfiles/.inputrc ~/.inputrc
+ln -sf ~/.dotfiles/.bashrc ~/.bashrc
+ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
+ln -sf ~/.dotfiles/.emacs.d/ ~/.emacs.d

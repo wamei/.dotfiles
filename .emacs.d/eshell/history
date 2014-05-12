@@ -1,0 +1,128 @@
+sc 0
+cd auto-install/
+cd auto-install/
+sc 1
+sc 0
+cd ../../
+sc 0
+sc 0
+scp -r .emacs.d/ debian-7.1.0:~/
+sc 0
+scp -r .emacs.d/ debian-7.1.0:~/
+cd .emacs.d/
+cd auto-install/
+rm php-completion.elc
+cd ../../
+scp -r .emacs.d/ debian-7.1.0:~/
+cd .emacs.d/
+cd auto-install/
+mv php-completion.el ../elpa/
+rm -r auto-install/
+cd elpa/
+rm highlight-current-line-readme.txt 
+rm pcmpl-git-readme.txt 
+mv php-completion.el ../elisp/
+cd ../elisp/
+cd ../
+sc 0
+scp -r .emacs.d/ debian-7.1.0:~/
+cd .emacs.d/
+rm -r server/
+cd eshell
+cd ../
+cd info/
+cd ../
+rm -r info/
+sc 0
+cd .emacs.d/
+rm -r ./*.elc
+rm -r ./*/*.elc
+rm -r ./*/*/*.elc
+scp -r ~/.emacs.d/ debian-7.1.0:~/
+nslookup git.gree-dev.net
+sc 0
+octave
+nslookup git.gree-dev.net
+ping intra.gree-office.net
+nslookup intra.gree-office.net
+dig ns
+dig -x 10.0.2.3
+emacs /etc/resolv.conf 
+scp .emacs.d/ debian-7.1.0:~/
+scp -r .emacs.d/ debian-7.1.0:~/
+emacs .ssh/config 
+cd Documents/vagrant/debian-7.1.0/
+cd .vagrant/
+cd ../
+emacs Vagrantfile 
+scp -r .emacs.d/ debian-7.1.0:~/
+ssh 192.168.33.10
+ssh -p2200 vagrant@192.168.33.10
+ssh -p22 vagrant@192.168.33.10
+ssh debian-7.1.0 
+cd Documents/vagrant/debian-7.1.0/
+vagrant ssh-config --host debian >> ~/.ssh/config
+emacs .ssh/config 
+ssh debian
+ssh-agent bash
+emacs Documents/vagrant/debian-7.1.0/
+hostname
+scp -r .emacs.d/ debian:
+sl
+scp -r ./Downloads/sample-spweb.20120614/Service/debian:\~/spweb-sample/
+scp -r ./Downloads/sample-spweb.20120614/Service/ debian:\~/spweb-sample/
+scp -r ./Downloads/sample-spweb.20120614/app/ debian:\~/spweb-sample/
+scp -r ./Downloads/sample-spweb.20120614/etc/ debian:\~/spweb-sample/
+scp -r ./Downloads/lib/ debian:\~/spweb-sample/
+scp -r ./Downloads/sample-spweb_schema.sql  debian:\~/spweb-sample/sql/
+scp -r ./Downloads/sample-spweb.20120614/etc/  debian:\~/spweb-sample/
+scp -r ./Downloads/sample-spweb.20120614/Service/  debian:\~/spweb-sample/
+scp -r ./Downloads/sample-spweb.20120614/app/  debian:\~/spweb-sample/
+scp -r ./Downloads/lib/  debian:\~/spweb-sample/
+emacs /etc/hosts
+emacs /etc/hosts
+cd Documents/vagrant/debian-7.1.0/
+emacs Vagrantfile 
+scp -r ~/.emacs.d/ localdev:~/
+scp -r ~/.emacs.d/ localdev:~/
+ssh localdev 
+scp -r ~/.emacs.d/ localdev:~/
+scp .ssh/id_rsa localdev-kaz:\~/.ssh/
+cd .emacs.d/elpa/
+cd popwin-20140508.508/
+rm *.elc
+cd ~
+scp -r ~/.emacs.d/ localdev-kaz:~/
+scp -r ~/.emacs.d/ localdev:~/
+scp -r ~/.emacs.d/ localdev-kaz:~/
+brew install tmux
+tmux
+ssh localdev-kaz 
+ls
+cd .emacs.d/
+ls
+git init
+ls
+cd elpa/anything-20130605.1746/
+ls
+ruby make-filelist.rb > all.filelist
+cd ../../../
+cd .emacs.d/
+ls
+git init
+ls
+ls
+git add .
+ls
+git status
+cd .dotfiles/
+ls
+./makeSymbolicLink.sh 
+cd ..
+ls
+rm -r .emacs.d/
+cd .dotfiles/
+ls
+./makeSymbolicLink.sh 
+ls
+git add .
