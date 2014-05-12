@@ -1,7 +1,3 @@
-cd .emacs.d/
-cd auto-install/
-mv php-completion.el ../elpa/
-rm -r auto-install/
 cd elpa/
 rm highlight-current-line-readme.txt 
 rm pcmpl-git-readme.txt 
@@ -125,4 +121,8 @@ git status
 ls
 cd .dotfiles/
 ls
+git add .
+git commit
+git commit -m "[追加] screenの設定"
+git push
 git add .

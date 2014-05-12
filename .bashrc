@@ -1,3 +1,5 @@
+export LANGUAGE=ja_JP.UTF-8
+export LC_ALL=ja_JP.UTF-8
 export LANG=ja_JP.UTF-8
 
 if [ `uname` = "Darwin" ]; then
@@ -8,7 +10,7 @@ elif [ `uname` = "Linux" ]; then
     alias ls='ls -a --color=auto'
 fi
 alias ec='emacsclient'
-
+alias screen='screen -U'
 
 ## create emacs env file
 perl -wle \
