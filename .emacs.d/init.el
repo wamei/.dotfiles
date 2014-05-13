@@ -671,7 +671,7 @@ file is a remote file (include directory)."
 ;; dired
 (push '(dired-mode :position top) popwin:special-display-config)
 ;; grep
-(push '("*grep*" :position right :noselect t) popwin:special-display-config)
+(push '("*grep*" :noselect t) popwin:special-display-config)
 
 ;; dash-at-point.el
 (autoload 'dash-at-point "dash-at-point"
