@@ -1,3 +1,4 @@
+export TZ=Asia/Tokyo
 export LANG=en_US.UTF-8
 
 if [ `uname` = "Darwin" ]; then
