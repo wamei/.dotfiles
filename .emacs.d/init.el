@@ -553,7 +553,7 @@ file is a remote file (include directory)."
    ;evil-mode-line-tag
    mode-line-position
    ;; directory and buffer/file name
-   (:propertize (:eval (shorten-directory default-directory 30))
+   (:propertize (:eval (shorten-directory default-directory 20))
                 face mode-line-folder-face)
    (:propertize "%b" face mode-line-filename-face)
    ;; narrow [default -- keep?]
