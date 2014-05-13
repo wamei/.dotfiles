@@ -1,5 +1,7 @@
 .DS_Store
 ac-comphist.dat
+/eshell/history
+/eshell/lastdir
 /url/
 /auto-save-list/
 *.elc
