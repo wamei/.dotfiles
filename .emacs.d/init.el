@@ -875,10 +875,10 @@ file is a remote file (include directory)."
 (setq eshell-prompt-function
       (lambda ()
         (concat
-         "[" (format-time-string "%Y/%m/%d(%a) %H:%M") "]" ;; 時間
-         " "
-         (user-login-name) "@" (system-name) " " ;; ユーザ名@ホスト名
-         "\n"
+;;         "[" (format-time-string "%Y/%m/%d(%a) %H:%M") "]" ;; 時間
+;;         " "
+         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
+         ":"
          (let ((pwd (eshell/pwd))
                (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
                )
