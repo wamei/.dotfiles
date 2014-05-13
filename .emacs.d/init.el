@@ -502,24 +502,9 @@ file is a remote file (include directory)."
 ;;
 ;; モードライン設定
 ;;---------------------------------------------------------------------------
-;; 行数割合表示を総行数表示
-;; (defvar my-lines-page-mode t)
-;; (defvar my-mode-line-format)
 
-;; (when my-lines-page-mode
-;;   (setq my-mode-line-format "%d")
-;;   (if size-indication-mode
-;;       (setq my-mode-line-format (concat my-mode-line-format " of %%I")))
-;;   (cond ((and (eq line-number-mode t) (eq column-number-mode t))
-;;          (setq my-mode-line-format (concat my-mode-line-format " (%%l,%%c)")))
-;;         ((eq line-number-mode t)
-;;          (setq my-mode-line-format (concat my-mode-line-format " L%%l")))
-;;         ((eq column-number-mode t)
-;;          (setq my-mode-line-format (concat my-mode-line-format " C%%c"))))
-
-;;   (setq mode-line-position
-;;         '(:eval (format my-mode-line-format
-;;                         (count-lines (point-max) (point-min))))))
+;; git-status
+(require 'git-status)
 
 ;; 時刻の表示( 曜日 月 日 時間:分 )
 (setq display-time-day-and-date t)
@@ -994,15 +979,15 @@ file is a remote file (include directory)."
 ;; Eshell
 ;;====================
 (setq eshell-banner-message " 可愛い女の子だと思った？ 残念！Eshellちゃんでした！\n\n")
-(require 'vc-git)
+;;(require 'vc-git)
 ;; prompt文字列
 (setq eshell-prompt-function
       (lambda ()
         (concat
 ;;         "[" (format-time-string "%Y/%m/%d(%a) %H:%M") "]" ;; 時間
 ;;         " "
-         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
-         ":"
+;;         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
+;;         ":"
          (let ((pwd (eshell/pwd))
                (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
                )
@@ -1017,11 +1002,10 @@ file is a remote file (include directory)."
                    )
                pwd)
            ))
-         " ("
-         (vc-git-mode-line-string (eshell/pwd))
+;;         (vc-git-mode-line-string (eshell/pwd))
+         (curr-dir-git-branch-string (eshell/pwd))
 ;;         (vc-git-state (eshell/pwd))
 ;;         "[" (vc-git-registered (eshell/pwd)) "]"
-         ")"
          " "
          (if (= (user-uid) 0)
              "#"
@@ -1029,6 +1013,21 @@ file is a remote file (include directory)."
          " "
          )))
 (setq eshell-prompt-regexp "^[^#$]*[$#] ")
+
+(defun curr-dir-git-branch-string (pwd)
+  "Returns current git branch as a string, or the empty string if
+PWD is not in a git repo (or the git command is not found)."
+  (interactive)
+  (when (and (eshell-search-path "git")
+             (locate-dominating-file pwd ".git"))
+    (let ((git-output (shell-command-to-string (concat "cd " pwd " && git branch | grep '\\*' | sed -e 's/^\\* //'"))))
+      (concat "["
+              (if (> (length git-output) 0)
+                  (substring git-output 0 -1)
+                "(no branch)")
+              "]")
+      )))
+
 ;; Emacs 起動時に Eshell を起動
 (add-hook 'after-init-hook  (lambda ()
                               (cd "~")

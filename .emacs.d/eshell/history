@@ -1,4 +1,3 @@
-scp -r ./Downloads/lib/ debian:\~/spweb-sample/
 scp -r ./Downloads/sample-spweb_schema.sql  debian:\~/spweb-sample/sql/
 scp -r ./Downloads/sample-spweb.20120614/etc/  debian:\~/spweb-sample/
 scp -r ./Downloads/sample-spweb.20120614/Service/  debian:\~/spweb-sample/
@@ -116,6 +115,13 @@ git add .
 git commit -m "[修正] bash:タイムゾーン"
 git push
 cd .dotfiles/
+cd .dotfiles/
+git add .
+git commit -m "[修正] Emacs:モードライン表示"
+git push
+cd .dotfiles/
+cd .emacs.d/
+cd elisp/
 ls
 cd .dotfiles/
 ls
