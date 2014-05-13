@@ -1,10 +1,3 @@
-nslookup git.gree-dev.net
-ping intra.gree-office.net
-nslookup intra.gree-office.net
-dig ns
-dig -x 10.0.2.3
-emacs /etc/resolv.conf 
-scp .emacs.d/ debian-7.1.0:~/
 scp -r .emacs.d/ debian-7.1.0:~/
 emacs .ssh/config 
 cd Documents/vagrant/debian-7.1.0/
@@ -114,9 +107,7 @@ cd .dotfiles/
 cd ~
 cd .dotfiles/
 cd .dotfiles/
-ls
 cd .dotfiles/
-ls
 pwd
 (vc-git-registered (eshell/pwd))
 (vc-git-registered ((eshell/pwd) "/.bashrc"))
@@ -124,5 +115,12 @@ pwd
 (vc-git-registered (concat (eshell/pwd) "/.bashrc"))
 (vc-git-state (concat (eshell/pwd) "/.bashrc"))
 git status
+git add .
+git commit -m "[修正] git表示"
+git push
+cd ../Documents/vagrant/debian-7.1.0/
+cd ~/.dotfiles/
+ls
+cd .dotfiles/
 ls
 git add .

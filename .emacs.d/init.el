@@ -256,8 +256,12 @@
 ;;(scroll-bar-mode 0)
 ;;(set-scroll-bar-mode nil)
 ;;(toggle-scroll-bar nil)
-(require 'yascroll)
-(global-yascroll-bar-mode 1)
+(if window-system
+    (progn
+      (require 'yascroll)
+      (global-yascroll-bar-mode 1)
+      )
+  )
 ;;(scroll-bar-mode 0)
 ;;(require 'smooth-scroll)
 ;;(smooth-scroll-mode t)
