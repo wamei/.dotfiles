@@ -2,6 +2,8 @@
 ac-comphist.dat
 /eshell/history
 /eshell/lastdir
+/eshell/shellenv.el
+/elisp/shellenv.el
 /url/
 /auto-save-list/
 *.elc
