@@ -7,4 +7,5 @@ makeSymbolicLink.shを実行する
 1. .inputrc
 1. .bashrc
 1. .tmux.conf
+1. .screenrc
 1. .emacs.d/
