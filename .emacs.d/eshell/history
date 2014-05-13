@@ -1,8 +1,3 @@
-ssh -p22 vagrant@192.168.33.10
-ssh debian-7.1.0 
-cd Documents/vagrant/debian-7.1.0/
-vagrant ssh-config --host debian >> ~/.ssh/config
-emacs .ssh/config 
 ssh debian
 ssh-agent bash
 emacs Documents/vagrant/debian-7.1.0/
@@ -115,13 +110,18 @@ git commit -m "[修正] Emacs：シェルから起動の場合はyascrollしな�
 add .
 git add .
 git commit -m "[修正] anythingをfilelist+に変更"
-git push
 ls
 cd .dotfiles/
 ls
 cd .emacs.d/
 ls
 man renice
+ls
+cd .dotfiles/
+ls
+git add .
+git commit -m "[修正] bashロケールをen_USに変更"
+git push
 ls
 cd .dotfiles/
 ls

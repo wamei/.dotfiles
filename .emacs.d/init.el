@@ -460,6 +460,16 @@ file is a remote file (include directory)."
         '(:eval (format my-mode-line-format
                         (count-lines (point-max) (point-min))))))
 
+;; 時刻の表示( 曜日 月 日 時間:分 )
+(setq display-time-day-and-date t)
+(setq display-time-24hr-format t)
+(setq display-time-string-forms
+      '((format "%s/%s(%s)%s:%s"
+                month day dayname
+                24-hours minutes
+                )))
+(display-time-mode t)
+
 ;; C-Ret で矩形選択
 ;; 詳しいキーバインド操作：http://dev.ariel-networks.com/articles/emacs/part5/
 (cua-mode t)
