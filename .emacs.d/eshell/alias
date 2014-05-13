@@ -1,3 +1,4 @@
-alias sc scroll-bar-mode $1
-alias ls ls -a
+alias gitroot gitroot
 alias emacs find-file $1
+alias ls ls -a
+alias sc scroll-bar-mode $1

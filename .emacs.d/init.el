@@ -1014,6 +1014,15 @@ file is a remote file (include directory)."
          )))
 (setq eshell-prompt-regexp "^[^#$]*[$#] ")
 
+(defun chomp (str)
+  (replace-regexp-in-string "[\n\r]+$" "" str))
+
+(defun gitroot ()
+  (interactive)
+  (cd (chomp
+          (shell-command-to-string "git rev-parse --show-toplevel")))
+  )
+
 (require 'vc-git)
 (defun curr-dir-git-branch-string (pwd)
   "Returns current git branch as a string, or the empty string if
