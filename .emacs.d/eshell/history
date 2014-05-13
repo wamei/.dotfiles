@@ -1,7 +1,3 @@
-scp -r ./Downloads/sample-spweb_schema.sql  debian:\~/spweb-sample/sql/
-scp -r ./Downloads/sample-spweb.20120614/etc/  debian:\~/spweb-sample/
-scp -r ./Downloads/sample-spweb.20120614/Service/  debian:\~/spweb-sample/
-scp -r ./Downloads/sample-spweb.20120614/app/  debian:\~/spweb-sample/
 scp -r ./Downloads/lib/  debian:\~/spweb-sample/
 emacs /etc/hosts
 emacs /etc/hosts
@@ -43,7 +39,6 @@ sudo ruby ./make-filelist.rb
 cd ../
 mv ./.emacs.d/.screenrc ./
 git add .
-git status
 cd .dotfiles/
 git add .
 git commit
@@ -86,7 +81,6 @@ pwd
 (vc-git-registered (cancat (eshell/pwd) "/.bashrc"))
 (vc-git-registered (concat (eshell/pwd) "/.bashrc"))
 (vc-git-state (concat (eshell/pwd) "/.bashrc"))
-git status
 git add .
 git commit -m "[修正] git表示"
 cd ../Documents/vagrant/debian-7.1.0/
@@ -122,6 +116,12 @@ git push
 cd .dotfiles/
 cd .emacs.d/
 cd elisp/
+cd .dotfiles/
+git add .
+git commit -m '[修正] Emacs:git-status追加'
+git push
+git status
+cd .dotfiles/
 ls
 cd .dotfiles/
 ls
