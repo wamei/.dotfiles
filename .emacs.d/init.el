@@ -1014,6 +1014,7 @@ file is a remote file (include directory)."
          )))
 (setq eshell-prompt-regexp "^[^#$]*[$#] ")
 
+(require 'vc-git)
 (defun curr-dir-git-branch-string (pwd)
   "Returns current git branch as a string, or the empty string if
 PWD is not in a git repo (or the git command is not found)."
@@ -1021,11 +1022,14 @@ PWD is not in a git repo (or the git command is not found)."
   (when (and (eshell-search-path "git")
              (locate-dominating-file pwd ".git"))
     (let ((git-output (shell-command-to-string (concat "cd " pwd " && git branch | grep '\\*' | sed -e 's/^\\* //'"))))
-      (concat "["
+      (propertize (concat "["
               (if (> (length git-output) 0)
-                  (substring git-output 0 -1)
+                    (concat
+                     (substring git-output 0 -1)
+                     (shell-command-to-string "[[ $(git status 2> /dev/null | tail -n1) != \"nothing to commit (working directory clean)\" ]] && echo -n \"*\"")
+                    )
                 "(no branch)")
-              "]")
+              "]") 'face `(:foreground "green"))
       )))
 
 ;; Emacs 起動時に Eshell を起動

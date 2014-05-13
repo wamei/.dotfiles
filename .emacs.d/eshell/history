@@ -1,24 +1,3 @@
-scp -r ./Downloads/lib/  debian:\~/spweb-sample/
-emacs /etc/hosts
-emacs /etc/hosts
-cd Documents/vagrant/debian-7.1.0/
-emacs Vagrantfile 
-scp -r ~/.emacs.d/ localdev:~/
-scp -r ~/.emacs.d/ localdev:~/
-ssh localdev 
-scp -r ~/.emacs.d/ localdev:~/
-scp .ssh/id_rsa localdev-kaz:\~/.ssh/
-cd .emacs.d/elpa/
-cd popwin-20140508.508/
-rm *.elc
-cd ~
-scp -r ~/.emacs.d/ localdev-kaz:~/
-scp -r ~/.emacs.d/ localdev:~/
-scp -r ~/.emacs.d/ localdev-kaz:~/
-brew install tmux
-tmux
-ssh localdev-kaz 
-cd .emacs.d/
 git init
 cd elpa/anything-20130605.1746/
 ruby make-filelist.rb > all.filelist
@@ -122,6 +101,26 @@ git commit -m '[修正] Emacs:git-status追加'
 git push
 git status
 cd .dotfiles/
+cd .dotfiles/
+git add .
+git commit -m "[修正] Emacs:git-statusを文字表記に"
+git push
+cd .dotfiles/
+cd .dotfiles/
+git status
+*echo "test"
+echo "test"
+git status
+shell-command "git status"
+shell-command-to-string "git status"
+shell-command-to-string "git status | grep \"^nothing to\""
+shell-command-to-string "git status | grep \"^nothing added\""
+shell-command-to-string "git status | grep \"^Untracked\""
+shell-command-to-string "git status | grep \"^no changes\""
+shell-command-to-string "git status | grep \"^nothing to\""
+shell-command-to-string "git status | tail -n1"
+shell-command-to-string "git status -s"
+shell-command-to-string "git status | tail -n1"
 ls
 cd .dotfiles/
 ls
