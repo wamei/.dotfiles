@@ -621,7 +621,8 @@ file is a remote file (include directory)."
 ;;-------------------------------------------------------------------------
 (when (require 'anything-config nil t)
   ;; キーバインド
-  (global-set-key (kbd "C-x C-b")     'anything-for-files)
+;;  (global-set-key (kbd "C-x C-b")     'anything-for-files)
+  (global-set-key (kbd "C-x C-b")     'anything-filelist+)
   (global-set-key (kbd "C-x c f")     'anything-filelist+)
   (global-set-key (kbd "M-y") 'anything-show-kill-ring)
   (global-set-key (kbd "M-x") 'anything-M-x)
