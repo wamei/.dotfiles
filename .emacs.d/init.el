@@ -1026,7 +1026,7 @@ PWD is not in a git repo (or the git command is not found)."
               (if (> (length git-output) 0)
                     (concat
                      (substring git-output 0 -1)
-                     (shell-command-to-string "[[ $(git status 2> /dev/null | tail -n1) != \"nothing to commit, working directory clean\" ]] && echo -n \"*\"")
+                     (shell-command-to-string "[[ $(git status | grep \"nothing to commit\") == \"\" ]] && echo -n \"*\"")
                     )
                 "(no branch)")
               "]") 'face `(:foreground "green"))
