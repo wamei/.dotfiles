@@ -42,24 +42,20 @@
 ;; キーバインド
 ;;______________________________________________________________________
 
-(global-set-key (kbd "C-c a")   'align)
-(global-set-key (kbd "C-c M-a") 'align-regexp)
 (global-set-key (kbd "C-h")     'backward-delete-char)
-(global-set-key (kbd "C-c d")   'delete-indentation)
+(global-set-key (kbd "M-h")     'backward-kill-word)
+
 (global-set-key (kbd "M-g")     'goto-line)
-(global-set-key (kbd "C-S-i")   'indent-region)
-(global-set-key (kbd "C-m")     'newline-and-indent)
-(global-set-key (kbd "C-M-r")   'replace-regexp)
+
 (global-set-key (kbd "C-r")     'replace-string)
-;;(global-set-key (kbd "C-/")     'undo)
+(global-set-key (kbd "C-M-r")   'replace-regexp)
+
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
+
 (global-set-key (kbd "C-c s")   'sr-speedbar-toggle)
 (global-set-key (kbd "C-c p")   'sr-speedbar-select-window)
 
 (global-set-key (kbd "C-x p")   'popwin:display-last-buffer)
-
-;;(define-key global-map "\C-cl" 'org-store-link)
-;;(define-key global-map "\C-ca" 'org-agenda)
 
 ;; フォーカス移動
 ;;(windmove-default-keybindings)
@@ -666,7 +662,13 @@ file is a remote file (include directory)."
 ;;
 ;; パッケージ関係
 ;;;______________________________________________________________________
+
 ;;
+;; undo-tree.el
+;;-----------------------------------------------------------------------
+(require 'undo-tree)
+(global-undo-tree-mode t)
+(global-set-key (kbd "M-/") 'undo-tree-redo)
 
 ;;
 ;; markdown-mode.el
