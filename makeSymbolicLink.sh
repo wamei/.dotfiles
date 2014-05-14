@@ -4,4 +4,4 @@ ln -sf ~/.dotfiles/.make-filelist.rb ~/.make-filelist.rb
 ln -sf ~/.dotfiles/.bashrc ~/.bashrc
 ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
 ln -sf ~/.dotfiles/.screenrc ~/.screenrc
-ln -sf ~/.dotfiles/.emacs.d/ ~/.emacs.d
+ln -sfn ~/.dotfiles/.emacs.d/ ~/.emacs.d
