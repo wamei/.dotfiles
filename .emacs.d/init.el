@@ -598,11 +598,6 @@ file is a remote file (include directory)."
    ;; (:eval (when nyan-mode (list (nyan-create))))
    ))
 
-;; マイナーモードの省略
-(setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
-(setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
-(setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
-
 ;; Helper function
 (defun shorten-directory (dir max-length)
   "Show up to `max-length' characters of a directory name `dir'."
@@ -1172,3 +1167,8 @@ PWD is not in a git repo (or the git command is not found)."
                )
              ))
 
+
+;; マイナーモードの省略
+(setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
+(setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
+(setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
