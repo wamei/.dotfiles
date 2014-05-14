@@ -66,6 +66,12 @@
 (global-set-key (kbd "C-S-f") 'windmove-right)
 (global-set-key (kbd "C-S-b") 'windmove-left)
 
+(global-set-key (kbd "C-c <up>") 'windmove-up)
+(global-set-key (kbd "C-c <down>") 'windmove-down)
+(global-set-key (kbd "C-c <right>") 'windmove-right)
+(global-set-key (kbd "C-c <left>") 'windmove-left)
+
+
 (global-set-key (kbd "C-c r") 'resize)
 
                                         ; Tetris key map
@@ -81,7 +87,8 @@
 (if window-system
     (progn
       (set-frame-parameter nil 'alpha 95) ; 透明度
-      (tool-bar-mode 0)                  ; ツールバー非表示
+      (tool-bar-mode -1)                  ; ツールバー非表示
+      (menu-bar-mode -1)
       (setq line-spacing 0.1)              ; 行間
       (setq ns-pop-up-frames nil)))
 
@@ -327,6 +334,14 @@
 ;;
 ;; その他設定
 ;;______________________________________________________________________
+
+;; xterm-mouse-mode
+(unless (fboundp 'track-mouse)
+  (defun track-mouse (e)))
+(xterm-mouse-mode t)
+(require 'mouse)
+(require 'mwheel)
+(mouse-wheel-mode t)
 
 ;; ロックファイルを作らない
 (setq create-lockfiles nil)
@@ -582,6 +597,11 @@ file is a remote file (include directory)."
    ;; nyan-mode uses nyan cat as an alternative to %p
    ;; (:eval (when nyan-mode (list (nyan-create))))
    ))
+
+;; マイナーモードの省略
+(setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
+(setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
+(setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
 
 ;; Helper function
 (defun shorten-directory (dir max-length)
