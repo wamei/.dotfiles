@@ -61,10 +61,10 @@
 ;;(windmove-default-keybindings)
 (global-set-key (kbd "C-<tab>")   'other-window)
 (global-set-key (kbd "C-S-<tab>") (lambda()(interactive)(other-window -1)))
-(global-set-key (kbd "C-S-p") 'windmove-up)
-(global-set-key (kbd "C-S-n") 'windmove-down)
-(global-set-key (kbd "C-S-f") 'windmove-right)
-(global-set-key (kbd "C-S-b") 'windmove-left)
+(global-set-key (kbd "C-c C-p") 'windmove-up)
+(global-set-key (kbd "C-c C-n") 'windmove-down)
+(global-set-key (kbd "C-c C-f") 'windmove-right)
+(global-set-key (kbd "C-c C-b") 'windmove-left)
 
 (global-set-key (kbd "C-c <up>") 'windmove-up)
 (global-set-key (kbd "C-c <down>") 'windmove-down)
@@ -704,7 +704,7 @@ file is a remote file (include directory)."
 ;; dired
 (push '(dired-mode :position top) popwin:special-display-config)
 ;; grep
-(push '("*grep*" :noselect t) popwin:special-display-config)
+(push '("*grep*") popwin:special-display-config)
 
 ;; dash-at-point.el
 (autoload 'dash-at-point "dash-at-point"
