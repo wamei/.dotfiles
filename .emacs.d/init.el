@@ -30,7 +30,11 @@
   )
 
 ;; load environment value
-(load-file (expand-file-name "~/.emacs.d/elisp/shellenv.el"))
+(let ((envfile (expand-file-name "~/.emacs.d/elisp/shellenv.el")))
+  (if (file-exists-p envfile)
+      (load-file envfile)
+    )
+)
 (dolist (path (reverse (split-string (getenv "PATH") ":")))
   (add-to-list 'exec-path path))
 
