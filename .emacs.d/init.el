@@ -727,11 +727,10 @@ file is a remote file (include directory)."
 (when (require 'auto-complete nil t)
   (require 'auto-complete-config)
 
-  (global-auto-complete-mode t)
-  (setq ac-use-quick-help nil)
-
-  (define-key ac-complete-mode-map (kbd "C-n") 'ac-next)
-  (define-key ac-complete-mode-map (kbd "C-p") 'ac-previous)
+  ;; キーバインド
+  (setq ac-use-menu-map t)
+  (define-key ac-menu-map (kbd "C-n") 'ac-next)
+  (define-key ac-menu-map (kbd "C-p") 'ac-previous)
   (define-key ac-complete-mode-map [tab] 'ac-next)
   (define-key ac-complete-mode-map [S-tab] 'ac-previous)
   (define-key ac-mode-map [M-tab] 'auto-complete)
@@ -739,17 +738,67 @@ file is a remote file (include directory)."
   ;;(setq ac-auto-start 4)
   ;; 最適なカラム計算をオフ
   ;;(setq popup-use-optimized-column-computation nil)
+  ;; ツールチップの表示なし
+  (setq ac-use-quick-help nil)
   (setq ac-dwim t)
+  ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
   ;; lisp編集情報源
   (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
   ;; ファイル名情報
   (setq-default ac-sources '(ac-source-words-in-same-mode-buffers ac-source-filename))
 
+  ;; base source
+  (defvar my-ac-sources
+    '(ac-source-yasnippet
+      ac-source-abbrev
+      ac-source-dictionary
+      ac-source-words-in-same-mode-buffers))
+  ;; 起動モード
+  (global-auto-complete-mode t)
+  (add-to-list 'ac-modes 'text-mode)
+  (add-to-list 'ac-modes 'eshell-mode)
+  (add-to-list 'ac-modes 'fundamental-mode)
+  ;; web-mode
+  (add-to-list 'ac-modes 'web-mode)
+  (defun ac-web-mode-setup ()
+    (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
+  (add-hook 'web-mode-hook 'ac-web-mode-setup)
+
+  ;; css-mode
+  (add-to-list 'ac-modes 'css-mode)
+  (defun ac-css-mode-setup ()
+    (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
+  (add-hook 'css-mode-hook 'ac-css-mode-setup)
+
   ;; (when (require 'auto-complete-latex nil t)
   ;;    (setq ac-l-dict-directory "~/.emacs.d/elisp/auto-complete/ac-l-dict/")
   ;;    (add-to-list 'ac-modes 'latex-mode)
   ;;    (add-hook 'LaTeX-mode-hook 'ac-l-setup))
+
+  ;; lookで英単語補完
+  (when (executable-find "look")
+    (defun my-ac-look ()
+      "look コマンドの出力をリストで返す"
+      (interactive)
+      (unless (executable-find "look")
+        (error "look コマンドがありません"))
+      (let ((search-word (thing-at-point 'word)))
+        (with-temp-buffer
+          (call-process-shell-command "look" nil t 0 search-word)
+          (split-string-and-unquote (buffer-string) "\n"))))
+
+    (defun ac-complete-look ()
+      (interactive)
+      (let ((ac-menu-height 50)
+            (ac-candidate-limit t))
+        (auto-complete '(ac-source-look))))
+
+    (defvar ac-source-look
+      '((candidates . my-ac-look)
+        (requires . 2)))  ;; 2文字以上ある場合にのみ対応させる
+
+    (global-set-key (kbd "C-c l") 'ac-complete-look))
 
 )
 
@@ -987,8 +1036,33 @@ file is a remote file (include directory)."
 ;;   (set (make-local-variable 'post-command-hook)
 ;;     (add-hook 'post-command-hook 'flymake-display-err-menu-for-current-line)))
 
+;;
+;; yasnippet.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'yasnippet nil t)
+  (yas-global-mode 1)
+  ;; 単語展開キー
+  (define-key yas-minor-mode-map (kbd "C-c y") 'yas/expand)
+  (define-key yas-minor-mode-map (kbd "TAB") nil)
+  (defun my-yas/prompt (prompt choices &optional display-fn)
+    (let* ((names (loop for choice in choices
+                        collect (or (and display-fn (funcall display-fn choice))
+                                    coice)))
+           (selected (anything-other-buffer
+                      `(((name . ,(format "%s" prompt))
+                         (candidates . names)
+                         (action . (("Insert snippet" . (lambda (arg) arg))))))
+                      "*anything yas/prompt*")))
+      (if selected
+          (let ((n (position selected names :test 'equal)))
+            (nth n choices))
+        (signal 'quit "user quit!"))))
+  (custom-set-variables '(yas/prompt-functions '(my-yas/prompt)))
+  )
+
+
 ;; ssh-agent.el
-;;--------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (require 'ssh-agent)
 
 ;;====================

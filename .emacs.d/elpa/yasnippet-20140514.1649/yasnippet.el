@@ -188,9 +188,7 @@ as the default for storing the user's new snippets."
 # -*- mode: snippet; require-final-newline: nil -*-
 # name: $1
 # key: ${2:${1:$(yas--key-from-desc yas-text)}}${3:
-# binding: ${4:direct-keybinding}}${5:
-# expand-env: ((${6:some-var} ${7:some-value}))}${8:
-# type: command}
+# binding: ${4:direct-keybinding}}
 # --
 $0"
   "Default snippet to use when creating a new snippet.
@@ -1246,6 +1244,12 @@ yasnippet keeps a list of modes like this to help the judgment."
   (or (fboundp mode)
       (find mode yas--known-modes)))
 
+(defun yas--handle-error (err)
+  "Handle error depending on value of `yas-good-grace'."
+  (let ((msg (yas--format "elisp error: %s" (error-message-string err))))
+    (if yas-good-grace msg
+      (error "%s" msg))))
+
 (defun yas--eval-lisp (form)
   "Evaluate FORM and convert the result to string."
   (let ((retval (catch 'yas--exception
@@ -1257,10 +1261,7 @@ yasnippet keeps a list of modes like this to help the judgment."
                             (let ((result (eval form)))
                               (when result
                                 (format "%s" result))))))
-                    (error (if yas-good-grace
-                               (yas--format "elisp error! %s" (error-message-string err))
-                             (error (yas--format "elisp error: %s"
-                                            (error-message-string err)))))))))
+                    (error (yas--handle-error err))))))
     (when (and (consp retval)
                (eq 'yas--exception (car retval)))
       (error (cdr retval)))
@@ -1269,10 +1270,7 @@ yasnippet keeps a list of modes like this to help the judgment."
 (defun yas--eval-lisp-no-saves (form)
   (condition-case err
       (eval form)
-    (error (if yas-good-grace
-               (yas--format "elisp error! %s" (error-message-string err))
-             (error (yas--format "elisp error: %s"
-                            (error-message-string err)))))))
+    (error (message "%s" (yas--handle-error err)))))
 
 (defun yas--read-lisp (string &optional nil-on-error)
   "Read STRING as a elisp expression and return it.
@@ -1633,8 +1631,8 @@ The remaining elements are strings.
 FILE is probably of very little use if you're programatically
 defining snippets.
 
-UUID is the snippets \"unique-id\". Loading a second snippet file
-with the same uuid replaced the previous snippet.
+UUID is the snippet's \"unique-id\". Loading a second snippet
+file with the same uuid would replace the previous snippet.
 
 You can use `yas--parse-template' to return such lists based on
 the current buffers contents."
@@ -3907,14 +3905,17 @@ With optional string TEXT do it in string instead of the buffer."
 with their evaluated value into `yas--backquote-markers-and-strings'."
   (while (re-search-forward yas--backquote-lisp-expression-regexp nil t)
     (let ((current-string (match-string-no-properties 1)) transformed)
-      (delete-region (match-beginning 0) (match-end 0))
+      (save-restriction (widen)
+                        (delete-region (match-beginning 0) (match-end 0)))
       (setq transformed (yas--eval-lisp (yas--read-lisp (yas--restore-escapes current-string '(?`)))))
       (goto-char (match-beginning 0))
       (when transformed
         (let ((marker (make-marker)))
-          (insert "Y") ;; quite horrendous, I love it :)
-          (set-marker marker (point))
-          (insert "Y")
+          (save-restriction
+            (widen)
+            (insert "Y") ;; quite horrendous, I love it :)
+            (set-marker marker (point))
+            (insert "Y"))
           (push (cons marker transformed) yas--backquote-markers-and-strings))))))
 
 (defun yas--restore-backquotes ()
@@ -3925,9 +3926,11 @@ with their evaluated value into `yas--backquote-markers-and-strings'."
            (string (cdr marker-and-string)))
       (save-excursion
         (goto-char marker)
-        (delete-char -1)
-        (insert string)
-        (delete-char 1)
+        (save-restriction
+          (widen)
+          (delete-char -1)
+          (insert string)
+          (delete-char 1))
         (set-marker marker nil)))))
 
 (defun yas--scan-sexps (from count)
