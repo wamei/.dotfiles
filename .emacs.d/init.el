@@ -757,12 +757,18 @@ file is a remote file (include directory)."
   ;; 起動モード
   (global-auto-complete-mode t)
   (add-to-list 'ac-modes 'text-mode)
-  (add-to-list 'ac-modes 'eshell-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
+  ;; eshell-mode
+  (add-to-list 'ac-modes 'eshell-mode)
+  (defun ac-eshell-mode-setup ()
+    (setq-default ac-sources my-ac-sources)
+    (setq-default ac-auto-start nil))
+  (add-hook 'web-mode-hook 'ac-eshell-mode-setup)
+
   ;; web-mode
   (add-to-list 'ac-modes 'web-mode)
   (defun ac-web-mode-setup ()
-    (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
+    (setq-default ac-sources my-ac-sources))
   (add-hook 'web-mode-hook 'ac-web-mode-setup)
 
   ;; css-mode
