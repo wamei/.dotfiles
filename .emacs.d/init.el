@@ -801,7 +801,7 @@ file is a remote file (include directory)."
       ac-source-words-in-same-mode-buffers
       ac-source-php-completion
       ac-source-filename
-      ac-source-etags
+;;      ac-source-etags
       ac-source-dictionary))
   (defun ac-php-mode-setup ()
     (setq-default ac-sources my-php-ac-sources))
