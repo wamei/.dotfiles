@@ -731,11 +731,14 @@ file is a remote file (include directory)."
   (setq ac-use-menu-map t)
   (define-key ac-menu-map (kbd "C-n") 'ac-next)
   (define-key ac-menu-map (kbd "C-p") 'ac-previous)
-  (define-key ac-complete-mode-map [tab] 'ac-next)
-  (define-key ac-complete-mode-map [S-tab] 'ac-previous)
+;;  (define-key ac-menu-map [tab] 'ac-next)
+;;  (define-key ac-menu-map [S-tab] 'ac-previous)
   (define-key ac-mode-map [M-tab] 'auto-complete)
+;;  (ac-set-trigger-key "TAB")
   ;; 自動的に補完しない
-  ;;(setq ac-auto-start 4)
+  (setq ac-auto-start nil)
+  ;; 補完メニューを自動表示しない
+  ;;(setq ac-auto-show-menu nil)
   ;; 最適なカラム計算をオフ
   ;;(setq popup-use-optimized-column-computation nil)
   ;; ツールチップの表示なし
@@ -753,18 +756,26 @@ file is a remote file (include directory)."
   (defvar my-ac-sources
     '(ac-source-yasnippet
       ac-source-abbrev
-      ac-source-dictionary
-      ac-source-words-in-same-mode-buffers))
+      ac-source-words-in-same-mode-buffers
+      ac-source-filename
+      ac-source-dictionary))
   ;; 起動モード
   (global-auto-complete-mode t)
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
 
   ;; eshell-mode
-  ;; (add-to-list 'ac-modes 'eshell-mode)
-  ;; (defun ac-eshell-mode-setup ()
-  ;;   (setq-default ac-sources my-ac-sources))
-  ;; (add-hook 'web-mode-hook 'ac-eshell-mode-setup)
+  (add-to-list 'ac-modes 'eshell-mode)
+  (ac-define-source pcomplete
+    '((candidates . pcomplete-completions)))
+  (defvar my-eshell-ac-sources
+    '(ac-source-pcomplete
+      ac-source-filename
+      ac-source-words-in-same-mode-buffers
+      ac-source-dictionary))
+  (defun ac-eshell-mode-setup ()
+    (setq-default ac-sources my-eshell-ac-sources))
+  (add-hook 'eshell-mode-hook 'ac-eshell-mode-setup)
 
   ;; web-mode
   (add-to-list 'ac-modes 'web-mode)
