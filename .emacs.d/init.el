@@ -66,15 +66,9 @@
 (global-set-key (kbd "C-M-f") 'windmove-right)
 (global-set-key (kbd "C-M-b") 'windmove-left)
 
-(global-set-key (kbd "C-c <up>") 'windmove-up)
-(global-set-key (kbd "C-c <down>") 'windmove-down)
-(global-set-key (kbd "C-c <right>") 'windmove-right)
-(global-set-key (kbd "C-c <left>") 'windmove-left)
-
-
 (global-set-key (kbd "C-c r") 'resize)
 
-                                        ; Tetris key map
+;; Tetris key map
 (defvar tetris-mode-map (make-sparse-keymap 'tetris-mode-map))
 (define-key tetris-mode-map "s" 'tetris-start-game)
 (defvar tetris-null-map (make-sparse-keymap 'tetris-null-map))
@@ -971,35 +965,24 @@ file is a remote file (include directory)."
             '(lambda() (flymake-mode t))))
 
 ;; popup.el を使って tip として表示
-;; (defun my-flymake-display-err-popup.el-for-current-line ()
-;;   "Display a menu with errors/warnings for current line if it has errors and/or warnings."
-;;   (interactive)
-;;   (let* ((line-no            (flymake-current-line-no))
-;;          (line-err-info-list (nth 0 (flymake-find-err-info flymake-err-info line-no)))
-;;          (menu-data          (flymake-make-err-menu-data line-no line-err-info-list)))
-;;     (if menu-data
-;;       (popup-tip (mapconcat '(lambda (e) (nth 0 e))
-;;                             (nth 1 menu-data)
-;;                             "\n")))
-;;     ))
-
-;; (defun flymake-display-err-menu-for-current-line ()
-;;   (interactive)
-;;   (let* ((line-no             (flymake-current-line-no))
-;;          (line-err-info-list  (nth 0 (flymake-find-err-info flymake-err-info line-no))))
-;;     (when line-err-info-list
-;;       (let* ((count           (length line-err-info-list))
-;;              (menu-item-text  nil))
-;;         (while (> count 0)
-;;           (setq menu-item-text (flymake-ler-text (nth (1- count) line-err-info-list)))
-;;           (let* ((file       (flymake-ler-file (nth (1- count) line-err-info-list)))
-;;                  (line       (flymake-ler-line (nth (1- count) line-err-info-list))))
-;;             (if file
-;;                 (setq menu-item-text (concat menu-item-text " - " file "(" (format "%d" line) ")"))))
-;;           (setq count (1- count))
-;;           (if (> count 0) (setq menu-item-text (concat menu-item-text "\n")))
-;;           )
-;;         (popup-tip menu-item-text)))))
+(defun flymake-display-err-menu-for-current-line ()
+  "Display a menu with errors/warnings for current line if it has errors and/or warnings."
+  (interactive)
+  (let* ((line-no             (flymake-current-line-no))
+         (line-err-info-list  (nth 0 (flymake-find-err-info flymake-err-info line-no))))
+    (when line-err-info-list
+      (let* ((count           (length line-err-info-list))
+             (menu-item-text  nil))
+        (while (> count 0)
+          (setq menu-item-text (flymake-ler-text (nth (1- count) line-err-info-list)))
+          (let* ((file       (flymake-ler-file (nth (1- count) line-err-info-list)))
+                 (line       (flymake-ler-line (nth (1- count) line-err-info-list))))
+            (if file
+                (setq menu-item-text (concat menu-item-text " - " file "(" (format "%d" line) ")"))))
+          (setq count (1- count))
+          (if (> count 0) (setq menu-item-text (concat menu-item-text "\n")))
+          )
+        (popup-tip menu-item-text)))))
 ;; (defadvice flymake-mode (before post-command-stuff activate compile)
 ;;   (set (make-local-variable 'post-command-hook)
 ;;     (add-hook 'post-command-hook 'flymake-display-err-menu-for-current-line)))
@@ -1079,12 +1062,6 @@ PWD is not in a git repo (or the git command is not found)."
                               (cd "~")
                               (eshell)
                               ))
-;; emacs 起動時に eshell バッファも一つ用意する
-;;(add-hook 'after-init-hook
-;;          (lambda()
-;;            (eshell)
-;;            (switch-to-buffer "*scratch*")
-;;          ))
 
 ;; 補完時に大文字小文字を区別しない
 (setq eshell-cmpl-ignore-case t)
@@ -1124,9 +1101,9 @@ PWD is not in a git repo (or the git command is not found)."
     (labels
         ((_my-toggle-term (target)
                           (if (null (member (buffer-name (second target)) ignore-list))
-                              (if (equal "*eshell*" (buffer-name (window-buffer)))
+                              (if (equal eshell-buffer-name (buffer-name (window-buffer)))
                                   (switch-to-buffer (second target))
-                                (switch-to-buffer "*eshell*")
+                                (switch-to-buffer eshell-buffer-name)
                                 (when current-prefix-arg
                                   (cd dir)
                                   (eshell-interactive-print (concat "cd " dir "\n"))
@@ -1135,18 +1112,36 @@ PWD is not in a git repo (or the git command is not found)."
       (_my-toggle-term (buffer-list)))))
 (global-set-key (kbd "C-z") 'my-toggle-term)
 
-;; auto-complete.elの設定
-;; (require 'pcomplete)
-;; (add-to-list 'ac-modes 'eshell-mode)
-;; (ac-define-source pcomplete
-;;   '((candidates . pcomplete-completions)))
-;; (defun my-ac-eshell-mode ()
-;;   (setq ac-sources
-;;      '(ac-source-pcomplete
-;;        ac-source-filename
-;;        ac-source-files-in-current-dir
-;;        ac-source-words-in-buffer
-;;        ac-source-dictionary)))
+;; eshellを新規で開く
+(defun eshell-add-new-buffer (arg)
+  (interactive "p")
+  (case arg
+    (4 (let ((input (read-string "eshell buffer name: ")))
+         (my-eshell-create input))
+       )
+    (t (my-eshell-create "")))
+  )
+(defun my-eshell-create (input)
+  (let ((bname (if (string= input "") "" (concat "<" input ">"))))
+    (let ((buf (generate-new-buffer (concat eshell-buffer-name bname))))
+      (pop-to-buffer buf)
+      (unless (fboundp 'eshell-mode)
+        (error "`eshell-auto' must be loaded before Eshell can be used"))
+      (unless (eq major-mode 'eshell-mode)
+        (eshell-mode))
+      buf
+      ))
+  )
+
+;; ファイルの場所へcdする
+(defun eshell-jump-to-current-directory ()
+  (interactive)
+  (let ((dir default-directory))
+    (eshell)
+    (cd dir)
+    (eshell-interactive-print (concat "cd " dir "\n"))
+    (eshell-emit-prompt))
+  )
 
 ;; キーバインドの変更
 (add-hook 'eshell-mode-hook
@@ -1160,15 +1155,16 @@ PWD is not in a git repo (or the git command is not found)."
                (define-key eshell-mode-map (kbd "C-n") 'eshell-next-matching-input-from-input)
                (define-key eshell-mode-map (kbd "M-p") 'previous-line)
                (define-key eshell-mode-map (kbd "M-n") 'next-line)
-               (define-key eshell-mode-map (kbd "C-M-p") 'anything-eshell-history)
-               (define-key eshell-mode-map (kbd "C-M-n") 'anything-esh-pcomplete)
+               (define-key eshell-mode-map (kbd "C-c C-p") 'anything-eshell-history)
+               (define-key eshell-mode-map (kbd "C-c C-n") 'anything-esh-pcomplete)
 ;;             (define-key eshell-mode-map (kbd "C-i") 'auto-complete)
 ;;             (define-key eshell-mode-map [(tab)] 'auto-complete)
                )
              ))
 
-
+;;----------------------------------------------------------------------------------------------------
 ;; マイナーモードの省略
+;;----------------------------------------------------------------------------------------------------
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
 (setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
