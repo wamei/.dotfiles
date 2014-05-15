@@ -677,6 +677,7 @@ file is a remote file (include directory)."
 ;;-----------------------------------------------------------------------
 (require 'undo-tree)
 (global-undo-tree-mode t)
+(global-set-key (kbd "C-/") 'undo-tree-undo)
 (global-set-key (kbd "M-/") 'undo-tree-redo)
 
 ;;
