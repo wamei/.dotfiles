@@ -736,9 +736,9 @@ file is a remote file (include directory)."
   (define-key ac-mode-map [M-tab] 'auto-complete)
 ;;  (ac-set-trigger-key "TAB")
   ;; 自動的に補完しない
-  (setq ac-auto-start nil)
+  ;;(setq ac-auto-start nil)
   ;; 補完メニューを自動表示しない
-  ;;(setq ac-auto-show-menu nil)
+  (setq ac-auto-show-menu nil)
   ;; 最適なカラム計算をオフ
   ;;(setq popup-use-optimized-column-computation nil)
   ;; ツールチップの表示なし
