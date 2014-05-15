@@ -740,6 +740,7 @@ file is a remote file (include directory)."
   ;;(setq popup-use-optimized-column-computation nil)
   ;; ツールチップの表示なし
   (setq ac-use-quick-help nil)
+  ;; do i what mean
   (setq ac-dwim t)
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
@@ -758,12 +759,12 @@ file is a remote file (include directory)."
   (global-auto-complete-mode t)
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
+
   ;; eshell-mode
-  (add-to-list 'ac-modes 'eshell-mode)
-  (defun ac-eshell-mode-setup ()
-    (setq-default ac-sources my-ac-sources)
-    (setq-default ac-auto-start nil))
-  (add-hook 'web-mode-hook 'ac-eshell-mode-setup)
+  ;; (add-to-list 'ac-modes 'eshell-mode)
+  ;; (defun ac-eshell-mode-setup ()
+  ;;   (setq-default ac-sources my-ac-sources))
+  ;; (add-hook 'web-mode-hook 'ac-eshell-mode-setup)
 
   ;; web-mode
   (add-to-list 'ac-modes 'web-mode)
