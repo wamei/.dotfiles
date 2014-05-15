@@ -792,6 +792,7 @@ file is a remote file (include directory)."
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
   ;; php-mode
+  (require 'php-mode)
   (add-to-list 'ac-modes 'php-mode)
   (require 'php-completion)
   (php-completion-mode t)
