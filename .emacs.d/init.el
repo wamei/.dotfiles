@@ -737,8 +737,8 @@ file is a remote file (include directory)."
   (define-key ac-mode-map [M-tab] 'auto-complete)
   (global-set-key [M-tab] 'auto-complete)
   (ac-set-trigger-key "TAB")
-  ;; 自動的に補完しない
-  (setq ac-auto-start 3)
+  ;; 自動的に補完開始
+  (setq ac-auto-start t)
   ;; 補完メニューを自動表示しない
   (setq ac-auto-show-menu 0.8)
   ;; 最適なカラム計算をオフ
