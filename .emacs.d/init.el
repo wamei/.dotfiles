@@ -732,10 +732,10 @@ file is a remote file (include directory)."
   (setq ac-use-menu-map t)
   (define-key ac-menu-map (kbd "C-n") 'ac-next)
   (define-key ac-menu-map (kbd "C-p") 'ac-previous)
-;;  (define-key ac-menu-map [tab] 'ac-next)
-;;  (define-key ac-menu-map [S-tab] 'ac-previous)
+  (define-key ac-menu-map [tab] 'ac-next)
+  (define-key ac-menu-map [S-tab] 'ac-previous)
   (define-key ac-mode-map [M-tab] 'auto-complete)
-;;  (ac-set-trigger-key "TAB")
+  (ac-set-trigger-key "TAB")
   ;; 自動的に補完しない
   ;;(setq ac-auto-start nil)
   ;; 補完メニューを自動表示しない
@@ -789,6 +789,21 @@ file is a remote file (include directory)."
   (defun ac-css-mode-setup ()
     (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
+
+  ;; php-mode
+  (add-to-list 'ac-modes 'php-mode)
+  (require 'php-completion)
+  (php-completion-mode t)
+  (defvar my-php-ac-sources
+    '(ac-source-yasnippet
+      ac-source-words-in-same-mode-buffers
+      ac-source-php-completion
+      ac-source-filename
+      ac-source-etags
+      ac-source-dictionary))
+  (defun ac-php-mode-setup ()
+    (setq-default ac-sources my-php-ac-sources))
+  (add-hook 'php-mode-hook 'ac-php-mode-setup)
 
   ;; (when (require 'auto-complete-latex nil t)
   ;;    (setq ac-l-dict-directory "~/.emacs.d/elisp/auto-complete/ac-l-dict/")
@@ -939,15 +954,7 @@ file is a remote file (include directory)."
 (defun php-mode-hook ()
   (lambda ()
     (setq php-mode-force-pear t)
-    (require 'php-completion)
-    (php-completion-mode t)
-    (make-local-variable 'ac-sources)
-    (setq ac-sources '(
-                       ac-source-words-in-same-mode-buffers
-                       ac-source-php-completion
-                       ac-source-filename
-                       ac-source-etags))
-                       ))
+))
 (add-hook 'php-mode-hook 'php-mode-hook)
 ;; web-mode
 (require 'web-mode)
@@ -1250,8 +1257,6 @@ PWD is not in a git repo (or the git command is not found)."
                (define-key eshell-mode-map (kbd "M-n") 'next-line)
                (define-key eshell-mode-map (kbd "C-c C-p") 'anything-eshell-history)
                (define-key eshell-mode-map (kbd "C-c C-n") 'anything-esh-pcomplete)
-;;             (define-key eshell-mode-map (kbd "C-i") 'auto-complete)
-;;             (define-key eshell-mode-map [(tab)] 'auto-complete)
                )
              ))
 
