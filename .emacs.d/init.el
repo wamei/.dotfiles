@@ -1251,7 +1251,7 @@ PWD is not in a git repo (or the git command is not found)."
 ;;
 ;; migemo.el
 ;;-----------------------------------------------------------------------
-(if (eq system-type 'darwin)
+;;(if (eq system-type 'darwin)
     (when (require 'migemo)
       (setq migemo-command "cmigemo")
       (setq migemo-options '("-q" "--emacs"))
@@ -1261,5 +1261,6 @@ PWD is not in a git repo (or the git command is not found)."
       (setq migemo-coding-system 'utf-8-unix)
       (load-library "migemo")
       (migemo-init)
-      ))
+      )
+;;)
 
