@@ -740,7 +740,7 @@ file is a remote file (include directory)."
   ;; 自動的に補完開始
   (setq ac-auto-start t)
   ;; 補完メニューを自動表示しない
-  (setq ac-auto-show-menu 0.8)
+  (setq ac-auto-show-menu t)
   ;; 最適なカラム計算をオフ
   ;;(setq popup-use-optimized-column-computation nil)
   ;; ツールチップの表示なし
