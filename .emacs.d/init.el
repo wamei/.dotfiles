@@ -59,8 +59,8 @@
 
 ;; フォーカス移動
 ;;(windmove-default-keybindings)
-(global-set-key (kbd "C-<tab>")   'other-window)
-(global-set-key (kbd "C-S-<tab>") (lambda()(interactive)(other-window -1)))
+;;(global-set-key (kbd "C-<tab>")   'other-window)
+;;(global-set-key (kbd "C-S-<tab>") (lambda()(interactive)(other-window -1)))
 (global-set-key (kbd "C-M-p") 'windmove-up)
 (global-set-key (kbd "C-M-n") 'windmove-down)
 (global-set-key (kbd "C-M-f") 'windmove-right)
@@ -732,10 +732,9 @@ file is a remote file (include directory)."
   (setq ac-use-menu-map t)
   (define-key ac-menu-map (kbd "C-n") 'ac-next)
   (define-key ac-menu-map (kbd "C-p") 'ac-previous)
-  (define-key ac-menu-map [tab] 'ac-next)
-  (define-key ac-menu-map [S-tab] 'ac-previous)
-  (define-key ac-mode-map [M-tab] 'auto-complete)
-  (global-set-key [M-tab] 'auto-complete)
+  (define-key ac-menu-map (kbd "<tab>") 'ac-next)
+  (define-key ac-menu-map (kbd "S-<tab>") 'ac-previous)
+  (define-key ac-mode-map (kbd "C-<tab>") 'auto-complete)
   (ac-set-trigger-key "TAB")
   ;; 自動的に補完開始
   (setq ac-auto-start t)
