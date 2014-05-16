@@ -10,8 +10,3 @@ elif [ `uname` = "Linux" ]; then
 fi
 alias ec='emacsclient'
 alias screen='screen -U'
-
-## create emacs env file
-perl -wle \
-    'do { print qq/(setenv "$_" "$ENV{$_}")/ if exists $ENV{$_} } for @ARGV' \
-    PATH > ~/.emacs.d/elisp/shellenv.el

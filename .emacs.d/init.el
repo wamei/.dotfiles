@@ -30,13 +30,8 @@
   )
 
 ;; load environment value
-(let ((envfile (expand-file-name "~/.emacs.d/elisp/shellenv.el")))
-  (if (file-exists-p envfile)
-      (load-file envfile)
-    )
-)
-(dolist (path (reverse (split-string (getenv "PATH") ":")))
-  (add-to-list 'exec-path path))
+(require 'exec-path-from-shell)
+(exec-path-from-shell-initialize)
 
 ;;
 ;; キーバインド
@@ -708,21 +703,6 @@ file is a remote file (include directory)."
 (global-set-key (kbd "C-c C-f") 'dash-at-point-with-docset)
 
 ;;
-;; migemo.el
-;;-----------------------------------------------------------------------
-(if (eq system-type 'darwin)
-    (when (require 'migemo)
-      (setq migemo-command "cmigemo")
-      (setq migemo-options '("-q" "--emacs"))
-      (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
-      (setq migemo-user-dictionary nil)
-      (setq migemo-regex-dictionary nil)
-      (setq migemo-coding-system 'utf-8-unix)
-      (load-library "migemo")
-      (migemo-init)
-      ))
-
-;;
 ;; auto-complete.el
 ;;------------------------------------------------------------------------
 (when (require 'auto-complete nil t)
@@ -732,9 +712,9 @@ file is a remote file (include directory)."
   (setq ac-use-menu-map t)
   (define-key ac-menu-map (kbd "C-n") 'ac-next)
   (define-key ac-menu-map (kbd "C-p") 'ac-previous)
-  (define-key ac-menu-map (kbd "<tab>") 'ac-next)
-  (define-key ac-menu-map (kbd "S-<tab>") 'ac-previous)
-  (define-key ac-mode-map (kbd "C-<tab>") 'auto-complete)
+  (define-key ac-menu-map (kbd "TAB") 'ac-next)
+  (define-key ac-menu-map (kbd "S-TAB") 'ac-previous)
+  (define-key ac-mode-map (kbd "C-TAB") 'auto-complete)
   (ac-set-trigger-key "TAB")
   ;; 自動的に補完開始
   (setq ac-auto-start t)
@@ -1267,3 +1247,19 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
 (setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
+
+;;
+;; migemo.el
+;;-----------------------------------------------------------------------
+(if (eq system-type 'darwin)
+    (when (require 'migemo)
+      (setq migemo-command "cmigemo")
+      (setq migemo-options '("-q" "--emacs"))
+      (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
+      (setq migemo-user-dictionary nil)
+      (setq migemo-regex-dictionary nil)
+      (setq migemo-coding-system 'utf-8-unix)
+      (load-library "migemo")
+      (migemo-init)
+      ))
+
