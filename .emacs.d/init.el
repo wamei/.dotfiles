@@ -31,7 +31,9 @@
 
 ;; load environment value
 (require 'exec-path-from-shell)
-(exec-path-from-shell-initialize)
+(let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
+  (exec-path-from-shell-copy-envs envs))
+;;(exec-pathth-from-shell-initialize)
 
 ;;
 ;; キーバインド
@@ -672,8 +674,8 @@ file is a remote file (include directory)."
 ;;-----------------------------------------------------------------------
 (require 'undo-tree)
 (global-undo-tree-mode t)
-(global-set-key (kbd "C-/") 'undo-tree-undo)
-(global-set-key (kbd "M-/") 'undo-tree-redo)
+(global-set-key (kbd "C--") 'undo-tree-undo)
+(global-set-key (kbd "M--") 'undo-tree-redo)
 
 ;;
 ;; markdown-mode.el
@@ -714,11 +716,11 @@ file is a remote file (include directory)."
   (define-key ac-menu-map (kbd "C-p") 'ac-previous)
   (define-key ac-menu-map (kbd "TAB") 'ac-next)
   (define-key ac-menu-map (kbd "S-TAB") 'ac-previous)
-  (define-key ac-mode-map (kbd "C-TAB") 'auto-complete)
+  (define-key ac-mode-map (kbd "M-/") 'auto-complete)
   (ac-set-trigger-key "TAB")
   ;; 自動的に補完開始
   (setq ac-auto-start t)
-  ;; 補完メニューを自動表示しない
+  ;; 補完メニューを自動表示
   (setq ac-auto-show-menu t)
   ;; 最適なカラム計算をオフ
   ;;(setq popup-use-optimized-column-computation nil)
@@ -731,20 +733,16 @@ file is a remote file (include directory)."
   ;; lisp編集情報源
   (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
   ;; ファイル名情報
-  (setq-default ac-sources '(ac-source-words-in-same-mode-buffers ac-source-filename))
-
-  ;; base source
-  (defvar my-ac-sources
-    '(ac-source-yasnippet
-      ac-source-abbrev
-      ac-source-words-in-same-mode-buffers
-      ac-source-filename
-      ac-source-dictionary))
+  (setq-default ac-sources '(ac-source-yasnippet
+                             ac-source-abbrev
+                             ac-source-words-in-same-mode-buffers
+                             ac-source-filename
+                             ac-source-dictionary))
   ;; 起動モード
   (global-auto-complete-mode t)
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
-
+  (add-to-list 'ac-modes 'web-mode)
   ;; eshell-mode
   ;; (add-to-list 'ac-modes 'eshell-mode)
   ;; (ac-define-source pcomplete
@@ -758,16 +756,10 @@ file is a remote file (include directory)."
   ;;   (setq-default ac-sources my-eshell-ac-sources))
   ;; (add-hook 'eshell-mode-hook 'ac-eshell-mode-setup)
 
-  ;; web-mode
-  (add-to-list 'ac-modes 'web-mode)
-  (defun ac-web-mode-setup ()
-    (setq-default ac-sources my-ac-sources))
-  (add-hook 'web-mode-hook 'ac-web-mode-setup)
-
   ;; css-mode
   (add-to-list 'ac-modes 'css-mode)
   (defun ac-css-mode-setup ()
-    (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
+    (setq-default ac-sources (append '(ac-source-css-property) ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
   ;; php-mode
@@ -775,15 +767,8 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'php-mode)
   (require 'php-completion)
   (php-completion-mode t)
-  (defvar my-php-ac-sources
-    '(ac-source-yasnippet
-      ac-source-words-in-same-mode-buffers
-      ac-source-php-completion
-      ac-source-filename
-;;      ac-source-etags
-      ac-source-dictionary))
   (defun ac-php-mode-setup ()
-    (setq-default ac-sources my-php-ac-sources))
+    (setq-default ac-sources (append '(ac-source-php-completion) ac-sources)))
   (add-hook 'php-mode-hook 'ac-php-mode-setup)
 
   ;; (when (require 'auto-complete-latex nil t)
