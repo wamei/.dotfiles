@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: script.src
+# key: script.src
+# --
+<script type="${1:text/javascript}" src="$0"></script>

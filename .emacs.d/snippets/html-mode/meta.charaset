@@ -1,0 +1,6 @@
+
+# -*- mode: snippet nil -*-
+# name: meta.charset
+# key: meta.charset
+# --
+<meta charset="${1:$$(yas/choose-value '("UTF-8" "UEC-JP" "Shift_JIS"))}">

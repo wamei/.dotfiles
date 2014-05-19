@@ -49,8 +49,7 @@
 
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 
-(global-set-key (kbd "C-c s")   'sr-speedbar-toggle)
-(global-set-key (kbd "C-c p")   'sr-speedbar-select-window)
+(global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
 
 (global-set-key (kbd "C-x p")   'popwin:display-last-buffer)
 
@@ -734,9 +733,9 @@ file is a remote file (include directory)."
   (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
   ;; ファイル名情報
   (setq-default ac-sources '(ac-source-yasnippet
+                             ac-source-filename
                              ac-source-abbrev
                              ac-source-words-in-same-mode-buffers
-                             ac-source-filename
                              ac-source-dictionary))
   ;; 起動モード
   (global-auto-complete-mode t)
@@ -800,6 +799,10 @@ file is a remote file (include directory)."
 
     (global-set-key (kbd "C-c l") 'ac-complete-look))
 
+  ;; yasnippetのbindingを指定するとエラーが出るので回避する方法。
+  (setf (symbol-function 'yas-active-keys)
+        (lambda ()
+          (remove-duplicates (mapcan #'yas--table-all-keys (yas--get-snippet-tables)))))
 )
 
 ;;
@@ -1032,14 +1035,24 @@ file is a remote file (include directory)."
 ;; yasnippet.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'yasnippet nil t)
+  (setq yas-snippet-dirs
+        '("~/.emacs.d/snippets" ;; 作成するスニペットはここに入る
+          ))
   (yas-global-mode 1)
   ;; 単語展開キー
-  (define-key yas-minor-mode-map (kbd "C-c y") 'yas/expand)
-  (define-key yas-minor-mode-map (kbd "TAB") nil)
+  (custom-set-variables '(yas-trigger-key "TAB"))
+
+  ;; 既存スニペットを挿入する
+  (define-key yas-minor-mode-map (kbd "C-c s i") 'yas-insert-snippet)
+  ;; 新規スニペットを作成するバッファを用意する
+  (define-key yas-minor-mode-map (kbd "C-c s n") 'yas-new-snippet)
+  ;; 既存スニペットを閲覧・編集する
+  (define-key yas-minor-mode-map (kbd "C-c s v") 'yas-visit-snippet-file)
+
   (defun my-yas/prompt (prompt choices &optional display-fn)
     (let* ((names (loop for choice in choices
                         collect (or (and display-fn (funcall display-fn choice))
-                                    coice)))
+                                    choice)))
            (selected (anything-other-buffer
                       `(((name . ,(format "%s" prompt))
                          (candidates . names)
@@ -1050,6 +1063,14 @@ file is a remote file (include directory)."
             (nth n choices))
         (signal 'quit "user quit!"))))
   (custom-set-variables '(yas/prompt-functions '(my-yas/prompt)))
+
+  (custom-set-variables '(yas-new-snippet-default "\
+# -*- mode: snippet -*-
+# name: $1
+# key: ${2:${1:$(yas--key-from-desc yas-text)}}
+# --
+$0"))
+
   )
 
 
