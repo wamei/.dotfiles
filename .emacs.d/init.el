@@ -561,9 +561,21 @@ file is a remote file (include directory)."
    ;evil-mode-line-tag
    mode-line-position
    ;; directory and buffer/file name
-   (:propertize (:eval (shorten-directory default-directory 20))
-                face mode-line-folder-face)
-   (:propertize "%b" face mode-line-filename-face)
+   (:eval (if (eq major-mode 'eshell-mode)
+              (propertize (substring (buffer-name) (length eshell-buffer-name)) 'face 'mode-line-filename-face)
+            (concat
+             (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
+             (propertize (buffer-name) 'face 'mode-line-filename-face))
+            ))
+   ;; (:eval (let ((blen (length eshell-buffer-name)))
+   ;;          (let ((bname (substring (buffer-name) 0 (if (>= (length (buffer-name)) blen) blen 0))))
+   ;;            (if (string= bname eshell-buffer-name)
+   ;;                (propertize (substring (buffer-name) blen) 'face 'mode-line-filename-face)
+   ;;              (concat
+   ;;               (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
+   ;;               (propertize (buffer-name) 'face 'mode-line-filename-face))
+   ;;              )
+   ;;            )))
    ;; narrow [default -- keep?]
    " %n"
    ;; mode indicators: vc, recursive edit, major mode, minor modes, process, global
