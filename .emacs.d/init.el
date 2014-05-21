@@ -1223,7 +1223,7 @@ PWD is not in a git repo (or the git command is not found)."
 (defun my-eshell-create (input)
   (let ((bname (if (string= input "") "" (concat "<" input ">"))))
     (let ((buf (generate-new-buffer (concat eshell-buffer-name bname))))
-      (pop-to-buffer buf)
+      (switch-to-buffer buf)
       (unless (fboundp 'eshell-mode)
         (error "`eshell-auto' must be loaded before Eshell can be used"))
       (unless (eq major-mode 'eshell-mode)
