@@ -1,10 +1,8 @@
+/url/
+/auto-save-list/
+/eshell/
+*.elc
+shellenv.el
 .DS_Store
 ac-comphist.dat
 tramp
-/eshell/history
-/eshell/lastdir
-/eshell/shellenv.el
-/elisp/shellenv.el
-/url/
-/auto-save-list/
-*.elc

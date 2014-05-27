@@ -34,6 +34,7 @@
 (let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
   (exec-path-from-shell-copy-envs envs))
 ;;(exec-pathth-from-shell-initialize)
+(setenv "TERM" "xterm-256color")
 
 ;;
 ;; キーバインド
@@ -1108,10 +1109,9 @@ $0"))
 ;;
 ;; eshell.el
 ;;----------------------------------------------------------------------------------------------------
-(setq eshell-highlight-prompt nil)
 (setq eshell-banner-message " 可愛い女の子だと思った？ 残念！Eshellちゃんでした！\n\n")
-;;(require 'vc-git)
 ;; prompt文字列
+(setq eshell-highlight-prompt nil)
 (setq eshell-prompt-function
       (lambda ()
         (concat
