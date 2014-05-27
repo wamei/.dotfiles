@@ -145,10 +145,10 @@
 (custom-set-faces
    ;; Ensure sufficient contrast on 256-color xterms.
    `(default ((((class color) (min-colors 4096))
-       (:background "#2d3743" :foreground "#e1e1e0"))
+       (:background "#313131" :foreground "#e1e1e0"))
        (,class
        (:background "#2a2a2a" :foreground "#e1e1e0"))))
-   `(cursor ((,class (:background "#3a3a3a"))))
+   `(cursor ((,class (:background "#1d2733"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
    `(highlight ((,class (:background "#035f56"))))
@@ -230,7 +230,8 @@
                         :background 'unspecified
                         :strike-through t)
     (set-face-attribute 'whitespace-newline nil
-                        :foreground (if dark "darkcyan" "darkseagreen")))
+                        :foreground (if dark "darkcyan" "darkseagreen")
+                        :height 0.8))
   (setq whitespace-space-regexp "\\(　+\\)")
   (setq whitespace-display-mappings
         '((space-mark   ?\xA0  [?\xA4]  [?_]) ; hard space - currency
@@ -239,7 +240,7 @@
           (space-mark   ?\xE20 [?\xE24] [?_]) ; hard space - currency
           (space-mark   ?\xF20 [?\xF24] [?_]) ; hard space - currency
           (space-mark   ?　    [?口]    [?＿]) ; full-width space - square
-          (newline-mark ?\n    [?\u21B5 ?\n] [?$ ?\n])   ; eol - right quote mark
+          (newline-mark ?\n    [?← ?\n] [?$ ?\n])   ; eol - right quote mark
           ))
   (setq whitespace-global-modes '(not dired-mode tar-mode))
   (global-whitespace-mode 1))
@@ -321,12 +322,31 @@
                     :family "Menlo"
                     :height 120)
 (if (eq system-type 'darwin)
-    (set-fontset-font
-     nil 'japanese-jisx0208
-     (font-spec :family "Hiragino Maru Gothic ProN"))
-  (setq face-font-rescale-alist
-        '((".*Hiragino_Maru_Gothic_ProN.*" . 1.2)))
-  )
+      (set-fontset-font
+       (frame-parameter nil 'font)
+       'japanese-jisx0208
+       '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+      (set-fontset-font
+       (frame-parameter nil 'font)
+       'japanese-jisx0212
+       '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+      (set-fontset-font
+       (frame-parameter nil 'font)
+       'mule-unicode-0100-24ff
+       '("menlo" . "iso10646-1"))
+      (setq face-font-rescale-alist
+            '(("^-apple-hiragino.*" . 1.1)
+              (".*courier-bold-.*-mac-roman" . 1.0)
+              (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
+              (".*menlo-bold-.*-mac-roman" . 0.9)
+              ("-cdac$" . 1.3))))
+;; (if (eq system-type 'darwin)
+;;     (set-fontset-font
+;;      nil 'japanese-jisx0208
+;;      (font-spec :family "Hiragino Maru Gothic Pro"))
+;;   (setq face-font-rescale-alist
+;;         '((".*Hiragino_Maru_Gothic_Pro.*" . 1.1)))
+;;   )
 
 ;;
 ;; その他設定
