@@ -681,12 +681,23 @@ file is a remote file (include directory)."
 ;;;______________________________________________________________________
 
 ;;
+;; foreign regexp.el
+;;-----------------------------------------------------------------------
+(when (require 'foreign-regexp nil t)
+  (custom-set-variables
+   ;; 正規表現、perlかrubyを選択
+   '(foreign-regexp/regexp-type 'perl) ;; Choose by your preference.
+   '(reb-re-syntax 'foreign-regexp)) ;; Tell re-builder to use foreign regexp.
+  )
+
+;;
 ;; undo-tree.el
 ;;-----------------------------------------------------------------------
-(require 'undo-tree)
-(global-undo-tree-mode t)
-(global-set-key (kbd "C--") 'undo-tree-undo)
-(global-set-key (kbd "M--") 'undo-tree-redo)
+(when (require 'undo-tree nil t)
+  (global-undo-tree-mode t)
+  (global-set-key (kbd "C--") 'undo-tree-undo)
+  (global-set-key (kbd "M--") 'undo-tree-redo)
+  )
 
 ;;
 ;; markdown-mode.el
