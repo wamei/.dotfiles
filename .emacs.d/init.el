@@ -1201,7 +1201,7 @@ PWD is not in a git repo (or the git command is not found)."
 (setq comint-scroll-show-maximum-output t)
 (setq comint-scroll-to-bottom-on-output 'all)
 
-;; promptのあとも補完可能に
+;; sudoのあとも補完可能に
 (defun pcomplete/sudo ()
   "Completion rules for the `sudo' command."
   (let ((pcomplete-help "complete after sudo"))
@@ -1265,14 +1265,12 @@ PWD is not in a git repo (or the git command is not found)."
              (progn
 ;;             (my-ac-eshell-mode)
                (define-key eshell-mode-map (kbd "C-a") 'eshell-bol)
-               (define-key eshell-mode-map [up] 'eshell-previous-matching-input-from-input)
-               (define-key eshell-mode-map [down] 'eshell-next-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "C-p") 'eshell-previous-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "C-n") 'eshell-next-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "M-p") 'previous-line)
-               (define-key eshell-mode-map (kbd "M-n") 'next-line)
-               (define-key eshell-mode-map (kbd "C-c C-p") 'anything-eshell-history)
-               (define-key eshell-mode-map (kbd "C-c C-n") 'anything-esh-pcomplete)
+               (define-key eshell-mode-map [up] 'anything-eshell-history)
+               (define-key eshell-mode-map [down] 'anything-esh-pcomplete)
+               (define-key eshell-mode-map (kbd "M-p") 'eshell-previous-matching-input-from-input)
+               (define-key eshell-mode-map (kbd "M-n") 'eshell-next-matching-input-from-input)
+               (define-key eshell-mode-map (kbd "C-p") 'previous-line)
+               (define-key eshell-mode-map (kbd "C-n") 'next-line)
                )
              ))
 
