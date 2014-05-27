@@ -140,15 +140,15 @@
 
 ;;
 ;; テーマの読み込み
-;;________________________________________________________________________
+;;----------------------------------------------------------------------------------------------------
 (let ((class '((class color) (min-colors 89))))
 (custom-set-faces
    ;; Ensure sufficient contrast on 256-color xterms.
    `(default ((((class color) (min-colors 4096))
        (:background "#2d3743" :foreground "#e1e1e0"))
        (,class
-       (:background "#3a3a3a" :foreground "#e1e1e0"))))
-   `(cursor ((,class (:background "#819170"))))
+       (:background "#2a2a2a" :foreground "#e1e1e0"))))
+   `(cursor ((,class (:background "#3a3a3a"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
    `(highlight ((,class (:background "#035f56"))))
@@ -626,7 +626,7 @@ file is a remote file (include directory)."
     output))
 
 (set-face-attribute 'mode-line nil
-    :foreground "gray80" :background "gray15"
+    :foreground "#eeeeec" :background "#030f3c"
     :inverse-video nil
     :weight 'normal
     :height 1.0
