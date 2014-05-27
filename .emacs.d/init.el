@@ -1263,7 +1263,6 @@ PWD is not in a git repo (or the git command is not found)."
 (add-hook 'eshell-mode-hook
           '(lambda ()
              (progn
-;;             (my-ac-eshell-mode)
                (define-key eshell-mode-map (kbd "C-a") 'eshell-bol)
                (define-key eshell-mode-map [up] 'previous-line)
                (define-key eshell-mode-map [down] 'next-line)
@@ -1273,6 +1272,17 @@ PWD is not in a git repo (or the git command is not found)."
                (define-key eshell-mode-map (kbd "C-c c") 'anything-esh-pcomplete)
                )
              ))
+
+;; 色
+(autoload 'ansi-color-for-comint-mode-on "ansi-color"
+          "Set `ansi-color-for-comint-mode' to t." t)
+(add-hook 'eshell-load-hook 'ansi-color-for-comint-mode-on)
+(require 'ansi-color)
+(require 'eshell)
+(defun eshell-handle-ansi-color ()
+  (ansi-color-apply-on-region eshell-last-output-start
+                              eshell-last-output-end))
+    (add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
 
 ;;----------------------------------------------------------------------------------------------------
 ;; マイナーモードの省略
