@@ -1100,14 +1100,15 @@ $0"))
 
   )
 
-
+;;
 ;; ssh-agent.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'ssh-agent)
 
-;;====================
-;; Eshell
-;;====================
+;;
+;; eshell.el
+;;----------------------------------------------------------------------------------------------------
+(setq eshell-highlight-prompt nil)
 (setq eshell-banner-message " 可愛い女の子だと思った？ 残念！Eshellちゃんでした！\n\n")
 ;;(require 'vc-git)
 ;; prompt文字列
@@ -1118,20 +1119,20 @@ $0"))
 ;;         " "
 ;;         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
 ;;         ":"
-         (let ((pwd (eshell/pwd))
-               (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
-               )
-           (let ((homelength (length homestring))
-                 (pwdlength (length pwd)))
-             (if (>= pwdlength homelength)
-                 (let ((subhome (substring pwd 0 homelength)))
-                   (if (string= subhome homestring)
-                       (concat "~" (substring pwd homelength (length pwd)))
-                     pwd
-                    )
-                   )
-               pwd)
-           ))
+         (propertize (let ((pwd (eshell/pwd))
+                           (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
+                           )
+                       (let ((homelength (length homestring))
+                             (pwdlength (length pwd)))
+                         (if (>= pwdlength homelength)
+                             (let ((subhome (substring pwd 0 homelength)))
+                               (if (string= subhome homestring)
+                                   (concat "~" (substring pwd homelength (length pwd)))
+                                 pwd
+                                 )
+                               )
+                           pwd)
+                         )) 'face '(:foreground "pink" :weight bold))
 ;;         (vc-git-mode-line-string (eshell/pwd))
          (curr-dir-git-branch-string (eshell/pwd))
 ;;         (vc-git-state (eshell/pwd))
@@ -1139,8 +1140,8 @@ $0"))
          " "
          (if (= (user-uid) 0)
              "#"
-;;           (propertize "$" 'face '(:foreground "#ffffff")))
-           "$")
+           (propertize "$" 'face '(:foreground "#ffffff")))
+;;           "$")
          " "
          )))
 ;;(setq eshell-prompt-regexp "^[^#$]*[$#] ")
@@ -1187,7 +1188,6 @@ PWD is not in a git repo (or the git command is not found)."
 (defadvice eshell-send-input (after eshell-send-input-after-advice)
   (eshell-save-some-history)
   (eshell-save-some-last-dir))
-
 (ad-activate 'eshell-send-input)
 ;; 補完時にサイクルする
 ;;(setq eshell-cmpl-cycle-completions t)
