@@ -34,9 +34,6 @@
 (let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
   (exec-path-from-shell-copy-envs envs))
 ;;(exec-pathth-from-shell-initialize)
-(setenv "TZ" "Asia/Tokyo")
-(setenv "LANG" "en_US.UTF-8")
-(setenv "TERM" "xterm-color")
 
 ;;
 ;; キーバインド
@@ -44,17 +41,14 @@
 
 (global-set-key (kbd "C-h")     'backward-delete-char)
 (global-set-key (kbd "M-h")     'backward-kill-word)
-
 (global-set-key (kbd "M-g")     'goto-line)
-
 (global-set-key (kbd "C-r")     'replace-string)
 (global-set-key (kbd "C-M-r")   'replace-regexp)
-
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 
 (global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
-
 (global-set-key (kbd "C-x p")   'popwin:display-last-buffer)
+(global-set-key (kbd "C-c c")   'popup-color-at-point)
 
 ;; フォーカス移動
 ;;(windmove-default-keybindings)
@@ -244,7 +238,7 @@
           (space-mark   ?\x920 [?\x924] [?_]) ; hard space - currency
           (space-mark   ?\xE20 [?\xE24] [?_]) ; hard space - currency
           (space-mark   ?\xF20 [?\xF24] [?_]) ; hard space - currency
-          (space-mark   ?　    [?□]    [?＿]) ; full-width space - square
+          (space-mark   ?　    [?口]    [?＿]) ; full-width space - square
           (newline-mark ?\n    [?\u21B5 ?\n] [?$ ?\n])   ; eol - right quote mark
           ))
   (setq whitespace-global-modes '(not dired-mode tar-mode))
@@ -299,29 +293,39 @@
 (set-clipboard-coding-system    'utf-8)
 
 ;; Fontを指定
-(if (display-graphic-p)
-    (when (>= emacs-major-version 23)
-      (set-face-attribute 'default nil
-                          :family "menlo"
-                          :height 120)
-      (set-fontset-font
-       (frame-parameter nil 'font)
-       'japanese-jisx0208
-       '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-      (set-fontset-font
-       (frame-parameter nil 'font)
-       'japanese-jisx0212
-       '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-      (set-fontset-font
-       (frame-parameter nil 'font)
-       'mule-unicode-0100-24ff
-       '("menlo" . "iso10646-1"))
-      (setq face-font-rescale-alist
-            '(("^-apple-hiragino.*" . 1.1)
-              (".*courier-bold-.*-mac-roman" . 1.0)
-              (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
-              (".*menlo-bold-.*-mac-roman" . 0.9)
-              ("-cdac$" . 1.3))))
+;; (if (display-graphic-p)
+;;     (when (>= emacs-major-version 23)
+;;       (set-face-attribute 'default nil
+;;                           :family "menlo"
+;;                           :height 120)
+;;       (set-fontset-font
+;;        (frame-parameter nil 'font)
+;;        'japanese-jisx0208
+;;        '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+;;       (set-fontset-font
+;;        (frame-parameter nil 'font)
+;;        'japanese-jisx0212
+;;        '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+;;       (set-fontset-font
+;;        (frame-parameter nil 'font)
+;;        'mule-unicode-0100-24ff
+;;        '("menlo" . "iso10646-1"))
+;;       (setq face-font-rescale-alist
+;;             '(("^-apple-hiragino.*" . 1.1)
+;;               (".*courier-bold-.*-mac-roman" . 1.0)
+;;               (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
+;;               (".*menlo-bold-.*-mac-roman" . 0.9)
+;;               ("-cdac$" . 1.3))))
+;;   )
+(set-face-attribute 'default nil
+                    :family "Menlo"
+                    :height 120)
+(if (eq system-type 'darwin)
+    (set-fontset-font
+     nil 'japanese-jisx0208
+     (font-spec :family "Hiragino Maru Gothic ProN"))
+  (setq face-font-rescale-alist
+        '((".*Hiragino_Maru_Gothic_ProN.*" . 1.2)))
   )
 
 ;;
@@ -733,9 +737,39 @@ file is a remote file (include directory)."
 (global-set-key (kbd "C-c f") 'dash-at-point)
 (global-set-key (kbd "C-c C-f") 'dash-at-point-with-docset)
 
+
+;;
+;; popup.el
+;;----------------------------------------------------------------------------------------------------
+(require 'popup)
+;; popup-tipの引数で、ポップアップさせる変数を指定する
+(defvar popup-color-string
+  (let ((x 9) (y 3)) ;; ポップアップのサイズを指定
+    (mapconcat 'identity
+               (loop with str = (make-string x ?\ ) repeat y collect str)
+               "\n"))
+  "*String displayed in tooltip.")
+
+(defun popup-color-at-point ()
+  "Popup color specified by word at point."
+  (interactive)
+  (let ((word (word-at-point))
+        (bg (plist-get (face-attr-construct 'popup-tip-face) :background)))
+    (when word
+      (unless (member (downcase word) (mapcar #'downcase (defined-colors)))
+        (setq word (concat "#" word)))
+      (set-face-background 'popup-tip-face word)
+      (message "%s: %s"
+               (propertize "Popup color"
+                           'face `(:background ,word))
+               (propertize (substring-no-properties word)
+                           'face `(:foreground ,word)))
+      (popup-tip popup-color-string)
+      (set-face-background 'popup-tip-face bg))))
+
 ;;
 ;; auto-complete.el
-;;------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (when (require 'auto-complete nil t)
   (require 'auto-complete-config)
 
@@ -1271,7 +1305,7 @@ PWD is not in a git repo (or the git command is not found)."
                (define-key eshell-mode-map (kbd "C-p") 'eshell-previous-matching-input-from-input)
                (define-key eshell-mode-map (kbd "C-n") 'eshell-next-matching-input-from-input)
                (define-key eshell-mode-map (kbd "C-c h") 'anything-eshell-history)
-               (define-key eshell-mode-map (kbd "C-c c") 'anything-esh-pcomplete)
+               (define-key eshell-mode-map (kbd "C-c p") 'anything-esh-pcomplete)
                )
              ))
 
