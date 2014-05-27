@@ -561,12 +561,16 @@ file is a remote file (include directory)."
    ;evil-mode-line-tag
    mode-line-position
    ;; directory and buffer/file name
-   (:eval (if (eq major-mode 'eshell-mode)
-              (propertize (substring (buffer-name) (length eshell-buffer-name)) 'face 'mode-line-filename-face)
-            (concat
-             (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
-             (propertize (buffer-name) 'face 'mode-line-filename-face))
-            ))
+   (:eval (cond ((eq major-mode 'eshell-mode)
+                 ;; (propertize (substring (buffer-name) (length eshell-buffer-name)) 'face 'mode-line-filename-face))
+                 (propertize (buffer-name) 'face 'mode-line-filename-face))
+                ((eq major-mode 'sql-interactive-mode)
+                 (propertize (buffer-name) 'face 'mode-line-filename-face))
+                (t
+                 (concat
+                  (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
+                  (propertize (buffer-name) 'face 'mode-line-filename-face)))
+                ))
    ;; (:eval (let ((blen (length eshell-buffer-name)))
    ;;          (let ((bname (substring (buffer-name) 0 (if (>= (length (buffer-name)) blen) blen 0))))
    ;;            (if (string= bname eshell-buffer-name)
@@ -1135,10 +1139,12 @@ $0"))
          " "
          (if (= (user-uid) 0)
              "#"
+;;           (propertize "$" 'face '(:foreground "#ffffff")))
            "$")
          " "
          )))
-(setq eshell-prompt-regexp "^[^#$]*[$#] ")
+;;(setq eshell-prompt-regexp "^[^#$]*[$#] ")
+(setq eshell-prompt-regexp "\\(^[^$#]*[$#] \\)\\|\\(^mysql> \\)")
 
 (defun chomp (str)
   (replace-regexp-in-string "[\n\r]+$" "" str))
