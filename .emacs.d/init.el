@@ -1265,12 +1265,12 @@ PWD is not in a git repo (or the git command is not found)."
              (progn
 ;;             (my-ac-eshell-mode)
                (define-key eshell-mode-map (kbd "C-a") 'eshell-bol)
-               (define-key eshell-mode-map [up] 'anything-eshell-history)
-               (define-key eshell-mode-map [down] 'anything-esh-pcomplete)
-               (define-key eshell-mode-map (kbd "M-p") 'eshell-previous-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "M-n") 'eshell-next-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "C-p") 'previous-line)
-               (define-key eshell-mode-map (kbd "C-n") 'next-line)
+               (define-key eshell-mode-map [up] 'previous-line)
+               (define-key eshell-mode-map [down] 'next-line)
+               (define-key eshell-mode-map (kbd "C-p") 'eshell-previous-matching-input-from-input)
+               (define-key eshell-mode-map (kbd "C-n") 'eshell-next-matching-input-from-input)
+               (define-key eshell-mode-map (kbd "C-c h") 'anything-eshell-history)
+               (define-key eshell-mode-map (kbd "C-c c") 'anything-esh-pcomplete)
                )
              ))
 
