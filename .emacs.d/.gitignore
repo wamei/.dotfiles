@@ -6,3 +6,4 @@ shellenv.el
 .DS_Store
 ac-comphist.dat
 tramp
+archive-contents
