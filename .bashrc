@@ -1,6 +1,6 @@
 export TZ=Asia/Tokyo
 export LANG=en_US.UTF-8
-export TERM=xterm-color
+export TERM=xterm-256color
 
 if [ `uname` = "Darwin" ]; then
     alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs -nw'

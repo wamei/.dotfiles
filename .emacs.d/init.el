@@ -1144,7 +1144,7 @@ $0"))
              "#"
            (propertize "$" 'face '(:foreground "#ffffff")))
 ;;           "$")
-         " "
+         (propertize " " 'read-only t 'rear-nonsticky t)
          )))
 ;;(setq eshell-prompt-regexp "^[^#$]*[$#] ")
 (setq eshell-prompt-regexp "\\(^[^$#]*[$#] \\)\\|\\(^mysql> \\)")
