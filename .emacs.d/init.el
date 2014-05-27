@@ -34,7 +34,9 @@
 (let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
   (exec-path-from-shell-copy-envs envs))
 ;;(exec-pathth-from-shell-initialize)
-(setenv "TERM" "xterm-256color")
+(setenv "TZ" "Asia/Tokyo")
+(setenv "LANG" "en_US.UTF-8")
+(setenv "TERM" "xterm-color")
 
 ;;
 ;; キーバインド
@@ -1273,16 +1275,16 @@ PWD is not in a git repo (or the git command is not found)."
                )
              ))
 
-;; 色
-(autoload 'ansi-color-for-comint-mode-on "ansi-color"
-          "Set `ansi-color-for-comint-mode' to t." t)
-(add-hook 'eshell-load-hook 'ansi-color-for-comint-mode-on)
-(require 'ansi-color)
-(require 'eshell)
-(defun eshell-handle-ansi-color ()
-  (ansi-color-apply-on-region eshell-last-output-start
-                              eshell-last-output-end))
-    (add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
+;; ;; 色
+;; (autoload 'ansi-color-for-comint-mode-on "ansi-color"
+;;           "Set `ansi-color-for-comint-mode' to t." t)
+;; (add-hook 'eshell-load-hook 'ansi-color-for-comint-mode-on)
+;; (require 'ansi-color)
+;; (require 'eshell)
+;; (defun eshell-handle-ansi-color ()
+;;   (ansi-color-apply-on-region eshell-last-output-start
+;;                               eshell-last-output-end))
+;;     (add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
 
 ;;----------------------------------------------------------------------------------------------------
 ;; マイナーモードの省略
