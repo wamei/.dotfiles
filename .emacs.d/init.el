@@ -1168,6 +1168,7 @@ $0"))
 ;;
 ;; eshell.el
 ;;----------------------------------------------------------------------------------------------------
+(require 'eshell)
 (setq eshell-banner-message " 可愛い女の子だと思った？ 残念！Eshellちゃんでした！\n\n")
 ;; prompt文字列
 (setq eshell-highlight-prompt nil)
@@ -1322,6 +1323,7 @@ PWD is not in a git repo (or the git command is not found)."
 (add-hook 'eshell-mode-hook
           '(lambda ()
              (progn
+               (eshell/export "TERM" "xterm-256color")
                (define-key eshell-mode-map (kbd "C-a") 'eshell-bol)
                (define-key eshell-mode-map [up] 'previous-line)
                (define-key eshell-mode-map [down] 'next-line)
@@ -1332,16 +1334,20 @@ PWD is not in a git repo (or the git command is not found)."
                )
              ))
 
-;; ;; 色
-;; (autoload 'ansi-color-for-comint-mode-on "ansi-color"
-;;           "Set `ansi-color-for-comint-mode' to t." t)
-;; (add-hook 'eshell-load-hook 'ansi-color-for-comint-mode-on)
-;; (require 'ansi-color)
-;; (require 'eshell)
-;; (defun eshell-handle-ansi-color ()
-;;   (ansi-color-apply-on-region eshell-last-output-start
-;;                               eshell-last-output-end))
-;;     (add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
+;; エスケープシーケンスを削除
+(defconst escape-drop-regexp
+  "\\(=\\|>\\|[0-9]\\|\\[\\?[0-9]+[hl]\\)"
+  "Regexp that matches ANSI control sequences to silently drop.")
+(defun escape-remove-on-region (begin end)
+  "Remove escape sequence from region"
+  (let ((start-marker (copy-marker begin))
+        (end-marker (copy-marker end)))
+    ;; First, eliminate unrecognized ANSI control sequences.
+    (save-excursion
+      (goto-char start-marker)
+      (while (re-search-forward escape-drop-regexp end-marker t)
+        (replace-match "")))))
+(add-to-list 'eshell-output-filter-functions '(lambda () (escape-remove-on-region eshell-last-output-start eshell-last-output-end)))
 
 ;;----------------------------------------------------------------------------------------------------
 ;; マイナーモードの省略
