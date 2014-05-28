@@ -1335,6 +1335,8 @@ PWD is not in a git repo (or the git command is not found)."
              ))
 
 ;; エスケープシーケンスを削除
+(require 'ansi-color)
+(require 'eshell)
 (defconst escape-drop-regexp
   "\\(=\\|>\\|[0-9]\\|\\[\\?[0-9]+[hl]\\)"
   "Regexp that matches ANSI control sequences to silently drop.")
@@ -1348,6 +1350,12 @@ PWD is not in a git repo (or the git command is not found)."
       (while (re-search-forward escape-drop-regexp end-marker t)
         (replace-match "")))))
 (add-to-list 'eshell-output-filter-functions '(lambda () (escape-remove-on-region eshell-last-output-start eshell-last-output-end)))
+
+(defun eshell-handle-ansi-color ()
+  (ansi-color-apply-on-region eshell-last-output-start
+                              eshell-last-output-end))
+(add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
+
 
 ;;----------------------------------------------------------------------------------------------------
 ;; マイナーモードの省略
