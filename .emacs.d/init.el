@@ -318,28 +318,31 @@
 ;;               (".*menlo-bold-.*-mac-roman" . 0.9)
 ;;               ("-cdac$" . 1.3))))
 ;;   )
+
 (set-face-attribute 'default nil
-                    :family "Menlo"
-                    :height 120)
-(if (eq system-type 'darwin)
-      (set-fontset-font
-       (frame-parameter nil 'font)
-       'japanese-jisx0208
-       '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-      (set-fontset-font
-       (frame-parameter nil 'font)
-       'japanese-jisx0212
-       '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-      (set-fontset-font
-       (frame-parameter nil 'font)
-       'mule-unicode-0100-24ff
-       '("menlo" . "iso10646-1"))
-      (setq face-font-rescale-alist
-            '(("^-apple-hiragino.*" . 1.1)
-              (".*courier-bold-.*-mac-roman" . 1.0)
-              (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
-              (".*menlo-bold-.*-mac-roman" . 0.9)
-              ("-cdac$" . 1.3))))
+		    :family "menlo"
+		    :height 120)
+(if (display-graphic-p)
+    (if (eq system-type 'darwin)
+	(progn
+	  (set-fontset-font
+	   (frame-parameter nil 'font)
+	   'japanese-jisx0208
+	   '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+	  (set-fontset-font
+	   (frame-parameter nil 'font)
+	   'japanese-jisx0212
+	   '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+	  (set-fontset-font
+	   (frame-parameter nil 'font)
+	   'mule-unicode-0100-24ff
+	   '("menlo" . "iso10646-1"))
+	  (setq face-font-rescale-alist
+		'(("^-apple-hiragino.*" . 1.1)
+		  (".*courier-bold-.*-mac-roman" . 1.0)
+		  (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
+		  (".*menlo-bold-.*-mac-roman" . 0.9)
+		  ("-cdac$" . 1.3))))))
 ;; (if (eq system-type 'darwin)
 ;;     (set-fontset-font
 ;;      nil 'japanese-jisx0208
