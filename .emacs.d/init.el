@@ -300,7 +300,7 @@
           (space-mark   ?\xE20 [?\xE24] [?_]) ; hard space - currency
           (space-mark   ?\xF20 [?\xF24] [?_]) ; hard space - currency
           (space-mark   ?　    [?口]    [?＿]) ; full-width space - square
-          (newline-mark ?\n    [?← ?\n] [?$ ?\n])   ; eol - right quote mark
+          (newline-mark ?\n    [?\x21B5 ?\n] [?$ ?\n])   ; eol - right quote mark
           ))
   (setq whitespace-global-modes '(not dired-mode tar-mode))
   (global-whitespace-mode 1))
