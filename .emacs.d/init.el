@@ -161,6 +161,7 @@
    `(mode-line-inactive
      ((,class (:background "#878787" :foreground "#eeeeec"))))
    `(header-line ((,class (:background "#e5e5e5" :foreground "#333333"))))
+   `(mode-line-name ((,class (:foreground "#ed74cd"))))
    ;; Escape and prompt faces
    `(minibuffer-prompt ((,class (:foreground "#729fcf" :weight bold))))
    ;; Font lock faces
@@ -209,9 +210,68 @@
    `(message-header-subject ((,class (:foreground "#dbdb95"))))
    `(message-header-to ((,class (:foreground "#00ede1"))))
    `(message-cited-text ((,class (:foreground "#74af68"))))
-   `(message-separator ((,class (:foreground "#23d7d7"))))))
+   `(message-separator ((,class (:foreground "#23d7d7"))))
+   ))
 
-(global-hl-line-mode)
+;; Extra mode line faces
+(make-face 'mode-line-read-only-face)
+(make-face 'mode-line-modified-face)
+(make-face 'mode-line-folder-face)
+(make-face 'mode-line-filename-face)
+(make-face 'mode-line-position-face)
+(make-face 'mode-line-mode-face)
+(make-face 'mode-line-minor-mode-face)
+(make-face 'mode-line-process-face)
+(make-face 'mode-line-80col-face)
+(make-face 'mode-line-delim-face-1)
+(make-face 'mode-line-git-face)
+(make-face 'mode-line-name-face)
+
+(set-face-attribute 'mode-line-read-only-face nil
+                    :inherit 'mode-line-face
+                    :foreground "#4271ae"
+                    :box '(:line-width 2 :color "#4271ae"))
+(set-face-attribute 'mode-line-modified-face nil
+                    :inherit 'mode-line-face
+                    :foreground "#c82829"
+                    :background "#ffffff"
+                    :box '(:line-width 2 :color "#c82829"))
+(set-face-attribute 'mode-line-folder-face nil
+                    :inherit 'mode-line-face
+                    :weight 'extra-light
+                    :height 0.8
+                    :foreground "#e5e5e5")
+(set-face-attribute 'mode-line-filename-face nil
+                    :inherit 'mode-line-face
+                    :foreground "#eab700"
+                    :weight 'bold)
+(set-face-attribute 'mode-line-position-face nil
+                    :inherit 'mode-line-face
+                    :family "Menlo")
+(set-face-attribute 'mode-line-mode-face nil
+                    :inherit 'mode-line-face
+                    :foreground "#eeeeec")
+(set-face-attribute 'mode-line-minor-mode-face nil
+                    :inherit 'mode-line-mode-face
+                    :foreground "white"
+                    :height 0.8)
+(set-face-attribute 'mode-line-process-face nil
+                    :inherit 'mode-line-face
+                    :foreground "green")
+(set-face-attribute 'mode-line-80col-face nil
+                    :inherit 'mode-line-position-face
+                    :foreground "black" :background "#eab700")
+(set-face-attribute 'mode-line-delim-face-1 nil
+                    :inherit 'mode-line-face
+                    :foreground "white")
+(set-face-attribute 'mode-line-git-face nil
+                    :inherit 'mode-line-face
+                    :foreground "green")
+(set-face-attribute 'mode-line-name-face nil
+                    :inherit 'mode-line-face
+                    :foreground "#ed74cd")
+
+;;(global-hl-line-mode)
 
 ;; 全角色付け
 (global-whitespace-mode 1)
@@ -581,7 +641,7 @@ file is a remote file (include directory)."
    ;; narrow [default -- keep?]
    " %n"
    ;; mode indicators: vc, recursive edit, major mode, minor modes, process, global
-   (vc-mode vc-mode)
+   (:propertize (vc-mode vc-mode) face mode-line-git-face)
    " %["
    (:propertize mode-name
                 face mode-line-mode-face)
@@ -592,9 +652,9 @@ file is a remote file (include directory)."
    (:propertize mode-line-process
                 face mode-line-process-face)
    " "
-   user-login-name
-   "@"
-   system-name
+   (:propertize user-login-name face mode-line-name-face)
+   (:propertize "@" face mode-line-name-face)
+   (:propertize system-name face mode-line-name-face)
    " "
    (global-mode-string global-mode-string)
    ;; " "
@@ -615,68 +675,6 @@ file is a remote file (include directory)."
     (when path
       (setq output (concat ".../" output)))
     output))
-
-(set-face-attribute 'mode-line nil
-    :foreground "#eeeeec" :background "#030f3c"
-    :inverse-video nil
-    :weight 'normal
-    :height 1.0
-    :box '(:line-width 2 :color "gray10" :style nil))
-(set-face-attribute 'mode-line-inactive nil
-    :foreground "gray80" :background "gray40"
-    :inverse-video nil
-    :weight 'extra-light
-    :height 1.0
-    :box '(:line-width 2 :color "gray30" :style nil))
-;; Extra mode line faces
-(make-face 'mode-line-read-only-face)
-(make-face 'mode-line-modified-face)
-(make-face 'mode-line-folder-face)
-(make-face 'mode-line-filename-face)
-(make-face 'mode-line-position-face)
-(make-face 'mode-line-mode-face)
-(make-face 'mode-line-minor-mode-face)
-(make-face 'mode-line-process-face)
-(make-face 'mode-line-80col-face)
-(make-face 'mode-line-delim-face-1)
-
-(set-face-attribute 'mode-line-read-only-face nil
-    :inherit 'mode-line-face
-    :foreground "#4271ae"
-    :box '(:line-width 2 :color "#4271ae"))
-(set-face-attribute 'mode-line-modified-face nil
-    :inherit 'mode-line-face
-    :foreground "#c82829"
-    :background "#ffffff"
-    :box '(:line-width 2 :color "#c82829"))
-(set-face-attribute 'mode-line-folder-face nil
-    :inherit 'mode-line-face
-    :weight 'extra-light
-    :height 0.8
-    :foreground "gray90")
-(set-face-attribute 'mode-line-filename-face nil
-    :inherit 'mode-line-face
-    :foreground "#eab700"
-    :weight 'bold)
-(set-face-attribute 'mode-line-position-face nil
-    :inherit 'mode-line-face
-    :family "Menlo")
-(set-face-attribute 'mode-line-mode-face nil
-    :inherit 'mode-line-face
-    :foreground "white")
-(set-face-attribute 'mode-line-minor-mode-face nil
-    :inherit 'mode-line-mode-face
-    :foreground "gray60"
-    :height 0.8)
-(set-face-attribute 'mode-line-process-face nil
-    :inherit 'mode-line-face
-    :foreground "#718c00")
-(set-face-attribute 'mode-line-80col-face nil
-    :inherit 'mode-line-position-face
-    :foreground "black" :background "#eab700")
-(set-face-attribute 'mode-line-delim-face-1 nil
-    :inherit 'mode-line-face
-    :foreground "white")
 
 ;;
 ;; パッケージ関係
@@ -735,41 +733,11 @@ file is a remote file (include directory)."
 
 ;;
 ;; dash-at-point.el
-;;----------------------------------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------------------------------
 (autoload 'dash-at-point "dash-at-point"
           "Search the word at point with Dash." t nil)
 (global-set-key (kbd "C-c f") 'dash-at-point)
 (global-set-key (kbd "C-c C-f") 'dash-at-point-with-docset)
-
-
-;;
-;; popup.el
-;;----------------------------------------------------------------------------------------------------
-(require 'popup)
-;; popup-tipの引数で、ポップアップさせる変数を指定する
-(defvar popup-color-string
-  (let ((x 9) (y 3)) ;; ポップアップのサイズを指定
-    (mapconcat 'identity
-               (loop with str = (make-string x ?\ ) repeat y collect str)
-               "\n"))
-  "*String displayed in tooltip.")
-
-(defun popup-color-at-point ()
-  "Popup color specified by word at point."
-  (interactive)
-  (let ((word (word-at-point))
-        (bg (plist-get (face-attr-construct 'popup-tip-face) :background)))
-    (when word
-      (unless (member (downcase word) (mapcar #'downcase (defined-colors)))
-        (setq word (concat "#" word)))
-      (set-face-background 'popup-tip-face word)
-      (message "%s: %s"
-               (propertize "Popup color"
-                           'face `(:background ,word))
-               (propertize (substring-no-properties word)
-                           'face `(:foreground ,word)))
-      (popup-tip popup-color-string)
-      (set-face-background 'popup-tip-face bg))))
 
 ;;
 ;; auto-complete.el
@@ -1173,7 +1141,7 @@ $0"))
                                  )
                                )
                            pwd)
-                         )) 'face '(:foreground "pink" :weight bold))
+                         )) 'face '(:foreground "#ed74cd" :weight bold))
 ;;         (vc-git-mode-line-string (eshell/pwd))
          (curr-dir-git-branch-string (eshell/pwd))
 ;;         (vc-git-state (eshell/pwd))
