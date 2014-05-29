@@ -306,20 +306,10 @@
   (global-whitespace-mode 1))
 (show-paren-mode t)
 
-;; スクロールバー非表示
-;;(scroll-bar-mode 1)
-;;(scroll-bar-mode 0)
-;;(set-scroll-bar-mode nil)
-;;(toggle-scroll-bar nil)
-(if window-system
-    (progn
-      (require 'yascroll)
-      (global-yascroll-bar-mode 1)
-      )
+;; スクロールバー
+(when (require 'yascroll nil t)
+  (global-yascroll-bar-mode 1)
   )
-;;(scroll-bar-mode 0)
-;;(require 'smooth-scroll)
-;;(smooth-scroll-mode t)
 
 ;; speedbar設定
 (when (require 'sr-speedbar)
