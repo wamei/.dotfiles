@@ -712,11 +712,41 @@ file is a remote file (include directory)."
 
 ;;
 ;; パッケージ関係
-;;;______________________________________________________________________
+;;----------------------------------------------------------------------------------------------------
 
 ;;
+;; rainbow.el
+;;----------------------------------------------------------------------------------------------------
+;; (if (< emacs-major-version 24)
+;;     (progn
+;;       (defvar hexcolour-keywords
+;;         '(("#[abcdef[:digit:]]\\{6\\}"
+;;            (0 (put-text-property
+;;                (match-beginning 0)
+;;                (match-end 0)
+;;                'face (list :background
+;;                            (match-string-no-properties 0)))))))
+;;       (defun hexcolour-add-to-font-lock ()
+;;         (font-lock-add-keywords nil hexcolour-keywords))
+
+;;       (add-hook 'css-mode-hook 'hexcolour-add-to-font-lock)
+;;       (add-hook 'scss-mode-hook 'hexcolour-add-to-font-lock)
+;;       (add-hook 'php-mode-hook 'hexcolour-add-to-font-lock)
+;;       (add-hook 'html-mode-hook 'hexcolour-add-to-font-lock)
+;;       (add-hook 'js-mode-hook 'hexcolour-add-to-font-lock)
+;;       (add-hook 'emacs-lisp-mode-hook 'hexcolour-add-to-font-lock)
+;;       )
+  (when (require 'rainbow-mode nil t)
+    (add-hook 'js-mode-hook 'rainbow-mode)
+    (add-hook 'css-mode-hook 'rainbow-mode)
+    (add-hook 'scss-mode-hook 'rainbow-mode)
+    (add-hook 'php-mode-hook 'rainbow-mode)
+    (add-hook 'html-mode-hook 'rainbow-mode)
+    (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
+    )
+;;
 ;; foreign regexp.el
-;;-----------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (when (require 'foreign-regexp nil t)
   (custom-set-variables
    ;; 正規表現、perlかrubyを選択
@@ -726,7 +756,7 @@ file is a remote file (include directory)."
 
 ;;
 ;; undo-tree.el
-;;-----------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (when (require 'undo-tree nil t)
   (global-undo-tree-mode t)
   (global-set-key (kbd "C--") 'undo-tree-undo)
@@ -735,14 +765,14 @@ file is a remote file (include directory)."
 
 ;;
 ;; markdown-mode.el
-;;-----------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
 (add-to-list 'auto-mode-alist '("\\.markdown\\'" . markdown-mode))
 (add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
 
 
 ;; popwin.el
-;;-----------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (require 'popwin)
 (setq display-buffer-function 'popwin:display-buffer)
 (setq popwin:popup-window-height 0.5)
@@ -754,7 +784,9 @@ file is a remote file (include directory)."
 ;; grep
 (push '("*grep*") popwin:special-display-config)
 
+;;
 ;; dash-at-point.el
+;;----------------------------------------------------------------------------------------------------
 (autoload 'dash-at-point "dash-at-point"
           "Search the word at point with Dash." t nil)
 (global-set-key (kbd "C-c f") 'dash-at-point)
