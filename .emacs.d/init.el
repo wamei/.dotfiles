@@ -38,16 +38,16 @@
 ;;
 ;; キーバインド
 ;;______________________________________________________________________
-
+(global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
+(global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
 (global-set-key (kbd "C-h")     'backward-delete-char)
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "C-r")     'replace-string)
-(global-set-key (kbd "C-M-r")   'replace-regexp)
+(global-set-key (kbd "C-M-r")   'foreign-regexp/query-replace)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 
 (global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
-(global-set-key (kbd "C-x p")   'popwin:display-last-buffer)
 (global-set-key (kbd "C-c c")   'popup-color-at-point)
 
 ;; フォーカス移動
@@ -320,29 +320,29 @@
 ;;   )
 
 (set-face-attribute 'default nil
-		    :family "menlo"
-		    :height 120)
+                    :family "menlo"
+                    :height 120)
 (if (display-graphic-p)
     (if (eq system-type 'darwin)
-	(progn
-	  (set-fontset-font
-	   (frame-parameter nil 'font)
-	   'japanese-jisx0208
-	   '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-	  (set-fontset-font
-	   (frame-parameter nil 'font)
-	   'japanese-jisx0212
-	   '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-	  (set-fontset-font
-	   (frame-parameter nil 'font)
-	   'mule-unicode-0100-24ff
-	   '("menlo" . "iso10646-1"))
-	  (setq face-font-rescale-alist
-		'(("^-apple-hiragino.*" . 1.1)
-		  (".*courier-bold-.*-mac-roman" . 1.0)
-		  (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
-		  (".*menlo-bold-.*-mac-roman" . 0.9)
-		  ("-cdac$" . 1.3))))))
+        (progn
+          (set-fontset-font
+           (frame-parameter nil 'font)
+           'japanese-jisx0208
+           '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+          (set-fontset-font
+           (frame-parameter nil 'font)
+           'japanese-jisx0212
+           '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+          (set-fontset-font
+           (frame-parameter nil 'font)
+           'mule-unicode-0100-24ff
+           '("menlo" . "iso10646-1"))
+          (setq face-font-rescale-alist
+                '(("^-apple-hiragino.*" . 1.1)
+                  (".*courier-bold-.*-mac-roman" . 1.0)
+                  (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
+                  (".*menlo-bold-.*-mac-roman" . 0.9)
+                  ("-cdac$" . 1.3))))))
 ;; (if (eq system-type 'darwin)
 ;;     (set-fontset-font
 ;;      nil 'japanese-jisx0208
