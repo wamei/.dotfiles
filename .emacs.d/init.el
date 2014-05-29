@@ -307,9 +307,10 @@
 (show-paren-mode t)
 
 ;; スクロールバー
-(when (require 'yascroll nil t)
-  (global-yascroll-bar-mode 1)
-  )
+(when window-system
+  (when (require 'yascroll nil t)
+    (global-yascroll-bar-mode 1)
+    ))
 
 ;; speedbar設定
 (when (require 'sr-speedbar)
