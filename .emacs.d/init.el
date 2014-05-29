@@ -294,31 +294,6 @@
 (set-clipboard-coding-system    'utf-8)
 
 ;; Fontを指定
-;; (if (display-graphic-p)
-;;     (when (>= emacs-major-version 23)
-;;       (set-face-attribute 'default nil
-;;                           :family "menlo"
-;;                           :height 120)
-;;       (set-fontset-font
-;;        (frame-parameter nil 'font)
-;;        'japanese-jisx0208
-;;        '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-;;       (set-fontset-font
-;;        (frame-parameter nil 'font)
-;;        'japanese-jisx0212
-;;        '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-;;       (set-fontset-font
-;;        (frame-parameter nil 'font)
-;;        'mule-unicode-0100-24ff
-;;        '("menlo" . "iso10646-1"))
-;;       (setq face-font-rescale-alist
-;;             '(("^-apple-hiragino.*" . 1.1)
-;;               (".*courier-bold-.*-mac-roman" . 1.0)
-;;               (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
-;;               (".*menlo-bold-.*-mac-roman" . 0.9)
-;;               ("-cdac$" . 1.3))))
-;;   )
-
 (set-face-attribute 'default nil
                     :family "menlo"
                     :height 120)
@@ -343,13 +318,6 @@
                   (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
                   (".*menlo-bold-.*-mac-roman" . 0.9)
                   ("-cdac$" . 1.3))))))
-;; (if (eq system-type 'darwin)
-;;     (set-fontset-font
-;;      nil 'japanese-jisx0208
-;;      (font-spec :family "Hiragino Maru Gothic Pro"))
-;;   (setq face-font-rescale-alist
-;;         '((".*Hiragino_Maru_Gothic_Pro.*" . 1.1)))
-;;   )
 
 ;;
 ;; その他設定
@@ -717,33 +685,14 @@ file is a remote file (include directory)."
 ;;
 ;; rainbow.el
 ;;----------------------------------------------------------------------------------------------------
-;; (if (< emacs-major-version 24)
-;;     (progn
-;;       (defvar hexcolour-keywords
-;;         '(("#[abcdef[:digit:]]\\{6\\}"
-;;            (0 (put-text-property
-;;                (match-beginning 0)
-;;                (match-end 0)
-;;                'face (list :background
-;;                            (match-string-no-properties 0)))))))
-;;       (defun hexcolour-add-to-font-lock ()
-;;         (font-lock-add-keywords nil hexcolour-keywords))
-
-;;       (add-hook 'css-mode-hook 'hexcolour-add-to-font-lock)
-;;       (add-hook 'scss-mode-hook 'hexcolour-add-to-font-lock)
-;;       (add-hook 'php-mode-hook 'hexcolour-add-to-font-lock)
-;;       (add-hook 'html-mode-hook 'hexcolour-add-to-font-lock)
-;;       (add-hook 'js-mode-hook 'hexcolour-add-to-font-lock)
-;;       (add-hook 'emacs-lisp-mode-hook 'hexcolour-add-to-font-lock)
-;;       )
-  (when (require 'rainbow-mode nil t)
-    (add-hook 'js-mode-hook 'rainbow-mode)
-    (add-hook 'css-mode-hook 'rainbow-mode)
-    (add-hook 'scss-mode-hook 'rainbow-mode)
-    (add-hook 'php-mode-hook 'rainbow-mode)
-    (add-hook 'html-mode-hook 'rainbow-mode)
-    (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
-    )
+(when (require 'rainbow-mode nil t)
+  (add-hook 'js-mode-hook 'rainbow-mode)
+  (add-hook 'css-mode-hook 'rainbow-mode)
+  (add-hook 'scss-mode-hook 'rainbow-mode)
+  (add-hook 'php-mode-hook 'rainbow-mode)
+  (add-hook 'html-mode-hook 'rainbow-mode)
+  (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
+  )
 ;;
 ;; foreign regexp.el
 ;;----------------------------------------------------------------------------------------------------
