@@ -148,7 +148,7 @@
        (:background "#313131" :foreground "#e1e1e0"))
        (,class
        (:background "#2a2a2a" :foreground "#e1e1e0"))))
-   `(cursor ((,class (:background "#1d2733"))))
+   `(cursor ((,class (:background "#878787"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
    `(highlight ((,class (:background "#035f56"))))
