@@ -101,31 +101,36 @@ setopt extended_glob
 # ^R で履歴検索をするときに * でワイルドカードを使用出来るようにする
 bindkey '^R' history-incremental-pattern-search-backward
 
-# vcs_infoロード
-autoload -Uz vcs_info
+function prompt-git-current-branch {
+        local name st color
+
+        if [[ "$PWD" =~ '/\.git(/.*)?$' ]]; then
+                return
+        fi
+        name=$(basename "`git symbolic-ref HEAD 2> /dev/null`")
+        if [[ -z $name ]]; then
+                return
+        fi
+        st=`git status 2> /dev/null`
+        if [[ -n `echo "$st" | grep "^nothing to"` ]]; then
+                color=${fg[green]}
+        elif [[ -n `echo "$st" | grep "^nothing added"` ]]; then
+                color=${fg[yellow]}
+        elif [[ -n `echo "$st" | grep "^# Untracked"` ]]; then
+                color=${fg_bold[red]}
+        else
+                color=${fg[red]}
+        fi
+
+        # %{...%} は囲まれた文字列がエスケープシーケンスであることを明示する
+        # これをしないと右プロンプトの位置がずれる
+        echo "%{$color%}$name%{$reset_color%}"
+}
 # PROMPT変数内で変数参照する
 setopt prompt_subst
-
-# vcsの表示
-zstyle ':vcs_info:*' formats '%F{green}%b%f'
-zstyle ':vcs_info:*' actionformats '%F{green}%b%f(%F{red}%a%f)'
-
-autoload -Uz is-at-least
-if is-at-least 4.3.10; then
-  # この check-for-changes が今回の設定するところ
-  zstyle ':vcs_info:git:*' check-for-changes true
-  zstyle ':vcs_info:git:*' stagedstr "*"    # 適当な文字列に変更する
-  zstyle ':vcs_info:git:*' unstagedstr "+"  # 適当の文字列に変更する
-  zstyle ':vcs_info:git:*' formats '%F{green}%b%c%u%f'
-  zstyle ':vcs_info:git:*' actionformats '%F{green}%b%c%u%f(%F{red}%a%f)'
-fi
-
-# プロンプト表示直前にvcs_info呼び出し
-precmd() { vcs_info }
-
 # prompt表示設定
-PROMPT="[%n@%m][${vcs_info_msg_0_}]%{${fg[magenta]}%}%~%{${reset_color}%}
-$ "
+PROMPT="[%m][`prompt-git-current-branch`] %{${fg[magenta]}%}%~%{${reset_color}%}
+%n $ "
 
 PROMPT2='[%n]> '
 
