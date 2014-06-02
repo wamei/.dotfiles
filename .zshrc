@@ -107,8 +107,19 @@ autoload -Uz vcs_info
 setopt prompt_subst
 
 # vcsの表示
-zstyle ':vcs_info:*' formats '%s-%F{green}%b%f*'
-zstyle ':vcs_info:*' actionformats '%s-%F{green}%b%f*(%F{red}%a%f)'
+zstyle ':vcs_info:*' formats '%F{green}%b%f'
+zstyle ':vcs_info:*' actionformats '%F{green}%b%f(%F{red}%a%f)'
+
+autoload -Uz is-at-least
+if is-at-least 4.3.10; then
+  # この check-for-changes が今回の設定するところ
+  zstyle ':vcs_info:git:*' check-for-changes true
+  zstyle ':vcs_info:git:*' stagedstr "*"    # 適当な文字列に変更する
+  zstyle ':vcs_info:git:*' unstagedstr "+"  # 適当の文字列に変更する
+  zstyle ':vcs_info:git:*' formats '%F{green}%b%c%u%f'
+  zstyle ':vcs_info:git:*' actionformats '%F{green}%b%c%u%f(%F{red}%a%f)'
+fi
+
 # プロンプト表示直前にvcs_info呼び出し
 precmd() { vcs_info }
 
