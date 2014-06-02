@@ -1,5 +1,6 @@
 # 環境変数
 export LANG=en_US.UTF-8
+export TZ=Asia/Tokyo
 
 # alias
 alias ls='ls -a'
@@ -14,11 +15,17 @@ case ${OSTYPE} in
         #Mac用の設定
         export CLICOLOR=1
         alias ls='ls -aG'
+        alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs -nw'
+        alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
         ;;
     linux*)
         #Linux用の設定
+        alias ls='ls -a --color=auto'
         ;;
 esac
+
+alias ec='emacsclient'
+alias screen='screen -U'
 
 # 補完機能を有効にする
 autoload -Uz compinit
@@ -36,6 +43,13 @@ zstyle ':completion:*:sudo:*' command-path /usr/local/sbin /usr/local/bin \
 
 # ps コマンドのプロセス名補完
 zstyle ':completion:*:processes' command 'ps x -o pid,s,args'
+
+# 履歴の補完
+autoload history-search-end
+zle -N history-beginning-search-backward-end history-search-end
+zle -N history-beginning-search-forward-end history-search-end
+bindkey "^P" history-beginning-search-backward-end
+bindkey "^N" history-beginning-search-forward-end
 
 # 色を使用出来るようにする
 autoload -Uz colors
@@ -86,3 +100,29 @@ setopt extended_glob
 
 # ^R で履歴検索をするときに * でワイルドカードを使用出来るようにする
 bindkey '^R' history-incremental-pattern-search-backward
+
+# vcs_infoロード
+autoload -Uz vcs_info
+# PROMPT変数内で変数参照する
+setopt prompt_subst
+
+# vcsの表示
+zstyle ':vcs_info:*' formats '%s-%F{green}%b%f*'
+zstyle ':vcs_info:*' actionformats '%s-%F{green}%b%f*(%F{red}%a%f)'
+# プロンプト表示直前にvcs_info呼び出し
+precmd() { vcs_info }
+
+# prompt表示設定
+PROMPT="[%n@%m][${vcs_info_msg_0_}]%{${fg[magenta]}%}%~%{${reset_color}%}
+$ "
+
+PROMPT2='[%n]> '
+
+# ターミナルのタイトル
+case "${TERM}" in
+kterm*|xterm)
+    precmd() {
+        echo -ne "\033]0;${USER}@${HOST}\007"
+    }
+    ;;
+esac
