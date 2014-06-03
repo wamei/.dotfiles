@@ -135,7 +135,7 @@
                (message "Quit")(throw 'end-flag t))))))))
 
 ;; サーバー起動
-(if window-system (server-start))
+(server-start)
 
 
 ;;
@@ -148,7 +148,7 @@
        (:background "#313131" :foreground "#e1e1e0"))
        (,class
        (:background "#2a2a2a" :foreground "#e1e1e0"))))
-   `(cursor ((,class (:background "#878787"))))
+   `(cursor ((,class (:background "#542D24"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
    `(highlight ((,class (:background "#035f56"))))
@@ -659,6 +659,22 @@ file is a remote file (include directory)."
 ;;
 ;; パッケージ関係
 ;;----------------------------------------------------------------------------------------------------
+
+;;
+;; multi-term.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'multi-term nil t)
+
+  )
+
+;;
+;; typescript.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'typescript nil t)
+  (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
+  (require 'tss)
+  (tss-config-default)
+  )
 
 ;;
 ;; hl-line+.el

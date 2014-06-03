@@ -101,36 +101,17 @@ setopt extended_glob
 # ^R で履歴検索をするときに * でワイルドカードを使用出来るようにする
 bindkey '^R' history-incremental-pattern-search-backward
 
-function prompt-git-current-branch {
-        local name st color
-
-        if [[ "$PWD" =~ '/\.git(/.*)?$' ]]; then
-                return
-        fi
-        name=$(basename "`git symbolic-ref HEAD 2> /dev/null`")
-        if [[ -z $name ]]; then
-                return
-        fi
-        st=`git status 2> /dev/null`
-        if [[ -n `echo "$st" | grep "^nothing to"` ]]; then
-                color=${fg[green]}
-        elif [[ -n `echo "$st" | grep "^nothing added"` ]]; then
-                color=${fg[yellow]}
-        elif [[ -n `echo "$st" | grep "^# Untracked"` ]]; then
-                color=${fg_bold[red]}
-        else
-                color=${fg[red]}
-        fi
-
-        # %{...%} は囲まれた文字列がエスケープシーケンスであることを明示する
-        # これをしないと右プロンプトの位置がずれる
-        echo "%{$color%}$name%{$reset_color%}"
+autoload -Uz vcs_info
+zstyle ':vcs_info:*' formats '[%s:%b]'
+zstyle ':vcs_info:*' actionformats '[%s:%b|%a]'
+precmd () {
+    psvar=()
+    LANG=en_US.UTF-8 vcs_info
+    [[ -n "$vcs_info_msg_0_" ]] && psvar[1]="$vcs_info_msg_0_"
 }
-# PROMPT変数内で変数参照する
-setopt prompt_subst
 # prompt表示設定
-PROMPT="[%m][`prompt-git-current-branch`] %{${fg[magenta]}%}%~%{${reset_color}%}
-%n $ "
+PROMPT="%{${fg[magenta]}%}%~%{${reset_color}%}%1v [%n@%m]
+[%*] $ "
 
 PROMPT2='[%n]> '
 
@@ -142,3 +123,6 @@ kterm*|xterm)
     }
     ;;
 esac
+
+# nvm
+if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi
