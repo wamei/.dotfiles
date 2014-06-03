@@ -673,7 +673,6 @@ file is a remote file (include directory)."
 (when (require 'typescript nil t)
   (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
   (require 'tss)
-  (tss-config-default)
   )
 
 ;;
@@ -783,6 +782,7 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'web-mode)
+  (add-to-list 'ac-modes 'typescript-mode)
   ;; eshell-mode
   ;; (add-to-list 'ac-modes 'eshell-mode)
   ;; (ac-define-source pcomplete
