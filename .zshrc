@@ -128,4 +128,12 @@ esac
 if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi
 
 # tmux起動
-[[ -z "$TMUX" && ! -z "$PS1" ]] && tmux
+if [ -z "$PS1" ]; then return ; fi
+
+if [ -z $TMUX ] ; then
+        if [ -z `tmux ls` ] ; then
+                tmux
+        else
+                tmux attach
+        fi
+fi
