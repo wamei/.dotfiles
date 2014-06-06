@@ -28,6 +28,7 @@ case ${OSTYPE} in
 esac
 
 alias ec='emacsclient'
+alias en='emacsclient -nw'
 alias screen='screen -U'
 
 # emacs 風キーバインドにする

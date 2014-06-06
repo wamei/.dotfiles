@@ -145,9 +145,12 @@
 (custom-set-faces
    ;; Ensure sufficient contrast on 256-color xterms.
    `(default ((((class color) (min-colors 4096))
-       (:background "#313131" :foreground "#e1e1e0"))
+       ;; (:background "#313131" :foreground "#e1e1e0"))
+       ;; (,class
+       ;; (:background "#2a2a2a" :foreground "#e1e1e0"))))
+       (:background "#000000" :foreground "#e1e1e0"))
        (,class
-       (:background "#2a2a2a" :foreground "#e1e1e0"))))
+       (:background "#000000" :foreground "#e1e1e0"))))
    `(cursor ((,class (:background "#542D24"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
@@ -968,7 +971,7 @@ file is a remote file (include directory)."
 ;;________________________________________________________________________
 (setq auto-mode-alist
       (append '(
-                ("\\.\\(html\\|xhtml\\|shtml\\|tpl\\)\\'" . web-mode)
+                ("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)
                 ("\\.php\\'" . php-mode)
                 )
               auto-mode-alist))
