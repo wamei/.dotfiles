@@ -577,7 +577,7 @@ file is a remote file (include directory)."
   "reload ~/.emacs.d/init.el"
   (interactive "p")
   (case arg
-    (4 (let ((input (read-file-name "Load init file: " "~/" "~/.emacs.d/init.el")))
+    (4 (let ((input (read-file-name "Load init file: " "~/.emacs.d/init.el" "~/.emacs.d/init.el")))
          (load-file input))
        )
     (t (load-file "~/.emacs.d/init.el")))
