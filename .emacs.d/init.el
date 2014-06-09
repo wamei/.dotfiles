@@ -834,8 +834,8 @@ file is a remote file (include directory)."
   (require 'php-mode)
   (add-to-list 'ac-modes 'php-mode)
   (require 'php-completion)
-  (php-completion-mode t)
   (defun ac-php-mode-setup ()
+    (php-completion-mode t)
     (setq-default ac-sources (append '(ac-source-php-completion) ac-sources)))
   (add-hook 'php-mode-hook 'ac-php-mode-setup)
 
@@ -1345,6 +1345,10 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
 (setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
+(setcar (cdr (assq 'rainbow-mode minor-mode-alist)) " RW")
+(setcar (cdr (assq 'php-completion-mode minor-mode-alist)) " PC")
+(setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
+
 
 ;;
 ;; migemo.el
