@@ -701,7 +701,14 @@ file is a remote file (include directory)."
 (when (require 'typescript nil t)
   (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
   (require 'tss)
-  )
+  ;; (tss-config-default)から抜粋したtss設定
+  (loop for mode in tss-enable-modes
+        for hook = (intern-soft (concat (symbol-name mode) "-hook"))
+        ;;do (add-to-list 'ac-modes mode)
+        if (and hook
+                (symbolp hook))
+        do (add-hook hook 'tss-setup-current-buffer t))
+  (add-hook 'kill-buffer-hook 'tss--delete-process t))
 
 ;;
 ;; hl-line+.el

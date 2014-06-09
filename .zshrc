@@ -1,9 +1,11 @@
 # 環境変数
 export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
+export EDITOR="emacsclient"
 
 # alias
 alias ls='ls -a'
+alias la='ls -a'
 alias ll='ls -al'
 alias -g ...='../..'
 alias -g ....='../../..'
