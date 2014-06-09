@@ -572,6 +572,18 @@ file is a remote file (include directory)."
             (unless (member (get-buffer "*scratch*") (buffer-list))
               (my-make-scratch 1))))
 
+;; 設定ファイル再読み込み
+(defun reload-init-file (arg)
+  "reload ~/.emacs.d/init.el"
+  (interactive "p")
+  (case arg
+    (4 (let ((input (read-file-name "Load init file: " "~/" "~/.emacs.d/init.el")))
+         (load-file input))
+       )
+    (t (load-file "~/.emacs.d/init.el")))
+  )
+
+
 ;;
 ;; モードライン設定
 ;;---------------------------------------------------------------------------
