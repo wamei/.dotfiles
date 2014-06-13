@@ -47,6 +47,13 @@
 (global-set-key (kbd "C-M-r")   'foreign-regexp/query-replace)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 
+(global-set-key [mouse-4] '(lambda () (interactive) (scroll-down 2)))
+(global-set-key [mouse-5] '(lambda () (interactive) (scroll-up   2)))
+(global-set-key [mouse-8] '(lambda () (interactive) (scroll-down 1)))
+(global-set-key [mouse-9] '(lambda () (interactive) (scroll-up   1)))
+(global-set-key [mouse-20] '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
+(global-set-key [mouse-21] '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
+
 (global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
 (global-set-key (kbd "C-c c")   'popup-color-at-point)
 
@@ -607,7 +614,7 @@ file is a remote file (include directory)."
  '(
    " "
    ;; Position, including warning for 80 columns
-   (:propertize "%4l" face mode-line-position-face)
+   (:propertize "%5l" face mode-line-position-face)
    (:propertize "/" face mode-line-delim-face-1)
    (:eval
     (number-to-string (count-lines (point-min) (point-max))))
