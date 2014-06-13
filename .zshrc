@@ -130,7 +130,7 @@ precmd () {
     [[ -n "$vcs_info_msg_0_" ]] && psvar[1]="$vcs_info_msg_0_"
 }
 # prompt表示設定
-PROMPT="%{%B%F{white}%(?..%K{red}     ERROR  status code -%?-         
+PROMPT="%{%B%F{white}%(?..%K{red}            status code -%?-            
 )%}%{%k%f%b%}[%D{%Y/%m/%d %H:%M}] %{${fg[magenta]}%}%~%{${reset_color}%}%F{green}%1(v|%F{green}%1v%f|)%{%f%}
 %n@%m $ "
 
