@@ -7,3 +7,4 @@ shellenv.el
 ac-comphist.dat
 tramp
 archive-contents
+/elpa/cl-lib-0.5/
