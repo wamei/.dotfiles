@@ -11,6 +11,8 @@ alias -g ...='../..'
 alias -g ....='../../..'
 alias -g .....='../../../..'
 
+alias gst='git status'
+
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '
 
