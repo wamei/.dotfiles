@@ -380,42 +380,6 @@
                   (".*menlo-bold-.*-mac-roman" . 0.9)
                   ("-cdac$" . 1.3))))))
 
-
-;;
-;; diredの設定
-;;----------------------------------------------------------------------------------------------------
-(when (require 'dired nil t)
-  ;; dired-find-alternate-file の有効化
-  (put 'dired-find-alternate-file 'disabled nil)
-  ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
-  (setq dired-dwim-target t)
-  ;; ディレクトリを再帰的にコピーする
-  (setq dired-recursive-copies 'always)
-  ;; diredバッファでC-sした時にファイル名だけにマッチするように
-  (setq dired-isearch-filenames t)
-  ;; diredバッファでrを押すと編集モード
-  (add-hook 'dired-load-hook (lambda ()
-                               (define-key dired-mode-map "r" 'wdired-change-to-wdired-mode)))
-  ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
-  (defun dired-open-in-accordance-with-situation ()
-    (interactive)
-    (cond ((string-match "\\(\\.\\.\\)"
-                         (format "%s" (thing-at-point 'filename)))
-           (dired-find-alternate-file))
-          ((file-directory-p (dired-get-filename))
-           (dired-find-alternate-file))
-          (t
-           (dired-find-file))))
-  ;; RET 標準の dired-find-file では dired バッファが複数作られるので
-  ;; dired-find-alternate-file を代わりに使う
-  ;; また左右キーでディレクトリの昇り降り
-  (define-key dired-mode-map (kbd "RET") 'dired-open-in-accordance-with-situation)
-  (define-key dired-mode-map (kbd "a")   'dired-find-file)
-  (define-key dired-mode-map (kbd "^")   (lambda () (interactive) (find-alternate-file "..")))
-  (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
-  (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
-  )
-
 ;;
 ;; その他設定
 ;;______________________________________________________________________
@@ -736,6 +700,41 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 
 ;;
+;; dired.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'dired nil t)
+  ;; dired-find-alternate-file の有効化
+  (put 'dired-find-alternate-file 'disabled nil)
+  ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
+  (setq dired-dwim-target t)
+  ;; ディレクトリを再帰的にコピーする
+  (setq dired-recursive-copies 'always)
+  ;; diredバッファでC-sした時にファイル名だけにマッチするように
+  (setq dired-isearch-filenames t)
+  ;; diredバッファでrを押すと編集モード
+  (add-hook 'dired-load-hook (lambda ()
+                               (define-key dired-mode-map "r" 'wdired-change-to-wdired-mode)))
+  ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
+  (defun dired-open-in-accordance-with-situation ()
+    (interactive)
+    (cond ((string-match "\\(\\.\\.\\)"
+                         (format "%s" (thing-at-point 'filename)))
+           (dired-find-alternate-file))
+          ((file-directory-p (dired-get-filename))
+           (dired-find-alternate-file))
+          (t
+           (dired-find-file))))
+  ;; RET 標準の dired-find-file では dired バッファが複数作られるので
+  ;; dired-find-alternate-file を代わりに使う
+  ;; また左右キーでディレクトリの昇り降り
+  (define-key dired-mode-map (kbd "RET") 'dired-open-in-accordance-with-situation)
+  (define-key dired-mode-map (kbd "a")   'dired-find-file)
+  (define-key dired-mode-map (kbd "^")   (lambda () (interactive) (find-alternate-file "..")))
+  (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
+  (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
+  )
+
+;;
 ;; js2-mode
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'js2 nil t)
@@ -776,83 +775,24 @@ file is a remote file (include directory)."
                 (symbolp hook))
         do (add-hook hook 'tss-setup-current-buffer t))
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
-
-  (defun typescript-imenu-create-index ()
-    (list
-     (typescript--imenu-create-module-index)
-     ))
-  (add-hook 'typescript-mode-hook (lambda () (setq imenu-create-index-function 'typescript-imenu-create-index)))
   )
-
-;;
-;; imenu.el
-;;----------------------------------------------------------------------------------------------------
-;; 識別子の正規表現
 (defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
-
-;; } までの class のメソッドを列挙
-(defun javascript-imenu-create-method-index-1 (class bound)
+(defun typescript-imenu-create-function-index ()
+(cons "Function"
   (let (result)
-    (while (re-search-forward (format "^ +\\(\%s\\): *function" javascript-identifier-regexp) bound t)
-      (push (cons (format "%s.%s" class (match-string 1)) (match-beginning 1)) result))
+    (dolist (pattern (list
+                      (format "^ *\\(\\(static \\|private \\|public \\|export \\)+\\|\\)\\(%s\\)(.*) *:"
+                              javascript-identifier-regexp)))
+      (goto-char (point-min))
+      (while (re-search-forward pattern (point-max) t)
+        (push (cons (concat (match-string 1) (match-string 3)) (match-beginning 1)) result)))
     (nreverse result)))
-
-;; メソッドのインデックスを作成
-(defun javascript-imenu-create-method-index ()
-  (cons "Methods"
-        (let (result)
-          ;; $name = Class.create
-          ;; $name = Object.extend
-          ;; Object.extend($name,
-          ;; $name = {
-          ;; をクラスあるいはオブジェクトとする
-          (dolist (pattern (list (format "\\b\\(%s\\) *= *Class\.create" javascript-identifier-regexp)
-                                 (format "\\b\\([A-Z]%s\\) *= *Object.extend(%s"
-                                         javascript-identifier-regexp
-                                         javascript-identifier-regexp)
-                                 (format "^ *Object.extend(\\([A-Z]%s\\)" javascript-identifier-regexp)
-                                 (format "\\b\\([A-Z]%s\\) *= *{" javascript-identifier-regexp)))
-            (goto-char (point-min))
-            (while (re-search-forward pattern (point-max) t)
-              (save-excursion
-                (condition-case nil
-                    ;; { を探す
-                    (let ((class (replace-regexp-in-string "\.prototype$" "" (match-string 1))) ;; .prototype はとっておく
-                          (try 3))
-                      (if (eq (char-after) ?\()
-                          (down-list))
-                      (if (eq (char-before) ?{)
-                          (backward-up-list))
-                      (forward-list)
-                      (while (and (> try 0) (not (eq (char-before) ?})))
-                        (forward-list)
-                        (decf try))
-                      (if (eq (char-before) ?}) ;; } を見つけたら
-                          (let ((bound (point)))
-                            (backward-list)
-                            ;; メソッドを抽出してインデックスに追加
-                            (setq result (append result (javascript-imenu-create-method-index-1 class bound))))))
-                  (error nil)))))
-          ;; 重複を削除しておく
-          (delete-duplicates result :test (lambda (a b) (= (cdr a) (cdr b)))))))
-;; 関数のインデックスを作成
-(defun javascript-imenu-create-function-index ()
-  (cons "Functions"
-        (let (result)
-          (dolist (pattern (list
-                            (format "\\b\\(%s\\) *= *function" "function \\(%s\\)"
-                                    javascript-identifier-regexp
-                                    javascript-identifier-regexp)))
-            (goto-char (point-min))
-            (while (re-search-forward pattern (point-max) t)
-              (push (cons (match-string 1) (match-beginning 1)) result)))
-          (nreverse result))))
-(defun javascript-imenu-create-index ()
+)
+(defun typescript-imenu-create-index ()
   (list
-   (javascript-imenu-create-function-index)
-   (javascript-imenu-create-method-index)))
-(add-hook 'javascript-mode-hook (lambda () (setq imenu-create-index-function 'javascirpt-imenu-create-index)))
-(add-hook 'js2-mode-hook (lambda () (setq imenu-create-index-function 'javascirpt-imenu-create-index)))
+   (typescript-imenu-create-function-index)
+   ))
+(add-hook 'typescript-mode-hook (lambda () (setq imenu-create-index-function 'typescript-imenu-create-index)))
 
 ;;
 ;; hl-line+.el
