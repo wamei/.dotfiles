@@ -380,16 +380,53 @@
                   (".*menlo-bold-.*-mac-roman" . 0.9)
                   ("-cdac$" . 1.3))))))
 
+
+;;
+;; diredの設定
+;;----------------------------------------------------------------------------------------------------
+(when (require 'dired nil t)
+  ;; dired-find-alternate-file の有効化
+  (put 'dired-find-alternate-file 'disabled nil)
+  ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
+  (setq dired-dwim-target t)
+  ;; ディレクトリを再帰的にコピーする
+  (setq dired-recursive-copies 'always)
+  ;; diredバッファでC-sした時にファイル名だけにマッチするように
+  (setq dired-isearch-filenames t)
+  ;; diredバッファでrを押すと編集モード
+  (add-hook 'dired-load-hook (lambda ()
+                               (define-key dired-mode-map "r" 'wdired-change-to-wdired-mode)))
+  ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
+  (defun dired-open-in-accordance-with-situation ()
+    (interactive)
+    (cond ((string-match "\\(?:\\.\\.?\\)"
+                         (format "%s" (thing-at-point 'filename)))
+           (dired-find-alternate-file))
+          ((file-directory-p (dired-get-filename))
+           (dired-find-alternate-file))
+          (t
+           (dired-find-file))))
+  (defvar my-dired-before-buffer nil)
+  (defadvice dired-up-directory
+    (before kill-up-dired-buffer activate)
+    (setq my-dired-before-buffer (current-buffer)))
+
+  (defadvice dired-up-directory
+    (after kill-up-dired-buffer-after activate)
+    (if (eq major-mode 'dired-mode)
+        (kill-buffer my-dired-before-buffer)))
+  ;; RET 標準の dired-find-file では dired バッファが複数作られるので
+  ;; dired-find-alternate-file を代わりに使う
+  ;; また左右キーでディレクトリの昇り降り
+  (define-key dired-mode-map (kbd "RET") 'dired-open-in-accordance-with-situation)
+  (define-key dired-mode-map (kbd "a")   'dired-find-file)
+  (define-key dired-mode-map (kbd "C-b") 'dired-up-directory)
+  (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
+  )
+
 ;;
 ;; その他設定
 ;;______________________________________________________________________
-
-;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
-(setq dired-dwim-target t)
-;; ディレクトリを再帰的にコピーする
-(setq dired-recursive-copies 'always)
-;; diredバッファでC-sした時にファイル名だけにマッチするように
-(setq dired-isearch-filenames t)
 
 ;; tmux でクリップボード共有
 (defun copy-from-osx ()
@@ -1406,4 +1443,3 @@ PWD is not in a git repo (or the git command is not found)."
       (migemo-init)
       )
 ;;)
-
