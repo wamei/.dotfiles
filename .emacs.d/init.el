@@ -420,6 +420,10 @@
 ;; その他設定
 ;;______________________________________________________________________
 
+;; imenu自動再読み込み
+(setq imenu-auto-rescan t)
+(setq imenu-after-jump-hook (lambda () (recenter 10)))
+
 ;; tmux でクリップボード共有
 (defun copy-from-osx ()
   (shell-command-to-string "pbpaste"))
@@ -771,7 +775,84 @@ file is a remote file (include directory)."
         if (and hook
                 (symbolp hook))
         do (add-hook hook 'tss-setup-current-buffer t))
-  (add-hook 'kill-buffer-hook 'tss--delete-process t))
+  (add-hook 'kill-buffer-hook 'tss--delete-process t)
+
+  (defun typescript-imenu-create-index ()
+    (list
+     (typescript--imenu-create-module-index)
+     ))
+  (add-hook 'typescript-mode-hook (lambda () (setq imenu-create-index-function 'typescript-imenu-create-index)))
+  )
+
+;;
+;; imenu.el
+;;----------------------------------------------------------------------------------------------------
+;; 識別子の正規表現
+(defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
+
+;; } までの class のメソッドを列挙
+(defun javascript-imenu-create-method-index-1 (class bound)
+  (let (result)
+    (while (re-search-forward (format "^ +\\(\%s\\): *function" javascript-identifier-regexp) bound t)
+      (push (cons (format "%s.%s" class (match-string 1)) (match-beginning 1)) result))
+    (nreverse result)))
+
+;; メソッドのインデックスを作成
+(defun javascript-imenu-create-method-index ()
+  (cons "Methods"
+        (let (result)
+          ;; $name = Class.create
+          ;; $name = Object.extend
+          ;; Object.extend($name,
+          ;; $name = {
+          ;; をクラスあるいはオブジェクトとする
+          (dolist (pattern (list (format "\\b\\(%s\\) *= *Class\.create" javascript-identifier-regexp)
+                                 (format "\\b\\([A-Z]%s\\) *= *Object.extend(%s"
+                                         javascript-identifier-regexp
+                                         javascript-identifier-regexp)
+                                 (format "^ *Object.extend(\\([A-Z]%s\\)" javascript-identifier-regexp)
+                                 (format "\\b\\([A-Z]%s\\) *= *{" javascript-identifier-regexp)))
+            (goto-char (point-min))
+            (while (re-search-forward pattern (point-max) t)
+              (save-excursion
+                (condition-case nil
+                    ;; { を探す
+                    (let ((class (replace-regexp-in-string "\.prototype$" "" (match-string 1))) ;; .prototype はとっておく
+                          (try 3))
+                      (if (eq (char-after) ?\()
+                          (down-list))
+                      (if (eq (char-before) ?{)
+                          (backward-up-list))
+                      (forward-list)
+                      (while (and (> try 0) (not (eq (char-before) ?})))
+                        (forward-list)
+                        (decf try))
+                      (if (eq (char-before) ?}) ;; } を見つけたら
+                          (let ((bound (point)))
+                            (backward-list)
+                            ;; メソッドを抽出してインデックスに追加
+                            (setq result (append result (javascript-imenu-create-method-index-1 class bound))))))
+                  (error nil)))))
+          ;; 重複を削除しておく
+          (delete-duplicates result :test (lambda (a b) (= (cdr a) (cdr b)))))))
+;; 関数のインデックスを作成
+(defun javascript-imenu-create-function-index ()
+  (cons "Functions"
+        (let (result)
+          (dolist (pattern (list
+                            (format "\\b\\(%s\\) *= *function" "function \\(%s\\)"
+                                    javascript-identifier-regexp
+                                    javascript-identifier-regexp)))
+            (goto-char (point-min))
+            (while (re-search-forward pattern (point-max) t)
+              (push (cons (match-string 1) (match-beginning 1)) result)))
+          (nreverse result))))
+(defun javascript-imenu-create-index ()
+  (list
+   (javascript-imenu-create-function-index)
+   (javascript-imenu-create-method-index)))
+(add-hook 'javascript-mode-hook (lambda () (setq imenu-create-index-function 'javascirpt-imenu-create-index)))
+(add-hook 'js2-mode-hook (lambda () (setq imenu-create-index-function 'javascirpt-imenu-create-index)))
 
 ;;
 ;; hl-line+.el
