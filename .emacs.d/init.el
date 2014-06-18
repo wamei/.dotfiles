@@ -399,7 +399,7 @@
   ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
   (defun dired-open-in-accordance-with-situation ()
     (interactive)
-    (cond ((string-match "\\(?:\\.\\.?\\)"
+    (cond ((string-match "\\(\\.\\.\\)"
                          (format "%s" (thing-at-point 'filename)))
            (dired-find-alternate-file))
           ((file-directory-p (dired-get-filename))
@@ -881,18 +881,6 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'web-mode)
   (add-to-list 'ac-modes 'typescript-mode)
-  ;; eshell-mode
-  ;; (add-to-list 'ac-modes 'eshell-mode)
-  ;; (ac-define-source pcomplete
-  ;;   '((candidates . pcomplete-completions)))
-  ;; (defvar my-eshell-ac-sources
-  ;;   '(ac-source-pcomplete
-  ;;     ac-source-filename
-  ;;     ac-source-words-in-same-mode-buffers
-  ;;     ac-source-dictionary))
-  ;; (defun ac-eshell-mode-setup ()
-  ;;   (setq-default ac-sources my-eshell-ac-sources))
-  ;; (add-hook 'eshell-mode-hook 'ac-eshell-mode-setup)
 
   ;; css-mode
   (add-to-list 'ac-modes 'css-mode)
@@ -1287,10 +1275,7 @@ PWD is not in a git repo (or the git command is not found)."
       )))
 
 ;; Emacs 起動時に Eshell を起動
-(add-hook 'after-init-hook  (lambda ()
-                              (cd "~")
-                              (eshell)
-                              ))
+(add-hook 'after-init-hook  (lambda ()(eshell)))
 
 ;; 補完時に大文字小文字を区別しない
 (setq eshell-cmpl-ignore-case t)
