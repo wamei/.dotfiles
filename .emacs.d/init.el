@@ -406,21 +406,13 @@
            (dired-find-alternate-file))
           (t
            (dired-find-file))))
-  (defvar my-dired-before-buffer nil)
-  (defadvice dired-up-directory
-    (before kill-up-dired-buffer activate)
-    (setq my-dired-before-buffer (current-buffer)))
-
-  (defadvice dired-up-directory
-    (after kill-up-dired-buffer-after activate)
-    (if (eq major-mode 'dired-mode)
-        (kill-buffer my-dired-before-buffer)))
   ;; RET 標準の dired-find-file では dired バッファが複数作られるので
   ;; dired-find-alternate-file を代わりに使う
   ;; また左右キーでディレクトリの昇り降り
   (define-key dired-mode-map (kbd "RET") 'dired-open-in-accordance-with-situation)
   (define-key dired-mode-map (kbd "a")   'dired-find-file)
-  (define-key dired-mode-map (kbd "C-b") 'dired-up-directory)
+  (define-key dired-mode-map (kbd "^")   (lambda () (interactive) (find-alternate-file "..")))
+  (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
   )
 
