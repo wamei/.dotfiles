@@ -1,5 +1,5 @@
-alias sc scroll-bar-mode $1
-alias ls ls -a $*
-alias gitroot gitroot
-alias emacs find-file
+alias ls ls -aG $*
 alias cd cd $1; ls
+alias emacs find-file
+alias gitroot gitroot
+alias sc scroll-bar-mode $1

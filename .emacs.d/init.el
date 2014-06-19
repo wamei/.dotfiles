@@ -1286,10 +1286,8 @@ $0"))
 (setq eshell-prompt-function
       (lambda ()
         (concat
-;;         "[" (format-time-string "%Y/%m/%d(%a) %H:%M") "]" ;; 時間
-;;         " "
-;;         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
-;;         ":"
+         "[" (format-time-string "%Y/%m/%d %H:%M") "]" ;; 時間
+         " "
          (propertize (let ((pwd (eshell/pwd))
                            (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
                            )
@@ -1303,16 +1301,17 @@ $0"))
                                  )
                                )
                            pwd)
-                         )) 'face '(:foreground "#ed74cd" :weight bold))
+                         )) 'face '(:foreground "magenta" :weight bold))
 ;;         (vc-git-mode-line-string (eshell/pwd))
          (curr-dir-git-branch-string (eshell/pwd))
 ;;         (vc-git-state (eshell/pwd))
 ;;         "[" (vc-git-registered (eshell/pwd)) "]"
+         " \n"
+         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
          " "
          (if (= (user-uid) 0)
              "#"
-           (propertize "$" 'face '(:foreground "#ffffff")))
-;;           "$")
+           (propertize "$" 'face '(:foreground "#fff")))
          (propertize " " 'read-only t 'rear-nonsticky t)
          )))
 ;;(setq eshell-prompt-regexp "^[^#$]*[$#] ")
