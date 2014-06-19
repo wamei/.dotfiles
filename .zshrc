@@ -124,16 +124,22 @@ autoload -Uz vcs_info
 zstyle ':vcs_info:git:*' check-for-changes true
 zstyle ':vcs_info:git:*' stagedstr "!"
 zstyle ':vcs_info:git:*' unstagedstr "+"
-zstyle ':vcs_info:*' formats '[%s:%b%c%u]'
-zstyle ':vcs_info:*' actionformats '[%s:%b%c%u|%a]'
+zstyle ':vcs_info:*' formats '[%s:%b%c%u'
+zstyle ':vcs_info:*' actionformats '[%s:%b%c%u|%a'
 precmd () {
     psvar=()
     LANG=en_US.UTF-8 vcs_info
     [[ -n "$vcs_info_msg_0_" ]] && psvar[1]="$vcs_info_msg_0_"
+    untracked=""
+    git_status=$(git status -s 2> /dev/null)
+    if echo "$git_status" | grep "^??" > /dev/null 2>&1; then
+        untracked="?"
+    fi
+    [[ -n "$untracked" ]] && psvar[2]="$untracked"
 }
 # prompt表示設定
 PROMPT="%{%B%F{white}%(?..%K{red}            status code -%?-            
-)%}%{%k%f%b%}[%D{%Y/%m/%d %H:%M}] %{${fg[magenta]}%}%~%{${reset_color}%}%F{green}%1(v|%F{green}%1v%f|)%{%f%}
+)%}%{%k%f%b%}[%D{%Y/%m/%d %H:%M}] %{${fg[magenta]}%}%~%{${reset_color}%}%F{green}%1(v|%F{green}%1v%2v]%f|)%{%f%}
 %n@%m $ "
 
 PROMPT2='[%n]> '
