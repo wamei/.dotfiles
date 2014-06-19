@@ -1302,10 +1302,7 @@ $0"))
                                )
                            pwd)
                          )) 'face '(:foreground "magenta" :weight bold))
-;;         (vc-git-mode-line-string (eshell/pwd))
          (curr-dir-git-branch-string (eshell/pwd))
-;;         (vc-git-state (eshell/pwd))
-;;         "[" (vc-git-registered (eshell/pwd)) "]"
          " \n"
          (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
          " "
@@ -1338,7 +1335,10 @@ PWD is not in a git repo (or the git command is not found)."
               (if (> (length git-output) 0)
                     (concat
                      (substring git-output 0 -1)
-                     (shell-command-to-string "[[ $(git status | grep \"nothing to commit\") == \"\" ]] && echo -n \"*\"")
+                     (shell-command-to-string "[[ $(git status -s | grep -e '^.M') != \"\" ]] && echo -n \"+\"")
+                     (shell-command-to-string "[[ $(git status -s | grep -e '^M') != \"\" ]]  && echo -n \"!\"")
+                     (shell-command-to-string "[[ $(git status -s | grep -e '^\?\?') != \"\" ]]  && echo -n \"?\"")
+                     ;;(shell-command-to-string "[[ $(git status | grep \"nothing to commit\") == \"\" ]] && echo -n \"*\"")
                     )
                 "(no branch)")
               "]") 'face `(:foreground "green"))
