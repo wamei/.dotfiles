@@ -40,7 +40,8 @@
 ;;______________________________________________________________________
 (global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
 (global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
-(global-set-key (kbd "C-h")     'backward-delete-char)
+;;(global-set-key (kbd "C-h")     'backward-delete-char)
+(keyboard-translate ?\C-h ?\C-?) (global-set-key "\C-h" nil)
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "C-r")     'replace-string)
@@ -330,6 +331,9 @@
   (custom-set-variables
    '(speedbar-show-unknown-files t)
    )
+  (add-hook 'speedbar-mode-hook
+            '(lambda ()
+               (speedbar-add-supported-extension '("js" "as" "html" "css" "php" "ts"))))
 )
 ;; (defun php-imenu-create-index ()
 ;;   (let (index)
@@ -382,7 +386,7 @@
 
 ;;
 ;; その他設定
-;;______________________________________________________________________
+;;----------------------------------------------------------------------------------------------------
 
 ;; imenu自動再読み込み
 (setq imenu-auto-rescan t)
@@ -777,20 +781,66 @@ file is a remote file (include directory)."
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
   )
 (defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
-(defun typescript-imenu-create-function-index ()
-(cons "Function"
+;; 識別子の正規表現
+(defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
+
+;; } までの class のメソッドを列挙する関数
+(defun typescript-imenu-create-method-index-1 (class bound)
   (let (result)
-    (dolist (pattern (list
-                      (format "^ *\\(\\(static \\|private \\|public \\|export \\)+\\|\\)\\(%s\\)(.*) *:"
-                              javascript-identifier-regexp)))
-      (goto-char (point-min))
-      (while (re-search-forward pattern (point-max) t)
-        (push (cons (concat (match-string 1) (match-string 3)) (match-beginning 1)) result)))
+    (while (re-search-forward (format "^ *\\(\\(static \\|private \\|public \\|export \\)+\\|\\)\\(%s\\)(.*) *\\(: *[A-Z]%s+ *\\|\\){" javascript-identifier-regexp javascript-identifier-regexp) bound t)
+      (push (cons (format "%s.%s" class (match-string 3)) (match-beginning 1)) result))
     (nreverse result)))
-)
+
+;; メソッドのインデックスを作成する関数
+(defun typescript-imenu-create-method-index ()
+  (cons "Methods"
+        (let (result)
+          ;; $name = Class.create
+          ;; $name = Object.extend
+          ;; Object.extend($name,
+          ;; $name = {
+          ;; をクラスあるいはオブジェクトとする
+          (dolist (pattern (list (format "^ *export class \\([A-Z]%s\\)" javascript-identifier-regexp)
+                                 (format "^ *class (\\([A-Z]%s\\)" javascript-identifier-regexp)
+                                 ))
+            (goto-char (point-min))
+            (while (re-search-forward pattern (point-max) t)
+              (save-excursion
+                (condition-case nil
+                    ;; { を探す
+                    (let ((class (replace-regexp-in-string "\.prototype$" "" (match-string 1))) ;; .prototype はとっておく
+                          (try 3))
+                      (if (eq (char-after) ?\()
+                          (down-list))
+                      (if (eq (char-before) ?{)
+                          (backward-up-list))
+                      (forward-list)
+                      (while (and (> try 0) (not (eq (char-before) ?})))
+                        (forward-list)
+                        (decf try))
+                      (if (eq (char-before) ?}) ;; } を見つけたら
+                          (let ((bound (point)))
+                            (backward-list)
+                            ;; メソッドを抽出してインデックスに追加
+                            (setq result (append result (typescript-imenu-create-method-index-1 class bound))))))
+                  (error nil)))))
+          ;; 重複を削除しておく
+          (delete-duplicates result :test (lambda (a b) (= (cdr a) (cdr b)))))))
+(defun typescript-imenu-create-class-index ()
+  (cons "Class"
+         (let (result)
+           (dolist (pattern (list
+                             (format "^ *export class \\([A-Z]%s\\)" javascript-identifier-regexp)
+                             (format "^ *class (\\([A-Z]%s\\)" javascript-identifier-regexp)
+                             ))
+             (goto-char (point-min))
+             (while (re-search-forward pattern (point-max) t)
+               (push (cons (match-string 1) (match-beginning 1)) result)))
+           (nreverse result))))
 (defun typescript-imenu-create-index ()
   (list
-   (typescript-imenu-create-function-index)
+   (typescript-imenu-create-class-index)
+   (typescript-imenu-create-method-index)
    ))
 (add-hook 'typescript-mode-hook (lambda () (setq imenu-create-index-function 'typescript-imenu-create-index)))
 
