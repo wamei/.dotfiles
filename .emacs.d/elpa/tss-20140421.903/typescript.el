@@ -279,20 +279,20 @@ Match group 1 is the name of the macro.")
 
 (defconst typescript--keyword-re
   (typescript--regexp-opt-symbol
-   '("any" "bool" "break" "case" "catch" "class" "constructor"
+   '("any" "boolean" "break" "case" "catch" "class" "constructor"
      "continue" "declare" "default" "delete" "do" "else"
      "enum" "export" "extends" "extern" "false" "finally" "for"
      "function" "goto" "if" "implements" "import" "in"
      "instanceof" "interface" "module" "new" "null" "number"
       "private" "public" "return" "static" "string"
-     "super" "switch"  "this" "throw" "true" 
-     "try" "typeof" "var" "void" 
+     "super" "switch"  "this" "throw" "true"
+     "try" "typeof" "var" "void"
      "while" ))
   "Regexp matching any typescript keyword.")
 
 (defconst typescript--basic-type-re
   (typescript--regexp-opt-symbol
-   '("bool" "string" "number" "any" "void"))
+   '("boolean" "string" "number" "any" "void"))
   "Regular expression matching any predefined type in typescript.")
 
 (defconst typescript--constant-re

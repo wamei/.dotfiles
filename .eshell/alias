@@ -1,6 +1,7 @@
-alias init export TERM=xterm-256color
-alias sc scroll-bar-mode $1
-alias gitroot gitroot
-alias emacs find-file
-alias cd cd $1; ls
+alias gst git status $*
 alias ls ls -aG $*
+alias cd cd $1; ls
+alias emacs find-file
+alias gitroot gitroot
+alias sc scroll-bar-mode $1
+alias init export TERM=xterm-256color

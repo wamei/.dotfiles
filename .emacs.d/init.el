@@ -41,7 +41,7 @@
 (global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
 (global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
 ;;(global-set-key (kbd "C-h")     'backward-delete-char)
-(keyboard-translate ?\C-h ?\C-?) (global-set-key "\C-h" nil)
+(define-key key-translation-map [?\C-h] [?\C-?])
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "C-r")     'replace-string)
@@ -533,6 +533,7 @@ file is a remote file (include directory)."
 ;; 詳しいキーバインド操作：http://dev.ariel-networks.com/articles/emacs/part5/
 (cua-mode t)
 (setq cua-enable-cua-keys nil)
+(global-set-key (kbd "C-x C-@") 'cua-set-rectangle-mark)
 
 ;; ファイルを管理者権限で開く
 (defun th-rename-tramp-buffer ()
@@ -598,6 +599,16 @@ file is a remote file (include directory)."
     (t (load-file "~/.emacs.d/init.el")))
   )
 
+;; トグルする設定
+(defun switch-to-previous-buffer ()
+      (interactive)
+      (cond ((equal eshell-buffer-name (buffer-name (nth 1 (buffer-list))))
+             (switch-to-buffer (nth 2 (buffer-list))))
+            (t
+             (switch-to-buffer (other-buffer (current-buffer) 1)))
+          )
+      )
+(global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
 ;;
 ;; モードライン設定
@@ -780,15 +791,21 @@ file is a remote file (include directory)."
         do (add-hook hook 'tss-setup-current-buffer t))
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
   )
-(defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
 ;; 識別子の正規表現
 (defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
 
 ;; } までの class のメソッドを列挙する関数
 (defun typescript-imenu-create-method-index-1 (class bound)
   (let (result)
-    (while (re-search-forward (format "^ *\\(\\(static \\|private \\|public \\|export \\)+\\|\\)\\(%s\\)(.*) *\\(: *[A-Z]%s+ *\\|\\){" javascript-identifier-regexp javascript-identifier-regexp) bound t)
-      (push (cons (format "%s.%s" class (match-string 3)) (match-beginning 1)) result))
+    (while (re-search-forward (format "^ *\\(\\(static \\|private \\|public \\|export \\)+\\|\\)\\(%s\\)\\((.*)\\) *\\(: *[A-Z]%s+\\(<[A-Z]%s+>\\|\\) *\\|\\){"
+                                      javascript-identifier-regexp
+                                      javascript-identifier-regexp
+                                      javascript-identifier-regexp) bound t)
+      (push (cons (format "%s.%s"
+                          class
+                          (match-string 3)
+                          (match-string 4)
+                          (match-string 5)) (match-beginning 1)) result))
     (nreverse result)))
 
 ;; メソッドのインデックスを作成する関数
@@ -1393,7 +1410,7 @@ PWD is not in a git repo (or the git command is not found)."
                                   (eshell-emit-prompt)))
                             (_my-toggle-term (cdr target)))))
       (_my-toggle-term (buffer-list)))))
-(global-set-key (kbd "C-z") 'my-toggle-term)
+(global-set-key (kbd "C-x e") 'my-toggle-term)
 
 ;; eshellを新規で開く
 (defun eshell-add-new-buffer (arg)
