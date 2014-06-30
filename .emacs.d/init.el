@@ -81,11 +81,11 @@
 
 (if window-system
     (progn
-      (set-frame-parameter nil 'alpha 95) ; 透明度
-      (tool-bar-mode -1)                  ; ツールバー非表示
-      (menu-bar-mode -1)
-      (setq line-spacing 0.1)              ; 行間
+      (set-frame-parameter nil 'alpha 95)
+      (setq line-spacing 0.1)
       (setq ns-pop-up-frames nil)))
+(tool-bar-mode 0)
+(menu-bar-mode 0)
 
 ;;起動時のフレームの大きさ
 (if window-system
