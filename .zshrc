@@ -10,8 +10,15 @@ alias ll='ls -al'
 alias -g ...='../..'
 alias -g ....='../../..'
 alias -g .....='../../../..'
+alias -g ......='../../../../..'
+alias -g .......='../../../../../..'
+alias -g ........='../../../../../../..'
+alias -g .........='../../../../../../../..'
 
+alias g='git'
 alias gst='git status'
+alias glo='git log'
+alias ggr='git graph'
 
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '

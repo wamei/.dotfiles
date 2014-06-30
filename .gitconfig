@@ -1,0 +1,12 @@
+[user]
+	name = Kazuaki Hamada
+	email = kazuaki.hamada@gree.net
+[color]
+	ui = auto
+[push]
+	default = simple
+[core]
+	editor = /Applications/Emacs.app/Contents/MacOS/bin/emacsclient -nw
+[alias]
+    st = status
+    graph = log --graph --date=short --decorate=short --pretty=format:'%Cgreen%h %Creset%cd %Cblue%cn %Cred%d %Creset%s'
