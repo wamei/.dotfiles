@@ -602,11 +602,15 @@ file is a remote file (include directory)."
 ;; トグルする設定
 (defun switch-to-previous-buffer ()
       (interactive)
-      (cond ((equal eshell-buffer-name (buffer-name (nth 1 (buffer-list))))
-             (switch-to-buffer (nth 2 (buffer-list))))
-            (t
-             (switch-to-buffer (other-buffer (current-buffer) 1)))
+      (let ((num 0))
+        (while (not (equal (nth num (buffer-list)) (other-buffer (current-buffer) 1)))
+          (incf num)
           )
+        (cond ((equal eshell-buffer-name (buffer-name (nth num (buffer-list))))
+               (switch-to-buffer (nth (+ num 1) (buffer-list))))
+              (t
+               (switch-to-buffer (other-buffer (current-buffer) 1)))
+              ))
       )
 (global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
@@ -785,7 +789,7 @@ file is a remote file (include directory)."
   ;; (tss-config-default)から抜粋したtss設定
   (loop for mode in tss-enable-modes
         for hook = (intern-soft (concat (symbol-name mode) "-hook"))
-        ;;do (add-to-list 'ac-modes mode)
+        do (add-to-list 'ac-modes mode)
         if (and hook
                 (symbolp hook))
         do (add-hook hook 'tss-setup-current-buffer t))
@@ -955,30 +959,32 @@ file is a remote file (include directory)."
   ;;(setq ac-dwim t)
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
-  ;; lisp編集情報源
-  (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
   ;; ファイル名情報
-  (setq-default ac-sources '(ac-source-yasnippet
-                             ac-source-filename
-                             ac-source-abbrev
-                             ac-source-words-in-same-mode-buffers
-                             ac-source-dictionary))
+  (defvar ac-sources '(
+                       ac-source-filename
+                       ac-source-yasnippet
+                       ac-source-abbrev
+                       ac-source-words-in-same-mode-buffers
+                       ac-source-dictionary))
   ;; 起動モード
   (global-auto-complete-mode t)
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'web-mode)
   (add-to-list 'ac-modes 'typescript-mode)
+  (add-to-list 'ac-modes 'css-mode)
+  (add-to-list 'ac-modes 'php-mode)
+
+  ;; lisp編集情報源
+  (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
 
   ;; css-mode
-  (add-to-list 'ac-modes 'css-mode)
   (defun ac-css-mode-setup ()
     (setq-default ac-sources (append '(ac-source-css-property) ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
   ;; php-mode
   (require 'php-mode)
-  (add-to-list 'ac-modes 'php-mode)
   (require 'php-completion)
   (defun ac-php-mode-setup ()
     (php-completion-mode t)
