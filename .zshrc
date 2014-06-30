@@ -18,7 +18,7 @@ alias -g .........='../../../../../../../..'
 # git関係alias
 alias g='git'
 alias gst='git status'
-alias glo='git log'
+alias glo='git mylog'
 alias ggr='git graph'
 alias gdi='git diff'
 alias gbr='git branch'
