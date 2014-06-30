@@ -15,10 +15,13 @@ alias -g .......='../../../../../..'
 alias -g ........='../../../../../../..'
 alias -g .........='../../../../../../../..'
 
+# git関係alias
 alias g='git'
 alias gst='git status'
 alias glo='git log'
 alias ggr='git graph'
+alias gdi='git diff'
+alias gbr='git branch'
 
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '
@@ -166,23 +169,6 @@ if [ -z "$TMUX" -a -z "$STY" ]; then
         fi
     fi
 fi
-
-# 空でenterしたときにls git status
-function do_enter() {
-    if [ -n "$BUFFER" ]; then
-        zle accept-line
-        return 0
-    fi
-    echo
-    git status -sb 2> /dev/null
-    echo
-    echo
-    precmd
-    zle reset-prompt
-    return 0
-}
-zle -N do_enter
-bindkey '^m' do_enter
 
 # cd ls
 function chpwd() { ls }
