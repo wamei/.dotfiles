@@ -1,7 +1,6 @@
 # 環境変数
 export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
-export EDITOR="emacsclient"
 
 # alias
 alias ls='ls -a'
@@ -41,10 +40,12 @@ case ${OSTYPE} in
         alias ls='ls -aG'
         alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs -nw'
         alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
+        export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -nw"
         ;;
     linux*)
         #Linux用の設定
         alias ls='ls -a --color=auto'
+        export EDITOR="emacsclient -nw"
         ;;
 esac
 
