@@ -22,6 +22,14 @@ alias glo='git mylog'
 alias ggr='git graph'
 alias gdi='git diff'
 alias gbr='git branch'
+function git_root() {
+    if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+        shift
+        cd `git rev-parse --show-toplevel`
+    fi
+}
+alias gro=git_root
+alias gitroot=git_root
 
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '
