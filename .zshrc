@@ -24,7 +24,6 @@ alias gdi='git diff'
 alias gbr='git branch'
 function git_root() {
     if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-        shift
         cd `git rev-parse --show-toplevel`
     fi
 }
