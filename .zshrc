@@ -21,6 +21,7 @@ alias glo='git mylog'
 alias ggr='git graph'
 alias gdi='git diff'
 alias gbr='git branch'
+alias gco='git checkout'
 function git_root() {
     if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
         cd `git rev-parse --show-toplevel`
