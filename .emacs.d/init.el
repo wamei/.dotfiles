@@ -1113,25 +1113,49 @@ file is a remote file (include directory)."
 
 ;; howm-mode
 ;;----------------------------------------------------------------------------------------------------
+(setq howm-prefix "\C-x,")
+(setq howm-view-title-header "*")
 (when (require 'howm nil t)
+  (global-set-key "\C-x,," 'howm-menu)
   (setq howm-menu-lang 'ja)
   (setq howm-keyword-case-fold-search t)
   (setq font-lock-verbose nil)
+  (setq howm-history-file "~/howm/.howm-history")
   (setq howm-keyword-file "~/howm/.howm-keys")
   (setq howm-file-name-format "%Y/%Y%m%d-%H%M%S.org")
+  (setq howm-menu-file "~/howm/menu.org")
+  (setq howm-view-summary-persistent nil)
+  (setq howm-prepend t)
+  (setq howm-reminder-regexp-grep-format
+        (concat "<" howm-date-regexp-grep "[ :0-9]*>%s"))
+  (setq howm-reminder-regexp-format
+        (concat "\\(<" howm-date-regexp "[ :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
+  (setq howm-dtime-format (concat "<" howm-dtime-body-format ">"))
+  (setq howm-insert-date-format "<%s>")
+  (setq howm-template-date-format "<%Y-%m-%d %H:%M:%S>")
+  (setq howm-template-file-format ">>>%s")
+  (setq howm-template "* %date %cursor\n%file\n")
+  (setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
+  (add-hook 'org-mode-hook 'howm-mode)
+  (if (not (memq 'delete-file-if-no-contents after-save-hook))
+      (setq after-save-hook
+            (cons 'delete-file-if-no-contents after-save-hook)))
+
+  (defun delete-file-if-no-contents ()
+    (when (and
+           (buffer-file-name (current-buffer))
+           (= (point-min) (point-max)))
+      (when (y-or-n-p "Delete file and kill buffer?")
+        (delete-file
+         (buffer-file-name (current-buffer)))
+        (kill-buffer (current-buffer)))))
   )
 
 ;;
 ;; Org-mode
 ;;----------------------------------------------------------------------------------------------------
-(add-hook 'org-mode-hook
-          '(lambda ()
-             (turn-on-font-lock)
-             (local-set-key (kbd "C-<tab>") nil)
-             ))
 ;; 見出しの余分な*を消す
 (setq org-hide-leading-stars t)
-
 ;; 画面端で改行しない
 (setq org-startup-truncated nil)
 ;; 画面端改行トグル関数
