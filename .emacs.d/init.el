@@ -1040,17 +1040,8 @@ file is a remote file (include directory)."
 )
 
 ;;
-;; セッションの保持
-;;-------------------------------------------------------------------------
-;;(when (require 'session)
-  ;; session.el との併用対策
-;;  (setq session-save-print-spec '(t nil nil))
-;;  (add-hook 'after-init-hook 'session-initialize)
-;;)
-
-;;
 ;; anything.el
-;;-------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (when (require 'anything-config nil t)
   ;; キーバインド
 ;;  (global-set-key (kbd "C-x C-b")     'anything-for-files)
@@ -1072,7 +1063,7 @@ file is a remote file (include directory)."
 
 ;;
 ;; AUCTeX
-;;______________________________________________________________________
+;;----------------------------------------------------------------------------------------------------
 (setq TeX-default-mode 'japanese-latex-mode)
 (setq japanese-LaTeX-default-style "jsarticle")
 (setq japanese-LaTeX-command-default "pdfpLaTex")
@@ -1120,11 +1111,19 @@ file is a remote file (include directory)."
                                      TeX-run-discard-or-function t t :help "open pdf file")))))
 
 
+;; howm-mode
+;;----------------------------------------------------------------------------------------------------
+(when (require 'howm nil t)
+  (setq howm-menu-lang 'ja)
+  (setq howm-keyword-case-fold-search t)
+  (setq font-lock-verbose nil)
+  (setq howm-keyword-file "~/howm/.howm-keys")
+  (setq howm-file-name-format "%Y/%Y%m%d-%H%M%S.org")
+  )
+
 ;;
-;; Org-mode設定
-;;________________________________________________________________________
-;; org-modeでの強調表示を可能にする
-;;(add-hook 'org-mode-hook 'turn-on-font-lock)
+;; Org-mode
+;;----------------------------------------------------------------------------------------------------
 (add-hook 'org-mode-hook
           '(lambda ()
              (turn-on-font-lock)
@@ -1144,8 +1143,8 @@ file is a remote file (include directory)."
          (setq truncate-lines nil))))
 
 ;;
-;; web-mode設定
-;;________________________________________________________________________
+;; web-mode
+;;----------------------------------------------------------------------------------------------------
 (setq auto-mode-alist
       (append '(
                 ("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)
