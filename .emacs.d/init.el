@@ -933,6 +933,7 @@ file is a remote file (include directory)."
 ;; anything
 (setq anything-samewindow nil)
 (push '("*anything*") popwin:special-display-config)
+(push '("*anything-howm-menu*") popwin:special-display-config)
 ;; dired
 (push '(dired-mode :position top) popwin:special-display-config)
 ;; grep
@@ -1115,6 +1116,7 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (setq howm-prefix "\C-x,")
 (setq howm-view-title-header "*")
+(setq howm-date-format '"%Y-%m-%d %a")
 (when (require 'howm nil t)
   (global-set-key "\C-x,," 'howm-menu)
   (setq howm-menu-lang 'ja)
@@ -1126,15 +1128,16 @@ file is a remote file (include directory)."
   (setq howm-menu-file "~/howm/menu.org")
   (setq howm-view-summary-persistent nil)
   (setq howm-prepend t)
-  (setq howm-reminder-regexp-grep-format
-        (concat "<" howm-date-regexp-grep "[ :0-9]*>%s"))
-  (setq howm-reminder-regexp-format
-        (concat "\\(<" howm-date-regexp "[ :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
+  (setq howm-date-regexp (concat howm-date-regexp "\\( Sun\\| Mon\\| Tue\\| Wed\\| Thu\\| Fri\\| Sat\\|\\)"))
+  (setq howm-reminder-regexp-grep-format (concat "<" howm-date-regexp-grep "[- :0-9]*>%s"))
+  (setq howm-reminder-regexp-format (concat "\\(<" howm-date-regexp "[- :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
   (setq howm-dtime-format (concat "<" howm-dtime-body-format ">"))
   (setq howm-insert-date-format "<%s>")
-  (setq howm-template-date-format "<%Y-%m-%d %H:%M:%S>")
+  (setq howm-reminder-today-format "<%Y-%m-%d %a")
+  (setq howm-highlight-date-regexp-format "%Y-%m-%d\\( %a\\|\\)")
+  (setq howm-template-date-format "<%Y-%m-%d %a %H:%M>")
   (setq howm-template-file-format ">>>%s")
-  (setq howm-template "* %date %cursor\n%file\n")
+  (setq howm-template "* %cursor\n%date\n")
   (setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
   (add-hook 'org-mode-hook 'howm-mode)
   (if (not (memq 'delete-file-if-no-contents after-save-hook))
@@ -1156,8 +1159,10 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 ;; 見出しの余分な*を消す
 (setq org-hide-leading-stars t)
-;; 画面端で改行しない
+;; 画面端で改行する
 (setq org-startup-truncated nil)
+;; 見出しを畳んで表示する
+(setq org-startup-folded nil)
 ;; 画面端改行トグル関数
 (defun change-truncation()
   (interactive)
@@ -1533,12 +1538,12 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'php-completion-mode minor-mode-alist)) " PC")
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
 
-
 ;;
 ;; migemo.el
 ;;-----------------------------------------------------------------------
 ;;(if (eq system-type 'darwin)
     (when (require 'migemo)
+      (require 'anything-migemo)
       (setq migemo-command "cmigemo")
       (setq migemo-options '("-q" "--emacs"))
       (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
@@ -1547,5 +1552,35 @@ PWD is not in a git repo (or the git command is not found)."
       (setq migemo-coding-system 'utf-8-unix)
       (load-library "migemo")
       (migemo-init)
+      ;; 自前の情報源の定義
+      (defvar my-anything-sources nil)
+      (setq my-anything-sources
+            '(anything-c-source-ffap-line
+              anything-c-source-ffap-guesser
+              ;;anything-c-source-buffers-list
+              anything-c-source-buffers+-howm-title
+              anything-c-source-files-in-current-dir+
+              anything-c-source-recentf
+              anything-c-source-bookmarks
+              anything-c-source-file-cache
+              anything-c-source-filelist
+              ))
+      (global-set-key (kbd "C-x C-b")
+                      (lambda()
+                        "start my-anything"
+                        (interactive)
+                        (anything-migemo t my-anything-sources))
+                      )
       )
 ;;)
+
+;;
+;; anything-howm.el
+;;----------------------------------------------------------------------------------------------------
+(require 'anything-howm)
+;; 「最近のメモ」をいくつ表示するか
+(setq anything-howm-recent-menu-number-limit 600)
+;; howm のデータディレクトリへのパス
+(setq anything-howm-data-directory "~/howm")
+(global-set-key (kbd "C-x b") 'ah:menu-command)
+;;(global-set-key (kbd "C-x , ") 'ah:cached-howm-menu)
