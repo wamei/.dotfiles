@@ -301,7 +301,7 @@ This value is passed to `format-time-string', and the result must be a regexp."
             '(let* ((p (howm-todo-parse-string s))
                     (late (floor (nth 1 p)))
                     (dow (howm-day-of-week-string (nth 4 p))))
-               (format "%s%3s %s" dow late s))
+               (format "%s %3s %s" dow late s))
           's))))
 
 (defun howm-reminder-today (&optional days-after fmt)

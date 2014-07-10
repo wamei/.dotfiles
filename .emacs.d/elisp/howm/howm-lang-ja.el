@@ -20,7 +20,7 @@
 ;;; USA.
 ;;--------------------------------------------------------------------
 
-(defvar howm-day-of-week-ja '("日" "月" "火" "水" "木" "金" "土"))
+(defvar howm-day-of-week-ja '("Sun" "Mon" "Tue" "Web" "Thu" "Fri" "Sat"))
 
 (defvar howm-menu-command-table-ja
   `(
