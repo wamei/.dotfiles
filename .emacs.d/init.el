@@ -57,6 +57,7 @@
 
 (global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
 (global-set-key (kbd "C-c c")   'popup-color-at-point)
+(global-set-key (kbd "C-x g")   'anything-do-grep)
 
 ;; フォーカス移動
 ;;(windmove-default-keybindings)
@@ -600,18 +601,21 @@ file is a remote file (include directory)."
   )
 
 ;; トグルする設定
+;; (defun switch-to-previous-buffer ()
+;;       (interactive)
+;;       (let ((num 0))
+;;         (while (not (equal (nth num (buffer-list)) (other-buffer (current-buffer) 1)))
+;;           (incf num)
+;;           )
+;;         (cond ((equal eshell-buffer-name (buffer-name (nth num (buffer-list))))
+;;                (switch-to-buffer (nth (+ num 1) (buffer-list))))
+;;               (t
+;;                (switch-to-buffer (other-buffer (current-buffer) 1)))
+;;               ))
+;;       )
 (defun switch-to-previous-buffer ()
-      (interactive)
-      (let ((num 0))
-        (while (not (equal (nth num (buffer-list)) (other-buffer (current-buffer) 1)))
-          (incf num)
-          )
-        (cond ((equal eshell-buffer-name (buffer-name (nth num (buffer-list))))
-               (switch-to-buffer (nth (+ num 1) (buffer-list))))
-              (t
-               (switch-to-buffer (other-buffer (current-buffer) 1)))
-              ))
-      )
+  (interactive)
+  (switch-to-buffer (other-buffer (current-buffer) 1)))
 (global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
 ;;
@@ -717,6 +721,18 @@ file is a remote file (include directory)."
 ;;
 ;; パッケージ関係
 ;;----------------------------------------------------------------------------------------------------
+
+;;
+;; split-root.el
+;;----------------------------------------------------------------------------------------------------
+(require 'split-root)
+(defvar split-root-window-height nil)
+(defun display-buffer-function--split-root (buf &optional ignore)
+  (let ((window (split-root-window split-root-window-height)))
+    (set-window-buffer window buf)
+    window))
+;; anything
+(setq anything-display-function 'display-buffer-function--split-root)
 
 ;;
 ;; coffee-mode.el
@@ -927,17 +943,14 @@ file is a remote file (include directory)."
 
 ;; popwin.el
 ;;----------------------------------------------------------------------------------------------------
-(require 'popwin)
-(setq display-buffer-function 'popwin:display-buffer)
-(setq popwin:popup-window-height 0.5)
+;;(require 'popwin)
+;;(setq display-buffer-function 'popwin:display-buffer)
+;;(setq popwin:popup-window-height 0.5)
 ;; anything
-(setq anything-samewindow nil)
-(push '("*anything*") popwin:special-display-config)
-(push '("*anything-howm-menu*") popwin:special-display-config)
-;; dired
-(push '(dired-mode :position top) popwin:special-display-config)
+;;(setq anything-samewindow nil)
+;;(push '("^\*anything.*\*$" :regexp t) popwin:special-display-config)
 ;; grep
-(push '("*grep*") popwin:special-display-config)
+;;(push '("*grep*" :stick t) popwin:special-display-config)
 
 ;;
 ;; dash-at-point.el
@@ -988,6 +1001,7 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'typescript-mode)
   (add-to-list 'ac-modes 'css-mode)
   (add-to-list 'ac-modes 'php-mode)
+  (add-to-list 'ac-modes 'org-mode)
 
   ;; lisp編集情報源
   (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
@@ -1419,7 +1433,7 @@ PWD is not in a git repo (or the git command is not found)."
       )))
 
 ;; Emacs 起動時に Eshell を起動
-(add-hook 'after-init-hook  (lambda ()(eshell)))
+;;(add-hook 'after-init-hook  (lambda ()(eshell)))
 
 ;; 補完時に大文字小文字を区別しない
 (setq eshell-cmpl-ignore-case t)
