@@ -57,7 +57,6 @@
 
 (global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
 (global-set-key (kbd "C-c c")   'popup-color-at-point)
-(global-set-key (kbd "C-x g")   'anything-do-grep)
 
 ;; フォーカス移動
 ;;(windmove-default-keybindings)
@@ -618,6 +617,15 @@ file is a remote file (include directory)."
   (switch-to-buffer (other-buffer (current-buffer) 1)))
 (global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
+
+(defun popup-grep-buffer ()
+  (interactive)
+  (if (get-buffer "*grep*")
+			(pop-to-buffer "*grep*")
+		(call-interactively 'grep-find))
+  )
+(global-set-key (kbd "C-x g") 'popup-grep-buffer)
+
 ;;
 ;; モードライン設定
 ;;---------------------------------------------------------------------------
@@ -1059,7 +1067,7 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'anything-config nil t)
   ;; キーバインド
-;;  (global-set-key (kbd "C-x C-b")     'anything-for-files)
+  ;;(global-set-key (kbd "C-x C-b")     'anything-for-files)
   (global-set-key (kbd "C-x C-b")     'anything-filelist+)
   (global-set-key (kbd "C-x c f")     'anything-filelist+)
   (global-set-key (kbd "M-y") 'anything-show-kill-ring)
@@ -1074,6 +1082,9 @@ file is a remote file (include directory)."
   ;; 遅延を短く
   (setq anything-idle-delay 0.1)
   (setq anything-input-idle-delay 0.1)
+
+  ;; anything-git-grep
+  (require 'anything-git-grep)
 )
 
 ;;
