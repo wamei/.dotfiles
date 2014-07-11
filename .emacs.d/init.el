@@ -346,6 +346,106 @@
 ;;           '(lambda ()
 ;;              (setq imenu-create-index-function 'php-imenu-create-index)))
 
+;;
+;; モードライン設定
+;;---------------------------------------------------------------------------
+
+;; git-status
+(require 'git-status)
+
+;; 時刻の表示( 曜日 月 日 時間:分 )
+(setq display-time-day-and-date t)
+(setq display-time-24hr-format t)
+(setq display-time-string-forms
+      '((format "%s/%s(%s)%s:%s"
+                month day dayname
+                24-hours minutes
+                )))
+(display-time-mode t)
+
+;; mode-line-setup
+(setq-default
+ mode-line-position
+ '(
+   " "
+   ;; Position, including warning for 80 columns
+   (:propertize "%5l" face mode-line-position-face)
+   (:propertize "/" face mode-line-delim-face-1)
+   (:eval
+    (number-to-string (count-lines (point-min) (point-max))))
+   " "
+   (:eval (propertize "%3c" 'face
+                      (if (>= (current-column) 80)
+                          'mode-line-80col-face
+                        'mode-line-position-face)))
+   " "
+   ))
+
+;; form
+(setq-default
+ mode-line-format
+ '("%e"
+   mode-line-mule-info
+   ;; emacsclient [default -- keep?]
+   mode-line-client
+   mode-line-remote
+   ; read-only or modified status
+   (:eval
+    (cond (buffer-read-only
+           (propertize "RO" 'face 'mode-line-read-only-face))
+          ((buffer-modified-p)
+           (propertize "**" 'face 'mode-line-modified-face))
+          (t "--")))
+   " "
+   ;evil-mode-line-tag
+   mode-line-position
+   ;; directory and buffer/file name
+   (:eval (cond
+           ((string= (substring (buffer-name) 0 1) "*")
+            (propertize (buffer-name) 'face 'mode-line-filename-face))
+           (t
+            (concat
+             (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
+             (propertize (buffer-name) 'face 'mode-line-filename-face)))
+           ))
+   ;; narrow [default -- keep?]
+   " %n"
+   ;; mode indicators: vc, recursive edit, major mode, minor modes, process, global
+   (:propertize (vc-mode vc-mode) face mode-line-git-face)
+   " %["
+   (:propertize mode-name
+                face mode-line-mode-face)
+   "%]"
+   (:eval (propertize (format-mode-line minor-mode-alist)
+                      'face 'mode-line-minor-mode-face))
+   " "
+   (:propertize mode-line-process
+                face mode-line-process-face)
+   " "
+   (:propertize user-login-name face mode-line-name-face)
+   (:propertize "@" face mode-line-name-face)
+   (:propertize system-name face mode-line-name-face)
+   " "
+   (global-mode-string global-mode-string)
+   ;; " "
+   ;; nyan-mode uses nyan cat as an alternative to %p
+   ;; (:eval (when nyan-mode (list (nyan-create))))
+   ))
+
+;; Helper function
+(defun shorten-directory (dir max-length)
+  "Show up to `max-length' characters of a directory name `dir'."
+  (let ((path (reverse (split-string (abbreviate-file-name dir) "/")))
+        (output ""))
+    (when (and path (equal "" (car path)))
+      (setq path (cdr path)))
+    (while (and path (< (length output) (- max-length 4)))
+      (setq output (concat (car path) "/" output))
+      (setq path (cdr path)))
+    (when path
+      (setq output (concat ".../" output)))
+    output))
+
 
 ;;
 ;; フォント関係
@@ -617,114 +717,25 @@ file is a remote file (include directory)."
   (switch-to-buffer (other-buffer (current-buffer) 1)))
 (global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
-
+(defun my-ag (arg &optional topdir)
+  (interactive "sgrep find: ")
+  (let ((command))
+    (if topdir
+        (cd topdir))
+    (setq command "ag --nocolor --nogroup --ignore-case --line-numbers ")
+    (setq command (concat command arg))
+    (grep-find command)))
 (defun popup-grep-buffer ()
   (interactive)
-  (if (get-buffer "*grep*")
-			(pop-to-buffer "*grep*")
-		(call-interactively 'grep-find))
+  (let ((buffer (get-buffer "*grep*")))
+    (cond ((and current-prefix-arg buffer)
+           (pop-to-buffer buffer))
+          (t
+           (call-interactively 'my-ag)
+           (pop-to-buffer buffer)))
+    )
   )
 (global-set-key (kbd "C-x g") 'popup-grep-buffer)
-
-;;
-;; モードライン設定
-;;---------------------------------------------------------------------------
-
-;; git-status
-(require 'git-status)
-
-;; 時刻の表示( 曜日 月 日 時間:分 )
-(setq display-time-day-and-date t)
-(setq display-time-24hr-format t)
-(setq display-time-string-forms
-      '((format "%s/%s(%s)%s:%s"
-                month day dayname
-                24-hours minutes
-                )))
-(display-time-mode t)
-
-;; mode-line-setup
-(setq-default
- mode-line-position
- '(
-   " "
-   ;; Position, including warning for 80 columns
-   (:propertize "%5l" face mode-line-position-face)
-   (:propertize "/" face mode-line-delim-face-1)
-   (:eval
-    (number-to-string (count-lines (point-min) (point-max))))
-   " "
-   (:eval (propertize "%3c" 'face
-                      (if (>= (current-column) 80)
-                          'mode-line-80col-face
-                        'mode-line-position-face)))
-   " "
-   ))
-
-;; form
-(setq-default
- mode-line-format
- '("%e"
-   mode-line-mule-info
-   ;; emacsclient [default -- keep?]
-   mode-line-client
-   mode-line-remote
-   ; read-only or modified status
-   (:eval
-    (cond (buffer-read-only
-           (propertize "RO" 'face 'mode-line-read-only-face))
-          ((buffer-modified-p)
-           (propertize "**" 'face 'mode-line-modified-face))
-          (t "--")))
-   " "
-   ;evil-mode-line-tag
-   mode-line-position
-   ;; directory and buffer/file name
-   (:eval (cond
-           ((string= (substring (buffer-name) 0 1) "*")
-            (propertize (buffer-name) 'face 'mode-line-filename-face))
-           (t
-            (concat
-             (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
-             (propertize (buffer-name) 'face 'mode-line-filename-face)))
-           ))
-   ;; narrow [default -- keep?]
-   " %n"
-   ;; mode indicators: vc, recursive edit, major mode, minor modes, process, global
-   (:propertize (vc-mode vc-mode) face mode-line-git-face)
-   " %["
-   (:propertize mode-name
-                face mode-line-mode-face)
-   "%]"
-   (:eval (propertize (format-mode-line minor-mode-alist)
-                      'face 'mode-line-minor-mode-face))
-   " "
-   (:propertize mode-line-process
-                face mode-line-process-face)
-   " "
-   (:propertize user-login-name face mode-line-name-face)
-   (:propertize "@" face mode-line-name-face)
-   (:propertize system-name face mode-line-name-face)
-   " "
-   (global-mode-string global-mode-string)
-   ;; " "
-   ;; nyan-mode uses nyan cat as an alternative to %p
-   ;; (:eval (when nyan-mode (list (nyan-create))))
-   ))
-
-;; Helper function
-(defun shorten-directory (dir max-length)
-  "Show up to `max-length' characters of a directory name `dir'."
-  (let ((path (reverse (split-string (abbreviate-file-name dir) "/")))
-        (output ""))
-    (when (and path (equal "" (car path)))
-      (setq path (cdr path)))
-    (while (and path (< (length output) (- max-length 4)))
-      (setq output (concat (car path) "/" output))
-      (setq path (cdr path)))
-    (when path
-      (setq output (concat ".../" output)))
-    output))
 
 ;;
 ;; パッケージ関係
@@ -739,6 +750,7 @@ file is a remote file (include directory)."
   (let ((window (split-root-window split-root-window-height)))
     (set-window-buffer window buf)
     window))
+;;(setq display-buffer-function 'display-buffer-function--split-root)
 ;; anything
 (setq anything-display-function 'display-buffer-function--split-root)
 
