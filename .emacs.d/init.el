@@ -55,8 +55,8 @@
 (global-set-key [mouse-20] '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
 (global-set-key [mouse-21] '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
 
-(global-set-key (kbd "C-c i")   'sr-speedbar-toggle)
-(global-set-key (kbd "C-c c")   'popup-color-at-point)
+(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
+(global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
 ;; フォーカス移動
 ;;(windmove-default-keybindings)
@@ -282,6 +282,7 @@
                     :inherit 'mode-line-face
                     :foreground "#ed74cd")
 
+(global-font-lock-mode t)
 ;;(global-hl-line-mode)
 
 ;; 全角色付け
@@ -322,29 +323,6 @@
   (when (require 'yascroll nil t)
     (global-yascroll-bar-mode 1)
     ))
-
-;; speedbar設定
-(when (require 'sr-speedbar)
-  (setq sr-speedbar-right-side nil)
-  (setq speedbar-directory-unshown-regexp "^\\'")
-  (setq speedbar-use-images nil)
-  (custom-set-variables
-   '(speedbar-show-unknown-files t)
-   )
-  (add-hook 'speedbar-mode-hook
-            '(lambda ()
-               (speedbar-add-supported-extension '("js" "as" "html" "css" "php" "ts"))))
-)
-;; (defun php-imenu-create-index ()
-;;   (let (index)
-;;     (goto-char (point-min))
-;;     (while (re-search-forward "^[ \t]*\\(public function\\|private function\\)\s+\\(\\w+\\)" (point-max) t)
-;;       (push (cons (match-string 2) (match-beginning 1)) index))
-;;     (nreverse index)))
-
-;; (add-hook 'php-mode-hook
-;;           '(lambda ()
-;;              (setq imenu-create-index-function 'php-imenu-create-index)))
 
 ;;
 ;; モードライン設定
@@ -717,6 +695,22 @@ file is a remote file (include directory)."
   (switch-to-buffer (other-buffer (current-buffer) 1)))
 (global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
+(defun chomp (str)
+  (replace-regexp-in-string "[\n\r]+$" "" str))
+
+(defun git-project-p ()
+  (string=
+   (chomp
+    (shell-command-to-string "git rev-parse --is-inside-work-tree"))
+   "true"))
+
+(defun git-root-directory ()
+  (cond ((git-project-p)
+         (chomp
+          (shell-command-to-string "git rev-parse --show-toplevel")))
+        (t
+         "")))
+
 (defun my-ag (arg &optional topdir)
   (interactive "sgrep find: ")
   (let ((command))
@@ -731,8 +725,8 @@ file is a remote file (include directory)."
     (cond ((and current-prefix-arg buffer)
            (pop-to-buffer buffer))
           (t
-           (call-interactively 'my-ag)
-           (pop-to-buffer buffer)))
+           (popwin:close-popup-window)
+           (call-interactively 'my-ag)))
     )
   )
 (global-set-key (kbd "C-x g") 'popup-grep-buffer)
@@ -744,28 +738,46 @@ file is a remote file (include directory)."
 ;;
 ;; split-root.el
 ;;----------------------------------------------------------------------------------------------------
-(require 'split-root)
-(defvar split-root-window-height nil)
-(defun display-buffer-function--split-root (buf &optional ignore)
-  (let ((window (split-root-window split-root-window-height)))
-    (set-window-buffer window buf)
-    window))
-;;(setq display-buffer-function 'display-buffer-function--split-root)
-;; anything
-(setq anything-display-function 'display-buffer-function--split-root)
+ (require 'split-root)
+ (defvar split-root-window-height nil)
+ (defun display-buffer-function--split-root (buf &optional ignore)
+   (let ((window (split-root-window split-root-window-height)))
+     (set-window-buffer window buf)
+     window))
 
-;;
-;; coffee-mode.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'coffee nil t)
-  (add-to-list 'auto-mode-alist '("\\.coffee\\'" . coffee-mode))
-  (add-to-list 'auto-mode-alist '("Cakefile" . coffee-mode))
+ ;; popwin.el
+ ;;----------------------------------------------------------------------------------------------------
+ (when (require 'popwin nil t)
+   (setq display-buffer-function 'popwin:display-buffer)
+   (setq anything-samewindow nil)
+   (setq popwin:special-display-config '(
+                                         ("^\*anything.*\*$" :regexp t :height 0.5)
+                                         ("*grep*" :height 0.5 :stick t :dedicated t)
+                                         (direx:direx-mode :position left :width 40 :dedicated t)
+                                        ))
   )
 
-;; w3m.el
+;; direx.el
 ;;----------------------------------------------------------------------------------------------------
-(setq w3m-use-cookies t)
-(setq w3m-favicon-cache-expire-wait nil)
+(when (require 'direx nil t)
+  (defun direx:jump-to-git-project-directory ()
+    (interactive)
+    (let* ((git-root-dir))
+      (setq git-root-dir (git-root-directory))
+      (unless (string= git-root-dir "")
+        (direx:find-directory-noselect git-root-dir))
+      (direx:jump-to-directory-other-window)))
+  (setq direx:leaf-icon "  "
+        direx:open-icon "▾ "
+        direx:closed-icon "▸ ")
+  (add-hook 'direx:direx-mode-hook '(lambda ()
+                                      (hl-line-mode)
+                                      ))
+  (define-key direx:direx-mode-map (kbd "n") 'direx:next-sibling-item)
+  (define-key direx:direx-mode-map (kbd "p") 'direx:previous-sibling-item)
+  (define-key direx:direx-mode-map (kbd "u") 'direx:up-item)
+  (define-key direx:direx-mode-map (kbd "d") 'direx:down-item)
+  )
 
 ;;
 ;; dired.el
@@ -801,6 +813,19 @@ file is a remote file (include directory)."
   (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
   )
+
+;;
+;; coffee-mode.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'coffee nil t)
+  (add-to-list 'auto-mode-alist '("\\.coffee\\'" . coffee-mode))
+  (add-to-list 'auto-mode-alist '("Cakefile" . coffee-mode))
+  )
+
+;; w3m.el
+;;----------------------------------------------------------------------------------------------------
+(setq w3m-use-cookies t)
+(setq w3m-favicon-cache-expire-wait nil)
 
 ;;
 ;; js2-mode
@@ -959,18 +984,6 @@ file is a remote file (include directory)."
 (autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
 (add-to-list 'auto-mode-alist '("\\.markdown\\'" . markdown-mode))
 (add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
-
-
-;; popwin.el
-;;----------------------------------------------------------------------------------------------------
-;;(require 'popwin)
-;;(setq display-buffer-function 'popwin:display-buffer)
-;;(setq popwin:popup-window-height 0.5)
-;; anything
-;;(setq anything-samewindow nil)
-;;(push '("^\*anything.*\*$" :regexp t) popwin:special-display-config)
-;; grep
-;;(push '("*grep*" :stick t) popwin:special-display-config)
 
 ;;
 ;; dash-at-point.el
@@ -1424,9 +1437,6 @@ $0"))
          )))
 ;;(setq eshell-prompt-regexp "^[^#$]*[$#] ")
 (setq eshell-prompt-regexp "\\(^[^$#]*[$#] \\)\\|\\(^mysql> \\)")
-
-(defun chomp (str)
-  (replace-regexp-in-string "[\n\r]+$" "" str))
 
 (defun gitroot ()
   (interactive)
