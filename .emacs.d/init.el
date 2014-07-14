@@ -81,9 +81,15 @@
 
 (if window-system
     (progn
-      (set-frame-parameter nil 'alpha 95)
+      (set-frame-parameter nil 'alpha 75)
       (setq line-spacing 0.1)
-      (setq ns-pop-up-frames nil)))
+      (setq ns-pop-up-frames nil)
+      (scroll-bar-mode 0)
+      ;;(global-linum-mode t)
+      (when (require 'yascroll nil t)
+        (global-yascroll-bar-mode 1)
+        )
+      ))
 (tool-bar-mode 0)
 (menu-bar-mode 0)
 
@@ -168,7 +174,7 @@
    `(lazy-highlight ((,class (:background "#338f86"))))
    `(trailing-whitespace ((,class (:background "#ff4242"))))
    ;; Mode line faces
-   `(mode-line ((,class (:background "#212931" :foreground "#eeeeec"))))
+   `(mode-line ((,class (:background "#0B2087" :foreground "#eeeeec"))))
    `(mode-line-inactive
      ((,class (:background "#878787" :foreground "#eeeeec"))))
    `(header-line ((,class (:background "#e5e5e5" :foreground "#333333"))))
@@ -241,12 +247,14 @@
 (set-face-attribute 'mode-line-read-only-face nil
                     :inherit 'mode-line-face
                     :foreground "#4271ae"
-                    :box '(:line-width 2 :color "#4271ae"))
+                    ;;:box '(:line-width 2 :color "#4271ae")
+                    )
 (set-face-attribute 'mode-line-modified-face nil
                     :inherit 'mode-line-face
                     :foreground "#c82829"
                     :background "#ffffff"
-                    :box '(:line-width 2 :color "#c82829"))
+                    ;;:box '(:line-width 2 :color "#c82829")
+                    )
 (set-face-attribute 'mode-line-folder-face nil
                     :inherit 'mode-line-face
                     :weight 'extra-light
@@ -317,12 +325,6 @@
   (setq whitespace-global-modes '(not dired-mode tar-mode))
   (global-whitespace-mode 1))
 (show-paren-mode t)
-
-;; スクロールバー
-(when window-system
-  (when (require 'yascroll nil t)
-    (global-yascroll-bar-mode 1)
-    ))
 
 ;;
 ;; モードライン設定
@@ -869,14 +871,15 @@ file is a remote file (include directory)."
 (when (require 'typescript nil t)
   (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
   (require 'tss)
-  ;; (tss-config-default)から抜粋したtss設定
-  (loop for mode in tss-enable-modes
-        for hook = (intern-soft (concat (symbol-name mode) "-hook"))
-        do (add-to-list 'ac-modes mode)
-        if (and hook
-                (symbolp hook))
-        do (add-hook hook 'tss-setup-current-buffer t))
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
+  (tss-config-default)
+  ;; (tss-config-default)から抜粋したtss設定
+  ;; (loop for mode in tss-enable-modes
+  ;;       for hook = (intern-soft (concat (symbol-name mode) "-hook"))
+  ;;       do (add-to-list 'ac-modes mode)
+  ;;       if (and hook
+  ;;               (symbolp hook))
+  ;;       do (add-hook hook 'tss-setup-current-buffer t))
   )
 ;; 識別子の正規表現
 (defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
