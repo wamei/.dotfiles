@@ -816,7 +816,12 @@ file is a remote file (include directory)."
 
 ;; magit.el
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'magit nil t))
+(when (require 'magit nil t)
+  ;; 色変更
+  (set-face-foreground 'magit-diff-add "#b9ca4a")
+  (set-face-foreground 'magit-diff-del "#d54e53")
+  (set-face-background 'magit-item-highlight "#000000")
+  )
 
 ;;
 ;; coffee-mode.el
