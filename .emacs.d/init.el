@@ -752,7 +752,7 @@ file is a remote file (include directory)."
    (setq anything-samewindow nil)
    (setq popwin:special-display-config '(
                                          ("^\*anything.*\*$" :regexp t :height 0.5)
-                                         ("*grep*" :height 0.5 :stick t :dedicated t)
+                                         ("*grep*" :height 0.5)
                                          (direx:direx-mode :position left :width 40 :dedicated t)
                                         ))
   )
@@ -813,6 +813,10 @@ file is a remote file (include directory)."
   (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
   )
+
+;; magit.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'magit nil t))
 
 ;;
 ;; coffee-mode.el
@@ -1110,6 +1114,7 @@ file is a remote file (include directory)."
 
   ;; anything-git-grep
   (require 'anything-git-grep)
+  (require 'anything-match-plugin)
 )
 
 ;;
