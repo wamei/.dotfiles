@@ -40,7 +40,6 @@
 ;;______________________________________________________________________
 (global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
 (global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
-;;(global-set-key (kbd "C-h")     'backward-delete-char)
 (define-key key-translation-map [?\C-h] [?\C-?])
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-g")     'goto-line)
@@ -48,26 +47,53 @@
 (global-set-key (kbd "C-M-r")   'foreign-regexp/query-replace)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 
+(global-set-key (kbd "C--")     'undo-tree-undo)
+(global-set-key (kbd "M--")     'undo-tree-redo)
+
+(global-set-key (kbd "C-x C-b") 'anything-filelist+)
+(global-set-key (kbd "C-x c f") 'anything-filelist+)
+(global-set-key (kbd "M-y")     'anything-show-kill-ring)
+(global-set-key (kbd "M-x")     'anything-M-x)
+(global-set-key (kbd "C-x b")   'ah:menu-command)
+
+(global-set-key (kbd "\C-x,,")  'howm-menu)
+
+(global-set-key (kbd "C-x e")   'my-toggle-term)
+(global-set-key (kbd "C-t")     'switch-to-multi-term)
+
+(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
+(global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
+(global-set-key (kbd "C-x g")   'popup-grep-buffer)
+
+(global-set-key (kbd "C-z")     'switch-to-previous-buffer)
+
+
+;; フォーカス移動
+(global-set-key (kbd "C-M-p") 'windmove-up)
+(global-set-key (kbd "C-M-n") 'windmove-down)
+(global-set-key (kbd "C-M-f") 'windmove-right)
+(global-set-key (kbd "C-M-b") 'windmove-left)
+(global-set-key (kbd "C-c r") 'resize)
+
+;; トラックパッド用のスクロール設定
+(if window-system
+    (progn
+      (defun scroll-down-with-lines () "" (interactive) (scroll-down 3))
+      (defun scroll-up-with-lines () "" (interactive) (scroll-up 3))
+      (global-set-key [wheel-up] 'scroll-down-with-lines)
+      (global-set-key [wheel-down] 'scroll-up-with-lines)
+      (global-set-key [double-wheel-up] 'scroll-down-with-lines)
+      (global-set-key [double-wheel-down] 'scroll-up-with-lines)
+      (global-set-key [triple-wheel-up] 'scroll-down-with-lines)
+      (global-set-key [triple-wheel-down] 'scroll-up-with-lines)
+      )
+  )
 (global-set-key [mouse-4] '(lambda () (interactive) (scroll-down 2)))
 (global-set-key [mouse-5] '(lambda () (interactive) (scroll-up   2)))
 (global-set-key [mouse-8] '(lambda () (interactive) (scroll-down 1)))
 (global-set-key [mouse-9] '(lambda () (interactive) (scroll-up   1)))
 (global-set-key [mouse-20] '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
 (global-set-key [mouse-21] '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
-
-(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
-(global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
-
-;; フォーカス移動
-;;(windmove-default-keybindings)
-;;(global-set-key (kbd "C-<tab>")   'other-window)
-;;(global-set-key (kbd "C-S-<tab>") (lambda()(interactive)(other-window -1)))
-(global-set-key (kbd "C-M-p") 'windmove-up)
-(global-set-key (kbd "C-M-n") 'windmove-down)
-(global-set-key (kbd "C-M-f") 'windmove-right)
-(global-set-key (kbd "C-M-b") 'windmove-left)
-
-(global-set-key (kbd "C-c r") 'resize)
 
 ;;
 ;; ウィンドウ設定
@@ -537,20 +563,6 @@
 (setq auto-save-default nil)
 (setq auto-save-list-file-prefix nil)
 
-;; トラックパッド用のスクロール設定
-(if window-system
-    (progn
-      (defun scroll-down-with-lines () "" (interactive) (scroll-down 3))
-      (defun scroll-up-with-lines () "" (interactive) (scroll-up 3))
-      (global-set-key [wheel-up] 'scroll-down-with-lines)
-      (global-set-key [wheel-down] 'scroll-up-with-lines)
-      (global-set-key [double-wheel-up] 'scroll-down-with-lines)
-      (global-set-key [double-wheel-down] 'scroll-up-with-lines)
-      (global-set-key [triple-wheel-up] 'scroll-down-with-lines)
-      (global-set-key [triple-wheel-down] 'scroll-up-with-lines)
-      )
-  )
-
 ;; 補完時に大文字小文字を区別しない
 (setq completion-ignore-case t)
 (custom-set-variables '(read-file-name-completion-ignore-case t))
@@ -690,7 +702,6 @@ file is a remote file (include directory)."
 (defun switch-to-previous-buffer ()
   (interactive)
   (switch-to-buffer (other-buffer (current-buffer) 1)))
-(global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
 ;; git関係便利関数
 (defun chomp (str)
@@ -728,7 +739,6 @@ file is a remote file (include directory)."
            (call-interactively 'my-ag)))
     )
   )
-(global-set-key (kbd "C-x g") 'popup-grep-buffer)
 
 ;;
 ;; パッケージ関係
@@ -886,7 +896,6 @@ file is a remote file (include directory)."
                (define-key term-raw-map (kbd "C-t") 'switch-to-multi-term)
                (define-key term-raw-map (kbd "TAB") 'term-send-tab)
                ))
-  (global-set-key (kbd "C-t") 'switch-to-multi-term)
   )
 
 ;;
@@ -1009,8 +1018,6 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'undo-tree nil t)
   (global-undo-tree-mode t)
-  (global-set-key (kbd "C--") 'undo-tree-undo)
-  (global-set-key (kbd "M--") 'undo-tree-redo)
   )
 
 ;;
@@ -1119,11 +1126,6 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'anything-config nil t)
   ;; キーバインド
-  ;;(global-set-key (kbd "C-x C-b")     'anything-for-files)
-  (global-set-key (kbd "C-x C-b")     'anything-filelist+)
-  (global-set-key (kbd "C-x c f")     'anything-filelist+)
-  (global-set-key (kbd "M-y") 'anything-show-kill-ring)
-  (global-set-key (kbd "M-x") 'anything-M-x)
   (setq anything-c-filelist-file-name "/tmp/all.filelist")
   ;;(setq anything-grep-candidates-fast-directory-regexp "^/tmp")
 
@@ -1201,7 +1203,6 @@ file is a remote file (include directory)."
 (setq howm-reminder-regexp-format (concat "\\(<" howm-date-regexp "[- :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
 (setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
 (when (require 'howm nil t)
-  (global-set-key "\C-x,," 'howm-menu)
   (setq howm-menu-lang 'ja)
   (setq howm-keyword-case-fold-search t)
   (setq font-lock-verbose nil)
@@ -1470,7 +1471,6 @@ PWD is not in a git repo (or the git command is not found)."
                                   (eshell-emit-prompt)))
                             (_my-toggle-term (cdr target)))))
       (_my-toggle-term (buffer-list)))))
-(global-set-key (kbd "C-x e") 'my-toggle-term)
 
 ;; eshellを新規で開く
 (defun eshell-add-new-buffer (arg)
@@ -1552,42 +1552,6 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
 
 ;;
-;; migemo.el
-;;-----------------------------------------------------------------------
-;;(if (eq system-type 'darwin)
-    (when (require 'migemo)
-      (require 'anything-migemo)
-      (setq migemo-command "cmigemo")
-      (setq migemo-options '("-q" "--emacs"))
-      (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
-      (setq migemo-user-dictionary nil)
-      (setq migemo-regex-dictionary nil)
-      (setq migemo-coding-system 'utf-8-unix)
-      (load-library "migemo")
-      (migemo-init)
-      ;; 自前の情報源の定義
-      (defvar my-anything-sources nil)
-      (setq my-anything-sources
-            '(anything-c-source-ffap-line
-              anything-c-source-ffap-guesser
-              ;;anything-c-source-buffers-list
-              anything-c-source-buffers+-howm-title
-              anything-c-source-files-in-current-dir+
-              anything-c-source-recentf
-              anything-c-source-bookmarks
-              anything-c-source-file-cache
-              anything-c-source-filelist
-              ))
-      (global-set-key (kbd "C-x C-b")
-                      (lambda()
-                        "start my-anything"
-                        (interactive)
-                        (anything-migemo t my-anything-sources))
-                      )
-      )
-;;)
-
-;;
 ;; anything-howm.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'anything-howm)
@@ -1595,5 +1559,49 @@ PWD is not in a git repo (or the git command is not found)."
 (setq anything-howm-recent-menu-number-limit 600)
 ;; howm のデータディレクトリへのパス
 (setq anything-howm-data-directory "~/howm")
-(global-set-key (kbd "C-x b") 'ah:menu-command)
-;;(global-set-key (kbd "C-x , ") 'ah:cached-howm-menu)
+(defvar anything-c-source-buffers-list-howm-title
+  `((name . "Buffers")
+    (candidates . anything-c-buffer-list)
+    (real-to-display . ah:title-real-to-display)
+    (type . buffer)
+    (match anything-c-buffer-match-major-mode)
+    (candidate-transformer anything-c-skip-boring-buffers
+                           anything-c-highlight-buffers)
+    (persistent-action . anything-c-buffers-list-persistent-action)
+    (keymap . ,anything-c-buffer-map)
+    (volatile)
+    (mode-line . anything-buffer-mode-line-string)
+    (persistent-help . "Show this buffer / C-u \\[anything-execute-persistent-action]: Kill this buffer")))
+
+;;
+;; migemo.el
+;;-----------------------------------------------------------------------
+(when (require 'migemo)
+  (require 'anything-migemo)
+  (setq migemo-command "cmigemo")
+  (setq migemo-options '("-q" "--emacs"))
+  (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
+  (setq migemo-user-dictionary nil)
+  (setq migemo-regex-dictionary nil)
+  (setq migemo-coding-system 'utf-8-unix)
+  (load-library "migemo")
+  (migemo-init)
+  ;; 自前の情報源の定義
+  (defvar my-anything-sources nil)
+  (setq my-anything-sources
+        '(anything-c-source-ffap-line
+          anything-c-source-ffap-guesser
+          anything-c-source-buffers-list-howm-title
+          anything-c-source-files-in-current-dir+
+          anything-c-source-recentf
+          anything-c-source-bookmarks
+          anything-c-source-file-cache
+          anything-c-source-filelist
+          ))
+  (global-set-key (kbd "C-x C-b")
+                  (lambda()
+                    "start my-anything"
+                    (interactive)
+                    (anything-migemo t my-anything-sources))
+                  )
+  )

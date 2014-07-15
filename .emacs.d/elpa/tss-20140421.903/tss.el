@@ -349,7 +349,8 @@
                    (not (string= tss-jump-to-definition-key "")))
           (local-set-key (read-kbd-macro tss-jump-to-definition-key) 'tss-jump-to-definition))
         ;; For auto-complete
-        (setq ac-sources '(ac-source-tss-member
+        (setq ac-sources '(ac-source-yasnippet
+                           ac-source-tss-member
                            ac-source-tss-type
                            ac-source-tss-new
                            ac-source-tss-anything
