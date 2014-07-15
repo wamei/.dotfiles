@@ -69,20 +69,13 @@
 
 (global-set-key (kbd "C-c r") 'resize)
 
-;; Tetris key map
-(defvar tetris-mode-map (make-sparse-keymap 'tetris-mode-map))
-(define-key tetris-mode-map "s" 'tetris-start-game)
-(defvar tetris-null-map (make-sparse-keymap 'tetris-null-map))
-(define-key tetris-null-map "s" 'tetris-start-game)
-
 ;;
 ;; ウィンドウ設定
 ;;______________________________________________________________________
 
 (if window-system
     (progn
-      (set-frame-parameter nil 'alpha 75)
-      (setq line-spacing 0.1)
+      (set-frame-parameter nil 'alpha 85)
       (setq ns-pop-up-frames nil)
       (scroll-bar-mode 0)
       ;;(global-linum-mode t)
@@ -92,12 +85,6 @@
       ))
 (tool-bar-mode 0)
 (menu-bar-mode 0)
-
-;;起動時のフレームの大きさ
-(if window-system
-    (progn
-;;    (set-frame-position (selected-frame) 0 0)
-      (set-frame-size (selected-frame) 178 52)))
 
 ;;リサイズ用関数
 (defun resize ()
@@ -151,7 +138,6 @@
 ;; サーバー起動
 (server-start)
 
-
 ;;
 ;; テーマの読み込み
 ;;----------------------------------------------------------------------------------------------------
@@ -162,10 +148,10 @@
        ;; (:background "#313131" :foreground "#e1e1e0"))
        ;; (,class
        ;; (:background "#2a2a2a" :foreground "#e1e1e0"))))
-       (:background "#000000" :foreground "#e1e1e0"))
+       (:background "#2e2e2e" :foreground "#e1e1e0"))
        (,class
-       (:background "#000000" :foreground "#e1e1e0"))))
-   `(cursor ((,class (:background "#542D24"))))
+       (:background "#2e2e2e" :foreground "#e1e1e0"))))
+   `(cursor ((,class (:background "#a4a4a4"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
    `(highlight ((,class (:background "#035f56"))))
@@ -230,6 +216,39 @@
    `(message-separator ((,class (:foreground "#23d7d7"))))
    ))
 
+;; term
+(defface term-color-black
+  '((t (:foreground "black" :background "black")))
+  "Unhelpful docstring.")
+(defface term-color-red
+  '((t (:foreground "red3" :background "red3")))
+  "Unhelpful docstring.")
+(defface term-color-green
+  '((t (:foreground "green3" :background "green3")))
+  "Unhelpful docstring.")
+(defface term-color-yellow
+  '((t (:foreground "yellow3" :background "yellow3")))
+  "Unhelpful docstring.")
+(defface term-color-blue
+  '((t (:foreground "DeepSkyBlue" :background "DeepSkyBlue")))
+  "Unhelpful docstring.")
+(defface term-color-magenta
+  '((t (:foreground "magenta1" :background "magenta1")))
+  "Unhelpful docstring.")
+(defface term-color-cyan
+  '((t (:foreground "cyan3" :background "cyan3")))
+  "Unhelpful docstring.")
+(defface term-color-white
+  '((t (:foreground "white" :background "white")))
+  "Unhelpful docstring.")
+'(term-default-fg-color ((t (:inherit term-color-white))))
+'(term-default-bg-color ((t (:inherit term-color-black))))
+
+;; ansi-term colors
+(setq ansi-term-color-vector
+  [term term-color-black term-color-red term-color-green term-color-yellow
+    term-color-blue term-color-magenta term-color-cyan term-color-white])
+
 ;; Extra mode line faces
 (make-face 'mode-line-read-only-face)
 (make-face 'mode-line-modified-face)
@@ -246,15 +265,11 @@
 
 (set-face-attribute 'mode-line-read-only-face nil
                     :inherit 'mode-line-face
-                    :foreground "#4271ae"
-                    ;;:box '(:line-width 2 :color "#4271ae")
-                    )
+                    :foreground "#4271ae")
 (set-face-attribute 'mode-line-modified-face nil
                     :inherit 'mode-line-face
                     :foreground "#c82829"
-                    :background "#ffffff"
-                    ;;:box '(:line-width 2 :color "#c82829")
-                    )
+                    :background "#ffffff")
 (set-face-attribute 'mode-line-folder-face nil
                     :inherit 'mode-line-face
                     :weight 'extra-light
@@ -472,18 +487,19 @@
 (setq imenu-auto-rescan t)
 (setq imenu-after-jump-hook (lambda () (recenter 10)))
 
-;; tmux でクリップボード共有
+;; クリップボード共有
 (defun copy-from-osx ()
   (shell-command-to-string "pbpaste"))
-
 (defun paste-to-osx (text &optional push)
   (let ((process-connection-type nil))
     (let ((proc (start-process "pbcopy" "*Messages*" "pbcopy")))
       (process-send-string proc text)
       (process-send-eof proc))))
-
-(setq interprogram-cut-function 'paste-to-osx)
-(setq interprogram-paste-function 'copy-from-osx)
+(if window-system
+    (setq x-select-enable-clipboard t)
+  (setq interprogram-cut-function 'paste-to-osx)
+  (setq interprogram-paste-function 'copy-from-osx)
+  )
 
 ;; xterm-mouse-mode
 (unless (fboundp 'track-mouse)
@@ -495,9 +511,6 @@
 
 ;; ロックファイルを作らない
 (setq create-lockfiles nil)
-
-;; クリップボード共有
-(setq x-select-enable-clipboard t)
 
 ;; pcompleteにgit追加
 (require 'pcmpl-git)
@@ -570,7 +583,7 @@
 
 ;; 行番号表示
 ;;(global-linum-mode)
-;;(setq linum-format "%4d")
+(setq linum-format "%4d")
 
 ;; スタートページ非表示
 (setq inhibit-startup-message t)
@@ -608,12 +621,6 @@ file is a remote file (include directory)."
           (rename-buffer new-name)
           (set-visited-file-name new-name)
           (set-buffer-modified-p nil))))))
-
-;; C-Ret で矩形選択
-;; 詳しいキーバインド操作：http://dev.ariel-networks.com/articles/emacs/part5/
-(cua-mode t)
-(setq cua-enable-cua-keys nil)
-(global-set-key (kbd "C-x C-@") 'cua-set-rectangle-mark)
 
 ;; ファイルを管理者権限で開く
 (defun th-rename-tramp-buffer ()
@@ -679,24 +686,13 @@ file is a remote file (include directory)."
     (t (load-file "~/.emacs.d/init.el")))
   )
 
-;; トグルする設定
-;; (defun switch-to-previous-buffer ()
-;;       (interactive)
-;;       (let ((num 0))
-;;         (while (not (equal (nth num (buffer-list)) (other-buffer (current-buffer) 1)))
-;;           (incf num)
-;;           )
-;;         (cond ((equal eshell-buffer-name (buffer-name (nth num (buffer-list))))
-;;                (switch-to-buffer (nth (+ num 1) (buffer-list))))
-;;               (t
-;;                (switch-to-buffer (other-buffer (current-buffer) 1)))
-;;               ))
-;;       )
+;; 一つ前のバッファへトグル
 (defun switch-to-previous-buffer ()
   (interactive)
   (switch-to-buffer (other-buffer (current-buffer) 1)))
 (global-set-key (kbd "C-z") 'switch-to-previous-buffer)
 
+;; git関係便利関数
 (defun chomp (str)
   (replace-regexp-in-string "[\n\r]+$" "" str))
 
@@ -713,6 +709,7 @@ file is a remote file (include directory)."
         (t
          "")))
 
+;; grep
 (defun my-ag (arg &optional topdir)
   (interactive "sgrep find: ")
   (let ((command))
@@ -737,25 +734,15 @@ file is a remote file (include directory)."
 ;; パッケージ関係
 ;;----------------------------------------------------------------------------------------------------
 
-;;
-;; split-root.el
+;; popwin.el
 ;;----------------------------------------------------------------------------------------------------
- (require 'split-root)
- (defvar split-root-window-height nil)
- (defun display-buffer-function--split-root (buf &optional ignore)
-   (let ((window (split-root-window split-root-window-height)))
-     (set-window-buffer window buf)
-     window))
-
- ;; popwin.el
- ;;----------------------------------------------------------------------------------------------------
- (when (require 'popwin nil t)
-   (setq display-buffer-function 'popwin:display-buffer)
-   (setq anything-samewindow nil)
-   (setq popwin:special-display-config '(
-                                         ("^\*anything.*\*$" :regexp t :height 0.5)
-                                         ("*grep*" :height 0.5)
-                                         (direx:direx-mode :position left :width 40 :dedicated t)
+(when (require 'popwin nil t)
+  (setq display-buffer-function 'popwin:display-buffer)
+  (setq anything-samewindow nil)
+  (setq popwin:special-display-config '(
+                                        ("^\*anything.*\*$" :regexp t :height 0.5)
+                                        ("*grep*" :height 0.5)
+                                        (direx:direx-mode :position left :width 40 :dedicated t)
                                         ))
   )
 
@@ -833,11 +820,6 @@ file is a remote file (include directory)."
   (add-to-list 'auto-mode-alist '("Cakefile" . coffee-mode))
   )
 
-;; w3m.el
-;;----------------------------------------------------------------------------------------------------
-(setq w3m-use-cookies t)
-(setq w3m-favicon-cache-expire-wait nil)
-
 ;;
 ;; js2-mode
 ;;----------------------------------------------------------------------------------------------------
@@ -862,7 +844,48 @@ file is a remote file (include directory)."
 ;; multi-term.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'multi-term nil t)
+  (setenv "TERMINFO" "~/.terminfo")
+  (setq multi-term-program "/bin/zsh")
+  (add-to-list 'term-unbind-key-list '"M-x")
+  (add-to-list 'term-unbind-key-list '"C-t")
+  (defun switch-to-multi-term ()
+    (interactive)
+    (let ((buffer (get-buffer "*terminal<1>*")))
+      (cond ((equal buffer (current-buffer))
+             (switch-to-buffer (other-buffer (current-buffer) 1)))
+            (buffer
+             (switch-to-buffer buffer))
+            (t
+             (multi-term))))
+    )
+  (defun term-send-forward-char ()
+    (interactive)
+    (term-send-raw-string "\C-f"))
 
+  (defun term-send-backward-char ()
+    (interactive)
+    (term-send-raw-string "\C-b"))
+
+  (defun term-send-previous-line ()
+    (interactive)
+    (term-send-raw-string "\C-p"))
+
+  (defun term-send-next-line ()
+    (interactive)
+    (term-send-raw-string "\C-n"))
+  (add-hook 'term-mode-hook
+            '(lambda ()
+               (define-key term-raw-map (kbd "C-f") 'term-send-forward-char)
+               (define-key term-raw-map (kbd "C-b") 'term-send-backward-char)
+               (define-key term-raw-map (kbd "C-p") 'term-send-previous-line)
+               (define-key term-raw-map (kbd "C-n") 'term-send-next-line)
+               (define-key term-raw-map (kbd "C-y") 'term-paste)
+               (define-key term-raw-map (kbd "M-d") 'term-send-forward-kill-word)
+               (define-key term-raw-map (kbd "M-<backspace>") 'term-send-backward-kill-word)
+               (define-key term-raw-map (kbd "M-DEL") 'term-send-backward-kill-word)
+               (define-key term-raw-map (kbd "C-t") 'switch-to-multi-term)
+               ))
+  (global-set-key (kbd "C-t") 'switch-to-multi-term)
   )
 
 ;;
@@ -871,15 +894,14 @@ file is a remote file (include directory)."
 (when (require 'typescript nil t)
   (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
   (require 'tss)
-  (add-hook 'kill-buffer-hook 'tss--delete-process t)
-  (tss-config-default)
   ;; (tss-config-default)から抜粋したtss設定
-  ;; (loop for mode in tss-enable-modes
-  ;;       for hook = (intern-soft (concat (symbol-name mode) "-hook"))
-  ;;       do (add-to-list 'ac-modes mode)
-  ;;       if (and hook
-  ;;               (symbolp hook))
-  ;;       do (add-hook hook 'tss-setup-current-buffer t))
+  (loop for mode in tss-enable-modes
+        for hook = (intern-soft (concat (symbol-name mode) "-hook"))
+        do (add-to-list 'ac-modes mode)
+        if (and hook
+                (symbolp hook))
+        do (add-hook hook 'tss-setup-current-buffer t))
+  (add-hook 'kill-buffer-hook 'tss--delete-process t)
   )
 ;; 識別子の正規表現
 (defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
@@ -998,14 +1020,6 @@ file is a remote file (include directory)."
 (add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
 
 ;;
-;; dash-at-point.el
-;;-----------------------------------------------------------------------------------------------------
-(autoload 'dash-at-point "dash-at-point"
-          "Search the word at point with Dash." t nil)
-(global-set-key (kbd "C-c f") 'dash-at-point)
-(global-set-key (kbd "C-c C-f") 'dash-at-point-with-docset)
-
-;;
 ;; auto-complete.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'auto-complete nil t)
@@ -1122,7 +1136,6 @@ file is a remote file (include directory)."
 
   ;; anything-git-grep
   (require 'anything-git-grep)
-  (require 'anything-match-plugin)
 )
 
 ;;
@@ -1294,77 +1307,6 @@ file is a remote file (include directory)."
  '(web-mode-css-at-rule-face
    ((t (:foreground "#FF7F00"))))                          ; cssのタグ
  )
-
-
-;; flymake (Emacs22から標準添付されている)
-(when (require 'flymake nil t)
-  (global-set-key (kbd "C-c e") 'flymake-display-err-menu-for-current-line)
-  ;; PHP用設定
-  (when (not (fboundp 'flymake-php-init))
-    ;; flymake-php-initが未定義のバージョンだったら、自分で定義する
-    (defun flymake-php-init ()
-      (let* ((temp-file   (flymake-init-create-temp-buffer-copy
-                           'flymake-create-temp-inplace))
-             (local-file  (file-relative-name
-                           temp-file
-                           (file-name-directory buffer-file-name))))
-        (list "php" (list "-f" local-file "-l"))))
-    (setq flymake-allowed-file-name-masks
-          (append
-           flymake-allowed-file-name-masks
-           '(("\\.php[345]?$" flymake-php-init))))
-    (setq flymake-err-line-patterns
-          (cons
-           '("\\(\\(?:Parse error\\|Fatal error\\|Warning\\): .*\\) in \\(.*\\) on line \\([0-9]+\\)" 2 3 nil 1)
-           flymake-err-line-patterns)))
-  ;; JavaScript用設定
-  (when (not (fboundp 'flymake-javascript-init))
-    ;; flymake-javascript-initが未定義のバージョンだったら、自分で定義する
-    (defun flymake-javascript-init ()
-      (let* ((temp-file (flymake-init-create-temp-buffer-copy
-                         'flymake-create-temp-inplace))
-             (local-file (file-relative-name
-                          temp-file
-                          (file-name-directory buffer-file-name))))
-        ;;(list "js" (list "-s" local-file))
-        (list "jsl" (list "-process" local-file))
-        ))
-    (setq flymake-allowed-file-name-masks
-          (append
-           flymake-allowed-file-name-masks
-           '(("\\.json$" flymake-javascript-init)
-             ("\\.js$" flymake-javascript-init))))
-    (setq flymake-err-line-patterns
-          (cons
-           '("\\(.+\\)(\\([0-9]+\\)): \\(?:lint \\)?\\(\\(?:warning\\|SyntaxError\\):.+\\)" 1 2 nil 3)
-           flymake-err-line-patterns)))
-  (add-hook 'php-mode-hook
-            '(lambda() (flymake-mode t)))
-  (add-hook 'javascript-mode-hook
-            '(lambda() (flymake-mode t))))
-
-;; popup.el を使って tip として表示
-(defun flymake-display-err-menu-for-current-line ()
-  "Display a menu with errors/warnings for current line if it has errors and/or warnings."
-  (interactive)
-  (let* ((line-no             (flymake-current-line-no))
-         (line-err-info-list  (nth 0 (flymake-find-err-info flymake-err-info line-no))))
-    (when line-err-info-list
-      (let* ((count           (length line-err-info-list))
-             (menu-item-text  nil))
-        (while (> count 0)
-          (setq menu-item-text (flymake-ler-text (nth (1- count) line-err-info-list)))
-          (let* ((file       (flymake-ler-file (nth (1- count) line-err-info-list)))
-                 (line       (flymake-ler-line (nth (1- count) line-err-info-list))))
-            (if file
-                (setq menu-item-text (concat menu-item-text " - " file "(" (format "%d" line) ")"))))
-          (setq count (1- count))
-          (if (> count 0) (setq menu-item-text (concat menu-item-text "\n")))
-          )
-        (popup-tip menu-item-text)))))
-;; (defadvice flymake-mode (before post-command-stuff activate compile)
-;;   (set (make-local-variable 'post-command-hook)
-;;     (add-hook 'post-command-hook 'flymake-display-err-menu-for-current-line)))
 
 ;;
 ;; yasnippet.el

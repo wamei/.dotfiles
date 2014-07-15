@@ -54,6 +54,8 @@ alias ec='emacsclient'
 alias en='emacsclient -nw'
 alias screen='screen -U'
 
+[[ $TERM = "eterm-color" ]] && TERM=xterm-color
+
 # emacs 風キーバインドにする
 bindkey -e
 
@@ -157,8 +159,8 @@ precmd () {
     [[ -n "$untracked" ]] && psvar[2]="$untracked"
 }
 # prompt表示設定
-PROMPT="%{%B%F{white}%(?..%K{red}            status code -%?-            
-)%}%{%k%f%b%}%K{white}%F{black} %D{%Y/%m/%d %H:%M} %k%f %F{magenta}%~%f%F{green}%1(v|%1v%2v]|)%f
+PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            
+)%{%k%f%b%}%K{white}%F{black} %D{%Y/%m/%d %H:%M} %k%f %F{magenta}%~%f%F{green}%1(v|%1v%2v]|)%f
 %n@%m $ "
 
 PROMPT2='[%n]> '
@@ -167,17 +169,17 @@ PROMPT2='[%n]> '
 if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi
 
 # tmux起動
-if [ -z "$TMUX" -a -z "$STY" ]; then
-    if type tmuxx >/dev/null 2>&1; then
-        tmuxx
-    elif type tmux >/dev/null 2>&1; then
-        if tmux has-session && tmux list-sessions | grep -qE '.*]$'; then
-            tmux attach && echo "tmux attached session "
-        else
-            tmux new-session && echo "tmux created new session"
-        fi
-    fi
-fi
+# if [ -z "$TMUX" -a -z "$STY" ]; then
+#     if type tmuxx >/dev/null 2>&1; then
+#         tmuxx
+#     elif type tmux >/dev/null 2>&1; then
+#         if tmux has-session && tmux list-sessions | grep -qE '.*]$'; then
+#             tmux attach && echo "tmux attached session "
+#         else
+#             tmux new-session && echo "tmux created new session"
+#         fi
+#     fi
+# fi
 
 # cd ls
 function chpwd() { ls }

@@ -8,3 +8,4 @@ ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
 ln -sf ~/.dotfiles/.screenrc ~/.screenrc
 ln -sfn ~/.dotfiles/.emacs.d/ ~/.emacs.d
 ln -sfn ~/.dotfiles/.eshell/ ~/.eshell
+ln -sfn ~/.dotfiles/.terminfo/ ~/.terminfo

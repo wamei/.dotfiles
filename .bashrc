@@ -10,3 +10,5 @@ elif [ `uname` = "Linux" ]; then
 fi
 alias ec='emacsclient'
 alias screen='screen -U'
+
+if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi

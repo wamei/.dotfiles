@@ -1,12 +1,11 @@
 ;;; tss-autoloads.el --- automatically extracted autoloads
 ;;
 ;;; Code:
-
+(add-to-list 'load-path (or (file-name-directory #$) (car load-path)))
 
-;;;### (autoloads (tss-config-default tss-setup-current-buffer tss-restart-current-buffer
-;;;;;;  tss-reload-current-project tss-run-flymake tss-jump-to-definition
-;;;;;;  tss-popup-help) "tss" "tss.el" (21388 2829 0 0))
-;;; Generated autoloads from tss.el
+;;;### (autoloads nil "tss" "../../../../.emacs.d/elpa/tss-20140421.903/tss.el"
+;;;;;;  "d39b021d97c20acadb23e8b344bac78b")
+;;; Generated autoloads from ../../../../.emacs.d/elpa/tss-20140421.903/tss.el
 
 (autoload 'tss-popup-help "tss" "\
 Popup help about anything at point.
@@ -45,9 +44,9 @@ Do setting recommemded configuration.
 
 ;;;***
 
-;;;### (autoloads (typescript-mode) "typescript" "typescript.el"
-;;;;;;  (21388 2829 0 0))
-;;; Generated autoloads from typescript.el
+;;;### (autoloads nil "typescript" "../../../../.emacs.d/elpa/tss-20140421.903/typescript.el"
+;;;;;;  "1f5e24f513cdda43eae13d1046b52297")
+;;; Generated autoloads from ../../../../.emacs.d/elpa/tss-20140421.903/typescript.el
 
 (autoload 'typescript-mode "typescript" "\
 Major mode for editing typescript.
@@ -62,15 +61,16 @@ Key bindings:
 
 ;;;***
 
-;;;### (autoloads nil nil ("tss-pkg.el") (21388 2829 751779 0))
+;;;### (autoloads nil nil ("../../../../.emacs.d/elpa/tss-20140421.903/tss-autoloads.el"
+;;;;;;  "../../../../.emacs.d/elpa/tss-20140421.903/tss-pkg.el" "../../../../.emacs.d/elpa/tss-20140421.903/tss.el"
+;;;;;;  "../../../../.emacs.d/elpa/tss-20140421.903/typescript.el")
+;;;;;;  (21443 42557 732207 0))
 
 ;;;***
 
-(provide 'tss-autoloads)
 ;; Local Variables:
 ;; version-control: never
 ;; no-byte-compile: t
 ;; no-update-autoloads: t
-;; coding: utf-8
 ;; End:
 ;;; tss-autoloads.el ends here
