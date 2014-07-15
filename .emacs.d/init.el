@@ -893,6 +893,7 @@ file is a remote file (include directory)."
                (define-key term-raw-map (kbd "M-d") 'term-send-forward-kill-word)
                (define-key term-raw-map (kbd "M-<backspace>") 'term-send-backward-kill-word)
                (define-key term-raw-map (kbd "M-DEL") 'term-send-backward-kill-word)
+               (define-key term-raw-map (kbd "M-h") 'term-send-backward-kill-word)
                (define-key term-raw-map (kbd "C-t") 'switch-to-multi-term)
                (define-key term-raw-map (kbd "TAB") 'term-send-tab)
                ))
