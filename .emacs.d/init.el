@@ -805,6 +805,10 @@ file is a remote file (include directory)."
   (define-key dired-mode-map (kbd "^")   (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
+  ;; lsの設定
+  (require 'ls-lisp)
+  (setq ls-lisp-use-insert-directory-program nil)
+  (setq ls-lisp-dirs-first t)
   )
 
 ;; magit.el
