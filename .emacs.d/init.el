@@ -38,42 +38,36 @@
 ;;
 ;; キーバインド
 ;;______________________________________________________________________
-(global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
-(global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
 (define-key key-translation-map [?\C-h] [?\C-?])
-(global-set-key (kbd "M-h")     'backward-kill-word)
-(global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "C-r")     'replace-string)
-(global-set-key (kbd "C-M-r")   'foreign-regexp/query-replace)
-(global-set-key (kbd "M-;")     'comment-or-uncomment-region)
-
+(global-set-key (kbd "C-t")     'switch-to-multi-term)
+(global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
+
+(global-set-key (kbd "M-g")     'goto-line)
+(global-set-key (kbd "M-h")     'backward-kill-word)
+(global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
+(global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
+(global-set-key (kbd "M-x")     'anything-M-x)
+(global-set-key (kbd "M-y")     'anything-show-kill-ring)
+(global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
-(global-set-key (kbd "C-x C-b") 'anything-filelist+)
-(global-set-key (kbd "C-x c f") 'anything-filelist+)
-(global-set-key (kbd "M-y")     'anything-show-kill-ring)
-(global-set-key (kbd "M-x")     'anything-M-x)
 (global-set-key (kbd "C-x b")   'ah:menu-command)
+(global-set-key (kbd "C-x e")   'resize)
+(global-set-key (kbd "C-x g")   'magit-status)
+(global-set-key (kbd "C-x p")   'popup-grep-buffer)
+(global-set-key (kbd "C-x , ,") 'howm-menu)
 
-(global-set-key (kbd "\C-x,,")  'howm-menu)
-
-(global-set-key (kbd "C-x e")   'my-toggle-term)
-(global-set-key (kbd "C-t")     'switch-to-multi-term)
-
+(global-set-key (kbd "C-x C-b") 'anything-filelist+)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
-(global-set-key (kbd "C-x g")   'popup-grep-buffer)
 
-(global-set-key (kbd "C-z")     'switch-to-previous-buffer)
-
-
-;; フォーカス移動
-(global-set-key (kbd "C-M-p") 'windmove-up)
-(global-set-key (kbd "C-M-n") 'windmove-down)
-(global-set-key (kbd "C-M-f") 'windmove-right)
-(global-set-key (kbd "C-M-b") 'windmove-left)
-(global-set-key (kbd "C-c r") 'resize)
+(global-set-key (kbd "C-M-b")   'windmove-left)
+(global-set-key (kbd "C-M-f")   'windmove-right)
+(global-set-key (kbd "C-M-n")   'windmove-down)
+(global-set-key (kbd "C-M-p")   'windmove-up)
+(global-set-key (kbd "C-M-r")   'foreign-regexp/query-replace)
 
 ;; トラックパッド用のスクロール設定
 (if window-system
