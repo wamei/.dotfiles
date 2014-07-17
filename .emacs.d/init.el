@@ -1048,11 +1048,11 @@ file is a remote file (include directory)."
 
   ;; キーバインド
   (setq ac-use-menu-map t)
-  (define-key ac-menu-map (kbd "C-n") 'ac-next)
-  (define-key ac-menu-map (kbd "C-p") 'ac-previous)
-  (define-key ac-menu-map (kbd "TAB") 'ac-next)
+  (define-key ac-menu-map (kbd "C-n")   'ac-next)
+  (define-key ac-menu-map (kbd "C-p")   'ac-previous)
+  (define-key ac-menu-map (kbd "TAB")   'ac-next)
   (define-key ac-menu-map (kbd "S-TAB") 'ac-previous)
-  (define-key ac-mode-map (kbd "M-/") 'auto-complete)
+  (define-key ac-mode-map (kbd "M-/")   'auto-complete)
   (ac-set-trigger-key "TAB")
   ;; 自動的に補完開始
   (setq ac-auto-start t)
@@ -1066,13 +1066,6 @@ file is a remote file (include directory)."
   ;;(setq ac-dwim t)
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
-  ;; ファイル名情報
-  (defvar ac-sources '(
-                       ac-source-filename
-                       ac-source-yasnippet
-                       ac-source-abbrev
-                       ac-source-words-in-same-mode-buffers
-                       ac-source-dictionary))
   ;; 起動モード
   (global-auto-complete-mode t)
   (add-to-list 'ac-modes 'text-mode)
@@ -1083,12 +1076,25 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'php-mode)
   (add-to-list 'ac-modes 'org-mode)
 
-  ;; lisp編集情報源
+  ;; 情報源
+  (defvar my-ac-sources
+    '(ac-source-filename
+      ac-source-yasnippet
+      ac-source-abbrev
+      ac-source-dictionary
+      ac-source-words-in-same-mode-buffers))
+
+  ;; lisp-mode
   (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
+
+  ;; web-mode
+  (defun ac-web-mode-setup ()
+    (setq-default ac-sources my-ac-sources))
+  (add-hook 'web-mode-hook 'ac-web-mode-setup)
 
   ;; css-mode
   (defun ac-css-mode-setup ()
-    (setq-default ac-sources (append '(ac-source-css-property) ac-sources)))
+    (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
   ;; php-mode
@@ -1096,42 +1102,13 @@ file is a remote file (include directory)."
   (require 'php-completion)
   (defun ac-php-mode-setup ()
     (php-completion-mode t)
-    (setq-default ac-sources (append '(ac-source-php-completion) ac-sources)))
+    (setq-default ac-sources (append '(ac-source-php-completion) my-ac-sources)))
   (add-hook 'php-mode-hook 'ac-php-mode-setup)
 
   ;; (when (require 'auto-complete-latex nil t)
   ;;    (setq ac-l-dict-directory "~/.emacs.d/elisp/auto-complete/ac-l-dict/")
   ;;    (add-to-list 'ac-modes 'latex-mode)
   ;;    (add-hook 'LaTeX-mode-hook 'ac-l-setup))
-
-  ;; lookで英単語補完
-  (when (executable-find "look")
-    (defun my-ac-look ()
-      "look コマンドの出力をリストで返す"
-      (interactive)
-      (unless (executable-find "look")
-        (error "look コマンドがありません"))
-      (let ((search-word (thing-at-point 'word)))
-        (with-temp-buffer
-          (call-process-shell-command "look" nil t 0 search-word)
-          (split-string-and-unquote (buffer-string) "\n"))))
-
-    (defun ac-complete-look ()
-      (interactive)
-      (let ((ac-menu-height 50)
-            (ac-candidate-limit t))
-        (auto-complete '(ac-source-look))))
-
-    (defvar ac-source-look
-      '((candidates . my-ac-look)
-        (requires . 2)))  ;; 2文字以上ある場合にのみ対応させる
-
-    (global-set-key (kbd "C-c l") 'ac-complete-look))
-
-  ;; yasnippetのbindingを指定するとエラーが出るので回避する方法。
-  (setf (symbol-function 'yas-active-keys)
-        (lambda ()
-          (remove-duplicates (mapcan #'yas--table-all-keys (yas--get-snippet-tables)))))
 )
 
 ;;
@@ -1362,7 +1339,6 @@ file is a remote file (include directory)."
 # key: ${2:${1:$(yas--key-from-desc yas-text)}}
 # --
 $0"))
-
   )
 
 ;;
