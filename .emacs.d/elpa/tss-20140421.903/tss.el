@@ -387,7 +387,7 @@
 
 (defvar ac-source-tss-member
   '((candidates . tss--get-ac-member-candidates)
-    (prefix . "\\.\\([a-zA-Z0-9_]*\\)")
+    (prefix . "\\.\\([a-zA-Z0-9_$]*\\)")
     (symbol . "m")
     (document . tss--get-ac-document)
     (requires . 0)
@@ -395,7 +395,7 @@
 
 (defvar ac-source-tss-type
   '((candidates . tss--get-ac-non-member-candidates)
-    (prefix . ": *\\([a-zA-Z0-9_]*\\)")
+    (prefix . ": *\\([a-zA-Z0-9_$]*\\)")
     (symbol . "t")
     (document . tss--get-ac-document)
     (requires . 0)
@@ -403,7 +403,7 @@
 
 (defvar ac-source-tss-new
   '((candidates . tss--get-ac-non-member-candidates)
-    (prefix . "new +\\([a-zA-Z0-9_]*\\)")
+    (prefix . "new +\\([a-zA-Z0-9_$]*\\)")
     (symbol . "c")
     (document . tss--get-ac-document)
     (requires . 0)
@@ -411,7 +411,7 @@
 
 (defvar ac-source-tss-anything
   '((candidates . tss--get-ac-non-member-candidates)
-    (prefix . "\\(?:^\\|[^a-zA-Z0-9_.]\\) *\\([a-zA-Z0-9_]+\\)")
+    (prefix . "\\(?:^\\|[^a-zA-Z0-9_$.]\\) *\\([a-zA-Z0-9_$]+\\)")
     (symbol . "a")
     (document . tss--get-ac-document)
     (requires . 1)
@@ -419,7 +419,7 @@
 
 (defvar ac-source-tss-keyword
   '((candidates . tss--get-ac-keyword-candidates)
-    (prefix . "\\(?:^\\|[^a-zA-Z0-9_.]\\) *\\([a-zA-Z0-9_]+\\)")
+    (prefix . "\\(?:^\\|[^a-zA-Z0-9_$.]\\) *\\([a-zA-Z0-9_$]+\\)")
     (symbol . "w")
     (document . tss--get-ac-document)
     (requires . 1)
@@ -505,7 +505,7 @@
       (let* ((currpt (point))
              (code (buffer-substring-no-properties currpt tss--last-ac-start-point)))
         (if (and (> currpt tss--last-ac-start-point)
-                 (string-match "\\`[a-zA-Z0-9_]+\\'" code))
+                 (string-match "\\`[a-zA-Z0-9_$]+\\'" code))
             (progn (tss--trace "Use last ac candidates. code[%s]" code)
                    tss--last-ac-candidates)
           (tss--trace "Start get ac candidates. code[%s]" code)
