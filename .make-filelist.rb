@@ -2,7 +2,7 @@ $EXCLUDE_PATH = %w[
 . .. backup backup1 backup2 backup-system lost+found tmp temp rubikitch.lost
 .cache w3mtmp proxy-cache trash proc RCS.old
 autom4te.cache blib _build .bzr .cdv cover_db CVS _darcs ~.dep ~.dot .git .hg ~.nib .pc ~.plst RCS SCCS _sgbak .svn
-Library Applications .Trash .trash build .berkshelf
+Library Applications .Trash .trash build .berkshelf .npm .nvm .gem .node-gyp
 ]
 
 # Exclude regexps (backup files, core files, and so on)

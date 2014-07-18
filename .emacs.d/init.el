@@ -69,6 +69,10 @@
 (global-set-key (kbd "C-M-p")   'windmove-up)
 (global-set-key (kbd "C-M-r")   'foreign-regexp/query-replace)
 
+(add-hook 'dired-mode-hook
+          (lambda ()
+            (define-key dired-mode-map (kbd "C-t") 'switch-to-multi-term)))
+
 ;; トラックパッド用のスクロール設定
 (if window-system
     (progn
