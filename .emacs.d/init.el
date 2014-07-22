@@ -67,6 +67,7 @@
 (global-set-key (kbd "C-M-f")   'windmove-right)
 (global-set-key (kbd "C-M-n")   'windmove-down)
 (global-set-key (kbd "C-M-p")   'windmove-up)
+(global-set-key (kbd "C-M-r")   'replace-regexp)
 
 (add-hook 'dired-mode-hook
           (lambda ()
