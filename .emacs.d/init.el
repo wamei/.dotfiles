@@ -1089,12 +1089,9 @@ file is a remote file (include directory)."
       ac-source-words-in-same-mode-buffers))
 
   ;; lisp-mode
-  (add-hook 'emacs-lisp-mode-hook (lambda () (add-to-list 'ac-sources 'ac-source-symbols)))
-
-  ;; web-mode
-  (defun ac-web-mode-setup ()
-    (setq-default ac-sources my-ac-sources))
-  (add-hook 'web-mode-hook 'ac-web-mode-setup)
+  (defun ac-lisp-mode-setup ()
+    (setq-default ac-sources (append '(ac-source-symbols) my-ac-sources)))
+  (add-hook 'emacs-lisp-mode-hook 'ac-lisp-mode-setup)
 
   ;; css-mode
   (defun ac-css-mode-setup ()
