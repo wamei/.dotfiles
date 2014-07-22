@@ -115,6 +115,7 @@
 (require 'pos-tip nil t)
 (require 'log4e)
 (require 'yaxception)
+(require 'yasnippet)
 
 
 (defgroup tss nil
@@ -137,7 +138,7 @@
   :type '(repeat symbol)
   :group 'tss)
 
-(defcustom tss-ac-trigger-command-keys '("SPC" "." ":")
+(defcustom tss-ac-trigger-command-keys '("SPC" "." ":" "$")
   "Keystrokes for doing `ac-start' with self insert."
   :type '(repeat string)
   :group 'tss)
@@ -350,7 +351,7 @@
           (local-set-key (read-kbd-macro tss-jump-to-definition-key) 'tss-jump-to-definition))
         ;; For auto-complete
         (setq ac-sources '(ac-source-filename
-                           ac-source-yasnippet
+                           ac-source-tss-yasnippet
                            ac-source-tss-member
                            ac-source-tss-type
                            ac-source-tss-new
@@ -415,6 +416,15 @@
     (symbol . "a")
     (document . tss--get-ac-document)
     (requires . 1)
+    (cache)))
+
+(defvar ac-source-tss-yasnippet
+  '((candidates . ac-yasnippet-candidates)
+    (prefix . "\\(?:^\\|[^a-zA-Z0-9_$.]\\) *\\([a-zA-Z0-9_$]+\\)")
+    (symbol . "y")
+    (action . yas/expand)
+    (candidate-face . ac-yasnippet-candidate-face)
+    (selection-face . ac-yasnippet-selection-face)
     (cache)))
 
 (defvar ac-source-tss-keyword
