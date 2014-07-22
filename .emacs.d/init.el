@@ -738,6 +738,22 @@ file is a remote file (include directory)."
     )
   )
 
+;; re-builder
+(defun my-reb-copy ()
+  "Copy current RE into the kill ring for later insertion."
+  (interactive)
+  (reb-update-regexp)
+  (if(eq reb-re-syntax 'string)
+      (kill-new (reb-target-binding reb-regexp))
+    (let ((re (with-output-to-string
+                (print (reb-target-binding reb-regexp)))))
+      (kill-new (substring re 1 (1- (length re))))))
+  (message "Regexp copied to kill-ring"))
+(defun reb-mode-hooks()
+  (local-set-key (kbd "C-c C-w") 'my-reb-copy))
+(add-hook 'reb-mode-hook 'reb-mode-hooks)
+(setq reb-re-syntax 'string)
+
 ;;
 ;; パッケージ関係
 ;;----------------------------------------------------------------------------------------------------
