@@ -23,8 +23,7 @@
 
 ;;; package.el
 (when (require 'package nil t)
-  ;; パッケージリポジトリにMarmaladeを追加
-  (add-to-list 'package-archives '("marmalade" . "http://marmalade-repo.org/packages/"))
+  ;;(add-to-list 'package-archives '("marmalade" . "http://marmalade-repo.org/packages/"))
   (add-to-list 'package-archives '("melpa" . "http://melpa.milkbox.net/packages/"))
   (add-to-list 'package-archives '("ELPA" . "http://tromey.com/elpa/"))
   )
@@ -53,10 +52,13 @@
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
+(global-set-key (kbd "M-s s")   'anything-occur)
+(global-set-key (kbd "M-s g")   'ag)
+(global-set-key (kbd "M-s o")   'occur)
+
 (global-set-key (kbd "C-x b")   'ah:menu-command)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
-(global-set-key (kbd "C-x p")   'popup-grep-buffer)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
 (global-set-key (kbd "C-x C-b") 'anything-filelist+)
@@ -68,10 +70,6 @@
 (global-set-key (kbd "C-M-n")   'windmove-down)
 (global-set-key (kbd "C-M-p")   'windmove-up)
 (global-set-key (kbd "C-M-r")   'replace-regexp)
-
-(add-hook 'dired-mode-hook
-          (lambda ()
-            (define-key dired-mode-map (kbd "C-t") 'switch-to-multi-term)))
 
 ;; トラックパッド用のスクロール設定
 (if window-system
@@ -727,7 +725,7 @@ file is a remote file (include directory)."
     (setq command "ag --nocolor --nogroup --ignore-case --line-numbers ")
     (setq command (concat command arg))
     (grep-find command)))
-(defun popup-grep-buffer ()
+(defun popup-my-ag-buffer ()
   (interactive)
   (let ((buffer (get-buffer "*grep*")))
     (cond ((and current-prefix-arg buffer)
@@ -737,22 +735,6 @@ file is a remote file (include directory)."
            (call-interactively 'my-ag)))
     )
   )
-
-;; re-builder
-(defun my-reb-copy ()
-  "Copy current RE into the kill ring for later insertion."
-  (interactive)
-  (reb-update-regexp)
-  (if(eq reb-re-syntax 'string)
-      (kill-new (reb-target-binding reb-regexp))
-    (let ((re (with-output-to-string
-                (print (reb-target-binding reb-regexp)))))
-      (kill-new (substring re 1 (1- (length re))))))
-  (message "Regexp copied to kill-ring"))
-(defun reb-mode-hooks()
-  (local-set-key (kbd "C-c C-w") 'my-reb-copy))
-(add-hook 'reb-mode-hook 'reb-mode-hooks)
-(setq reb-re-syntax 'string)
 
 ;;
 ;; パッケージ関係
@@ -765,7 +747,9 @@ file is a remote file (include directory)."
   (setq anything-samewindow nil)
   (setq popwin:special-display-config '(
                                         ("^\*anything.*\*$" :regexp t :height 0.5)
-                                        ("*grep*" :height 0.5)
+                                        ("^\*ag.*\*$" :regexp t :height 0.5)
+                                        ("^\*Occur.*\*$" :regexp t :height 0.5)
+                                        ("^\*grep.*\*$" :regexp t :height 0.5)
                                         (direx:direx-mode :position left :width 40 :dedicated t)
                                         ))
   )
@@ -805,8 +789,10 @@ file is a remote file (include directory)."
   ;; diredバッファでC-sした時にファイル名だけにマッチするように
   (setq dired-isearch-filenames t)
   ;; diredバッファでrを押すと編集モード
-  (add-hook 'dired-load-hook (lambda ()
-                               (define-key dired-mode-map "r" 'wdired-change-to-wdired-mode)))
+  (add-hook 'dired-mode-hook (lambda ()
+                               (define-key dired-mode-map (kbd "e")   'wdired-change-to-wdired-mode)
+                               (define-key dired-mode-map (kbd "C-t") 'switch-to-multi-term)
+                               ))
   ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
   (defun dired-open-in-accordance-with-situation ()
     (interactive)
@@ -829,6 +815,32 @@ file is a remote file (include directory)."
   (require 'ls-lisp)
   (setq ls-lisp-use-insert-directory-program nil)
   (setq ls-lisp-dirs-first t)
+  )
+
+;;
+;; ag.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'ag nil t)
+  (custom-set-variables
+   '(ag-highlight-search t)  ; 検索結果の中の検索語をハイライトする
+   '(ag-reuse-window 'nil)   ; 現在のウィンドウを検索結果表示に使う
+   '(ag-reuse-buffers 'nil)) ; 検索用バッファを使いまわす
+  )
+
+;;
+;; wgrep.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'wgrep nil t)
+  (setq wgrep-auto-save-buffer t)
+  (autoload 'wgrep-setup "wgrep")
+  (add-hook 'grep-mode-hook 'wgrep-setup)
+  (define-key grep-mode-map (kbd "e") 'wgrep-change-to-wgrep-mode)
+  )
+(when (require 'wgrep-ag nil t)
+  (setq wgrep-auto-save-buffer t)
+  (autoload 'wgrep-ag-setup "wgrep-ag")
+  (add-hook 'ag-mode-hook 'wgrep-ag-setup)
+  (define-key ag-mode-map (kbd "e") 'wgrep-change-to-wgrep-mode)
   )
 
 ;; magit.el
@@ -1258,24 +1270,30 @@ file is a remote file (include directory)."
          (setq truncate-lines nil))))
 
 ;;
-;; web-mode
+;; php-mode
 ;;----------------------------------------------------------------------------------------------------
+(require 'php-mode)
 (setq auto-mode-alist
       (append '(
-                ("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)
                 ("\\.php\\'" . php-mode)
                 )
               auto-mode-alist))
-;; php-mode
-(require 'php-mode)
-(defun php-mode-hook ()
+(defun my-php-mode-hook ()
   (lambda ()
     (setq php-mode-force-pear t)
 ))
-(add-hook 'php-mode-hook 'php-mode-hook)
+(add-hook 'php-mode-hook 'my-php-mode-hook)
+
+;;
 ;; web-mode
+;;----------------------------------------------------------------------------------------------------
 (require 'web-mode)
-(defun web-mode-hook ()
+(setq auto-mode-alist
+      (append '(
+                ("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)
+                )
+              auto-mode-alist))
+(defun my-web-mode-hook ()
   (setq web-mode-markup-indent-offset 2)
   (setq web-mode-css-indent-offset    2)
   (setq web-mode-code-indent-offset   4)
@@ -1284,7 +1302,7 @@ file is a remote file (include directory)."
   (setq web-mode-block-padding  0)
   (setq web-mode-enable-auto-pairing nil)
   )
-(add-hook 'web-mode-hook 'web-mode-hook)
+(add-hook 'web-mode-hook 'my-web-mode-hook)
 ;; 色の設定
 (custom-set-faces
  '(web-mode-doctype-face
