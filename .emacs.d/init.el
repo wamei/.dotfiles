@@ -56,6 +56,7 @@
 (global-set-key (kbd "M-s g")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
+(global-set-key (kbd "C-x C")   'see-you-again)
 (global-set-key (kbd "C-x b")   'ah:menu-command)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
@@ -841,6 +842,14 @@ file is a remote file (include directory)."
   (autoload 'wgrep-ag-setup "wgrep-ag")
   (add-hook 'ag-mode-hook 'wgrep-ag-setup)
   (define-key ag-mode-map (kbd "e") 'wgrep-change-to-wgrep-mode)
+  )
+
+;;
+;; windows.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'windows nil t)
+  (setq win:use-frame nil)
+  (win:startup-with-window)
   )
 
 ;; magit.el
