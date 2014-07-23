@@ -39,19 +39,21 @@ case ${OSTYPE} in
         # Mac用の設定
         # export CLICOLOR=1
         alias ls='ls -aG'
-        alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs -nw'
+        alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs'
         alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
-        export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -nw"
+        export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient"
         ;;
     linux*)
         #Linux用の設定
         alias ls='ls -a --color=auto'
-        export EDITOR="emacsclient -nw"
+        export EDITOR="emacsclient"
         ;;
 esac
 
+alias e='emacs'
+alias en='emacs -nw'
 alias ec='emacsclient'
-alias en='emacsclient -nw'
+alias ecn='emacsclient -nw'
 alias screen='screen -U'
 
 [[ $TERM = "eterm-color" ]] && TERM=xterm-color
