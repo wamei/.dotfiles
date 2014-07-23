@@ -1,14 +1,42 @@
+# 環境変数
 export TZ=Asia/Tokyo
 export LANG=en_US.UTF-8
 
+# alias
+alias ls='ls -a'
+alias la='ls -a'
+alias ll='ls -al'
+alias -g ...='../..'
+alias -g ....='../../..'
+alias -g .....='../../../..'
+alias -g ......='../../../../..'
+alias -g .......='../../../../../..'
+alias -g ........='../../../../../../..'
+alias -g .........='../../../../../../../..'
+
+# git関係alias
+alias g='git'
+alias gst='git status'
+alias glo='git mylog'
+alias ggr='git graph'
+alias gdi='git diff'
+alias gbr='git branch'
+alias gco='git checkout'
+
 if [ `uname` = "Darwin" ]; then
-    alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs -nw'
-    alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
     alias ls='ls -aG'
+    alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs'
+    alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
+    export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient"
 elif [ `uname` = "Linux" ]; then
     alias ls='ls -a --color=auto'
+    export EDITOR="emacsclient"
 fi
+
+alias e='emacs'
+alias en='emacs -nw'
 alias ec='emacsclient'
+alias ecn='emacsclient -nw'
 alias screen='screen -U'
 
 if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi
