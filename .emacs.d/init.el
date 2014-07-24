@@ -53,7 +53,8 @@
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
 (global-set-key (kbd "M-s s")   'helm-occur)
-(global-set-key (kbd "M-s g")   'ag)
+(global-set-key (kbd "M-s g")   'helm-git-grep)
+(global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
 (global-set-key (kbd "C-x C")   'see-you-again)
@@ -205,6 +206,8 @@
    `(button ((,class (:underline t))))
    `(link ((,class (:foreground "#59e9ff" :underline t))))
    `(link-visited ((,class (:foreground "#ed74cd" :underline t))))
+   ;; Helm faces
+   `(helm-selection ((,class (:background "#035f56"))))
    ;; Gnus faces
    `(gnus-group-news-1 ((,class (:foreground "#ff4242" :weight bold))))
    `(gnus-group-news-1-low ((,class (:foreground "#ff4242"))))
@@ -746,8 +749,12 @@ file is a remote file (include directory)."
 (when (require 'popwin nil t)
   (setq display-buffer-function 'popwin:display-buffer)
   (setq helm-samewindow nil)
+  (defun my/popwin-helm-p (buffer)
+    (let ((name (buffer-name buffer)))
+      (unless (string= name "*helm-mode-execute-extended-command*")
+        (string-match-p "^\*helm.*\*$" buffer))))
   (setq popwin:special-display-config '(
-                                        ("^\*helm.*\*$" :regexp t :height 0.5)
+                                        (my/popwin-helm-p :height 0.5)
                                         ("^\*ag.*\*$" :regexp t :height 0.5)
                                         ("^\*Occur.*\*$" :regexp t :height 0.5)
                                         ("^\*grep.*\*$" :regexp t :height 0.5)
@@ -1245,9 +1252,6 @@ file is a remote file (include directory)."
                            "sed 's_.*_$| = 1; print if (/&/'$locate_case')_')\" |"
                            "head -n " (number-to-string helm-candidate-number-limit)))
 
-  ;; 選択部分の色
-  (set-face-background 'helm-match "#035f56")
-
   (defvar helm-source-buffers-list-howm-title
     `((name . "Buffers")
       (init . (lambda ()
@@ -1302,6 +1306,7 @@ file is a remote file (include directory)."
   (require 'helm-migemo)
   (setq helm-use-migemo t)
   (require 'helm-git-project)
+  (require 'helm-git-grep)
   )
 
 ;;
