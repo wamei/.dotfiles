@@ -63,7 +63,7 @@
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
-(global-set-key (kbd "C-x C-b") 'helm-for-files)
+(global-set-key (kbd "C-x C-b") 'helm-filelist+)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
@@ -208,6 +208,7 @@
    `(link-visited ((,class (:foreground "#ed74cd" :underline t))))
    ;; Helm faces
    `(helm-selection ((,class (:background "#035f56"))))
+   `(helm-ff-directory ((,class (:foreground ,"red4" :background "#e5e5e5"))))
    ;; Gnus faces
    `(gnus-group-news-1 ((,class (:foreground "#ff4242" :weight bold))))
    `(gnus-group-news-1-low ((,class (:foreground "#ff4242"))))
@@ -401,7 +402,6 @@
                         'mode-line-position-face)))
    " "
    ))
-
 ;; form
 (setq-default
  mode-line-format
@@ -747,19 +747,26 @@ file is a remote file (include directory)."
 ;; popwin.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'popwin nil t)
-  (setq display-buffer-function 'popwin:display-buffer)
+  (push '("^\*Occur.*\*$" :regexp t :height 0.5) popwin:special-display-config)
+  (push '("^\*ag.*\*$" :regexp t :height 0.5) popwin:special-display-config)
+  (push '("^\*grep.*\*$" :regexp t :height 0.5) popwin:special-display-config)
+  (push '(direx:direx-mode :position left :width 40 :dedicated t) popwin:special-display-config)
+  )
+
+;;
+;; windata.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'windata nil t)
+  ;; (setq default-windata '(frame bottom 0.5 nil))
+  ;; (defun my/display-buffer-function (buffer &optional ignore)
+  ;;   (apply 'windata-display-buffer buffer default-windata))
+  ;; (setq display-buffer-function 'my/display-buffer-function)
+
   (setq helm-samewindow nil)
-  (defun my/popwin-helm-p (buffer)
-    (let ((name (buffer-name buffer)))
-      (unless (string= name "*helm-mode-execute-extended-command*")
-        (string-match-p "^\*helm.*\*$" buffer))))
-  (setq popwin:special-display-config '(
-                                        (my/popwin-helm-p :height 0.5)
-                                        ("^\*ag.*\*$" :regexp t :height 0.5)
-                                        ("^\*Occur.*\*$" :regexp t :height 0.5)
-                                        ("^\*grep.*\*$" :regexp t :height 0.5)
-                                        (direx:direx-mode :position left :width 40 :dedicated t)
-                                        ))
+  (setq helm-windata '(frame bottom 0.5 nil))
+  (defun my/helm-display-buffer (buffer)
+    (apply 'windata-display-buffer buffer helm-windata))
+  (setq helm-display-function 'my/helm-display-buffer)
   )
 
 ;; direx.el
@@ -1220,6 +1227,13 @@ file is a remote file (include directory)."
 ;; helm.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'helm-config nil t)
+  (require 'helm-descbinds)
+  (require 'helm-migemo)
+  (setq helm-use-migemo t)
+  (require 'helm-git-project)
+  (require 'helm-git-grep)
+  (require 'helm-filelist)
+
   (helm-mode 1)
   ;; helmで置き換えない
   (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
@@ -1241,16 +1255,6 @@ file is a remote file (include directory)."
 
   ;; tabで補完
   (define-key helm-read-file-map (kbd "<tab>") 'helm-execute-persistent-action)
-
-  ;; locateの設定
-  (setq helm-locate-command
-      (concat "locate_case=$(echo '%s' | sed 's/-//'); cat /tmp/all.filelist |"
-              "perl -ne \"$(echo %s | sed -e 's/^ +//' |"
-                           "sed -e 's/ +$//' |"
-                           "sed 's_/_\\\\/_g' |"
-                           "sed -e 's_( |\\.\\*)+_/'$locate_case' \\&\\& /_g' |"
-                           "sed 's_.*_$| = 1; print if (/&/'$locate_case')_')\" |"
-                           "head -n " (number-to-string helm-candidate-number-limit)))
 
   (defvar helm-source-buffers-list-howm-title
     `((name . "Buffers")
@@ -1300,13 +1304,6 @@ file is a remote file (include directory)."
           helm-source-file-cache
           helm-source-files-in-current-dir
           helm-source-locate))
-
-  ;; その他
-  (require 'helm-descbinds)
-  (require 'helm-migemo)
-  (setq helm-use-migemo t)
-  (require 'helm-git-project)
-  (require 'helm-git-grep)
   )
 
 ;;
