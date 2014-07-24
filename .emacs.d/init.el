@@ -47,22 +47,22 @@
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
 (global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
-(global-set-key (kbd "M-x")     'anything-M-x)
-(global-set-key (kbd "M-y")     'anything-show-kill-ring)
+(global-set-key (kbd "M-x")     'helm-M-x)
+(global-set-key (kbd "M-y")     'helm-show-kill-ring)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
-(global-set-key (kbd "M-s s")   'anything-occur)
+(global-set-key (kbd "M-s s")   'helm-occur)
 (global-set-key (kbd "M-s g")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
 (global-set-key (kbd "C-x C")   'see-you-again)
-(global-set-key (kbd "C-x b")   'ah:menu-command)
+(global-set-key (kbd "C-x b")   'hh:menu-command)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
-(global-set-key (kbd "C-x C-b") 'anything-filelist+)
+(global-set-key (kbd "C-x C-b") 'helm-for-files)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
@@ -154,7 +154,7 @@
               ((equal c "\C-x3")
                (split-window-horizontally))
               ((equal c "\C-x\C-b")
-               (anything-filelist+))
+               (helm-mini))
               ((equal c "\C-g")
                (message "Quit")(throw 'end-flag t))))))))
 
@@ -745,9 +745,9 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'popwin nil t)
   (setq display-buffer-function 'popwin:display-buffer)
-  (setq anything-samewindow nil)
+  (setq helm-samewindow nil)
   (setq popwin:special-display-config '(
-                                        ("^\*anything.*\*$" :regexp t :height 0.5)
+                                        ("^\*helm.*\*$" :regexp t :height 0.5)
                                         ("^\*ag.*\*$" :regexp t :height 0.5)
                                         ("^\*Occur.*\*$" :regexp t :height 0.5)
                                         ("^\*grep.*\*$" :regexp t :height 0.5)
@@ -825,7 +825,7 @@ file is a remote file (include directory)."
   (custom-set-variables
    '(ag-highlight-search t)  ; 検索結果の中の検索語をハイライトする
    '(ag-reuse-window 'nil)   ; 現在のウィンドウを検索結果表示に使う
-   '(ag-reuse-buffers 'nil)) ; 検索用バッファを使いまわす
+   '(ag-reuse-buffers 't)) ; 検索用バッファを使いまわす
   )
 
 ;;
@@ -1126,90 +1126,13 @@ file is a remote file (include directory)."
     (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
-  ;; php-mode
-  (require 'php-mode)
-  (require 'php-completion)
-  (defun ac-php-mode-setup ()
-    (php-completion-mode t)
-    (setq-default ac-sources (append '(ac-source-php-completion) my-ac-sources)))
-  (add-hook 'php-mode-hook 'ac-php-mode-setup)
-
   ;; (when (require 'auto-complete-latex nil t)
   ;;    (setq ac-l-dict-directory "~/.emacs.d/elisp/auto-complete/ac-l-dict/")
   ;;    (add-to-list 'ac-modes 'latex-mode)
   ;;    (add-hook 'LaTeX-mode-hook 'ac-l-setup))
-)
+  )
 
 ;;
-;; anything.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'anything-config nil t)
-  ;; キーバインド
-  (setq anything-c-filelist-file-name "/tmp/all.filelist")
-  ;;(setq anything-grep-candidates-fast-directory-regexp "^/tmp")
-
-  ;; anything-kill-ring
-  (setq kill-ring-max 50)
-  (setq anything-kill-ring-threshold 5)
-
-  ;; 遅延を短く
-  (setq anything-idle-delay 0.1)
-  (setq anything-input-idle-delay 0.1)
-
-  ;; anything-git-grep
-  (require 'anything-git-grep)
-)
-
-;;
-;; AUCTeX
-;;----------------------------------------------------------------------------------------------------
-(setq TeX-default-mode 'japanese-latex-mode)
-(setq japanese-LaTeX-default-style "jsarticle")
-(setq japanese-LaTeX-command-default "pdfpLaTex")
-(setq-default indent-tabs-mode nil) ; タブでインデント
-(setq-default TeX-newline-function 'newline-and-indent)
-(setq preview-image-type 'dvipng)
-(setq TeX-source-correlate-method 'synctex)
-(setq TeX-source-correlate-start-server t)
-
-;; reftexの設定
-(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
-(setq reftex-plug-into-AUCTeX t)
-; RefTeXで使用するbibファイルの位置を指定する
-(setq reftex-default-bibliography '("~/.emacs.d/tex/references.bib"))
-
-(setq TeX-engine-alist '((ptex "pTeX" "eptex" "platex" "eptex")
-                         (uptex "upTeX" "euptex" "uplatex" "euptex")))
-(setq TeX-engine 'ptex)
-(setq TeX-view-program-list '(("open dvi" "/usr/bin/open -a Preview.app %s.pdf")
-                              ("open pdf" "/usr/bin/open -a Preview.app %o")))
-(setq TeX-view-program-selection '((output-pdf "open pdf")
-                                   (output-dvi "open dvi")))
-(add-hook 'LaTeX-mode-hook 'TeX-source-correlate-mode)
-(add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
-(add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
-(add-hook 'LaTeX-mode-hook
-          (function (lambda ()
-                      (add-to-list 'TeX-command-list
-                                   '("pdfpLaTeX" "platex %S %(mode) %t && pbibtex %s  && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run pLaTeX and dvipdfmx"))
-                      ;; (add-to-list 'TeX-command-list
-                      ;;              '("pdfpLaTeX2" "platex %S %(mode) %t && dvips -Ppdf -z -f %d | convbkmk -g > %f && ps2pdf %f"
-                      ;;                TeX-run-TeX nil (latex-mode) :help "Run pLaTeX, dvips, and ps2pdf"))
-                      (add-to-list 'TeX-command-list
-                                   '("Latexmk" "latexmk %t"
-                                     TeX-run-TeX nil (latex-mode) :help "Run Latexmk"))
-                      (add-to-list 'TeX-command-list
-                                   '("pBibTeX" "pbibtex %s"
-                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
-                      (add-to-list 'TeX-command-list
-                                   '("jBibTeX" "pbibtex %s"
-                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
-                      (add-to-list 'TeX-command-list
-                                   '("open" "open %s.pdf"
-                                     TeX-run-discard-or-function t t :help "open pdf file")))))
-
-
 ;; howm-mode
 ;;----------------------------------------------------------------------------------------------------
 (setq howm-prefix "\C-x,")
@@ -1221,6 +1144,7 @@ file is a remote file (include directory)."
 (setq howm-reminder-regexp-grep-format (concat "<" howm-date-regexp-grep "[- :0-9]*>%s"))
 (setq howm-reminder-regexp-format (concat "\\(<" howm-date-regexp "[- :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
 (setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
+(setq howm-directory "~/howm/")
 (when (require 'howm nil t)
   (setq howm-menu-lang 'ja)
   (setq howm-keyword-case-fold-search t)
@@ -1277,6 +1201,157 @@ file is a remote file (include directory)."
          (setq truncate-lines t))
         (t
          (setq truncate-lines nil))))
+
+;;
+;; helm-howm.el
+;;----------------------------------------------------------------------------------------------------
+(require 'helm-howm)
+;; 「最近のメモ」をいくつ表示するか
+(setq hh:recent-menu-number-limit 600)
+
+;;
+;; helm.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'helm-config nil t)
+  (helm-mode 1)
+  ;; helmで置き換えない
+  (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
+  (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
+
+  ;; buffer名の表示幅
+  (setq helm-buffer-max-length 30)
+
+  ;; kill-ring
+  (setq kill-ring-max 50)
+
+  ;; 遅延を短く
+  (setq helm-idle-delay 0.1)
+  (setq helm-input-idle-delay 0.1)
+  (setq helm-candidate-number-limit 200)
+
+  ;; 自動補完をやめる
+  (setq helm-ff-auto-update-initial-value nil)
+
+  ;; tabで補完
+  (define-key helm-read-file-map (kbd "<tab>") 'helm-execute-persistent-action)
+
+  ;; locateの設定
+  (setq helm-locate-command
+      (concat "locate_case=$(echo '%s' | sed 's/-//'); cat /tmp/all.filelist |"
+              "perl -ne \"$(echo %s | sed -e 's/^ +//' |"
+                           "sed -e 's/ +$//' |"
+                           "sed 's_/_\\\\/_g' |"
+                           "sed -e 's_( |\\.\\*)+_/'$locate_case' \\&\\& /_g' |"
+                           "sed 's_.*_$| = 1; print if (/&/'$locate_case')_')\" |"
+                           "head -n " (number-to-string helm-candidate-number-limit)))
+
+  ;; 選択部分の色
+  (set-face-background 'helm-match "#035f56")
+
+  (defvar helm-source-buffers-list-howm-title
+    `((name . "Buffers")
+      (init . (lambda ()
+                ;; Issue #51 Create the list before `helm-buffer' creation.
+                (setq helm-buffers-list-cache (helm-buffer-list))
+                (let ((result (cl-loop for b in helm-buffers-list-cache
+                                       maximize (length b) into len-buf
+                                       maximize (length (with-current-buffer b
+                                                          (symbol-name major-mode)))
+                                       into len-mode
+                                       finally return (cons len-buf len-mode))))
+                  (unless helm-buffer-max-length
+                    (setq helm-buffer-max-length (car result)))
+                  (unless helm-buffer-max-len-mode
+                    ;; If a new buffer is longer that this value
+                    ;; this value will be updated
+                    (setq helm-buffer-max-len-mode (cdr result))))))
+      (candidates . helm-buffers-list-cache)
+      (no-matchplugin)
+      (type . buffer)
+      (match helm-buffers-list--match-fn)
+      (persistent-action . helm-buffers-list-persistent-action)
+      (keymap . ,helm-buffer-map)
+      (volatile)
+      (mode-line . helm-buffer-mode-line-string)
+      (persistent-help
+       . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+
+  (defvar my/helm-source-files-in-current-dir
+    `((name . "Current Directory Files")
+      (candidates . (lambda ()
+                      (with-helm-current-buffer
+                        (let ((dirs (directory-files (helm-c-current-directory)))
+                              (filter (lambda (d) (string-match "^\.\.?$" d))))
+                          (remove-if filter dirs)))))
+      (match . helm-files-match-only-basename)
+      (keymap . ,helm-generic-files-map)
+      (help-message . helm-generic-file-help-message)
+      (mode-line . helm-generic-file-mode-line-string)
+      (type . file)))
+
+  (setq helm-for-files-preferred-list
+        '(helm-source-buffers-list-howm-title
+          helm-source-recentf
+          helm-source-bookmarks
+          helm-source-file-cache
+          helm-source-files-in-current-dir
+          helm-source-locate))
+
+  ;; その他
+  (require 'helm-descbinds)
+  (require 'helm-migemo)
+  (setq helm-use-migemo t)
+  (require 'helm-git-project)
+  )
+
+;;
+;; AUCTeX
+;;----------------------------------------------------------------------------------------------------
+(setq TeX-default-mode 'japanese-latex-mode)
+(setq japanese-LaTeX-default-style "jsarticle")
+(setq japanese-LaTeX-command-default "pdfpLaTex")
+(setq-default indent-tabs-mode nil) ; タブでインデント
+(setq-default TeX-newline-function 'newline-and-indent)
+(setq preview-image-type 'dvipng)
+(setq TeX-source-correlate-method 'synctex)
+(setq TeX-source-correlate-start-server t)
+
+;; reftexの設定
+(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
+(setq reftex-plug-into-AUCTeX t)
+; RefTeXで使用するbibファイルの位置を指定する
+(setq reftex-default-bibliography '("~/.emacs.d/tex/references.bib"))
+
+(setq TeX-engine-alist '((ptex "pTeX" "eptex" "platex" "eptex")
+                         (uptex "upTeX" "euptex" "uplatex" "euptex")))
+(setq TeX-engine 'ptex)
+(setq TeX-view-program-list '(("open dvi" "/usr/bin/open -a Preview.app %s.pdf")
+                              ("open pdf" "/usr/bin/open -a Preview.app %o")))
+(setq TeX-view-program-selection '((output-pdf "open pdf")
+                                   (output-dvi "open dvi")))
+(add-hook 'LaTeX-mode-hook 'TeX-source-correlate-mode)
+(add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
+(add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
+(add-hook 'LaTeX-mode-hook
+          (function (lambda ()
+                      (add-to-list 'TeX-command-list
+                                   '("pdfpLaTeX" "platex %S %(mode) %t && pbibtex %s  && dvipdfmx %d"
+                                     TeX-run-TeX nil (latex-mode) :help "Run pLaTeX and dvipdfmx"))
+                      ;; (add-to-list 'TeX-command-list
+                      ;;              '("pdfpLaTeX2" "platex %S %(mode) %t && dvips -Ppdf -z -f %d | convbkmk -g > %f && ps2pdf %f"
+                      ;;                TeX-run-TeX nil (latex-mode) :help "Run pLaTeX, dvips, and ps2pdf"))
+                      (add-to-list 'TeX-command-list
+                                   '("Latexmk" "latexmk %t"
+                                     TeX-run-TeX nil (latex-mode) :help "Run Latexmk"))
+                      (add-to-list 'TeX-command-list
+                                   '("pBibTeX" "pbibtex %s"
+                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
+                      (add-to-list 'TeX-command-list
+                                   '("jBibTeX" "pbibtex %s"
+                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
+                      (add-to-list 'TeX-command-list
+                                   '("open" "open %s.pdf"
+                                     TeX-run-discard-or-function t t :help "open pdf file")))))
 
 ;;
 ;; php-mode
@@ -1350,17 +1425,17 @@ file is a remote file (include directory)."
   ;; 新規スニペットを作成するバッファを用意する
   (define-key yas-minor-mode-map (kbd "C-c s n") 'yas-new-snippet)
   ;; 既存スニペットを閲覧・編集する
-  (define-key yas-minor-mode-map (kbd "C-c s v") 'yas-visit-snippet-file)
+  (define-key yas-minor-mode-map (kbd "C-c s v") 'helm-yas-visit-snippet-file)
 
   (defun my-yas/prompt (prompt choices &optional display-fn)
     (let* ((names (loop for choice in choices
                         collect (or (and display-fn (funcall display-fn choice))
                                     choice)))
-           (selected (anything-other-buffer
+           (selected (helm-other-buffer
                       `(((name . ,(format "%s" prompt))
                          (candidates . names)
                          (action . (("Insert snippet" . (lambda (arg) arg))))))
-                      "*anything yas/prompt*")))
+                      "*helm yas/prompt*")))
       (if selected
           (let ((n (position selected names :test 'equal)))
             (nth n choices))
@@ -1536,8 +1611,8 @@ PWD is not in a git repo (or the git command is not found)."
                (define-key eshell-mode-map [down] 'next-line)
                (define-key eshell-mode-map (kbd "C-p") 'eshell-previous-matching-input-from-input)
                (define-key eshell-mode-map (kbd "C-n") 'eshell-next-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "C-c h") 'anything-eshell-history)
-               (define-key eshell-mode-map (kbd "C-c p") 'anything-esh-pcomplete)
+               (define-key eshell-mode-map (kbd "C-c h") 'helm-eshell-history)
+               (define-key eshell-mode-map (kbd "C-c p") 'helm-esh-pcomplete)
                )
              ))
 
@@ -1571,36 +1646,12 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
 (setcar (cdr (assq 'rainbow-mode minor-mode-alist)) " RW")
-(setcar (cdr (assq 'php-completion-mode minor-mode-alist)) " PC")
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
-
-;;
-;; anything-howm.el
-;;----------------------------------------------------------------------------------------------------
-(require 'anything-howm)
-;; 「最近のメモ」をいくつ表示するか
-(setq anything-howm-recent-menu-number-limit 600)
-;; howm のデータディレクトリへのパス
-(setq anything-howm-data-directory "~/howm")
-(defvar anything-c-source-buffers-list-howm-title
-  `((name . "Buffers")
-    (candidates . anything-c-buffer-list)
-    (real-to-display . ah:title-real-to-display)
-    (type . buffer)
-    (match anything-c-buffer-match-major-mode)
-    (candidate-transformer anything-c-skip-boring-buffers
-                           anything-c-highlight-buffers)
-    (persistent-action . anything-c-buffers-list-persistent-action)
-    (keymap . ,anything-c-buffer-map)
-    (volatile)
-    (mode-line . anything-buffer-mode-line-string)
-    (persistent-help . "Show this buffer / C-u \\[anything-execute-persistent-action]: Kill this buffer")))
 
 ;;
 ;; migemo.el
 ;;-----------------------------------------------------------------------
 (when (require 'migemo)
-  (require 'anything-migemo)
   (setq migemo-command "cmigemo")
   (setq migemo-options '("-q" "--emacs"))
   (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
@@ -1609,22 +1660,4 @@ PWD is not in a git repo (or the git command is not found)."
   (setq migemo-coding-system 'utf-8-unix)
   (load-library "migemo")
   (migemo-init)
-  ;; 自前の情報源の定義
-  (defvar my-anything-sources nil)
-  (setq my-anything-sources
-        '(anything-c-source-ffap-line
-          anything-c-source-ffap-guesser
-          anything-c-source-buffers-list-howm-title
-          anything-c-source-files-in-current-dir+
-          anything-c-source-recentf
-          anything-c-source-bookmarks
-          anything-c-source-file-cache
-          anything-c-source-filelist
-          ))
-  (global-set-key (kbd "C-x C-b")
-                  (lambda()
-                    "start my-anything"
-                    (interactive)
-                    (anything-migemo t my-anything-sources))
-                  )
   )
