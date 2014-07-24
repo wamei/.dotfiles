@@ -1811,9 +1811,13 @@ Non-nil for optional argument PRESERVE keeps all current buffers."
     (setq win:config-loaded t))
   (message "Finish loading.  Resume in window [%d]" win:current-config))
 
-(or global-mode-string (setq global-mode-string '("")))
-(or (memq 'win:mode-string global-mode-string)
-    (setq global-mode-string (append global-mode-string '(win:mode-string))))
+(or global-window-number (setq global-window-number '("")))
+(or (memq 'win:mode-string global-window-number)
+    (setq global-window-number (append global-window-number '(win:mode-string))))
+
+;; (or global-mode-string (setq global-mode-string '("")))
+;; (or (memq 'win:mode-string global-mode-string)
+;;     (setq global-mode-string (append global-mode-string '(win:mode-string))))
 
 ;;;
 ;; For Emacs 19 frame feature

@@ -51,6 +51,8 @@
 (global-set-key (kbd "M-y")     'helm-show-kill-ring)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
+(global-set-key (kbd "M-]")     'win-next-window)
+(global-set-key (kbd "M-[")     'win-prev-window)
 
 (global-set-key (kbd "M-s s")   'helm-occur)
 (global-set-key (kbd "M-s g")   'helm-git-grep)
@@ -402,10 +404,14 @@
                         'mode-line-position-face)))
    " "
    ))
+(setq-default global-window-number '())
 ;; form
 (setq-default
  mode-line-format
- '("%e"
+ '(
+   (global-window-number global-window-number)
+   " "
+   "%e"
    mode-line-mule-info
    ;; emacsclient [default -- keep?]
    mode-line-client
@@ -762,6 +768,7 @@ file is a remote file (include directory)."
   ;;   (apply 'windata-display-buffer buffer default-windata))
   ;; (setq display-buffer-function 'my/display-buffer-function)
 
+  ;; helm
   (setq helm-samewindow nil)
   (setq helm-windata '(frame bottom 0.5 nil))
   (defun my/helm-display-buffer (buffer)
@@ -1297,6 +1304,55 @@ file is a remote file (include directory)."
       (mode-line . helm-generic-file-mode-line-string)
       (type . file)))
 
+  (defvar my/helm-source-windows
+    `((name . "Windows")
+      (candidates . (lambda ()
+                      (with-helm-current-buffer
+                        (let ((i 1)
+                              (windows-list nil)
+                              (form (format " (%%c)%%s %%-%ds [%%s]" (+ win:names-maxl 2))))
+                          (while (< i win:max-configs)
+                            (setq windows-list
+                                  (cons (cons (format form
+                                                (+ win:base-key i)
+                                                (cond ((= i win:current-config) "*")
+                                                      ((= i win:last-config) "+")
+                                                      (t " "))
+                                                (if (aref win:configs i)
+                                                    (format "\"%s\"" (aref win:names-prefix i))
+                                                  "")
+                                                (if (aref win:configs i) (aref win:names i)
+                                                  "")
+                                                )
+                                                (format "(win-switch-to-window %c)" (+ win:base-key i)))
+                                          windows-list))
+                            (setq i (1+ i)))
+                          (setq windows-list windows-list)
+                          ;; (while (< i win:max-configs)
+                          ;;   (setq windows-list
+                          ;;         (concat windows-list
+                          ;;                 (format form
+                          ;;                         (+ win:base-key i)
+                          ;;                         (cond ((= i win:current-config) "*")
+                          ;;                               ((= i win:last-config) "+")
+                          ;;                               (t " "))
+                          ;;                         (if (aref win:configs i)
+                          ;;                             (format "\"%s\"" (aref win:names-prefix i))
+                          ;;                           "")
+                          ;;                         (if (aref win:configs i) (aref win:names i)
+                          ;;                           "")
+                          ;;                         )))
+                          ;;   (setq i (1+ i)))
+                          ;; (split-string windows-list "\n")
+                          ))))
+      ;; (action . (
+      ;;            ("Switch to window" .
+      ;;             (lambda (candidate)
+      ;;               (win-switch-to-window
+      ;;                ( candidate))))
+      ;;            ))
+      (type . sexp)))
+
   (setq helm-for-files-preferred-list
         '(helm-source-buffers-list-howm-title
           helm-source-recentf
@@ -1304,6 +1360,11 @@ file is a remote file (include directory)."
           helm-source-file-cache
           helm-source-files-in-current-dir
           helm-source-locate))
+
+  (defun helm-windows-list ()
+    (interactive)
+    (let ((helm-ff-transformer-show-only-basename nil))
+      (helm-other-buffer `(my/helm-source-windows) "*helm windows*")))
   )
 
 ;;
