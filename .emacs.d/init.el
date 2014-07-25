@@ -1655,9 +1655,9 @@ PWD is not in a git repo (or the git command is not found)."
 ;;
 ;; git-gutter.el
 ;;----------------------------------------------------------------------------------------------------
-(require 'git-gutter)
-(require 'git-gutter-fringe)
-(global-git-gutter-mode t)
+(require 'git-gutter+)
+(require 'git-gutter-fringe+)
+(global-git-gutter+-mode t)
 
 ;;
 ;; マイナーモードの省略
@@ -1667,7 +1667,7 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
 (setcar (cdr (assq 'rainbow-mode minor-mode-alist)) " RW")
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
-(setcar (cdr (assq 'git-gutter-mode minor-mode-alist)) " GG")
+(setcar (cdr (assq 'git-gutter+-mode minor-mode-alist)) " GG")
 
 ;;
 ;; migemo.el
