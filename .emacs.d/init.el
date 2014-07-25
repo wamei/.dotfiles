@@ -1678,4 +1678,9 @@ PWD is not in a git repo (or the git command is not found)."
 ;;
 ;; resume window
 ;;----------------------------------------------------------------------------------------------------
+;; 自動でwin-all-save-configurationsを呼び出す
+(require 'windows-auto-save)
+;; デフォルトでは30秒Idleなら自動保存する
+(setq auto-win-save-all-conf-timer 20)
+;; resume
 (resume-windows 0)
