@@ -11,7 +11,6 @@
 
 (defun git-status-update-modeline ()
   "Update modeline state dot mark properly"
-  (setq global-git-state (vc-git-state buffer-file-name))
   (force-mode-line-update t))
 
 (defun git-substring-no-properties (string &optional from to)
@@ -36,14 +35,14 @@
     ))
 
 (defadvice vc-after-save (after git-status-vc-git-after-save activate)
-    (when (git-status-in-vc-mode?) (git-status-update-modeline)))
+  (when (git-status-in-vc-mode?) (git-status-update-modeline)))
 
 (defadvice vc-find-file-hook (after git-status-vc-git-find-file-hook activate)
-    (when (git-status-in-vc-mode?) (git-status-update-modeline)))
+  (when (git-status-in-vc-mode?) (git-status-update-modeline)))
 
 ;; http://d.hatena.ne.jp/kitokitoki/20100824/p1#c1282700989 より。
 ;; ToDo あとで検証
 (defadvice vc-git-checkin (after git-status-vc-git-after-checkin activate)
-   (when (git-status-in-vc-mode?) (git-status-update-modeline)))
+  (when (git-status-in-vc-mode?) (git-status-update-modeline)))
 
 (provide 'git-status)
