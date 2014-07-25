@@ -375,6 +375,8 @@
 ;; モードライン設定
 ;;---------------------------------------------------------------------------
 
+(setq-default global-window-number '())
+(setq-default global-git-state 'none)
 ;; 時刻の表示( 曜日 月 日 時間:分 )
 (setq display-time-day-and-date t)
 (setq display-time-24hr-format t)
@@ -402,7 +404,6 @@
                         'mode-line-position-face)))
    " "
    ))
-(setq-default global-window-number '())
 ;; git-status
 (require 'git-status)
 ;; form
@@ -411,10 +412,7 @@
  '(
    (global-window-number global-window-number)
    " "
-   (:eval
-    (when (and buffer-file-name (git-status-in-vc-mode?))
-      (git-status-state-mark-modeline-dot (vc-git-state buffer-file-name))
-      ))
+   (:eval (when (and buffer-file-name (git-status-in-vc-mode?)) (git-status-state-mark-modeline-dot global-git-state)))
    "%e"
    mode-line-mule-info
    ;; emacsclient [default -- keep?]
@@ -1677,6 +1675,6 @@ PWD is not in a git repo (or the git command is not found)."
   )
 
 ;;
-;; window resume
+;; resume window
 ;;----------------------------------------------------------------------------------------------------
 (resume-windows 0)

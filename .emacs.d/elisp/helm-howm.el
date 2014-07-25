@@ -248,8 +248,8 @@ With prefix arg HERE, insert it at point."
   (interactive)
   ;;(let ((helm-display-function 'hh:display-buffer))
     (helm-other-buffer
-     '(helm-c-source-howm-menu
-       helm-c-source-howm-recent)
+     '(helm-c-source-howm-recent
+       helm-c-source-howm-menu)
      hh:menu-buffer))
   ;;)
 

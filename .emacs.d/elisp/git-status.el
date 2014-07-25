@@ -11,6 +11,7 @@
 
 (defun git-status-update-modeline ()
   "Update modeline state dot mark properly"
+  (setq global-git-state (vc-git-state buffer-file-name))
   (force-mode-line-update t))
 
 (defun git-substring-no-properties (string &optional from to)
