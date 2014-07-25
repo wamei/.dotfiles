@@ -1369,16 +1369,8 @@ file is a remote file (include directory)."
 ;; php-mode
 ;;----------------------------------------------------------------------------------------------------
 (require 'php-mode)
-(setq auto-mode-alist
-      (append '(
-                ("\\.php\\'" . php-mode)
-                )
-              auto-mode-alist))
-(defun my-php-mode-hook ()
-  (lambda ()
-    (setq php-mode-force-pear t)
-))
-(add-hook 'php-mode-hook 'my-php-mode-hook)
+(setq auto-mode-alist (append '(("\\.php\\'" . php-mode)) auto-mode-alist))
+(setq php-mode-force-pear t)
 
 ;;
 ;; web-mode
