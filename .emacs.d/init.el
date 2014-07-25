@@ -59,12 +59,13 @@
 (global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
-(global-set-key (kbd "C-x C")   'see-you-again)
 (global-set-key (kbd "C-x b")   'hh:menu-command)
+(global-set-key (kbd "C-x w")   'helm-windows-list)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
+(global-set-key (kbd "C-x C-c") 'see-you-again)
 (global-set-key (kbd "C-x C-b") 'helm-filelist+)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
@@ -374,9 +375,6 @@
 ;; モードライン設定
 ;;---------------------------------------------------------------------------
 
-;; git-status
-(require 'git-status)
-
 ;; 時刻の表示( 曜日 月 日 時間:分 )
 (setq display-time-day-and-date t)
 (setq display-time-24hr-format t)
@@ -405,12 +403,18 @@
    " "
    ))
 (setq-default global-window-number '())
+;; git-status
+(require 'git-status)
 ;; form
 (setq-default
  mode-line-format
  '(
    (global-window-number global-window-number)
    " "
+   (:eval
+    (when (and buffer-file-name (git-status-in-vc-mode?))
+      (git-status-state-mark-modeline-dot (vc-git-state buffer-file-name))
+      ))
    "%e"
    mode-line-mule-info
    ;; emacsclient [default -- keep?]
@@ -1240,6 +1244,7 @@ file is a remote file (include directory)."
   (require 'helm-git-project)
   (require 'helm-git-grep)
   (require 'helm-filelist)
+  (require 'helm-windows)
 
   (helm-mode 1)
   ;; helmで置き換えない
@@ -1304,55 +1309,6 @@ file is a remote file (include directory)."
       (mode-line . helm-generic-file-mode-line-string)
       (type . file)))
 
-  (defvar my/helm-source-windows
-    `((name . "Windows")
-      (candidates . (lambda ()
-                      (with-helm-current-buffer
-                        (let ((i 1)
-                              (windows-list nil)
-                              (form (format " (%%c)%%s %%-%ds [%%s]" (+ win:names-maxl 2))))
-                          (while (< i win:max-configs)
-                            (setq windows-list
-                                  (cons (cons (format form
-                                                (+ win:base-key i)
-                                                (cond ((= i win:current-config) "*")
-                                                      ((= i win:last-config) "+")
-                                                      (t " "))
-                                                (if (aref win:configs i)
-                                                    (format "\"%s\"" (aref win:names-prefix i))
-                                                  "")
-                                                (if (aref win:configs i) (aref win:names i)
-                                                  "")
-                                                )
-                                                (format "(win-switch-to-window %c)" (+ win:base-key i)))
-                                          windows-list))
-                            (setq i (1+ i)))
-                          (setq windows-list windows-list)
-                          ;; (while (< i win:max-configs)
-                          ;;   (setq windows-list
-                          ;;         (concat windows-list
-                          ;;                 (format form
-                          ;;                         (+ win:base-key i)
-                          ;;                         (cond ((= i win:current-config) "*")
-                          ;;                               ((= i win:last-config) "+")
-                          ;;                               (t " "))
-                          ;;                         (if (aref win:configs i)
-                          ;;                             (format "\"%s\"" (aref win:names-prefix i))
-                          ;;                           "")
-                          ;;                         (if (aref win:configs i) (aref win:names i)
-                          ;;                           "")
-                          ;;                         )))
-                          ;;   (setq i (1+ i)))
-                          ;; (split-string windows-list "\n")
-                          ))))
-      ;; (action . (
-      ;;            ("Switch to window" .
-      ;;             (lambda (candidate)
-      ;;               (win-switch-to-window
-      ;;                ( candidate))))
-      ;;            ))
-      (type . sexp)))
-
   (setq helm-for-files-preferred-list
         '(helm-source-buffers-list-howm-title
           helm-source-recentf
@@ -1360,11 +1316,6 @@ file is a remote file (include directory)."
           helm-source-file-cache
           helm-source-files-in-current-dir
           helm-source-locate))
-
-  (defun helm-windows-list ()
-    (interactive)
-    (let ((helm-ff-transformer-show-only-basename nil))
-      (helm-other-buffer `(my/helm-source-windows) "*helm windows*")))
   )
 
 ;;
@@ -1702,7 +1653,7 @@ PWD is not in a git repo (or the git command is not found)."
 (add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
 
 
-;;----------------------------------------------------------------------------------------------------
+;;
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
@@ -1724,3 +1675,8 @@ PWD is not in a git repo (or the git command is not found)."
   (load-library "migemo")
   (migemo-init)
   )
+
+;;
+;; window resume
+;;----------------------------------------------------------------------------------------------------
+(resume-windows 0)
