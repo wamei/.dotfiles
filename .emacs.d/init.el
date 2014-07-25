@@ -754,15 +754,6 @@ file is a remote file (include directory)."
 ;; パッケージ関係
 ;;----------------------------------------------------------------------------------------------------
 
-;; popwin.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'popwin nil t)
-  (push '("^\*Occur.*\*$" :regexp t :height 0.5) popwin:special-display-config)
-  (push '("^\*ag.*\*$" :regexp t :height 0.5) popwin:special-display-config)
-  (push '("^\*grep.*\*$" :regexp t :height 0.5) popwin:special-display-config)
-  (push '(direx:direx-mode :position left :width 40 :dedicated t) popwin:special-display-config)
-  )
-
 ;;
 ;; windata.el
 ;;----------------------------------------------------------------------------------------------------
@@ -780,6 +771,18 @@ file is a remote file (include directory)."
   (setq helm-display-function 'my/helm-display-buffer)
   )
 
+;;
+;; popwin.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'popwin nil t)
+  (setq display-buffer-function 'popwin:special-display-popup-window)
+  (push '("^\*Occur.*\*$" :regexp t :height 0.5) popwin:special-display-config)
+  (push '("^\*ag.*\*$" :regexp t :height 0.5) popwin:special-display-config)
+  (push '("^\*grep.*\*$" :regexp t :height 0.5) popwin:special-display-config)
+  (push '(direx:direx-mode :position left :width 40 :dedicated t) popwin:special-display-config)
+  )
+
+;;
 ;; direx.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'direx nil t)
