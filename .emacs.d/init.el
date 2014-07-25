@@ -68,7 +68,7 @@
 
 (global-set-key (kbd "C-x C-c") 'see-you-again)
 (global-set-key (kbd "C-x C-b") 'helm-filelist+)
-(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
+(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory--windata)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
 (global-set-key (kbd "C-M-b")   'windmove-left)
@@ -758,17 +758,22 @@ file is a remote file (include directory)."
 ;; windata.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'windata nil t)
-  ;; (setq default-windata '(frame bottom 0.5 nil))
-  ;; (defun my/display-buffer-function (buffer &optional ignore)
-  ;;   (apply 'windata-display-buffer buffer default-windata))
-  ;; (setq display-buffer-function 'my/display-buffer-function)
+  (setq bottom-windata '(frame bottom 0.5 nil))
+  (defun my/bottom-display-buffer (buffer &optional ignore)
+    (apply 'windata-display-buffer buffer bottom-windata))
+
+  (setq left-windata '(frame left 40 nil))
+  (defun my/left-display-buffer (buffer &optional ignore)
+    (apply 'windata-display-buffer buffer left-windata))
+
+  (defun direx:jump-to-git-project-directory--windata ()
+    (interactive)
+    (let ((display-buffer-function 'my/left-display-buffer))
+          (direx:jump-to-git-project-directory)))
 
   ;; helm
   (setq helm-samewindow nil)
-  (setq helm-windata '(frame bottom 0.5 nil))
-  (defun my/helm-display-buffer (buffer)
-    (apply 'windata-display-buffer buffer helm-windata))
-  (setq helm-display-function 'my/helm-display-buffer)
+  (setq helm-display-function 'my/bottom-display-buffer)
   )
 
 ;;
@@ -792,6 +797,7 @@ file is a remote file (include directory)."
   (define-key direx:direx-mode-map (kbd "p") 'direx:previous-sibling-item)
   (define-key direx:direx-mode-map (kbd "u") 'direx:up-item)
   (define-key direx:direx-mode-map (kbd "d") 'direx:down-item)
+  (define-key direx:direx-mode-map (kbd "q") 'delete-window)
   )
 
 ;;
@@ -1647,9 +1653,13 @@ PWD is not in a git repo (or the git command is not found)."
 ;;
 ;; git-gutter.el
 ;;----------------------------------------------------------------------------------------------------
-(require 'git-gutter+)
-(require 'git-gutter-fringe+)
-(global-git-gutter+-mode t)
+(when (require 'git-gutter+ nil t)
+  (require 'git-gutter-fringe+)
+  (global-git-gutter+-mode t)
+  (define-key git-gutter+-mode-map (kbd "C-c n") 'git-gutter+-next-hunk)
+  (define-key git-gutter+-mode-map (kbd "C-c p") 'git-gutter+-previous-hunk)
+  (define-key git-gutter+-mode-map (kbd "C-c d") 'git-gutter+-popup-hunk)
+  )
 
 ;;
 ;; マイナーモードの省略
@@ -1674,13 +1684,3 @@ PWD is not in a git repo (or the git command is not found)."
   (load-library "migemo")
   (migemo-init)
   )
-
-;;
-;; resume window
-;;----------------------------------------------------------------------------------------------------
-;; 自動でwin-all-save-configurationsを呼び出す
-(require 'windows-auto-save)
-;; デフォルトでは30秒Idleなら自動保存する
-(setq auto-win-save-all-conf-timer 20)
-;; resume
-(resume-windows 0)
