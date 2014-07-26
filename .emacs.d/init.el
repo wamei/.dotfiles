@@ -39,7 +39,6 @@
 ;;______________________________________________________________________
 (define-key key-translation-map [?\C-h] [?\C-?])
 (global-set-key (kbd "C-r")     'replace-string)
-(global-set-key (kbd "C-t")     'switch-to-multi-term)
 (global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
 
@@ -51,8 +50,8 @@
 (global-set-key (kbd "M-y")     'helm-show-kill-ring)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
-(global-set-key (kbd "M-]")     'win-next-window)
-(global-set-key (kbd "M-[")     'win-prev-window)
+(global-set-key (kbd "M-]")     'elscreen-next)
+(global-set-key (kbd "M-[")     'elscreen-previous)
 
 (global-set-key (kbd "M-s s")   'helm-occur)
 (global-set-key (kbd "M-s g")   'helm-git-grep)
@@ -60,42 +59,38 @@
 (global-set-key (kbd "M-s o")   'occur)
 
 (global-set-key (kbd "C-x b")   'hh:menu-command)
-(global-set-key (kbd "C-x w")   'helm-windows-list)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
-(global-set-key (kbd "C-x C-c") 'see-you-again)
 (global-set-key (kbd "C-x C-b") 'helm-filelist+)
-(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory--windata)
+(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
-(global-set-key (kbd "C-M-b")   'windmove-left)
-(global-set-key (kbd "C-M-f")   'windmove-right)
-(global-set-key (kbd "C-M-n")   'windmove-down)
-(global-set-key (kbd "C-M-p")   'windmove-up)
 (global-set-key (kbd "C-M-r")   'replace-regexp)
 
-;; トラックパッド用のスクロール設定
-(if window-system
-    (progn
-      (defun scroll-down-with-lines () "" (interactive) (scroll-down 3))
-      (defun scroll-up-with-lines () "" (interactive) (scroll-up 3))
-      (global-set-key [wheel-up] 'scroll-down-with-lines)
-      (global-set-key [wheel-down] 'scroll-up-with-lines)
-      (global-set-key [double-wheel-up] 'scroll-down-with-lines)
-      (global-set-key [double-wheel-down] 'scroll-up-with-lines)
-      (global-set-key [triple-wheel-up] 'scroll-down-with-lines)
-      (global-set-key [triple-wheel-down] 'scroll-up-with-lines)
-      )
+(global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 2)))
+(global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   2)))
+(global-set-key [mouse-4]    '(lambda () (interactive) (scroll-down 2)))
+(global-set-key [mouse-5]    '(lambda () (interactive) (scroll-up   2)))
+(global-set-key [mouse-8]    '(lambda () (interactive) (scroll-down 1)))
+(global-set-key [mouse-9]    '(lambda () (interactive) (scroll-up   1)))
+(global-set-key [mouse-20]   '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
+(global-set-key [mouse-21]   '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
+
+(define-minor-mode overriding-minor-mode
+  "キーマップ上書き用マイナーモード"
+  t
+  ""
+  `(
+    (,(kbd "C-t") . switch-to-multi-term)
+    (,(kbd "C-M-b") . windmove-left)
+    (,(kbd "C-M-f") . windmove-right)
+    (,(kbd "C-M-n") . windmove-down)
+    (,(kbd "C-M-p") . windmove-up)
+    )
   )
-(global-set-key [mouse-4] '(lambda () (interactive) (scroll-down 2)))
-(global-set-key [mouse-5] '(lambda () (interactive) (scroll-up   2)))
-(global-set-key [mouse-8] '(lambda () (interactive) (scroll-down 1)))
-(global-set-key [mouse-9] '(lambda () (interactive) (scroll-up   1)))
-(global-set-key [mouse-20] '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
-(global-set-key [mouse-21] '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
 
 ;;
 ;; ウィンドウ設定
@@ -169,13 +164,23 @@
 ;;
 ;; テーマの読み込み
 ;;----------------------------------------------------------------------------------------------------
+;; Extra mode line faces
+(make-face 'mode-line-read-only-face)
+(make-face 'mode-line-modified-face)
+(make-face 'mode-line-folder-face)
+(make-face 'mode-line-filename-face)
+(make-face 'mode-line-position-face)
+(make-face 'mode-line-mode-face)
+(make-face 'mode-line-minor-mode-face)
+(make-face 'mode-line-process-face)
+(make-face 'mode-line-80col-face)
+(make-face 'mode-line-delim-face-1)
+(make-face 'mode-line-git-face)
+(make-face 'mode-line-name-face)
 (let ((class '((class color) (min-colors 89))))
 (custom-set-faces
    ;; Ensure sufficient contrast on 256-color xterms.
    `(default ((((class color) (min-colors 4096))
-       ;; (:background "#313131" :foreground "#e1e1e0"))
-       ;; (,class
-       ;; (:background "#2a2a2a" :foreground "#e1e1e0"))))
        (:background "#2e2e2e" :foreground "#e1e1e0"))
        (,class
        (:background "#2e2e2e" :foreground "#e1e1e0"))))
@@ -189,18 +194,28 @@
    `(trailing-whitespace ((,class (:background "#ff4242"))))
    ;; Mode line faces
    `(mode-line ((,class (:background "#0B2087" :foreground "#eeeeec"))))
-   `(mode-line-inactive
-     ((,class (:background "#878787" :foreground "#eeeeec"))))
-   `(header-line ((,class (:background "#e5e5e5" :foreground "#333333"))))
+   `(mode-line-inactive ((,class (:background "#878787" :foreground "#eeeeec"))))
+   `(header-line ((,class (:background "#2e2e2e" :foreground "#eeeeec"))))
    `(mode-line-name ((,class (:foreground "#ed74cd"))))
+   `(mode-line-filename-face ((,class (:inherit mode-line-face :foreground "#eab700" :weight bold))))
+   `(mode-line-read-only-face ((,class (:inherit mode-line-face :foreground "#4271ae"))))
+   `(mode-line-modified-face ((,class (:inherit mode-line-face :foreground "#c82829" :background "#ffffff"))))
+   `(mode-line-folder-face ((,class (:inherit mode-line-face :weight extra-light :height 0.8 :foreground "#e5e5e5"))))
+   `(mode-line-position-face ((,class (:inherit mode-line-face :family "Menlo"))))
+   `(mode-line-mode-face ((,class (:inherit mode-line-face :foreground "#eeeeec"))))
+   `(mode-line-minor-mode-face ((,class (:inherit mode-line-mode-face :foreground "white" :height 0.8))))
+   `(mode-line-process-face ((,class (:inherit mode-line-face :foreground "green"))))
+   `(mode-line-80col-face ((,class (:inherit mode-line-position-face :foreground "black" :background "#eab700"))))
+   `(mode-line-delim-face-1 ((,class (:inherit mode-line-face :foreground "white"))))
+   `(mode-line-git-face ((,class (:inherit mode-line-face :foreground "green"))))
+   `(mode-line-name-face ((,class (:inherit mode-line-face :foreground "#ed74cd"))))
    ;; Escape and prompt faces
    `(minibuffer-prompt ((,class (:foreground "#729fcf" :weight bold))))
    ;; Font lock faces
    `(font-lock-builtin-face ((,class (:foreground "#23d7d7"))))
    `(font-lock-comment-face ((,class (:foreground "#74af68"))))
    `(font-lock-constant-face ((,class (:foreground "#008b8b"))))
-   `(font-lock-function-name-face
-     ((,class (:foreground "#00ede1" :weight bold))))
+   `(font-lock-function-name-face ((,class (:foreground "#00ede1" :weight bold))))
    `(font-lock-keyword-face ((,class (:foreground "#ffad29" :weight bold))))
    `(font-lock-string-face ((,class (:foreground "#e67128"))))
    `(font-lock-type-face ((,class (:foreground "#34cae2"))))
@@ -212,7 +227,11 @@
    `(link-visited ((,class (:foreground "#ed74cd" :underline t))))
    ;; Helm faces
    `(helm-selection ((,class (:background "#035f56"))))
-   `(helm-ff-directory ((,class (:foreground ,"red4" :background "#e5e5e5"))))
+   `(helm-ff-directory ((,class (:foreground "red4" :background "#e5e5e5"))))
+   ;; Elscreen faces
+   `(elscreen-tab-background-face ((,class (:background "#2e2e2e"))))
+   `(elscreen-tab-current-screen-face ((,class (:foreground "#eeeeee" :background "#878787"))))
+   `(elscreen-tab-other-screen-face ((,class (:foreground "#888888" :background "#2e2e2e"))))
    ;; Gnus faces
    `(gnus-group-news-1 ((,class (:foreground "#ff4242" :weight bold))))
    `(gnus-group-news-1-low ((,class (:foreground "#ff4242"))))
@@ -245,102 +264,38 @@
    `(message-header-to ((,class (:foreground "#00ede1"))))
    `(message-cited-text ((,class (:foreground "#74af68"))))
    `(message-separator ((,class (:foreground "#23d7d7"))))
+   ;; web-mode
+   `(web-mode-doctype-face ((,class (:foreground "#82AE46"))))
+   `(web-mode-html-tag-face ((,class (:foreground "#E6B422" :weight bold))))
+   `(web-mode-html-attr-name-face ((,class (:foreground "#C97586"))))
+   `(web-mode-html-attr-value-face ((,class (:foreground "#82AE46"))))
+   `(web-mode-comment-face ((,class (:foreground "#D9333F"))))
+   `(web-mode-server-comment-face ((,class (:foreground "#D9333F"))))
+   `(web-mode-css-rule-face ((,class (:foreground "#A0D8EF"))))
+   `(web-mode-css-pseudo-class-face ((,class (:foreground "#FF7F00"))))
+   `(web-mode-css-at-rule-face ((,class (:foreground "#FF7F00"))))
+   ;; term color
+   `(term-color-black   ((,class (:foreground "black" :background "black"))))
+   `(term-color-red     ((,class (:foreground "red3" :background "red3"))))
+   `(term-color-green   ((,class (:foreground "green3" :background "green3"))))
+   `(term-color-yellow  ((,class (:foreground "yellow3" :background "yellow3"))))
+   `(term-color-blue    ((,class (:foreground "DeepSkyBlue" :background "DeepSkyBlue"))))
+   `(term-color-magenta ((,class (:foreground "magenta1" :background "magenta1"))))
+   `(term-color-cyan    ((,class (:foreground "cyan3" :background "cyan3"))))
+   `(term-color-white   ((,class (:foreground "white" :background "white"))))
+   `(term-default-fg-color ((,class (:inherit term-color-white))))
+   `(term-default-bg-color ((,class (:inherit term-color-black))))
    ))
-
-;; term
-(defface term-color-black
-  '((t (:foreground "black" :background "black")))
-  "Unhelpful docstring.")
-(defface term-color-red
-  '((t (:foreground "red3" :background "red3")))
-  "Unhelpful docstring.")
-(defface term-color-green
-  '((t (:foreground "green3" :background "green3")))
-  "Unhelpful docstring.")
-(defface term-color-yellow
-  '((t (:foreground "yellow3" :background "yellow3")))
-  "Unhelpful docstring.")
-(defface term-color-blue
-  '((t (:foreground "DeepSkyBlue" :background "DeepSkyBlue")))
-  "Unhelpful docstring.")
-(defface term-color-magenta
-  '((t (:foreground "magenta1" :background "magenta1")))
-  "Unhelpful docstring.")
-(defface term-color-cyan
-  '((t (:foreground "cyan3" :background "cyan3")))
-  "Unhelpful docstring.")
-(defface term-color-white
-  '((t (:foreground "white" :background "white")))
-  "Unhelpful docstring.")
-'(term-default-fg-color ((t (:inherit term-color-white))))
-'(term-default-bg-color ((t (:inherit term-color-black))))
 
 ;; ansi-term colors
 (setq ansi-term-color-vector
   [term term-color-black term-color-red term-color-green term-color-yellow
     term-color-blue term-color-magenta term-color-cyan term-color-white])
 
-;; Extra mode line faces
-(make-face 'mode-line-read-only-face)
-(make-face 'mode-line-modified-face)
-(make-face 'mode-line-folder-face)
-(make-face 'mode-line-filename-face)
-(make-face 'mode-line-position-face)
-(make-face 'mode-line-mode-face)
-(make-face 'mode-line-minor-mode-face)
-(make-face 'mode-line-process-face)
-(make-face 'mode-line-80col-face)
-(make-face 'mode-line-delim-face-1)
-(make-face 'mode-line-git-face)
-(make-face 'mode-line-name-face)
-
-(set-face-attribute 'mode-line-read-only-face nil
-                    :inherit 'mode-line-face
-                    :foreground "#4271ae")
-(set-face-attribute 'mode-line-modified-face nil
-                    :inherit 'mode-line-face
-                    :foreground "#c82829"
-                    :background "#ffffff")
-(set-face-attribute 'mode-line-folder-face nil
-                    :inherit 'mode-line-face
-                    :weight 'extra-light
-                    :height 0.8
-                    :foreground "#e5e5e5")
-(set-face-attribute 'mode-line-filename-face nil
-                    :inherit 'mode-line-face
-                    :foreground "#eab700"
-                    :weight 'bold)
-(set-face-attribute 'mode-line-position-face nil
-                    :inherit 'mode-line-face
-                    :family "Menlo")
-(set-face-attribute 'mode-line-mode-face nil
-                    :inherit 'mode-line-face
-                    :foreground "#eeeeec")
-(set-face-attribute 'mode-line-minor-mode-face nil
-                    :inherit 'mode-line-mode-face
-                    :foreground "white"
-                    :height 0.8)
-(set-face-attribute 'mode-line-process-face nil
-                    :inherit 'mode-line-face
-                    :foreground "green")
-(set-face-attribute 'mode-line-80col-face nil
-                    :inherit 'mode-line-position-face
-                    :foreground "black" :background "#eab700")
-(set-face-attribute 'mode-line-delim-face-1 nil
-                    :inherit 'mode-line-face
-                    :foreground "white")
-(set-face-attribute 'mode-line-git-face nil
-                    :inherit 'mode-line-face
-                    :foreground "green")
-(set-face-attribute 'mode-line-name-face nil
-                    :inherit 'mode-line-face
-                    :foreground "#ed74cd")
-
 (global-font-lock-mode t)
 ;;(global-hl-line-mode)
 
 ;; 全角色付け
-(global-whitespace-mode 1)
 (when (and (>= emacs-major-version 23)
            (require 'whitespace nil t))
   (setq whitespace-style
@@ -376,7 +331,6 @@
 ;; モードライン設定
 ;;---------------------------------------------------------------------------
 
-(setq-default global-window-number '())
 ;; 時刻の表示( 曜日 月 日 時間:分 )
 (setq display-time-day-and-date t)
 (setq display-time-24hr-format t)
@@ -410,11 +364,6 @@
 (setq-default
  mode-line-format
  '(
-   (global-window-number global-window-number)
-   " "
-   ;; (:eval (when (and buffer-file-name (git-status-in-vc-mode?))
-   ;;          (git-status-state-mark-modeline-dot (vc-git-state buffer-file-name))
-   ;;          ))
    "%e"
    mode-line-mule-info
    ;; emacsclient [default -- keep?]
@@ -592,7 +541,7 @@
 (column-number-mode t)
 
 ;; 折り返ししない
-;;(setq truncate-lines t)
+(setq truncate-lines t)
 ;;(setq truncate-partial-width-windows t)
 
 ;; インデント
@@ -755,25 +704,26 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 
 ;;
-;; windata.el
+;; split-root.el
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'windata nil t)
-  (setq bottom-windata '(frame bottom 0.5 nil))
-  (defun my/bottom-display-buffer (buffer &optional ignore)
-    (apply 'windata-display-buffer buffer bottom-windata))
+(require 'split-root)
+(defvar split-root-window-height nil)
+(defun display-buffer-function--split-root (buf &optional ignore)
+  (let ((window (split-root-window split-root-window-height)))
+    (set-window-buffer window buf)
+    window))
+(setq helm-display-function 'display-buffer-function--split-root)
 
-  (setq left-windata '(frame left 40 nil))
-  (defun my/left-display-buffer (buffer &optional ignore)
-    (apply 'windata-display-buffer buffer left-windata))
-
-  (defun direx:jump-to-git-project-directory--windata ()
-    (interactive)
-    (let ((display-buffer-function 'my/left-display-buffer))
-          (direx:jump-to-git-project-directory)))
-
-  ;; helm
-  (setq helm-samewindow nil)
-  (setq helm-display-function 'my/bottom-display-buffer)
+;;
+;; popwin.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'popwin nil t)
+  (setq display-buffer-function 'popwin:display-buffer)
+  (setq popwin:special-display-config '(
+                                        (direx:direx-mode :position left :width 40 :dedicated t)
+                                        (occur-mode :position bottom :height 0.5)
+                                        (ag-mode :position bottom :height 0.5)
+                                        ))
   )
 
 ;;
@@ -812,11 +762,6 @@ file is a remote file (include directory)."
   (setq dired-recursive-copies 'always)
   ;; diredバッファでC-sした時にファイル名だけにマッチするように
   (setq dired-isearch-filenames t)
-  ;; diredバッファでrを押すと編集モード
-  (add-hook 'dired-mode-hook (lambda ()
-                               (define-key dired-mode-map (kbd "e")   'wdired-change-to-wdired-mode)
-                               (define-key dired-mode-map (kbd "C-t") 'switch-to-multi-term)
-                               ))
   ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
   (defun dired-open-in-accordance-with-situation ()
     (interactive)
@@ -835,6 +780,7 @@ file is a remote file (include directory)."
   (define-key dired-mode-map (kbd "^")   (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
+  (define-key dired-mode-map (kbd "e")   'wdired-change-to-wdired-mode)
   ;; lsの設定
   (require 'ls-lisp)
   (setq ls-lisp-use-insert-directory-program nil)
@@ -868,11 +814,15 @@ file is a remote file (include directory)."
   )
 
 ;;
-;; windows.el
+;; elscreen.el
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'windows nil t)
-  (setq win:use-frame nil)
-  (win:startup-with-window)
+(when (require 'elscreen nil t)
+  (setq elscreen-prefix-key (kbd "C-c C-w"))
+  (elscreen-start)
+  (setq elscreen-tab-display-kill-screen nil)
+  (setq elscreen-tab-display-control nil)
+  (setq elscreen-display-screen-number nil)
+  (setq elscreen-display-tab t)
   )
 
 ;; magit.el
@@ -936,7 +886,8 @@ file is a remote file (include directory)."
   (add-to-list 'term-unbind-key-list '"C-t")
   (defun switch-to-multi-term ()
     (interactive)
-    (let ((buffer (get-buffer "*terminal<1>*")))
+    (let* ((screen-number (1+ (elscreen-get-current-screen)))
+           (buffer (get-buffer (format "*terminal<%d>*" screen-number))))
       (cond ((equal buffer (current-buffer))
              (switch-to-buffer (other-buffer (current-buffer) 1)))
             (buffer
@@ -972,6 +923,14 @@ file is a remote file (include directory)."
                (define-key term-raw-map (kbd "M-h") 'term-send-backward-kill-word)
                (define-key term-raw-map (kbd "C-t") 'switch-to-multi-term)
                (define-key term-raw-map (kbd "TAB") 'term-send-tab)
+               (define-key term-raw-map (kbd "M-p") 'previous-line)
+               (define-key term-raw-map (kbd "M-n") 'next-line)
+               (define-key term-raw-map (kbd "M-f") 'forward-char)
+               (define-key term-raw-map (kbd "M-b") 'backward-char)
+               (define-key term-raw-map (kbd "<up>")   'scroll-down-line)
+               (define-key term-raw-map (kbd "<down>") 'scroll-up-line)
+               (define-key term-raw-map (kbd "<right>")'scroll-left)
+               (define-key term-raw-map (kbd "<left>") 'scroll-right)
                ))
   )
 
@@ -1242,12 +1201,14 @@ file is a remote file (include directory)."
   (require 'helm-git-project)
   (require 'helm-git-grep)
   (require 'helm-filelist)
-  (require 'helm-windows)
 
   (helm-mode 1)
+  (setq helm-samewindow nil)
   ;; helmで置き換えない
   (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
   (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
+  (add-to-list 'helm-completing-read-handlers-alist '(eval-expression . nil))
+  (add-to-list 'helm-completing-read-handlers-alist '(execute-extended-command . nil))
 
   ;; buffer名の表示幅
   (setq helm-buffer-max-length 30)
@@ -1265,6 +1226,9 @@ file is a remote file (include directory)."
 
   ;; tabで補完
   (define-key helm-read-file-map (kbd "<tab>") 'helm-execute-persistent-action)
+
+  ;; descbindsを置き換え
+  (helm-descbinds-mode t)
 
   (defvar helm-source-buffers-list-howm-title
     `((name . "Buffers")
@@ -1366,52 +1330,23 @@ file is a remote file (include directory)."
                                      TeX-run-discard-or-function t t :help "open pdf file")))))
 
 ;;
-;; php-mode
+;; php-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'php-mode)
 (setq auto-mode-alist (append '(("\\.php\\'" . php-mode)) auto-mode-alist))
 (setq php-mode-force-pear t)
 
 ;;
-;; web-mode
+;; web-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'web-mode)
-(setq auto-mode-alist
-      (append '(
-                ("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)
-                )
-              auto-mode-alist))
-(defun my-web-mode-hook ()
-  (setq web-mode-markup-indent-offset 2)
-  (setq web-mode-css-indent-offset    2)
-  (setq web-mode-code-indent-offset   4)
-  (setq web-mode-style-padding  0)
-  (setq web-mode-script-padding 0)
-  (setq web-mode-block-padding  0)
-  (setq web-mode-enable-auto-pairing nil)
-  )
-(add-hook 'web-mode-hook 'my-web-mode-hook)
-;; 色の設定
-(custom-set-faces
- '(web-mode-doctype-face
-   ((t (:foreground "#82AE46"))))                          ; doctype
- '(web-mode-html-tag-face
-   ((t (:foreground "#E6B422" :weight bold))))             ; 要素名
- '(web-mode-html-attr-name-face
-   ((t (:foreground "#C97586"))))                          ; 属性名など
- '(web-mode-html-attr-value-face
-   ((t (:foreground "#82AE46"))))                          ; 属性値
- '(web-mode-comment-face
-   ((t (:foreground "#D9333F"))))                          ; コメント
- '(web-mode-server-comment-face
-   ((t (:foreground "#D9333F"))))                          ; コメント
- '(web-mode-css-rule-face
-   ((t (:foreground "#A0D8EF"))))                          ; cssのタグ
- '(web-mode-css-pseudo-class-face
-   ((t (:foreground "#FF7F00"))))                          ; css 疑似クラス
- '(web-mode-css-at-rule-face
-   ((t (:foreground "#FF7F00"))))                          ; cssのタグ
- )
+(setq auto-mode-alist (append '(("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)) auto-mode-alist))
+(setq web-mode-markup-indent-offset 2)
+(setq web-mode-css-indent-offset    2)
+(setq web-mode-code-indent-offset   4)
+(setq web-mode-style-padding  0)
+(setq web-mode-script-padding 0)
+(setq web-mode-block-padding  0)
 
 ;;
 ;; yasnippet.el
@@ -1657,11 +1592,13 @@ PWD is not in a git repo (or the git command is not found)."
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
-(setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) " UT")
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
-(setcar (cdr (assq 'rainbow-mode minor-mode-alist)) " RW")
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
-(setcar (cdr (assq 'git-gutter+-mode minor-mode-alist)) " GG")
+(setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) "")
+(setcar (cdr (assq 'rainbow-mode minor-mode-alist)) "")
+(setcar (cdr (assq 'git-gutter+-mode minor-mode-alist)) "")
+(setcar (cdr (assq 'helm-mode minor-mode-alist)) "")
+(setcar (cdr (assq 'whitespace-mode minor-mode-alist)) "")
 
 ;;
 ;; migemo.el
