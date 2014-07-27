@@ -79,7 +79,7 @@
 (global-set-key [mouse-20]   '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
 (global-set-key [mouse-21]   '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
 
-(define-minor-mode overriding-minor-mode
+(define-minor-mode overriding-key-map-mode
   "キーマップ上書き用マイナーモード"
   t
   ""
@@ -276,7 +276,7 @@
    `(web-mode-css-at-rule-face ((,class (:foreground "#FF7F00"))))
    ;; term color
    `(term-color-black   ((,class (:foreground "black" :background "black"))))
-   `(term-color-red     ((,class (:foreground "red3" :background "red3"))))
+   `(term-color-red     ((,class (:foreground "red" :background "red"))))
    `(term-color-green   ((,class (:foreground "green3" :background "green3"))))
    `(term-color-yellow  ((,class (:foreground "yellow3" :background "yellow3"))))
    `(term-color-blue    ((,class (:foreground "DeepSkyBlue" :background "DeepSkyBlue"))))
@@ -1085,6 +1085,7 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'web-mode)
+  (add-to-list 'ac-modes 'html-mode)
   (add-to-list 'ac-modes 'typescript-mode)
   (add-to-list 'ac-modes 'css-mode)
   (add-to-list 'ac-modes 'php-mode)
@@ -1599,6 +1600,8 @@ PWD is not in a git repo (or the git command is not found)."
 (setcar (cdr (assq 'git-gutter+-mode minor-mode-alist)) "")
 (setcar (cdr (assq 'helm-mode minor-mode-alist)) "")
 (setcar (cdr (assq 'whitespace-mode minor-mode-alist)) "")
+(setcar (cdr (assq 'global-whitespace-mode minor-mode-alist)) "")
+(setcar (cdr (assq 'magit-auto-revert-mode minor-mode-alist)) "")
 
 ;;
 ;; migemo.el
