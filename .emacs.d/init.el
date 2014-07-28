@@ -526,10 +526,6 @@
 (setq completion-ignore-case t)
 (custom-set-variables '(read-file-name-completion-ignore-case t))
 
-;; 同名ファイルをフォルダで識別
-(require 'uniquify)
-(setq uniquify-buffer-name-style 'post-forward-angle-brackets)
-
 ;; ベル音
 (setq ring-bell-function 'ignore)
 
