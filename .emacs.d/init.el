@@ -17,7 +17,7 @@
 ;; 2つ以上フォルダを指定する場合の引数 => (add-to-load-path "elisp" "xxx" "xxx")
 (add-to-load-path "elisp")
 
-(when (< emacs-major-version 24.2) (require 'cl-lib))
+(when (< emacs-major-version 24.3) (require 'cl-lib))
 
 (add-to-load-path "elpa")
 
@@ -538,7 +538,7 @@
 
 ;; 折り返ししない
 (setq truncate-lines t)
-;;(setq truncate-partial-width-windows t)
+(setq truncate-partial-width-windows t)
 
 ;; インデント
 (setq-default c-basic-offset 4)
@@ -1200,7 +1200,9 @@ file is a remote file (include directory)."
   (helm-mode 1)
   (setq helm-samewindow nil)
   ;; helmで置き換えない
+  (add-to-list 'helm-completing-read-handlers-alist '(find-alternate-file . nil))
   (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
+  (add-to-list 'helm-completing-read-handlers-alist '(write-file . nil))
   (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
   (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
 
@@ -1251,7 +1253,7 @@ file is a remote file (include directory)."
                                (t
                                 nil))
                          )
-                       (helm-buffer-list))
+                       helm-buffers-list-cache)
                       ))
       (no-matchplugin)
       (type . buffer)
