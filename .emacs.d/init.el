@@ -1207,7 +1207,7 @@ file is a remote file (include directory)."
   (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
 
   ;; buffer名の表示幅
-  (setq helm-buffer-max-length 30)
+  (setq helm-buffer-max-length 40)
 
   ;; kill-ring
   (setq kill-ring-max 50)
@@ -1249,7 +1249,7 @@ file is a remote file (include directory)."
                          (cond ((string-match-p "\*.+\*" buffer)
                                 t)
                                ((with-current-buffer buffer howm-mode)
-                                t)
+                                nil)
                                (t
                                 nil))
                          )

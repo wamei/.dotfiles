@@ -259,7 +259,7 @@ See `ido-make-buffer-list' for more infos."
          (proc (get-buffer-process buf))
          (dir (with-current-buffer buffer (abbreviate-file-name default-directory)))
          (file-name (helm-aif (buffer-file-name buf) (abbreviate-file-name it)))
-         (name (buffer-name buf))
+         (name (hh:title-real-to-display (buffer-name buf)))
          (name-prefix (when (file-remote-p dir)
                         (propertize "@ " 'face 'helm-ff-prefix))))
     (cond
@@ -316,9 +316,9 @@ Should be called after others transformers i.e (boring buffers)."
                             mode)
         ;; The max length of a number should be 1023.9X where X is the
         ;; units, this is 7 characters.
-        for formatted-size = (and size (format "%7s" size))
+        ;; for formatted-size = (and size (format "%7s" size))
         collect (cons (if helm-buffer-details-flag
-                          (concat truncbuf "\t" formatted-size
+                          (concat truncbuf "\t" ;;formatted-size
                                   "  " fmode "  " meta)
                         name)
                       i)))
