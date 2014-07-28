@@ -17,7 +17,7 @@
 ;; 2つ以上フォルダを指定する場合の引数 => (add-to-load-path "elisp" "xxx" "xxx")
 (add-to-load-path "elisp")
 
-(when (< emacs-major-version 24.3) (require 'cl-lib))
+(when (< emacs-major-version 24.2) (require 'cl-lib))
 
 (add-to-load-path "elpa")
 
@@ -64,7 +64,7 @@
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
-(global-set-key (kbd "C-x C-b") 'helm-filelist+)
+(global-set-key (kbd "C-x C-b") 'helm-filelist++)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
@@ -737,12 +737,10 @@ file is a remote file (include directory)."
       (unless (string= git-root-dir "")
         (direx:find-directory-noselect git-root-dir))
       (direx:jump-to-directory-other-window)))
-  (setq direx:leaf-icon "  "
-        direx:open-icon "▾ "
-        direx:closed-icon "▸ ")
-  (add-hook 'direx:direx-mode-hook '(lambda ()
-                                      (hl-line-mode)
-                                      ))
+  (setq direx:leaf-icon "  ")
+  (setq direx:open-icon "▾ ")
+  (setq direx:closed-icon "▸ ")
+  (add-hook 'direx:direx-mode-hook '(lambda () (hl-line-mode) ))
   (define-key direx:direx-mode-map (kbd "n") 'direx:next-sibling-item)
   (define-key direx:direx-mode-map (kbd "p") 'direx:previous-sibling-item)
   (define-key direx:direx-mode-map (kbd "u") 'direx:up-item)
@@ -1208,8 +1206,7 @@ file is a remote file (include directory)."
   ;; helmで置き換えない
   (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
   (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
-  (add-to-list 'helm-completing-read-handlers-alist '(eval-expression . nil))
-  (add-to-list 'helm-completing-read-handlers-alist '(execute-extended-command . nil))
+  (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
 
   ;; buffer名の表示幅
   (setq helm-buffer-max-length 30)
@@ -1248,7 +1245,18 @@ file is a remote file (include directory)."
                     ;; If a new buffer is longer that this value
                     ;; this value will be updated
                     (setq helm-buffer-max-len-mode (cdr result))))))
-      (candidates . helm-buffers-list-cache)
+      (candidates . (lambda ()
+                      (remove-if
+                       (lambda (buffer)
+                         (cond ((string-match-p "\*.+\*" buffer)
+                                t)
+                               ((with-current-buffer buffer howm-mode)
+                                t)
+                               (t
+                                nil))
+                         )
+                       (helm-buffer-list))
+                      ))
       (no-matchplugin)
       (type . buffer)
       (match helm-buffers-list--match-fn)
@@ -1259,26 +1267,32 @@ file is a remote file (include directory)."
       (persistent-help
        . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
 
-  (defvar my/helm-source-files-in-current-dir
-    `((name . "Current Directory Files")
+  (defvar helm-source-*buffers-list
+    `((name . "*Buffers")
       (candidates . (lambda ()
-                      (with-helm-current-buffer
-                        (let ((dirs (directory-files (helm-c-current-directory)))
-                              (filter (lambda (d) (string-match "^\.\.?$" d))))
-                          (remove-if filter dirs)))))
-      (match . helm-files-match-only-basename)
-      (keymap . ,helm-generic-files-map)
-      (help-message . helm-generic-file-help-message)
-      (mode-line . helm-generic-file-mode-line-string)
-      (type . file)))
+                      (remove-if (lambda (buffer) (not (string-match-p "\*.+\*" buffer))) (helm-buffer-list))
+                      ))
+      (no-matchplugin)
+      (type . buffer)
+      (persistent-action . helm-buffers-list-persistent-action)
+      (keymap . ,helm-buffer-map)
+      (volatile)
+      (mode-line . helm-buffer-mode-line-string)
+      (persistent-help
+       . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
 
-  (setq helm-for-files-preferred-list
-        '(helm-source-buffers-list-howm-title
-          helm-source-recentf
-          helm-source-bookmarks
-          helm-source-file-cache
-          helm-source-files-in-current-dir
-          helm-source-locate))
+  (defun helm-filelist++ ()
+    (interactive)
+    (let ((helm-ff-transformer-show-only-basename nil))
+      (helm-other-buffer
+       `(helm-source-buffers-list-howm-title
+         helm-source-*buffers-list
+         helm-source-recentf
+         helm-source-bookmarks
+         helm-source-file-cache
+         helm-source-files-in-current-dir
+         ,(helm-source-filelist))
+       "*helm filelist++*")))
   )
 
 ;;

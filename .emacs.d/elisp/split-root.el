@@ -164,14 +164,14 @@ columns in the new window.
 If optional argument TOP-LEFT is non-nil the window will appear at the
 top/left, otherwise of the bottom/right."
   (interactive)
-  (let ((tree (calculate-window-tree (car (window-tree)))))
-    (delete-other-windows)
+  (let ((tree (calculate-window-tree (car (window-tree))))
+        (old-window (popwin:last-selected-window)))
+    (delete-other-windows old-window)
     (let* ((edges (window-edges))
            (width (- (nth 2 edges) (nth 0 edges)))
            (height (- (nth 3 edges) (nth 1 edges)))
            (sz (or size (/ (if horflag width height) 2)))
            (remaining (- (if horflag width height) sz))
-           (old-window (selected-window))
            (new-window old-window))
       (if top-left
           (setq new-window (split-window new-window sz horflag))
