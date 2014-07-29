@@ -93,6 +93,18 @@
   )
 
 ;;
+;; モード設定
+;;----------------------------------------------------------------------------------------------------
+(add-to-list 'auto-mode-alist '("\\.coffee\\'" . coffee-mode))
+(add-to-list 'auto-mode-alist '("Cakefile" . coffee-mode))
+(add-to-list 'auto-mode-alist '("\\.js\\'" . js2-mode))
+(add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
+(add-to-list 'auto-mode-alist '("\\.markdown\\'" . markdown-mode))
+(add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
+(add-to-list 'auto-mode-alist '("\\.php\\'" . php-mode))
+(add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode))
+
+;;
 ;; ウィンドウ設定
 ;;______________________________________________________________________
 
@@ -834,7 +846,12 @@ file is a remote file (include directory)."
   (defun my/magit-quit-session ()
     (interactive)
     (kill-buffer)
-    (jump-to-register :magit-fullscreen))
+    (jump-to-register :magit-fullscreen)
+    (if git-gutter+-mode
+        (if (and (git-gutter+-file-buffer-p)
+                 (git-gutter+-in-git-repository-p (buffer-file-name)))
+            (git-gutter+-refresh)
+          )))
 
   (define-key magit-status-mode-map (kbd "q") 'my/magit-quit-session)
 
@@ -845,10 +862,7 @@ file is a remote file (include directory)."
 ;;
 ;; coffee-mode.el
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'coffee nil t)
-  (add-to-list 'auto-mode-alist '("\\.coffee\\'" . coffee-mode))
-  (add-to-list 'auto-mode-alist '("Cakefile" . coffee-mode))
-  )
+(when (require 'coffee nil t))
 
 ;;
 ;; js2-mode
@@ -867,8 +881,7 @@ file is a remote file (include directory)."
              (point))))
       (skip-chars-forward "\s " point-of-indentation)))
   (define-key js2-mode-map "\C-i" 'indent-and-back-to-indentation)
-
-  (add-to-list 'auto-mode-alist '("\\.js$" . js2-mode)))
+  )
 
 ;;
 ;; multi-term.el
@@ -932,7 +945,6 @@ file is a remote file (include directory)."
 ;; typescript.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'typescript nil t)
-  (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
   (require 'tss)
   ;; (tss-config-default)から抜粋したtss設定
   (loop for mode in tss-enable-modes
@@ -1045,8 +1057,6 @@ file is a remote file (include directory)."
 ;; markdown-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
-(add-to-list 'auto-mode-alist '("\\.markdown\\'" . markdown-mode))
-(add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
 
 ;;
 ;; auto-complete.el
@@ -1074,33 +1084,42 @@ file is a remote file (include directory)."
   ;;(setq ac-dwim t)
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
+  ;; font-lock
+  (setq ac-disable-faces '(font-lock-comment-face font-lock-doc-face))
   ;; 起動モード
   (global-auto-complete-mode t)
-  (add-to-list 'ac-modes 'text-mode)
-  (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'web-mode)
-  (add-to-list 'ac-modes 'html-mode)
-  (add-to-list 'ac-modes 'typescript-mode)
-  (add-to-list 'ac-modes 'css-mode)
-  (add-to-list 'ac-modes 'php-mode)
+  (add-to-list 'ac-modes 'js2-mode)
+  (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'org-mode)
+  (add-to-list 'ac-modes 'fundamental-mode)
+  ;; 辞書ファイル
+  (add-to-list 'ac-dictionary-directories "~/.emacs.d/ac-dict/")
+  ;; ユーザ辞書
+  (defvar ac-user-dict-dir (expand-file-name "~/.emacs.d/ac-user-dict/"))
 
   ;; 情報源
-  (defvar my-ac-sources
+  (setq-default ac-sources
     '(ac-source-filename
       ac-source-yasnippet
       ac-source-abbrev
       ac-source-dictionary
       ac-source-words-in-same-mode-buffers))
 
+  ;; js-mode
+  (defun ac-js-mode-setup ()
+    (add-to-list 'ac-dictionary-files "~/.emacs.d/ac-dict/javascript-mode"))
+  (add-hook 'js-mode-hook 'ac-js-mode-setup)
+  (add-hook 'js2-mode-hook 'ac-js-mode-setup)
+
   ;; lisp-mode
   (defun ac-lisp-mode-setup ()
-    (setq-default ac-sources (append '(ac-source-symbols) my-ac-sources)))
+    (setq ac-sources (append '(ac-source-symbols) ac-sources)))
   (add-hook 'emacs-lisp-mode-hook 'ac-lisp-mode-setup)
 
   ;; css-mode
   (defun ac-css-mode-setup ()
-    (setq-default ac-sources (append '(ac-source-css-property) my-ac-sources)))
+    (setq ac-sources (append '(ac-source-css-property) ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
   ;; (when (require 'auto-complete-latex nil t)
@@ -1346,14 +1365,12 @@ file is a remote file (include directory)."
 ;; php-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'php-mode)
-(setq auto-mode-alist (append '(("\\.php\\'" . php-mode)) auto-mode-alist))
 (setq php-mode-force-pear t)
 
 ;;
 ;; web-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'web-mode)
-(setq auto-mode-alist (append '(("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode)) auto-mode-alist))
 (setq web-mode-markup-indent-offset 2)
 (setq web-mode-css-indent-offset    2)
 (setq web-mode-code-indent-offset   4)
