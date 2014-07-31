@@ -1081,9 +1081,11 @@ file is a remote file (include directory)."
   ;; ツールチップの表示なし
   (setq ac-use-quick-help nil)
   ;; do i what mean
-  ;;(setq ac-dwim t)
+  (setq ac-dwim nil)
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
+  ;; 補完候補を自動展開しない
+  (setq ac-expand-on-auto-complete nil)
   ;; font-lock
   (setq ac-disable-faces '(font-lock-comment-face font-lock-doc-face))
   ;; 起動モード
