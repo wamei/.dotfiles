@@ -549,8 +549,8 @@
 (column-number-mode t)
 
 ;; 折り返ししない
-(setq truncate-lines t)
-(setq truncate-partial-width-windows t)
+(setq truncate-lines nil)
+(setq truncate-partial-width-windows nil)
 
 ;; インデント
 (setq-default c-basic-offset 4)
