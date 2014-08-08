@@ -860,30 +860,6 @@ file is a remote file (include directory)."
   )
 
 ;;
-;; coffee-mode.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'coffee nil t))
-
-;;
-;; js2-mode
-;;----------------------------------------------------------------------------------------------------
-(when (require 'js2 nil t)
-  (setq js2-cleanup-whitespace nil
-        js2-mirror-mode nil
-        js2-bounce-indent-flag nil)
-
-  (defun indent-and-back-to-indentation ()
-    (interactive)
-    (indent-for-tab-command)
-    (let ((point-of-indentation
-           (save-excursion
-             (back-to-indentation)
-             (point))))
-      (skip-chars-forward "\s " point-of-indentation)))
-  (define-key js2-mode-map "\C-i" 'indent-and-back-to-indentation)
-  )
-
-;;
 ;; multi-term.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'multi-term nil t)
@@ -942,90 +918,6 @@ file is a remote file (include directory)."
   )
 
 ;;
-;; typescript.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'typescript nil t)
-  (require 'tss)
-  ;; (tss-config-default)から抜粋したtss設定
-  (loop for mode in tss-enable-modes
-        for hook = (intern-soft (concat (symbol-name mode) "-hook"))
-        do (add-to-list 'ac-modes mode)
-        if (and hook
-                (symbolp hook))
-        do (add-hook hook 'tss-setup-current-buffer t))
-  (add-hook 'kill-buffer-hook 'tss--delete-process t)
-  )
-;; 識別子の正規表現
-(defvar javascript-identifier-regexp "[a-zA-Z0-9.$_]+")
-
-;; } までの class のメソッドを列挙する関数
-(defun typescript-imenu-create-method-index-1 (class bound)
-  (let (result)
-    (while (re-search-forward (format "^ *\\(\\(static \\|private \\|public \\|export \\)+\\|\\)\\(%s\\)\\((.*)\\) *\\(: *[A-Z]%s+\\(<[A-Z]%s+>\\|\\) *\\|\\){"
-                                      javascript-identifier-regexp
-                                      javascript-identifier-regexp
-                                      javascript-identifier-regexp) bound t)
-      (push (cons (format "%s.%s"
-                          class
-                          (match-string 3)
-                          (match-string 4)
-                          (match-string 5)) (match-beginning 1)) result))
-    (nreverse result)))
-
-;; メソッドのインデックスを作成する関数
-(defun typescript-imenu-create-method-index ()
-  (cons "Methods"
-        (let (result)
-          ;; $name = Class.create
-          ;; $name = Object.extend
-          ;; Object.extend($name,
-          ;; $name = {
-          ;; をクラスあるいはオブジェクトとする
-          (dolist (pattern (list (format "^ *export class \\([A-Z]%s\\)" javascript-identifier-regexp)
-                                 (format "^ *class (\\([A-Z]%s\\)" javascript-identifier-regexp)
-                                 ))
-            (goto-char (point-min))
-            (while (re-search-forward pattern (point-max) t)
-              (save-excursion
-                (condition-case nil
-                    ;; { を探す
-                    (let ((class (replace-regexp-in-string "\.prototype$" "" (match-string 1))) ;; .prototype はとっておく
-                          (try 3))
-                      (if (eq (char-after) ?\()
-                          (down-list))
-                      (if (eq (char-before) ?{)
-                          (backward-up-list))
-                      (forward-list)
-                      (while (and (> try 0) (not (eq (char-before) ?})))
-                        (forward-list)
-                        (decf try))
-                      (if (eq (char-before) ?}) ;; } を見つけたら
-                          (let ((bound (point)))
-                            (backward-list)
-                            ;; メソッドを抽出してインデックスに追加
-                            (setq result (append result (typescript-imenu-create-method-index-1 class bound))))))
-                  (error nil)))))
-          ;; 重複を削除しておく
-          (delete-duplicates result :test (lambda (a b) (= (cdr a) (cdr b)))))))
-(defun typescript-imenu-create-class-index ()
-  (cons "Class"
-         (let (result)
-           (dolist (pattern (list
-                             (format "^ *export class \\([A-Z]%s\\)" javascript-identifier-regexp)
-                             (format "^ *class (\\([A-Z]%s\\)" javascript-identifier-regexp)
-                             ))
-             (goto-char (point-min))
-             (while (re-search-forward pattern (point-max) t)
-               (push (cons (match-string 1) (match-beginning 1)) result)))
-           (nreverse result))))
-(defun typescript-imenu-create-index ()
-  (list
-   (typescript-imenu-create-class-index)
-   (typescript-imenu-create-method-index)
-   ))
-(add-hook 'typescript-mode-hook (lambda () (setq imenu-create-index-function 'typescript-imenu-create-index)))
-
-;;
 ;; hl-line+.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'hl-line+ nil t)
@@ -1052,11 +944,6 @@ file is a remote file (include directory)."
 (when (require 'undo-tree nil t)
   (global-undo-tree-mode t)
   )
-
-;;
-;; markdown-mode.el
-;;----------------------------------------------------------------------------------------------------
-(autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
 
 ;;
 ;; auto-complete.el
@@ -1129,83 +1016,6 @@ file is a remote file (include directory)."
   ;;    (add-to-list 'ac-modes 'latex-mode)
   ;;    (add-hook 'LaTeX-mode-hook 'ac-l-setup))
   )
-
-;;
-;; howm-mode
-;;----------------------------------------------------------------------------------------------------
-(setq howm-prefix "\C-x,")
-(setq howm-view-title-header "*")
-(setq howm-insert-date-format "<%s>")
-(setq howm-date-format '"%Y-%m-%d %a")
-(setq howm-date-regexp-grep "[1-2][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [SMTWF][uoehra][neduit]")
-(setq howm-date-regexp "\\([1-2][0-9][0-9][0-9]\\)-\\([0-1][0-9]\\)-\\([0-3][0-9]\\) [SMTWF][uoehra][neduit]")
-(setq howm-reminder-regexp-grep-format (concat "<" howm-date-regexp-grep "[- :0-9]*>%s"))
-(setq howm-reminder-regexp-format (concat "\\(<" howm-date-regexp "[- :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
-(setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
-(setq howm-directory "~/howm/")
-(when (require 'howm nil t)
-  (setq howm-menu-lang 'ja)
-  (setq howm-keyword-case-fold-search t)
-  (setq font-lock-verbose nil)
-  (setq howm-history-file "~/howm/.howm-history")
-  (setq howm-keyword-file "~/howm/.howm-keys")
-  (setq howm-file-name-format "%Y/%Y%m%d-%H%M%S.org")
-  (setq howm-menu-file "~/howm/menu.org")
-  (setq howm-view-summary-persistent nil)
-  (setq howm-prepend t)
-  (setq howm-reminder-font-lock-keywords
-        `(
-          (,(howm-reminder-regexp "[-]") (0 howm-reminder-normal-face prepend))
-          (,(howm-reminder-regexp "[+]") (0 howm-reminder-todo-face prepend))
-          (,(howm-reminder-regexp "[~]") (0 howm-reminder-defer-face prepend))
-          (,(howm-reminder-regexp "[!]") (0 howm-reminder-deadline-face prepend))
-          (,(howm-reminder-regexp "[@]") (0 howm-reminder-schedule-face prepend))
-          (,(howm-reminder-regexp "[.]") (0 howm-reminder-done-face prepend))
-          ))
-  (setq howm-dtime-format (concat "<" howm-dtime-body-format ">"))
-  (setq howm-highlight-date-regexp-format "%Y-%m-%d %a\\([- :0-9]*\\)")
-  (setq howm-template-date-format "<%Y-%m-%d %a %H:%M>")
-  (setq howm-template-file-format ">>>%s")
-  (setq howm-template "* %cursor\n%date\n")
-  (setq howm-schedule-sort-by-time t)
-  (add-hook 'org-mode-hook 'howm-mode)
-  (if (not (memq 'delete-file-if-no-contents after-save-hook))
-      (setq after-save-hook
-            (cons 'delete-file-if-no-contents after-save-hook)))
-
-  (defun delete-file-if-no-contents ()
-    (when (and
-           (buffer-file-name (current-buffer))
-           (= (point-min) (point-max)))
-      (when (y-or-n-p "Delete file and kill buffer?")
-        (delete-file
-         (buffer-file-name (current-buffer)))
-        (kill-buffer (current-buffer)))))
-  )
-
-;;
-;; Org-mode
-;;----------------------------------------------------------------------------------------------------
-;; 見出しの余分な*を消す
-(setq org-hide-leading-stars t)
-;; 画面端で改行する
-(setq org-startup-truncated nil)
-;; 見出しを畳んで表示する
-(setq org-startup-folded nil)
-;; 画面端改行トグル関数
-(defun change-truncation()
-  (interactive)
-  (cond ((eq truncate-lines nil)
-         (setq truncate-lines t))
-        (t
-         (setq truncate-lines nil))))
-
-;;
-;; helm-howm.el
-;;----------------------------------------------------------------------------------------------------
-(require 'helm-howm)
-;; 「最近のメモ」をいくつ表示するか
-(setq hh:recent-menu-number-limit 600)
 
 ;;
 ;; helm.el
@@ -1313,72 +1123,6 @@ file is a remote file (include directory)."
          ,(helm-source-filelist))
        "*helm filelist++*")))
   )
-
-;;
-;; AUCTeX
-;;----------------------------------------------------------------------------------------------------
-(setq TeX-default-mode 'japanese-latex-mode)
-(setq japanese-LaTeX-default-style "jsarticle")
-(setq japanese-LaTeX-command-default "pdfpLaTex")
-(setq-default indent-tabs-mode nil) ; タブでインデント
-(setq-default TeX-newline-function 'newline-and-indent)
-(setq preview-image-type 'dvipng)
-(setq TeX-source-correlate-method 'synctex)
-(setq TeX-source-correlate-start-server t)
-
-;; reftexの設定
-(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
-(setq reftex-plug-into-AUCTeX t)
-; RefTeXで使用するbibファイルの位置を指定する
-(setq reftex-default-bibliography '("~/.emacs.d/tex/references.bib"))
-
-(setq TeX-engine-alist '((ptex "pTeX" "eptex" "platex" "eptex")
-                         (uptex "upTeX" "euptex" "uplatex" "euptex")))
-(setq TeX-engine 'ptex)
-(setq TeX-view-program-list '(("open dvi" "/usr/bin/open -a Preview.app %s.pdf")
-                              ("open pdf" "/usr/bin/open -a Preview.app %o")))
-(setq TeX-view-program-selection '((output-pdf "open pdf")
-                                   (output-dvi "open dvi")))
-(add-hook 'LaTeX-mode-hook 'TeX-source-correlate-mode)
-(add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
-(add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
-(add-hook 'LaTeX-mode-hook
-          (function (lambda ()
-                      (add-to-list 'TeX-command-list
-                                   '("pdfpLaTeX" "platex %S %(mode) %t && pbibtex %s  && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run pLaTeX and dvipdfmx"))
-                      ;; (add-to-list 'TeX-command-list
-                      ;;              '("pdfpLaTeX2" "platex %S %(mode) %t && dvips -Ppdf -z -f %d | convbkmk -g > %f && ps2pdf %f"
-                      ;;                TeX-run-TeX nil (latex-mode) :help "Run pLaTeX, dvips, and ps2pdf"))
-                      (add-to-list 'TeX-command-list
-                                   '("Latexmk" "latexmk %t"
-                                     TeX-run-TeX nil (latex-mode) :help "Run Latexmk"))
-                      (add-to-list 'TeX-command-list
-                                   '("pBibTeX" "pbibtex %s"
-                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
-                      (add-to-list 'TeX-command-list
-                                   '("jBibTeX" "pbibtex %s"
-                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
-                      (add-to-list 'TeX-command-list
-                                   '("open" "open %s.pdf"
-                                     TeX-run-discard-or-function t t :help "open pdf file")))))
-
-;;
-;; php-mode.el
-;;----------------------------------------------------------------------------------------------------
-(require 'php-mode)
-(setq php-mode-force-pear t)
-
-;;
-;; web-mode.el
-;;----------------------------------------------------------------------------------------------------
-(require 'web-mode)
-(setq web-mode-markup-indent-offset 2)
-(setq web-mode-css-indent-offset    2)
-(setq web-mode-code-indent-offset   4)
-(setq web-mode-style-padding  0)
-(setq web-mode-script-padding 0)
-(setq web-mode-block-padding  0)
 
 ;;
 ;; yasnippet.el
@@ -1619,6 +1363,196 @@ PWD is not in a git repo (or the git command is not found)."
   (define-key git-gutter+-mode-map (kbd "C-c p") 'git-gutter+-previous-hunk)
   (define-key git-gutter+-mode-map (kbd "C-c d") 'git-gutter+-popup-hunk)
   )
+
+;;
+;; howm-mode
+;;----------------------------------------------------------------------------------------------------
+(setq howm-prefix "\C-x,")
+(setq howm-view-title-header "*")
+(setq howm-insert-date-format "<%s>")
+(setq howm-date-format '"%Y-%m-%d %a")
+(setq howm-date-regexp-grep "[1-2][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [SMTWF][uoehra][neduit]")
+(setq howm-date-regexp "\\([1-2][0-9][0-9][0-9]\\)-\\([0-1][0-9]\\)-\\([0-3][0-9]\\) [SMTWF][uoehra][neduit]")
+(setq howm-reminder-regexp-grep-format (concat "<" howm-date-regexp-grep "[- :0-9]*>%s"))
+(setq howm-reminder-regexp-format (concat "\\(<" howm-date-regexp "[- :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
+(setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
+(setq howm-directory "~/howm/")
+(when (require 'howm nil t)
+  (setq howm-menu-lang 'ja)
+  (setq howm-keyword-case-fold-search t)
+  (setq font-lock-verbose nil)
+  (setq howm-history-file "~/howm/.howm-history")
+  (setq howm-keyword-file "~/howm/.howm-keys")
+  (setq howm-file-name-format "%Y/%Y%m%d-%H%M%S.org")
+  (setq howm-menu-file "~/howm/menu.org")
+  (setq howm-view-summary-persistent nil)
+  (setq howm-prepend t)
+  (setq howm-reminder-font-lock-keywords
+        `(
+          (,(howm-reminder-regexp "[-]") (0 howm-reminder-normal-face prepend))
+          (,(howm-reminder-regexp "[+]") (0 howm-reminder-todo-face prepend))
+          (,(howm-reminder-regexp "[~]") (0 howm-reminder-defer-face prepend))
+          (,(howm-reminder-regexp "[!]") (0 howm-reminder-deadline-face prepend))
+          (,(howm-reminder-regexp "[@]") (0 howm-reminder-schedule-face prepend))
+          (,(howm-reminder-regexp "[.]") (0 howm-reminder-done-face prepend))
+          ))
+  (setq howm-dtime-format (concat "<" howm-dtime-body-format ">"))
+  (setq howm-highlight-date-regexp-format "%Y-%m-%d %a\\([- :0-9]*\\)")
+  (setq howm-template-date-format "<%Y-%m-%d %a %H:%M>")
+  (setq howm-template-file-format ">>>%s")
+  (setq howm-template "* %cursor\n%date\n")
+  (setq howm-schedule-sort-by-time t)
+  (add-hook 'org-mode-hook 'howm-mode)
+  (if (not (memq 'delete-file-if-no-contents after-save-hook))
+      (setq after-save-hook
+            (cons 'delete-file-if-no-contents after-save-hook)))
+
+  (defun delete-file-if-no-contents ()
+    (when (and
+           (buffer-file-name (current-buffer))
+           (= (point-min) (point-max)))
+      (when (y-or-n-p "Delete file and kill buffer?")
+        (delete-file
+         (buffer-file-name (current-buffer)))
+        (kill-buffer (current-buffer)))))
+  )
+
+;;
+;; Org-mode
+;;----------------------------------------------------------------------------------------------------
+;; 見出しの余分な*を消す
+(setq org-hide-leading-stars t)
+;; 画面端で改行する
+(setq org-startup-truncated nil)
+;; 見出しを畳んで表示する
+(setq org-startup-folded nil)
+;; 画面端改行トグル関数
+(defun change-truncation()
+  (interactive)
+  (cond ((eq truncate-lines nil)
+         (setq truncate-lines t))
+        (t
+         (setq truncate-lines nil))))
+
+;;
+;; typescript.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'typescript nil t)
+  (require 'tss)
+  ;; (tss-config-default)から抜粋したtss設定
+  (loop for mode in tss-enable-modes
+        for hook = (intern-soft (concat (symbol-name mode) "-hook"))
+        do (add-to-list 'ac-modes mode)
+        if (and hook
+                (symbolp hook))
+        do (add-hook hook 'tss-setup-current-buffer t))
+  (add-hook 'kill-buffer-hook 'tss--delete-process t)
+  (define-key typescript-mode-map (kbd "C-c j") 'tss-jump-to-definition)
+  (define-key typescript-mode-map (kbd "C-c r l") 'tss-reload-current-project)
+  (define-key typescript-mode-map (kbd "C-c r s") 'tss-restart-current-buffer)
+  )
+
+;;
+;; coffee-mode.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'coffee nil t))
+
+;;
+;; js2-mode
+;;----------------------------------------------------------------------------------------------------
+(when (require 'js2 nil t)
+  (setq js2-cleanup-whitespace nil
+        js2-mirror-mode nil
+        js2-bounce-indent-flag nil)
+
+  (defun indent-and-back-to-indentation ()
+    (interactive)
+    (indent-for-tab-command)
+    (let ((point-of-indentation
+           (save-excursion
+             (back-to-indentation)
+             (point))))
+      (skip-chars-forward "\s " point-of-indentation)))
+  (define-key js2-mode-map "\C-i" 'indent-and-back-to-indentation)
+  )
+
+;;
+;; markdown-mode.el
+;;----------------------------------------------------------------------------------------------------
+(autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
+
+;;
+;; helm-howm.el
+;;----------------------------------------------------------------------------------------------------
+(require 'helm-howm)
+;; 「最近のメモ」をいくつ表示するか
+(setq hh:recent-menu-number-limit 600)
+
+;;
+;; AUCTeX
+;;----------------------------------------------------------------------------------------------------
+(setq TeX-default-mode 'japanese-latex-mode)
+(setq japanese-LaTeX-default-style "jsarticle")
+(setq japanese-LaTeX-command-default "pdfpLaTex")
+(setq-default indent-tabs-mode nil) ; タブでインデント
+(setq-default TeX-newline-function 'newline-and-indent)
+(setq preview-image-type 'dvipng)
+(setq TeX-source-correlate-method 'synctex)
+(setq TeX-source-correlate-start-server t)
+
+;; reftexの設定
+(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
+(setq reftex-plug-into-AUCTeX t)
+; RefTeXで使用するbibファイルの位置を指定する
+(setq reftex-default-bibliography '("~/.emacs.d/tex/references.bib"))
+
+(setq TeX-engine-alist '((ptex "pTeX" "eptex" "platex" "eptex")
+                         (uptex "upTeX" "euptex" "uplatex" "euptex")))
+(setq TeX-engine 'ptex)
+(setq TeX-view-program-list '(("open dvi" "/usr/bin/open -a Preview.app %s.pdf")
+                              ("open pdf" "/usr/bin/open -a Preview.app %o")))
+(setq TeX-view-program-selection '((output-pdf "open pdf")
+                                   (output-dvi "open dvi")))
+(add-hook 'LaTeX-mode-hook 'TeX-source-correlate-mode)
+(add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
+(add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
+(add-hook 'LaTeX-mode-hook
+          (function (lambda ()
+                      (add-to-list 'TeX-command-list
+                                   '("pdfpLaTeX" "platex %S %(mode) %t && pbibtex %s  && dvipdfmx %d"
+                                     TeX-run-TeX nil (latex-mode) :help "Run pLaTeX and dvipdfmx"))
+                      ;; (add-to-list 'TeX-command-list
+                      ;;              '("pdfpLaTeX2" "platex %S %(mode) %t && dvips -Ppdf -z -f %d | convbkmk -g > %f && ps2pdf %f"
+                      ;;                TeX-run-TeX nil (latex-mode) :help "Run pLaTeX, dvips, and ps2pdf"))
+                      (add-to-list 'TeX-command-list
+                                   '("Latexmk" "latexmk %t"
+                                     TeX-run-TeX nil (latex-mode) :help "Run Latexmk"))
+                      (add-to-list 'TeX-command-list
+                                   '("pBibTeX" "pbibtex %s"
+                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
+                      (add-to-list 'TeX-command-list
+                                   '("jBibTeX" "pbibtex %s"
+                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
+                      (add-to-list 'TeX-command-list
+                                   '("open" "open %s.pdf"
+                                     TeX-run-discard-or-function t t :help "open pdf file")))))
+
+;;
+;; php-mode.el
+;;----------------------------------------------------------------------------------------------------
+(require 'php-mode)
+(setq php-mode-force-pear t)
+
+;;
+;; web-mode.el
+;;----------------------------------------------------------------------------------------------------
+(require 'web-mode)
+(setq web-mode-markup-indent-offset 2)
+(setq web-mode-css-indent-offset    2)
+(setq web-mode-code-indent-offset   4)
+(setq web-mode-style-padding  0)
+(setq web-mode-script-padding 0)
+(setq web-mode-block-padding  0)
 
 ;;
 ;; マイナーモードの省略
