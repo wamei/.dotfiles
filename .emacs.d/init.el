@@ -983,7 +983,8 @@ file is a remote file (include directory)."
   (add-to-list 'ac-modes 'org-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
   ;; 辞書ファイル
-  (add-to-list 'ac-dictionary-directories "~/.emacs.d/ac-dict/")
+  (add-to-list 'ac-dictionary-directories (expand-file-name "~/.emacs.d/ac-dict/"))
+  (setq ac-comphist-file (expand-file-name "~/.emacs.d/ac-comphist.dat"))
   ;; ユーザ辞書
   (defvar ac-user-dict-dir (expand-file-name "~/.emacs.d/ac-user-dict/"))
 
@@ -1570,7 +1571,7 @@ PWD is not in a git repo (or the git command is not found)."
 
 ;;
 ;; migemo.el
-;;-----------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------------------
 (when (require 'migemo)
   (setq migemo-command "cmigemo")
   (setq migemo-options '("-q" "--emacs"))
@@ -1581,3 +1582,15 @@ PWD is not in a git repo (or the git command is not found)."
   (load-library "migemo")
   (migemo-init)
   )
+
+;;
+;; CEDET
+;;----------------------------------------------------------------------------------------------------
+(global-ede-mode 1)
+(require 'semantic/sb)
+(semantic-mode 1)
+
+(global-semantic-idle-completions-mode t)
+(global-semantic-decoration-mode t)
+(global-semantic-highlight-func-mode t)
+(global-semantic-show-unmatched-syntax-mode t)
