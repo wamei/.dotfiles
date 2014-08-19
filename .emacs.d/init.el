@@ -41,8 +41,6 @@
 (global-set-key (kbd "C-r")     'replace-string)
 (global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
-(global-set-key (kbd "C-.")     'er/expand-region)
-(global-set-key (kbd "C-,")     'er/contract-region)
 
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "M-h")     'backward-kill-word)
@@ -61,6 +59,8 @@
 (global-set-key (kbd "M-s o")   'occur)
 
 (global-set-key (kbd "C-q") nil)
+(global-set-key (kbd "C-q C-q")   'er/expand-region)
+(global-set-key (kbd "C-q C-z")   'er/contract-region)
 (global-set-key (kbd "C-q C-e")   'mc/edit-lines)
 (global-set-key (kbd "C-q C-a")   'mc/mark-all-like-this-dwim)
 (global-set-key (kbd "C-q C-n")   'mc/mark-next-like-this)
