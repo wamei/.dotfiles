@@ -79,6 +79,8 @@
 (global-set-key [mouse-20]   '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
 (global-set-key [mouse-21]   '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
 
+(define-key isearch-mode-map (kbd "M-s") 'helm-occur-from-isearch)
+
 (define-minor-mode overriding-key-map-mode
   "キーマップ上書き用マイナーモード"
   t
@@ -566,6 +568,19 @@
 
 ;; スタートページ非表示
 (setq inhibit-startup-message t)
+
+;; 選択範囲をisearch
+(defadvice isearch-mode (around isearch-mode-default-string (forward &optional regexp op-fun recursive-edit word-p) activate)
+  (if (and transient-mark-mode mark-active (not (eq (mark) (point))))
+      (progn
+        (isearch-update-ring (buffer-substring-no-properties (mark) (point)))
+        (deactivate-mark)
+        ad-do-it
+        (if (not forward)
+            (isearch-repeat-backward)
+          (goto-char (mark))
+          (isearch-repeat-forward)))
+    ad-do-it))
 
 ;; Trampバッファにユーザ名、ホスト名を追加
 (defun tramp-my-append-buffer-name-hint ()
