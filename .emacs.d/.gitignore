@@ -4,6 +4,7 @@
 *.elc
 shellenv.el
 .DS_Store
+ede-projects.el
 ac-comphist.dat
 tramp
 archive-contents
