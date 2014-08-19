@@ -41,6 +41,8 @@
 (global-set-key (kbd "C-r")     'replace-string)
 (global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
+(global-set-key (kbd "C-.")     'er/expand-region)
+(global-set-key (kbd "C-,")     'er/contract-region)
 
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "M-h")     'backward-kill-word)
