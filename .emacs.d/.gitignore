@@ -5,6 +5,7 @@
 shellenv.el
 .DS_Store
 ede-projects.el
+.mc-lists.el
 ac-comphist.dat
 tramp
 archive-contents

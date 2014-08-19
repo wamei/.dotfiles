@@ -60,6 +60,14 @@
 (global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
+(global-set-key (kbd "C-q") nil)
+(global-set-key (kbd "C-q C-e")   'mc/edit-lines)
+(global-set-key (kbd "C-q C-a")   'mc/mark-all-like-this-dwim)
+(global-set-key (kbd "C-q C-n")   'mc/mark-next-like-this)
+(global-set-key (kbd "C-q C-p")   'mc/mark-previous-like-this)
+(global-set-key (kbd "C-q C-s")   'mc/skip-to-next-like-this)
+(global-set-key (kbd "C-q C-u")   'mc/unmark-next-like-this)
+
 (global-set-key (kbd "C-x b")   'hh:menu-command)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
