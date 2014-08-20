@@ -44,8 +44,8 @@
 
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "M-h")     'backward-kill-word)
-(global-set-key (kbd "M-n")     (kbd "C-u 5 C-n"))
-(global-set-key (kbd "M-p")     (kbd "C-u 5 C-p"))
+(global-set-key (kbd "M-n")     (kbd "C-u 5 C-v"))
+(global-set-key (kbd "M-p")     (kbd "C-u 5 M-v"))
 (global-set-key (kbd "M-x")     'helm-M-x)
 (global-set-key (kbd "M-y")     'helm-show-kill-ring)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
@@ -731,6 +731,58 @@ file is a remote file (include directory)."
            (call-interactively 'my-ag)))
     )
   )
+
+;; view-mode
+;;----------------------------------------------------------------------------------------------------
+(setq view-read-only t)
+(defvar pager-keybind
+      `( ;; vi-like
+        ("h" . backward-word)
+        ("l" . forward-word)
+        ("j" . (lambda (arg) (interactive "p") (scroll-up     arg)))
+        ("k" . (lambda (arg) (interactive "p") (scroll-down   arg)))
+        ("n" . next-line)
+        ("p" . previous-line)
+        ("b" . backward-char)
+        ("f" . forward-char)
+        ("u" . scroll-down)
+        ("d" . scroll-up)
+        (" " . scroll-up)
+        (";" . gene-word)
+        ))
+(defun define-many-keys (keymap key-table &optional includes)
+  (let (key cmd)
+    (dolist (key-cmd key-table)
+      (setq key (car key-cmd)
+            cmd (cdr key-cmd))
+      (if (or (not includes) (member key includes))
+        (define-key keymap key cmd))))
+  keymap)
+
+(defun view-mode-hook0 ()
+  (define-many-keys view-mode-map pager-keybind)
+  (define-key view-mode-map " " 'scroll-up))
+(add-hook 'view-mode-hook 'view-mode-hook0)
+
+;; 書き込み不能なファイルはview-modeで開くように
+(defadvice find-file
+  (around find-file-switch-to-view-file (file &optional wild) activate)
+  (if (and (not (file-writable-p file))
+           (not (file-directory-p file)))
+      (view-file file)
+    ad-do-it))
+;; 書き込み不能な場合はview-modeを抜けないように
+(defvar view-mode-force-exit nil)
+(defmacro do-not-exit-view-mode-unless-writable-advice (f)
+  `(defadvice ,f (around do-not-exit-view-mode-unless-writable activate)
+     (if (and (buffer-file-name)
+              (not view-mode-force-exit)
+              (not (file-writable-p (buffer-file-name))))
+         (message "File is unwritable, so stay in view-mode.")
+       ad-do-it)))
+
+(do-not-exit-view-mode-unless-writable-advice view-mode-exit)
+(do-not-exit-view-mode-unless-writable-advice view-mode-disable)
 
 ;;
 ;; パッケージ関係
