@@ -7,6 +7,7 @@ shellenv.el
 ede-projects.el
 .mc-lists.el
 ac-comphist.dat
+bookmarks
 tramp
 archive-contents
 archives
