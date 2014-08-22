@@ -1525,6 +1525,21 @@ PWD is not in a git repo (or the git command is not found)."
          (setq truncate-lines nil))))
 
 ;;
+;; flycheck.el
+;;----------------------------------------------------------------------------------------------------
+(add-hook 'after-init-hook #'global-flycheck-mode)
+(eval-after-load 'flycheck
+  '(custom-set-variables
+   '(flycheck-display-errors-function #'flycheck-pos-tip-error-messages)))
+
+;;
+;; go-mode.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'go-mode nil t)
+  (require 'go-autocomplete)
+  )
+
+;;
 ;; typescript.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'typescript nil t)
@@ -1552,8 +1567,8 @@ PWD is not in a git repo (or the git command is not found)."
       )
     )
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
-  (define-key typescript-mode-map (kbd "C-c j") 'my-tss-jump-to-definition)
-  (define-key typescript-mode-map (kbd "C-c u") 'my-tss-jump-to-bookmark)
+  (define-key typescript-mode-map (kbd "C-c C-j") 'my-tss-jump-to-definition)
+  (define-key typescript-mode-map (kbd "C-c C-u") 'my-tss-jump-to-bookmark)
   (define-key typescript-mode-map (kbd "C-c r l") 'tss-reload-current-project)
   (define-key typescript-mode-map (kbd "C-c r s") 'tss-restart-current-buffer)
   )

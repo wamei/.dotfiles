@@ -1,6 +1,11 @@
 # 環境変数
 export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
+if [ -x "`which go`" ]; then
+    export GOROOT=`go env GOROOT`
+    export GOPATH=$HOME/go
+    export PATH=$PATH:$GOPATH/bin:$GOROOT/bin
+fi
 
 # alias
 alias ls='ls -a'
@@ -98,6 +103,10 @@ zstyle ':completion:*:default' menu select=2
 ## 補完候補に色を付ける。
 ### "": 空文字列はデフォルト値を使うという意味。
 zstyle ':completion:*:default' list-colors ""
+# Go completion
+if [ -f $GOROOT/../share/zsh/site-functions/go ]; then
+    source $GOROOT/../share/zsh/site-functions/go
+fi
 
 # ヒストリの補完
 autoload history-search-end

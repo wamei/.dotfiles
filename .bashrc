@@ -1,6 +1,11 @@
 # 環境変数
 export TZ=Asia/Tokyo
 export LANG=en_US.UTF-8
+if [ -x "`which go`" ]; then
+    export GOROOT=`go env GOROOT`
+    export GOPATH=$HOME/go
+    export PATH=$PATH:$GOPATH/bin:$GOROOT/bin
+fi
 
 # alias
 alias ls='ls -a'
