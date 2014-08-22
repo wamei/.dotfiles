@@ -55,6 +55,8 @@
 (global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
+(global-set-key (kbd "C-c C-c") 'quickrun)
+
 (global-set-key (kbd "C-q") nil)
 (global-set-key (kbd "C-q C-q")   'er/expand-region)
 (global-set-key (kbd "C-q C-z")   'er/contract-region)
