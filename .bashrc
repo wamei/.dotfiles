@@ -44,4 +44,7 @@ alias ec='emacsclient'
 alias ecn='emacsclient -nw'
 alias screen='screen -U'
 
+if [ -f $(brew --prefix)/etc/bash_completion ]; then
+  . $(brew --prefix)/etc/bash_completion
+fi
 if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi

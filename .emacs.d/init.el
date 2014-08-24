@@ -56,6 +56,7 @@
 (global-set-key (kbd "M-s o")   'occur)
 
 (global-set-key (kbd "C-c C-c") 'quickrun)
+(global-set-key (kbd "C-c C-u") 'pop-tag-mark)
 
 (global-set-key (kbd "C-q") nil)
 (global-set-key (kbd "C-q C-q")   'er/expand-region)
@@ -734,6 +735,15 @@ file is a remote file (include directory)."
 ;; view-mode
 ;;----------------------------------------------------------------------------------------------------
 (setq view-read-only t)
+(defvar view-mode-jump-to-definition
+  (lambda ()
+    (interactive)
+    (tss-jump-to-definition)))
+(defun jump-to-definition ()
+  (interactive)
+  (call-interactively view-mode-jump-to-definition)
+  (read-only-mode)
+  )
 (defvar pager-keybind
       `( ;; vi-like
         ("h" . backward-word)
@@ -747,8 +757,8 @@ file is a remote file (include directory)."
         ("u" . scroll-down)
         ("d" . scroll-up)
         (" " . scroll-up)
-        ("o" . view-mode-tss-jump-to-definition)
-        ("i" . view-mode-tss-jump-to-bookmark)
+        ("o" . jump-to-definition)
+        ("i" . pop-tag-mark)
         ))
 (defun define-many-keys (keymap key-table &optional includes)
   (let (key cmd)
@@ -763,17 +773,6 @@ file is a remote file (include directory)."
   (define-many-keys view-mode-map pager-keybind)
   (define-key view-mode-map " " 'scroll-up))
 (add-hook 'view-mode-hook 'view-mode-hook0)
-
-(defun view-mode-tss-jump-to-definition ()
-  (interactive)
-  (my-tss-jump-to-definition)
-  (read-only-mode)
-  )
-
-(defun view-mode-tss-jump-to-bookmark ()
-  (interactive)
-  (my-tss-jump-to-bookmark)
-  )
 
 ;; 書き込み不能なファイルはview-modeで開くように
 (defadvice find-file
@@ -1112,7 +1111,7 @@ file is a remote file (include directory)."
 (when (require 'helm-config nil t)
   (require 'helm-descbinds)
   (require 'helm-migemo)
-  (setq helm-use-migemo t)
+  ;;(setq helm-use-migemo t)
   (require 'helm-git-project)
   (require 'helm-git-grep)
   (require 'helm-filelist)
@@ -1208,7 +1207,7 @@ file is a remote file (include directory)."
          helm-source-recentf
          helm-source-bookmarks
          helm-source-file-cache
-         helm-source-files-in-current-dir
+         ;;helm-source-files-in-current-dir
          ,(helm-source-filelist))
        "*helm filelist++*")))
   )
@@ -1536,6 +1535,14 @@ PWD is not in a git repo (or the git command is not found)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'go-mode nil t)
   (require 'go-autocomplete)
+  (defun go-mode-init ()
+    (set (make-variable-buffer-local 'view-mode-jump-to-definition)
+         (lambda ()
+           (interactive)
+           (godef-jump (point))
+           ))
+    )
+  (add-hook 'go-mode-hook 'go-mode-init)
   )
 
 ;;
@@ -1550,24 +1557,16 @@ PWD is not in a git repo (or the git command is not found)."
         if (and hook
                 (symbolp hook))
         do (add-hook hook 'tss-setup-current-buffer t))
-  (defun my-tss-jump-to-definition ()
-    (interactive)
-    (let ((pname (buffer-name)))
-      (bookmark-set "tmp-tss-jump")
-      (tss-jump-to-definition)
-      (bookmark-rename "tmp-tss-jump" (buffer-name))
-      )
-    )
-  (defun my-tss-jump-to-bookmark ()
-    (interactive)
-    (let ((pname (buffer-name)))
-      (bookmark-jump pname)
-      (bookmark-delete pname)
-      )
-    )
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
-  (define-key typescript-mode-map (kbd "C-c C-j") 'my-tss-jump-to-definition)
-  (define-key typescript-mode-map (kbd "C-c C-u") 'my-tss-jump-to-bookmark)
+  (defun typescript-mode-init ()
+    (set (make-local-variable 'compile-command)
+         (format "tsc -sourcemap %s"
+                 (file-name-nondirectory (buffer-file-name))
+                 )
+         )
+    )
+  (add-hook 'typescript-mode-hook 'typescript-mode-init)
+  (define-key typescript-mode-map (kbd "C-c C-j") 'tss-jump-to-definition)
   (define-key typescript-mode-map (kbd "C-c r l") 'tss-reload-current-project)
   (define-key typescript-mode-map (kbd "C-c r s") 'tss-restart-current-buffer)
   )
