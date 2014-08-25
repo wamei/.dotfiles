@@ -11,13 +11,6 @@ fi
 alias ls='ls -a'
 alias la='ls -a'
 alias ll='ls -al'
-alias -g ...='../..'
-alias -g ....='../../..'
-alias -g .....='../../../..'
-alias -g ......='../../../../..'
-alias -g .......='../../../../../..'
-alias -g ........='../../../../../../..'
-alias -g .........='../../../../../../../..'
 
 # git関係alias
 alias g='git'
@@ -38,10 +31,8 @@ elif [ `uname` = "Linux" ]; then
     export EDITOR="emacsclient"
 fi
 
-alias e='emacs'
-alias en='emacs -nw'
-alias ec='emacsclient'
-alias ecn='emacsclient -nw'
+alias en='emacsclient -n'
+alias ew='emacsclient -nw'
 alias screen='screen -U'
 
 if [ -f $(brew --prefix)/etc/bash_completion ]; then

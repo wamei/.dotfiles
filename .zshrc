@@ -55,10 +55,8 @@ case ${OSTYPE} in
         ;;
 esac
 
-alias e='emacs'
-alias en='emacs -nw'
-alias ec='emacsclient'
-alias ecn='emacsclient -nw'
+alias en='emacsclient -n'
+alias ew='emacsclient -nw'
 alias screen='screen -U'
 
 [[ $TERM = "eterm-color" ]] && TERM=xterm-color
