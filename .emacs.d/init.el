@@ -1119,11 +1119,23 @@ file is a remote file (include directory)."
   (helm-mode 1)
   (setq helm-samewindow nil)
   ;; helmで置き換えない
-  (add-to-list 'helm-completing-read-handlers-alist '(find-alternate-file . nil))
-  (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
-  (add-to-list 'helm-completing-read-handlers-alist '(write-file . nil))
-  (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
-  (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
+  ;; (add-to-list 'helm-completing-read-handlers-alist '(find-alternate-file . nil))
+  ;; (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
+  ;; (add-to-list 'helm-completing-read-handlers-alist '(write-file . nil))
+  ;; (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
+  ;; (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
+  (defadvice helm-mode (around avoid-read-file-name activate)
+    (let ((read-file-name-function read-file-name-function)
+          (completing-read-function completing-read-function))
+      ad-do-it))
+  (setq completing-read-function 'my-helm-completing-read-default)
+  (defun my-helm-completing-read-default (&rest _)
+    (apply (cond ;; [2014-08-11 Mon]helm版のread-file-nameは重いからいらない
+            ((eq (nth 1 _) 'read-file-name-internal)
+             'completing-read-default)
+            (t
+             'helm--completing-read-default))
+           _))
 
   ;; buffer名の表示幅
   (setq helm-buffer-max-length 40)
