@@ -1055,7 +1055,7 @@ file is a remote file (include directory)."
   ;; ツールチップの表示なし
   (setq ac-use-quick-help nil)
   ;; do i what mean
-  (setq ac-dwim nil)
+  (setq ac-dwim t)
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
   ;; 補完候補を自動展開しない
@@ -1085,18 +1085,18 @@ file is a remote file (include directory)."
 
   ;; js-mode
   (defun ac-js-mode-setup ()
-    (add-to-list 'ac-dictionary-files "~/.emacs.d/ac-dict/javascript-mode"))
+    (setq-local ac-dictionary-files '("~/.emacs.d/ac-dict/javascript-mode" "~/.emacs.d/ac-dict/javascript-mode")))
   (add-hook 'js-mode-hook 'ac-js-mode-setup)
   (add-hook 'js2-mode-hook 'ac-js-mode-setup)
 
   ;; lisp-mode
   (defun ac-lisp-mode-setup ()
-    (setq ac-sources (append '(ac-source-symbols) ac-sources)))
+    (setq-local ac-sources (append '(ac-source-symbols) ac-sources)))
   (add-hook 'emacs-lisp-mode-hook 'ac-lisp-mode-setup)
 
   ;; css-mode
   (defun ac-css-mode-setup ()
-    (setq ac-sources (append '(ac-source-css-property) ac-sources)))
+    (setq-local ac-sources (append '(ac-source-css-property) ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
   ;; (when (require 'auto-complete-latex nil t)
@@ -1665,13 +1665,61 @@ PWD is not in a git repo (or the git command is not found)."
 ;;
 ;; web-mode.el
 ;;----------------------------------------------------------------------------------------------------
-(require 'web-mode)
-(setq web-mode-markup-indent-offset 2)
-(setq web-mode-css-indent-offset    2)
-(setq web-mode-code-indent-offset   4)
-(setq web-mode-style-padding  0)
-(setq web-mode-script-padding 0)
-(setq web-mode-block-padding  0)
+(when (require 'web-mode)
+  (defun my-web-mode-hook ()
+    (setq web-mode-markup-indent-offset 2)
+    (setq web-mode-css-indent-offset    4)
+    (setq web-mode-code-indent-offset   4)
+    (setq web-mode-style-padding  2)
+    (setq web-mode-script-padding 2)
+    (setq web-mode-block-padding  0)
+    (setq web-mode-enable-auto-pairing nil)
+    (setq web-mode-enable-css-colorization t)
+    (setq web-mode-ac-sources-alist
+          '(("php" . (ac-source-filename
+                      ac-source-yasnippet
+                      ac-source-abbrev
+                      ac-source-dictionary
+                      ac-source-words-in-same-mode-buffers))
+            ("html" . (ac-source-filename
+                      ac-source-yasnippet
+                      ac-source-abbrev
+                      ac-source-dictionary
+                      ac-source-words-in-same-mode-buffers))
+            ("css" . (ac-source-css-property
+                      ac-source-filename
+                      ac-source-yasnippet
+                      ac-source-abbrev
+                      ac-source-dictionary
+                      ac-source-words-in-same-mode-buffers))))
+    (add-hook 'web-mode-before-auto-complete-hooks
+              '(lambda ()
+                 (let ((web-mode-cur-language
+                        (web-mode-language-at-pos)))
+                   (ac-clear-dictionary-cache)
+                   (if (string= web-mode-cur-language "php")
+                       (progn
+                         (yas-activate-extra-mode 'php-mode)
+                         (setq-local ac-dictionary-files '("~/.emacs.d/ac-dict/php-mode")))
+                     (yas-deactivate-extra-mode 'php-mode))
+                   (if (string= web-mode-cur-language "html")
+                       (progn
+                         (yas-activate-extra-mode 'html-mode)
+                         (setq-local ac-dictionary-files '("~/.emacs.d/ac-dict/html-mode")))
+                     (yas-deactivate-extra-mode 'html-mode))
+                   (if (string= web-mode-cur-language "javascript")
+                       (progn
+                         (yas-activate-extra-mode 'js2-mode)
+                         (setq-local ac-dictionary-files '("~/.emacs.d/ac-dict/js2-mode" "~/.emacs.d/ac-dict/javascript-mode")))
+                     (yas-deactivate-extra-mode 'js2-mode))
+                   (if (string= web-mode-cur-language "css")
+                       (progn
+                         (setq-local ac-dictionary-files '("~/.emacs.d/ac-dict/css-mode")))
+                     )
+                 )))
+    )
+  (add-hook 'web-mode-hook  'my-web-mode-hook)
+)
 
 ;;
 ;; マイナーモードの省略
