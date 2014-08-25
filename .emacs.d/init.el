@@ -214,7 +214,7 @@
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
    `(highlight ((,class (:background "#035f56"))))
-   `(region ((,class (:background "#2d4948" :foreground "#000000"))))
+   `(region ((,class (:background "#98514B" :foreground "#878787"))))
    `(isearch ((,class (:background "#fcffad" :foreground "#000000"))))
    `(lazy-highlight ((,class (:background "#338f86"))))
    `(trailing-whitespace ((,class (:background "#ff4242"))))
