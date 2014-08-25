@@ -251,7 +251,10 @@
    `(link-visited ((,class (:foreground "#ed74cd" :underline t))))
    ;; Helm faces
    `(helm-selection ((,class (:background "#035f56"))))
-   `(helm-ff-directory ((,class (:foreground "red4" :background "#e5e5e5"))))
+   `(helm-ff-symlink ((,class (:foreground "#ed74cd"))))
+   `(helm-ff-file ((,class (:foreground "#eeeeee"))))
+   `(helm-ff-directory ((,class (:foreground "#23d7d7"))))
+   `(helm-buffer-directory ((,class (:foreground "#eeeeec" :background "#4271ae"))))
    ;; Elscreen faces
    `(elscreen-tab-background-face ((,class (:background "#2e2e2e"))))
    `(elscreen-tab-current-screen-face ((,class (:foreground "#eeeeee" :background "#878787"))))
