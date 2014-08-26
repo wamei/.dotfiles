@@ -73,6 +73,7 @@
 (global-set-key (kbd "C-q C-s") 'mc/skip-to-next-like-this)
 (global-set-key (kbd "C-q C-u") 'mc/unmark-next-like-this)
 (global-set-key (kbd "C-q C-m") 'vr/mc-mark)
+(global-set-key (kbd "C-q C-r") '(lambda () (interactive) (er/mark-symbol) (mc/mark-all-symbols-like-this-in-defun)))
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
 (global-set-key (kbd "C-x m")   'hh:menu-command)
