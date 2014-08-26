@@ -31,11 +31,13 @@
   (exec-path-from-shell-copy-envs envs))
 ;;(exec-pathth-from-shell-initialize)
 
+(require 'visual-regexp-steroids)
+
 ;;
 ;; キーバインド
 ;;----------------------------------------------------------------------------------------------------
 (define-key key-translation-map [?\C-h] [?\C-?])
-(global-set-key (kbd "C-r")     'replace-string)
+(global-set-key (kbd "C-r")     'vr/replace)
 (global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
 
@@ -67,6 +69,7 @@
 (global-set-key (kbd "C-q C-p") 'mc/mark-previous-like-this)
 (global-set-key (kbd "C-q C-s") 'mc/skip-to-next-like-this)
 (global-set-key (kbd "C-q C-u") 'mc/unmark-next-like-this)
+(global-set-key (kbd "C-q C-m") 'vr/mc-mark)
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
 (global-set-key (kbd "C-x m")   'hh:menu-command)
@@ -80,7 +83,8 @@
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
-(global-set-key (kbd "C-M-r")   'replace-regexp)
+(global-set-key (kbd "C-M-r")   'vr/query-replace)
+(global-set-key (kbd "C-M-s")   'vr/isearch-forward)
 
 (global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 2)))
 (global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   2)))
@@ -216,7 +220,7 @@
    `(highlight ((,class (:background "#035f56"))))
    `(region ((,class (:background "#98514B" :foreground "#878787"))))
    `(isearch ((,class (:background "#fcffad" :foreground "#000000"))))
-   `(lazy-highlight ((,class (:background "#338f86"))))
+   `(lazy-highlight ((,class (:background "#ff4242"))))
    `(trailing-whitespace ((,class (:background "#ff4242"))))
    ;; Mode line faces
    `(mode-line ((,class (:background "#0B2087" :foreground "#eeeeec"))))
