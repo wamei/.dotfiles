@@ -42,6 +42,8 @@
 (global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
 
+(global-set-key (kbd "M-b")     'backward-word)
+(global-set-key (kbd "M-f")     'forward-to-word)
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-n")     (kbd "C-u 5 C-v"))
@@ -759,7 +761,7 @@ file is a remote file (include directory)."
   )
 (defvar pager-keybind
       `( ;; vi-like
-        ("h" . backward-to-word)
+        ("h" . backward-word)
         ("l" . forward-to-word)
         ("j" . (lambda (arg) (interactive "p") (scroll-up     arg)))
         ("k" . (lambda (arg) (interactive "p") (scroll-down   arg)))
