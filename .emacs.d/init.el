@@ -31,6 +31,7 @@
   (exec-path-from-shell-copy-envs envs))
 ;;(exec-pathth-from-shell-initialize)
 
+(require 'misc)
 (require 'visual-regexp-steroids)
 
 ;;
@@ -758,8 +759,8 @@ file is a remote file (include directory)."
   )
 (defvar pager-keybind
       `( ;; vi-like
-        ("h" . backward-word)
-        ("l" . forward-word)
+        ("h" . backward-to-word)
+        ("l" . forward-to-word)
         ("j" . (lambda (arg) (interactive "p") (scroll-up     arg)))
         ("k" . (lambda (arg) (interactive "p") (scroll-down   arg)))
         ("n" . next-line)
