@@ -67,12 +67,13 @@
 (global-set-key (kbd "C-q C-q") 'er/expand-region)
 (global-set-key (kbd "C-q C-z") 'er/contract-region)
 (global-set-key (kbd "C-q C-e") 'mc/edit-lines)
+(global-set-key (kbd "C-q C-v") 'vr/mc-mark)
+(global-set-key (kbd "C-q C-m") 'mc/mark-more-like-this-extended)
 (global-set-key (kbd "C-q C-a") 'mc/mark-all-like-this-dwim)
+(global-set-key (kbd "C-q C-d") 'mc/mark-all-like-this-in-defun)
+(global-set-key (kbd "C-q C-s") 'mc/mark-all-symbols-like-this)
 (global-set-key (kbd "C-q C-n") 'mc/mark-next-like-this)
 (global-set-key (kbd "C-q C-p") 'mc/mark-previous-like-this)
-(global-set-key (kbd "C-q C-s") 'mc/skip-to-next-like-this)
-(global-set-key (kbd "C-q C-u") 'mc/unmark-next-like-this)
-(global-set-key (kbd "C-q C-m") 'vr/mc-mark)
 (global-set-key (kbd "C-q C-r") '(lambda () (interactive) (er/mark-symbol) (mc/mark-all-symbols-like-this-in-defun)))
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
@@ -932,6 +933,16 @@ file is a remote file (include directory)."
   (setq elscreen-tab-display-control nil)
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab t)
+  )
+
+;;
+;; multiple-cursor.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'multiple-cursors nil t)
+  (define-key mc/mark-more-like-this-extended-keymap (kbd "C-p") 'mc/mmlte--up)
+  (define-key mc/mark-more-like-this-extended-keymap (kbd "C-n") 'mc/mmlte--down)
+  (define-key mc/mark-more-like-this-extended-keymap (kbd "C-b") 'mc/mmlte--left)
+  (define-key mc/mark-more-like-this-extended-keymap (kbd "C-f") 'mc/mmlte--right)
   )
 
 ;; magit.el
