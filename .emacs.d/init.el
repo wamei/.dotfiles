@@ -32,6 +32,7 @@
 ;;(exec-pathth-from-shell-initialize)
 
 (require 'misc)
+(require 'expand-region)
 (require 'visual-regexp-steroids)
 
 ;;
@@ -74,7 +75,7 @@
 (global-set-key (kbd "C-q C-s") 'mc/mark-all-symbols-like-this)
 (global-set-key (kbd "C-q C-n") 'mc/mark-next-like-this)
 (global-set-key (kbd "C-q C-p") 'mc/mark-previous-like-this)
-(global-set-key (kbd "C-q C-r") '(lambda () (interactive) (er/mark-symbol) (mc/mark-all-symbols-like-this-in-defun)))
+(global-set-key (kbd "C-q C-r") 'mc/mark-all-symbols-like-this-in-defun)
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
 (global-set-key (kbd "C-x m")   'hh:menu-command)
@@ -943,6 +944,8 @@ file is a remote file (include directory)."
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-n") 'mc/mmlte--down)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-b") 'mc/mmlte--left)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-f") 'mc/mmlte--right)
+  (defadvice mc--in-defun (around mc--in-defun-ad activate)
+    (setq ad-return-value t))
   )
 
 ;; magit.el
@@ -1597,12 +1600,31 @@ PWD is not in a git repo (or the git command is not found)."
                 (symbolp hook))
         do (add-hook hook 'tss-setup-current-buffer t))
   (add-hook 'kill-buffer-hook 'tss--delete-process t)
+  (defvar tss-defun-beginning-regexp "{")
+  (defvar tss-defun-end-regexp "}")
+  (defun tss-beginning-of-defun (&optional arg)
+    (interactive "p")
+    (end-of-line 1)
+    (re-search-backward tss-defun-beginning-regexp nil t)
+    (beginning-of-line)
+    nil)
+  (defun tss-end-of-defun (&optional arg)
+    (interactive "p")
+    (tss-beginning-of-defun 1)
+    (re-search-forward tss-defun-beginning-regexp nil t)
+    (backward-char)
+    (forward-list)
+    nil)
   (defun typescript-mode-init ()
     (set (make-local-variable 'compile-command)
          (format "tsc -sourcemap %s"
                  (file-name-nondirectory (buffer-file-name))
                  )
          )
+    (set (make-local-variable 'beginning-of-defun-function)
+         'tss-beginning-of-defun)
+    (set (make-local-variable 'end-of-defun-function)
+         'tss-end-of-defun)
     )
   (add-hook 'typescript-mode-hook 'typescript-mode-init)
   (define-key typescript-mode-map (kbd "C-c C-j") 'tss-jump-to-definition)
