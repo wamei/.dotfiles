@@ -113,6 +113,10 @@
     (,(kbd "C-M-f") . windmove-right)
     (,(kbd "C-M-n") . windmove-down)
     (,(kbd "C-M-p") . windmove-up)
+    (,(kbd "C-c C-w c") . elscreen-create)
+    (,(kbd "C-c C-w k") . elscreen-kill)
+    (,(kbd "C-c C-w A") . elscreen-screen-nickname)
+    (,(kbd "C-c C-w C-s") . elscreen-swap)
     )
   )
 
