@@ -93,6 +93,8 @@
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
 
+(global-set-key (kbd "C-S-h")   'kill-whole-line)
+
 (global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 2)))
 (global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   2)))
 (global-set-key [mouse-4]    '(lambda () (interactive) (scroll-down 2)))
