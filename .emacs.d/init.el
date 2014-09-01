@@ -38,6 +38,7 @@
 ;;
 ;; キーバインド
 ;;----------------------------------------------------------------------------------------------------
+(global-set-key (kbd "C-h")     nil)
 (define-key key-translation-map [?\C-h] [?\C-?])
 (global-set-key (kbd "C-r")     'vr/replace)
 (global-set-key (kbd "C-z")     'switch-to-previous-buffer)
