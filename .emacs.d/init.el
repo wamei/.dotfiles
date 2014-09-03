@@ -1491,17 +1491,6 @@ PWD is not in a git repo (or the git command is not found)."
 (add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
 
 ;;
-;; git-gutter.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'git-gutter+ nil t)
-  (require 'git-gutter-fringe+)
-  (global-git-gutter+-mode t)
-  (define-key git-gutter+-mode-map (kbd "C-c n") 'git-gutter+-next-hunk)
-  (define-key git-gutter+-mode-map (kbd "C-c p") 'git-gutter+-previous-hunk)
-  (define-key git-gutter+-mode-map (kbd "C-c d") 'git-gutter+-popup-hunk)
-  )
-
-;;
 ;; howm-mode
 ;;----------------------------------------------------------------------------------------------------
 (setq howm-prefix "\C-x,")
@@ -1810,6 +1799,17 @@ PWD is not in a git repo (or the git command is not found)."
 )
 
 ;;
+;; git-gutter.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'git-gutter+ nil t)
+  (require 'git-gutter-fringe+)
+  (global-git-gutter+-mode t)
+  (define-key git-gutter+-mode-map (kbd "C-c n") 'git-gutter+-next-hunk)
+  (define-key git-gutter+-mode-map (kbd "C-c p") 'git-gutter+-previous-hunk)
+  (define-key git-gutter+-mode-map (kbd "C-c d") 'git-gutter+-popup-hunk)
+  )
+
+;;
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
@@ -1837,14 +1837,3 @@ PWD is not in a git repo (or the git command is not found)."
   (migemo-init)
   )
 
-;;
-;; CEDET
-;;----------------------------------------------------------------------------------------------------
-(global-ede-mode 1)
-(require 'semantic/sb)
-(semantic-mode 1)
-
-(global-semantic-idle-completions-mode t)
-(global-semantic-decoration-mode t)
-(global-semantic-highlight-func-mode t)
-(global-semantic-show-unmatched-syntax-mode t)
