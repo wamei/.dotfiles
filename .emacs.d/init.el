@@ -149,8 +149,8 @@
         (global-yascroll-bar-mode 1)
         )
       ))
-(tool-bar-mode 0)
-(menu-bar-mode 0)
+(when tool-bar-mode (tool-bar-mode 0))
+(when menu-bar-mode (menu-bar-mode 0))
 
 ;;リサイズ用関数
 (defun resize ()
