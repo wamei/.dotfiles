@@ -84,6 +84,7 @@
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x p")   'helm-resume)
+(global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
 (global-set-key (kbd "C-x , ,") 'howm-menu)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
@@ -1798,6 +1799,23 @@ PWD is not in a git repo (or the git command is not found)."
   (add-hook 'web-mode-hook  'my-web-mode-hook)
 )
 
+;;
+;; twittering-mode.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'twittering-mode nil t)
+  (setq twittering-use-master-password t)
+  (setq twittering-private-info-file "~/.emacs.d/twittering-mode.gpg")
+
+  (setq twittering-icon-mode t)
+  (setq twittering-convert-fix-size 30)
+  (setq twittering-timer-interval 60)
+  (setq twittering-status-format "%RT{RT by %S@%s\n}%i %S@%s %p: %@\n%T\n------------------------------------------------------------")
+  (defadvice twittering-update-status-from-pop-up-buffer (around split-root activate)
+    ""
+    (let ((display-buffer-function 'display-buffer-function--split-root)
+          (split-root-window-height 26))
+      ad-do-it))
+  )
 ;;
 ;; git-gutter.el
 ;;----------------------------------------------------------------------------------------------------

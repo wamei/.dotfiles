@@ -10,6 +10,7 @@ archives/
 ede-projects.el
 shellenv.el
 ac-comphist.dat
+twittering-mode.gpg
 bookmarks
 tramp
 *.elc
