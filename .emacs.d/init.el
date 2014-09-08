@@ -567,7 +567,7 @@
                     ("-cdac$" . 1.3)))))
       (if (eq system-type 'windows-nt)
           (progn
-            (set-face-attribute 'default nil :family "Meiryo" :height 80)
+            (set-face-attribute 'default nil :family "MeiryoKe_Console" :height 120)
             (setq line-spacing 0)
             ))
       ))
