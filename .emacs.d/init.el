@@ -1,6 +1,65 @@
 ;; -*- Mode: Emacs-Lisp ; Coding: utf-8 -*-
 ;;----------------------------------------------------------------------------------------------------
 
+;; load environment value
+(cond ((eq system-type 'darwin)
+       (require 'exec-path-from-shell)
+       (let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
+         (exec-path-from-shell-copy-envs envs))
+       ;;(exec-pathth-from-shell-initialize)
+       ((eq system-type 'windows-nt)
+        ;; ------------------------------------------------------------------------
+        ;; @ setup-cygwin
+        (setq cygwin-mount-cygwin-bin-directory
+              (concat (getenv "CYGWIN_DIR") "\\bin"))
+        (require 'setup-cygwin)
+        (file-name-shadow-mode -1)
+
+        ;; ------------------------------------------------------------------------
+        ;; @ shell
+        (require 'shell)
+        (setq explicit-shell-file-name "bash.exe")
+        (setq shell-command-switch "-c")
+        (setq shell-file-name "bash.exe")
+
+        ;; (M-! and M-| and compile.el)
+        (setq shell-file-name "bash.exe")
+        (modify-coding-system-alist 'process ".*sh\\.exe" 'cp932)
+
+        (add-hook 'comint-output-filter-functions 'shell-strip-ctrl-m nil t)
+
+        (setq shell-file-name-chars "~/A-Za-z0-9_^$!#%&{}@'`.,;()-")
+
+        (autoload 'ansi-color-for-comint-mode-on "ansi-color"
+          "Set `ansi-color-for-comint-mode' to t." t)
+
+        (setq shell-mode-hook
+              (function
+               (lambda ()
+                 (set-buffer-process-coding-system 'sjis-dos 'sjis-unix)
+                 (set-buffer-file-coding-system    'sjis-unix)
+                 )))
+
+        ;; ------------------------------------------------------------------------
+        ;; @ w32-symlinks
+
+        (custom-set-variables '(w32-symlinks-handle-shortcuts t))
+        (require 'w32-symlinks)
+
+        (defadvice insert-file-contents-literally
+          (before insert-file-contents-literally-before activate)
+          (set-buffer-multibyte nil))
+
+        (defadvice minibuffer-complete (before expand-symlinks activate)
+          (let ((file (expand-file-name
+                       (buffer-substring-no-properties
+                        (line-beginning-position) (line-end-position)))))
+            (when (file-symlink-p file)
+              (delete-region (line-beginning-position) (line-end-position))
+              (insert (w32-symlinks-parse-symlink file)))))
+        )
+       ))
+
 ;; load-pathの追加関数
 (defun add-to-load-path (&rest paths)
   (let (path)
@@ -24,12 +83,6 @@
   (add-to-list 'package-archives '("melpa" . "http://melpa.milkbox.net/packages/"))
   (add-to-list 'package-archives '("ELPA" . "http://tromey.com/elpa/"))
   )
-
-;; load environment value
-(require 'exec-path-from-shell)
-(let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
-  (exec-path-from-shell-copy-envs envs))
-;;(exec-pathth-from-shell-initialize)
 
 (require 'misc)
 (require 'expand-region)
@@ -489,30 +542,35 @@
 (set-clipboard-coding-system    'utf-8)
 
 ;; Fontを指定
-(set-face-attribute 'default nil
-                    :family "menlo"
-                    :height 120)
+(set-face-attribute 'default nil :family "menlo" :height 120)
 (if (display-graphic-p)
-    (if (eq system-type 'darwin)
-        (progn
-          (set-fontset-font
-           (frame-parameter nil 'font)
-           'japanese-jisx0208
-           '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-          (set-fontset-font
-           (frame-parameter nil 'font)
-           'japanese-jisx0212
-           '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-          (set-fontset-font
-           (frame-parameter nil 'font)
-           'mule-unicode-0100-24ff
-           '("menlo" . "iso10646-1"))
-          (setq face-font-rescale-alist
-                '(("^-apple-hiragino.*" . 1.1)
-                  (".*courier-bold-.*-mac-roman" . 1.0)
-                  (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
-                  (".*menlo-bold-.*-mac-roman" . 0.9)
-                  ("-cdac$" . 1.3))))))
+    (progn
+      (if (eq system-type 'darwin)
+          (progn
+            (set-fontset-font
+             (frame-parameter nil 'font)
+             'japanese-jisx0208
+             '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+            (set-fontset-font
+             (frame-parameter nil 'font)
+             'japanese-jisx0212
+             '("Hiragino Maru Gothic Pro" . "iso10646-1"))
+            (set-fontset-font
+             (frame-parameter nil 'font)
+             'mule-unicode-0100-24ff
+             '("menlo" . "iso10646-1"))
+            (setq face-font-rescale-alist
+                  '(("^-apple-hiragino.*" . 1.1)
+                    (".*courier-bold-.*-mac-roman" . 1.0)
+                    (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
+                    (".*menlo-bold-.*-mac-roman" . 0.9)
+                    ("-cdac$" . 1.3)))))
+      (if (eq system-type 'windows-nt)
+          (progn
+            (set-face-attribute 'default nil :family "Meiryo" :height 80)
+            (setq line-spacing 0)
+            ))
+      ))
 
 ;;
 ;; その他設定
@@ -1851,6 +1909,12 @@ PWD is not in a git repo (or the git command is not found)."
   (setq migemo-user-dictionary nil)
   (setq migemo-regex-dictionary nil)
   (setq migemo-coding-system 'utf-8-unix)
+  (cond ((eq system-type 'windows-nt)
+         (setq migemo-command (concat (getenv "INST_DIR")
+                                      "\\app\\cmigemo\\cmigemo.exe"))
+         (setq migemo-dictionary (concat (getenv "INST_DIR")
+                                         "\\app\\cmigemo\\dict\\utf-8\\migemo-dict"))
+         ))
   (load-library "migemo")
   (migemo-init)
   )
