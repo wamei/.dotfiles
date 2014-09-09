@@ -1,11 +1,28 @@
 ;; -*- Mode: Emacs-Lisp ; Coding: utf-8 -*-
 ;;----------------------------------------------------------------------------------------------------
 
+;; load-pathの追加関数
+(defun add-to-load-path (&rest paths)
+  (let (path)
+    (dolist (path paths paths)
+      (let ((default-directory (expand-file-name (concat user-emacs-directory path))))
+        (add-to-list 'load-path default-directory)
+        (if (fboundp 'normal-top-level-add-subdirs-to-load-path)
+            (normal-top-level-add-subdirs-to-load-path))))))
+
+;; load-pathに追加するフォルダ
+;; 2つ以上フォルダを指定する場合の引数 => (add-to-load-path "elisp" "xxx" "xxx")
+(add-to-load-path "elisp")
+
+(when (< emacs-major-version 24.3) (require 'cl-lib))
+
+(add-to-load-path "elpa")
+
 ;; load environment value
 (cond ((eq system-type 'darwin)
        (require 'exec-path-from-shell)
        (let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
-         (exec-path-from-shell-copy-envs envs))
+         (exec-path-from-shell-copy-envs envs)))
        ;;(exec-pathth-from-shell-initialize)
        ((eq system-type 'windows-nt)
         ;; ------------------------------------------------------------------------
@@ -58,24 +75,7 @@
               (delete-region (line-beginning-position) (line-end-position))
               (insert (w32-symlinks-parse-symlink file)))))
         )
-       ))
-
-;; load-pathの追加関数
-(defun add-to-load-path (&rest paths)
-  (let (path)
-    (dolist (path paths paths)
-      (let ((default-directory (expand-file-name (concat user-emacs-directory path))))
-        (add-to-list 'load-path default-directory)
-        (if (fboundp 'normal-top-level-add-subdirs-to-load-path)
-            (normal-top-level-add-subdirs-to-load-path))))))
-
-;; load-pathに追加するフォルダ
-;; 2つ以上フォルダを指定する場合の引数 => (add-to-load-path "elisp" "xxx" "xxx")
-(add-to-load-path "elisp")
-
-(when (< emacs-major-version 24.3) (require 'cl-lib))
-
-(add-to-load-path "elpa")
+       )
 
 ;;; package.el
 (when (require 'package nil t)
