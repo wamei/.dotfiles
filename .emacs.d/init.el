@@ -35,12 +35,11 @@
         ;; ------------------------------------------------------------------------
         ;; @ shell
         (require 'shell)
-        (setq explicit-shell-file-name "bash.exe")
+        (setq explicit-shell-file-name "zsh.exe")
         (setq shell-command-switch "-c")
-        (setq shell-file-name "bash.exe")
+        (setq shell-file-name "zsh.exe")
 
         ;; (M-! and M-| and compile.el)
-        (setq shell-file-name "bash.exe")
         (modify-coding-system-alist 'process ".*sh\\.exe" 'cp932)
 
         (add-hook 'comint-output-filter-functions 'shell-strip-ctrl-m nil t)
@@ -1048,6 +1047,8 @@ file is a remote file (include directory)."
 (when (require 'multi-term nil t)
   (setenv "TERMINFO" "~/.terminfo")
   (setq multi-term-program "/bin/zsh")
+  (if (eq system-type 'windows-nt)
+      (setq multi-term-program "zsh"))
   (add-to-list 'term-unbind-key-list '"M-x")
   (add-to-list 'term-unbind-key-list '"C-t")
   (defun switch-to-multi-term ()
