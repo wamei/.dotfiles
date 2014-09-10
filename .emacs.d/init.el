@@ -35,9 +35,9 @@
         ;; ------------------------------------------------------------------------
         ;; @ shell
         (require 'shell)
-        (setq explicit-shell-file-name "zsh.exe")
+        (setq explicit-shell-file-name "bash.exe")
         (setq shell-command-switch "-c")
-        (setq shell-file-name "zsh.exe")
+        (setq shell-file-name "bash.exe")
 
         ;; (M-! and M-| and compile.el)
         (modify-coding-system-alist 'process ".*sh\\.exe" 'cp932)
@@ -1048,7 +1048,7 @@ file is a remote file (include directory)."
   (setenv "TERMINFO" "~/.terminfo")
   (setq multi-term-program "/bin/zsh")
   (if (eq system-type 'windows-nt)
-      (setq multi-term-program "zsh"))
+      (setq multi-term-program "bash.exe"))
   (add-to-list 'term-unbind-key-list '"M-x")
   (add-to-list 'term-unbind-key-list '"C-t")
   (defun switch-to-multi-term ()
