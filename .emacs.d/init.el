@@ -1867,7 +1867,7 @@ PWD is not in a git repo (or the git command is not found)."
 
   (setq twittering-icon-mode t)
   (setq twittering-convert-fix-size 30)
-  (setq twittering-timer-interval 60)
+  (setq twittering-timer-interval 120)
   (setq twittering-status-format "%RT{RT by %S@%s\n}%i %S@%s %p: %@\n%T\n------------------------------------------------------------")
   (defadvice twittering-update-status-from-pop-up-buffer (around split-root activate)
     ""
