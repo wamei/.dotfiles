@@ -303,7 +303,7 @@ With prefix arg HERE, insert it at point."
 
 (defun hh:title-get-title (buffer)
   (with-current-buffer buffer
-    (let ((point (point-min)))
+    (let ((point (+ 2 (point-min))))
       (save-excursion
         (goto-char (point-min))
         (end-of-line)

@@ -671,26 +671,6 @@
           (isearch-repeat-forward)))
     ad-do-it))
 
-;; Tramp設定
-(setenv "TMPDIR" "/tmp")
-
-;; Trampバッファにユーザ名、ホスト名を追加
-(defun tramp-my-append-buffer-name-hint ()
-  "Append a hint (user, hostname) to a buffer name if visiting
-file is a remote file (include directory)."
-  (let ((name (or list-buffers-directory (buffer-file-name))))
-    (when (and name (tramp-tramp-file-p name))
-      (let* ((tramp-vec (tramp-dissect-file-name name))
-             (method (tramp-file-name-method tramp-vec))
-             (host (tramp-file-name-real-host tramp-vec))
-             (user (or (tramp-file-name-real-user tramp-vec)
-                       (nth 2 (assoc method tramp-default-user-alist))
-                       tramp-default-user
-                       user-real-login-name)))
-        (rename-buffer (concat (buffer-name) " <" user "@" host ">") t)))))
-(add-hook 'find-file-hook 'tramp-my-append-buffer-name-hint)
-(add-hook 'dired-mode-hook 'tramp-my-append-buffer-name-hint)
-
 ;; バッファ名変更
 ;; source: http://steve.yegge.googlepages.com/my-dot-emacs-file
 (defun rename-file-and-buffer (new-name)
@@ -813,6 +793,45 @@ file is a remote file (include directory)."
            (call-interactively 'my-ag)))
     )
   )
+
+;; Tramp設定
+(setenv "TMPDIR" "/tmp")
+
+;; Tramp bufferにユーザ名、ホスト名を追加
+(defun tramp-my-append-buffer-name-hint ()
+  "Append a hint (user, hostname) to a buffer name if visiting
+file is a remote file (include directory)."
+  (let ((name (or list-buffers-directory (buffer-file-name))))
+    (when (and name (tramp-tramp-file-p name))
+      (let* ((tramp-vec (tramp-dissect-file-name name))
+             (method (tramp-file-name-method tramp-vec))
+             (host (tramp-file-name-real-host tramp-vec))
+             (user (or (tramp-file-name-real-user tramp-vec)
+                       (nth 2 (assoc method tramp-default-user-alist))
+                       tramp-default-user
+                       user-real-login-name)))
+        (rename-buffer (concat "<" user "@" host "> " (buffer-name)) t)))))
+(add-hook 'find-file-hook 'tramp-my-append-buffer-name-hint)
+(add-hook 'dired-mode-hook 'tramp-my-append-buffer-name-hint)
+
+;; diredのバッファ名
+(defun dired-my-append-buffer-name-hint ()
+  "Append a auxiliary string to a name of dired buffer."
+  (when (eq major-mode 'dired-mode)
+    (let* ((dir (expand-file-name list-buffers-directory))
+           (drive (if (and (eq 'system-type 'windows-nt) ;; Windows の場合はドライブレターを追加
+                           (string-match "^\\([a-zA-Z]:\\)/" dir))
+                      (match-string 1 dir) "")))
+      (rename-buffer (concat "[" drive "Dired] " (buffer-name)) t))))
+(add-hook 'dired-mode-hook 'dired-my-append-buffer-name-hint)
+
+;; howm bufferをタイトル名に変更
+(defun howm-my-append-buffer-name-hint ()
+  (when howm-mode
+    (rename-buffer (concat "[Memo]" (hh:title-get-title (current-buffer))) t)
+    ))
+(add-hook 'find-file-hook 'howm-my-append-buffer-name-hint)
+(add-hook 'dired-mode-hook 'howm-my-append-buffer-name-hint)
 
 ;; view-mode
 ;;----------------------------------------------------------------------------------------------------
@@ -1271,16 +1290,7 @@ file is a remote file (include directory)."
                     ;; this value will be updated
                     (setq helm-buffer-max-len-mode (cdr result))))))
       (candidates . (lambda ()
-                      (remove-if
-                       (lambda (buffer)
-                         (cond ((string-match-p "\*.+\*" buffer)
-                                t)
-                               ((with-current-buffer buffer howm-mode)
-                                nil)
-                               (t
-                                nil))
-                         )
-                       helm-buffers-list-cache)
+                      (remove-if (lambda (buffer) (= 0 (or (string-match-p "\\*.+\\*" buffer) -1))) helm-buffers-list-cache)
                       ))
       (no-matchplugin)
       (type . buffer)
@@ -1295,7 +1305,7 @@ file is a remote file (include directory)."
   (defvar helm-source-*buffers-list
     `((name . "*Buffers")
       (candidates . (lambda ()
-                      (remove-if (lambda (buffer) (not (string-match-p "\*.+\*" buffer))) (helm-buffer-list))
+                      (remove-if (lambda (buffer) (not (= 0 (or (string-match-p "\\*.+\\*" buffer) -1)))) (helm-buffer-list))
                       ))
       (no-matchplugin)
       (type . buffer)
