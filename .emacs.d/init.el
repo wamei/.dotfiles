@@ -671,6 +671,9 @@
           (isearch-repeat-forward)))
     ad-do-it))
 
+;; Tramp設定
+(setenv "TMPDIR" "/tmp")
+
 ;; Trampバッファにユーザ名、ホスト名を追加
 (defun tramp-my-append-buffer-name-hint ()
   "Append a hint (user, hostname) to a buffer name if visiting
