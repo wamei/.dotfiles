@@ -1208,7 +1208,7 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'helm-config nil t)
   (require 'helm-descbinds)
-  (require 'helm-migemo)
+  ;;(require 'helm-migemo)
   ;;(setq helm-use-migemo t)
   (require 'helm-git-project)
   (require 'helm-git-grep)
