@@ -594,14 +594,6 @@
       (setq interprogram-paste-function 'copy-from-osx)
       ))
 
-;; xterm-mouse-mode
-(unless (fboundp 'track-mouse)
-  (defun track-mouse (e)))
-(xterm-mouse-mode t)
-(require 'mouse)
-(require 'mwheel)
-(mouse-wheel-mode t)
-
 ;; ロックファイルを作らない
 (setq create-lockfiles nil)
 
