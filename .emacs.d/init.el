@@ -587,12 +587,15 @@
     (let ((proc (start-process "pbcopy" "*Messages*" "pbcopy")))
       (process-send-string proc text)
       (process-send-eof proc))))
-(setq x-select-enable-clipboard t)
-(if (eq system-type 'darwin)
-    (progn
-      (setq interprogram-cut-function 'paste-to-osx)
-      (setq interprogram-paste-function 'copy-from-osx)
-      ))
+(if window-system
+    (setq x-select-enable-clipboard t)
+  (if (eq system-type 'darwin)
+      (progn
+        (setq interprogram-cut-function 'paste-to-osx)
+        (setq interprogram-paste-function 'copy-from-osx)
+        )
+    )
+  )
 
 ;; ロックファイルを作らない
 (setq create-lockfiles nil)
