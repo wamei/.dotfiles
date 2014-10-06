@@ -93,7 +93,7 @@
 (global-set-key (kbd "C-h")     nil)
 (define-key key-translation-map [?\C-h] [?\C-?])
 (global-set-key (kbd "C-r")     'vr/replace)
-(global-set-key (kbd "C-z")     'switch-to-previous-buffer)
+;;(global-set-key (kbd "C-z")     'switch-to-previous-buffer)
 (global-set-key (kbd "C--")     'undo-tree-undo)
 
 (global-set-key (kbd "M-b")     'backward-word)
@@ -164,7 +164,7 @@
   t
   ""
   `(
-    (,(kbd "C-t") . switch-to-multi-term)
+    (,(kbd "C-z") . switch-to-multi-term)
     (,(kbd "C-M-b") . windmove-left)
     (,(kbd "C-M-f") . windmove-right)
     (,(kbd "C-M-n") . windmove-down)
@@ -1888,7 +1888,8 @@ PWD is not in a git repo (or the git command is not found)."
 ;; git-gutter.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'git-gutter+ nil t)
-  (require 'git-gutter-fringe+)
+  (when window-system
+    (require 'git-gutter-fringe+))
   (global-git-gutter+-mode t)
   (define-key git-gutter+-mode-map (kbd "C-c n") 'git-gutter+-next-hunk)
   (define-key git-gutter+-mode-map (kbd "C-c p") 'git-gutter+-previous-hunk)
