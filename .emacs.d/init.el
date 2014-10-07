@@ -1256,7 +1256,7 @@ file is a remote file (include directory)."
            _))
 
   ;; buffer名の表示幅
-  (setq helm-buffer-max-length 40)
+  (setq helm-buffer-max-length 30)
 
   ;; kill-ring
   (setq kill-ring-max 50)
