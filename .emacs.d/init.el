@@ -338,6 +338,8 @@
    `(diff-removed ((,class (:foreground "red" :background nil))))
    `(diff-context ((,class (:foreground "white" :background nil))))
    `(magit-item-highlight ((,class (:background "#000000"))))
+   `(magit-branch ((,class (:foreground "#34cae2" :background nil))))
+   `(magit-log-sha1 ((,class (:foreground "#ff4242" :background nil))))
    ;; Gnus faces
    `(gnus-group-news-1 ((,class (:foreground "#ff4242" :weight bold))))
    `(gnus-group-news-1-low ((,class (:foreground "#ff4242"))))
