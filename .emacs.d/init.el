@@ -1270,7 +1270,7 @@ file is a remote file (include directory)."
   (setq helm-ff-auto-update-initial-value nil)
 
   ;; tabで補完
-  (define-key helm-read-file-map (kbd "<tab>") 'helm-execute-persistent-action)
+  (define-key helm-read-file-map (kbd "C-i") 'helm-execute-persistent-action)
 
   ;; descbindsを置き換え
   (helm-descbinds-mode t)
