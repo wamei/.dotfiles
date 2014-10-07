@@ -331,6 +331,13 @@
    `(elscreen-tab-background-face ((,class (:background "#2e2e2e"))))
    `(elscreen-tab-current-screen-face ((,class (:foreground "#eeeeee" :background "#878787"))))
    `(elscreen-tab-other-screen-face ((,class (:foreground "#888888" :background "#2e2e2e"))))
+   ;; Diff
+   `(diff-file-header ((,class (:foreground "white" :background "#222222"))))
+   `(diff-header ((,class (:foreground "white" :background "#555555"))))
+   `(diff-added ((,class (:foreground "green" :background nil))))
+   `(diff-removed ((,class (:foreground "red" :background nil))))
+   `(diff-context ((,class (:foreground "white" :background nil))))
+   `(magit-item-highlight ((,class (:background "#000000"))))
    ;; Gnus faces
    `(gnus-group-news-1 ((,class (:foreground "#ff4242" :weight bold))))
    `(gnus-group-news-1-low ((,class (:foreground "#ff4242"))))
@@ -1034,10 +1041,6 @@ file is a remote file (include directory)."
 ;; magit.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'magit nil t)
-  ;; 色変更
-  (set-face-foreground 'magit-diff-add "#b9ca4a")
-  (set-face-foreground 'magit-diff-del "#d54e53")
-  (set-face-background 'magit-item-highlight "#000000")
   (defadvice magit-status (around magit-fullscreen activate)
     (window-configuration-to-register :magit-fullscreen)
     ad-do-it
