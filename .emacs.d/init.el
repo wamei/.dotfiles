@@ -194,7 +194,7 @@
 
 (if window-system
     (progn
-      (set-frame-parameter nil 'alpha 85)
+      (set-frame-parameter nil 'alpha 90)
       (setq ns-pop-up-frames nil)
       (scroll-bar-mode 0)
       ;;(global-linum-mode t)
@@ -277,9 +277,9 @@
 (custom-set-faces
    ;; Ensure sufficient contrast on 256-color xterms.
    `(default ((((class color) (min-colors 4096))
-       (:background "#2e2e2e" :foreground "#e1e1e0"))
+       (:background "#1e1e1e" :foreground "#e1e1e0"))
        (,class
-       (:background "#2e2e2e" :foreground "#e1e1e0"))))
+       (:background "#1e1e1e" :foreground "#e1e1e0"))))
    `(cursor ((,class (:background "#a4a4a4"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e3748"))))
@@ -332,11 +332,11 @@
    `(elscreen-tab-current-screen-face ((,class (:foreground "#eeeeee" :background "#878787"))))
    `(elscreen-tab-other-screen-face ((,class (:foreground "#888888" :background "#2e2e2e"))))
    ;; Diff
-   `(diff-file-header ((,class (:foreground "white" :background "#222222"))))
-   `(diff-header ((,class (:foreground "white" :background "#555555"))))
-   `(diff-added ((,class (:foreground "green" :background nil))))
-   `(diff-removed ((,class (:foreground "red" :background nil))))
-   `(diff-context ((,class (:foreground "white" :background nil))))
+   `(diff-file-header ((,class (:foreground "#eeeeee" :background "#222222"))))
+   `(diff-header ((,class (:foreground "#eeeeee" :background "#555555"))))
+   `(diff-added ((,class (:foreground "#00f900" :background nil))))
+   `(diff-removed ((,class (:foreground "#ff2600" :background nil))))
+   `(diff-context ((,class (:foreground "#eeeeee" :background nil))))
    `(magit-item-highlight ((,class (:background "#000000"))))
    `(magit-branch ((,class (:foreground "#34cae2" :background nil))))
    `(magit-log-sha1 ((,class (:foreground "#ff4242" :background nil))))
@@ -383,14 +383,14 @@
    `(web-mode-css-pseudo-class-face ((,class (:foreground "#FF7F00"))))
    `(web-mode-css-at-rule-face ((,class (:foreground "#FF7F00"))))
    ;; term color
-   `(term-color-black   ((,class (:foreground "black" :background "black"))))
-   `(term-color-red     ((,class (:foreground "red" :background "red"))))
-   `(term-color-green   ((,class (:foreground "green" :background "green"))))
-   `(term-color-yellow  ((,class (:foreground "yellow" :background "yellow"))))
-   `(term-color-blue    ((,class (:foreground "blue" :background "blue"))))
-   `(term-color-magenta ((,class (:foreground "magenta" :background "magenta"))))
-   `(term-color-cyan    ((,class (:foreground "cyan" :background "cyan"))))
-   `(term-color-white   ((,class (:foreground "white" :background "white"))))
+   `(term-color-black   ((,class (:foreground "#000000" :background "#000000"))))
+   `(term-color-red     ((,class (:foreground "#ff2600" :background "#ff2600"))))
+   `(term-color-green   ((,class (:foreground "#00f900" :background "#00f900"))))
+   `(term-color-yellow  ((,class (:foreground "#fefb00" :background "#fefb00"))))
+   `(term-color-blue    ((,class (:foreground "#598eff" :background "#598eff"))))
+   `(term-color-magenta ((,class (:foreground "#ff40ff" :background "#ff40ff"))))
+   `(term-color-cyan    ((,class (:foreground "#00fcff" :background "#00fcff"))))
+   `(term-color-white   ((,class (:foreground "#eeeeee" :background "#eeeeee"))))
    `(term-default-fg-color ((,class (:inherit term-color-white))))
    `(term-default-bg-color ((,class (:inherit term-color-black))))
    ))
