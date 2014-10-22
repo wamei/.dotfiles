@@ -1111,7 +1111,7 @@ file is a remote file (include directory)."
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'multi-term nil t)
   (setenv "TERMINFO" "~/.terminfo")
-  (setq multi-term-program "/bin/zsh")
+  (setq multi-term-program "zsh")
   (if (eq system-type 'windows-nt)
       (setq multi-term-program "bash.exe"))
   (add-to-list 'term-unbind-key-list '"M-x")
