@@ -25,10 +25,10 @@ if [ `uname` = "Darwin" ]; then
     alias ls='ls -aG'
     alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs'
     alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
-    export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient"
+    export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -t"
 elif [ `uname` = "Linux" ]; then
     alias ls='ls -a --color=auto'
-    export EDITOR="emacsclient"
+    export EDITOR="emacsclient -t"
 fi
 
 alias en='emacsclient -n'

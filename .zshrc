@@ -46,12 +46,12 @@ case ${OSTYPE} in
         alias ls='ls -aG'
         alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs'
         alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
-        export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient"
+        export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -t"
         ;;
     linux*)
         #Linux用の設定
         alias ls='ls -a --color=auto'
-        export EDITOR="emacsclient"
+        export EDITOR="emacsclient -t"
         ;;
 esac
 
