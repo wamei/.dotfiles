@@ -1289,9 +1289,23 @@ file is a remote file (include directory)."
   (require 'helm-git-project)
   (require 'helm-git-grep)
   (require 'helm-filelist)
+  (require 'helm-gtags)
 
   (helm-mode 1)
   (setq helm-samewindow nil)
+  ;; gtags
+  (add-hook 'c-mode-hook (lambda () (helm-gtags-mode)))
+  (add-hook 'php-mode-hook (lambda () (helm-gtags-mode)))
+  ;; customize
+  (setq helm-c-gtags-path-style 'relative)
+  (setq helm-c-gtags-ignore-case t)
+  ;; key bindings
+  (add-hook 'helm-gtags-mode-hook
+            '(lambda ()
+               (local-set-key (kbd "C-c C-j") 'helm-gtags-find-tag)
+               (local-set-key (kbd "C-c C-r") 'helm-gtags-find-rtag)
+               (local-set-key (kbd "C-c C-s") 'helm-gtags-find-symbol)
+               (local-set-key (kbd "C-c C-u") 'helm-gtags-pop-stack)))
   ;; helmで置き換えない
   ;; (add-to-list 'helm-completing-read-handlers-alist '(find-alternate-file . nil))
   ;; (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
@@ -1958,6 +1972,7 @@ PWD is not in a git repo (or the git command is not found)."
 ;;
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
+(setcar (cdr (assq 'helm-gtags-mode minor-mode-alist)) " GT")
 (setcar (cdr (assq 'abbrev-mode minor-mode-alist)) " Ab")
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
