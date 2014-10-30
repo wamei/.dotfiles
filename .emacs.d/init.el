@@ -843,6 +843,23 @@ file is a remote file (include directory)."
 (add-hook 'find-file-hook 'howm-my-append-buffer-name-hint)
 (add-hook 'dired-mode-hook 'howm-my-append-buffer-name-hint)
 
+;; update GTAGS
+(defun update-gtags (&optional prefix)
+  (interactive "P")
+  (let ((rootdir (gtags-get-rootpath))
+        (args (if prefix "-v" "-iv")))
+    (when rootdir
+      (let* ((default-directory rootdir)
+             (buffer (get-buffer-create "*update GTAGS*")))
+        (save-excursion
+          (set-buffer buffer)
+          (erase-buffer)
+          (let ((result (process-file "gtags" nil buffer nil args)))
+            (if (= 0 result)
+                (message "GTAGS successfully updated.")
+              (message "update GTAGS error with exit status %d" result))))))))
+(add-hook 'after-save-hook 'update-gtags)
+
 ;; view-mode
 ;;----------------------------------------------------------------------------------------------------
 (setq view-read-only t)
