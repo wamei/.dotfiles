@@ -843,7 +843,24 @@ file is a remote file (include directory)."
 (add-hook 'find-file-hook 'howm-my-append-buffer-name-hint)
 (add-hook 'dired-mode-hook 'howm-my-append-buffer-name-hint)
 
-;; update GTAGS
+;; gtags
+;;----------------------------------------------------------------------------------------------------
+(defun gtags-get-rootpath ()
+  (let (path buffer)
+    (save-excursion
+      (setq buffer (generate-new-buffer (generate-new-buffer-name "*rootdir*")))
+      (set-buffer buffer)
+      (setq n (process-file "global" nil t nil "-pr"))
+      (if (= n 0)
+          (setq path (file-name-as-directory (buffer-substring (point-min)(1- (point-max))))))
+      (kill-buffer buffer))
+    (if (and (fboundp 'tramp-tramp-file-p)
+             (tramp-tramp-file-p default-directory))
+        (with-parsed-tramp-file-name default-directory tr
+          (when path
+            (concat (substring default-directory 0 (* -1 (length tr-localname)))
+                    path)))
+      path)))
 (defun update-gtags (&optional prefix)
   (interactive "P")
   (let ((rootdir (gtags-get-rootpath))
