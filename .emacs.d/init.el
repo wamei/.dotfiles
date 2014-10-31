@@ -1336,10 +1336,12 @@ file is a remote file (include directory)."
   ;; key bindings
   (add-hook 'helm-gtags-mode-hook
             '(lambda ()
-               (local-set-key (kbd "C-c C-j") 'helm-gtags-find-tag)
-               (local-set-key (kbd "C-c C-r") 'helm-gtags-find-rtag)
-               (local-set-key (kbd "C-c C-s") 'helm-gtags-find-symbol)
-               (local-set-key (kbd "C-c C-u") 'helm-gtags-pop-stack)))
+               (local-set-key (kbd "C-c C-j") 'helm-gtags-dwim)
+               (local-set-key (kbd "C-c C-u") 'helm-gtags-previous-history)
+               (local-set-key (kbd "C-c C-p") 'helm-gtags-previous-history)
+               (local-set-key (kbd "C-c C-n") 'helm-gtags-next-history)
+               (local-set-key (kbd "C-c C-s") 'helm-gtags-show-stack)
+               ))
   ;; helmで置き換えない
   ;; (add-to-list 'helm-completing-read-handlers-alist '(find-alternate-file . nil))
   ;; (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
