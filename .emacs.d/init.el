@@ -843,6 +843,9 @@ file is a remote file (include directory)."
 (add-hook 'find-file-hook 'howm-my-append-buffer-name-hint)
 (add-hook 'dired-mode-hook 'howm-my-append-buffer-name-hint)
 
+(defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
+  (let ((vc-handled-backends '(SVN Git))) ad-do-it))
+
 ;; gtags
 ;;----------------------------------------------------------------------------------------------------
 (defun gtags-get-rootpath ()
