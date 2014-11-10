@@ -1406,6 +1406,9 @@ file is a remote file (include directory)."
   ;; descbindsを置き換え
   (helm-descbinds-mode t)
 
+  ;; bookmarkの場所を表示
+  (setq helm-bookmark-show-location t)
+
   (defvar helm-source-buffers-list-howm-title
     `((name . "Buffers")
       (init . (lambda ()
@@ -1450,13 +1453,36 @@ file is a remote file (include directory)."
       (persistent-help
        . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
 
+  (defvar helm-source-recentf+
+    `((name . "Recentf")
+      (init . (lambda ()
+                (require 'recentf)
+                (recentf-mode 1)))
+      (candidates . (lambda ()
+                      (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+                        (mapcar #'(lambda (x) (abbreviate-file-name x)) recentf-list))
+                      ))
+      (match . helm-files-match-only-basename)
+      (filtered-candidate-transformer . (lambda (candidates _source)
+                                          (cl-loop for i in candidates
+                                                   if helm-ff-transformer-show-only-basename
+                                                   collect (cons (helm-basename i) i)
+                                                   else collect i)))
+      (keymap . ,helm-generic-files-map)
+      (help-message . helm-generic-file-help-message)
+      (mode-line . helm-generic-file-mode-line-string)
+      (action . ,(cdr (helm-get-actions-from-type
+                       helm-source-locate))))
+    "See (info \"(emacs)File Conveniences\").
+Set `recentf-max-saved-items' to a bigger value if default is too small.")
+
   (defun helm-filelist++ ()
     (interactive)
     (let ((helm-ff-transformer-show-only-basename nil))
       (helm-other-buffer
        `(helm-source-buffers-list-howm-title
          helm-source-*buffers-list
-         helm-source-recentf
+         helm-source-recentf+
          helm-source-bookmarks
          helm-source-file-cache
          ;;helm-source-files-in-current-dir
