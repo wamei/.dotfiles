@@ -668,6 +668,10 @@
 ;; スタートページ非表示
 (setq inhibit-startup-message t)
 
+;; 同名ファイルの区別
+(require 'uniquify)
+(setq uniquify-buffer-name-style 'post-forward-angle-brackets)
+
 ;; 選択範囲をisearch
 (defadvice isearch-mode (around isearch-mode-default-string (forward &optional regexp op-fun recursive-edit word-p) activate)
   (if (and transient-mark-mode mark-active (not (eq (mark) (point))))
@@ -808,21 +812,21 @@
 (setenv "TMPDIR" "/tmp")
 
 ;; Tramp bufferにユーザ名、ホスト名を追加
-(defun tramp-my-append-buffer-name-hint ()
-  "Append a hint (user, hostname) to a buffer name if visiting
-file is a remote file (include directory)."
-  (let ((name (or list-buffers-directory (buffer-file-name))))
-    (when (and name (tramp-tramp-file-p name))
-      (let* ((tramp-vec (tramp-dissect-file-name name))
-             (method (tramp-file-name-method tramp-vec))
-             (host (tramp-file-name-real-host tramp-vec))
-             (user (or (tramp-file-name-real-user tramp-vec)
-                       (nth 2 (assoc method tramp-default-user-alist))
-                       tramp-default-user
-                       user-real-login-name)))
-        (rename-buffer (concat "<" user "@" host "> " (buffer-name)) t)))))
-(add-hook 'find-file-hook 'tramp-my-append-buffer-name-hint)
-(add-hook 'dired-mode-hook 'tramp-my-append-buffer-name-hint)
+;; (defun tramp-my-append-buffer-name-hint ()
+;;   "Append a hint (user, hostname) to a buffer name if visiting
+;; file is a remote file (include directory)."
+;;   (let ((name (or list-buffers-directory (buffer-file-name))))
+;;     (when (and name (tramp-tramp-file-p name))
+;;       (let* ((tramp-vec (tramp-dissect-file-name name))
+;;              (method (tramp-file-name-method tramp-vec))
+;;              (host (tramp-file-name-real-host tramp-vec))
+;;              (user (or (tramp-file-name-real-user tramp-vec)
+;;                        (nth 2 (assoc method tramp-default-user-alist))
+;;                        tramp-default-user
+;;                        user-real-login-name)))
+;;         (rename-buffer (concat "<" user "@" host "> " (buffer-name)) t)))))
+;; (add-hook 'find-file-hook 'tramp-my-append-buffer-name-hint)
+;; (add-hook 'dired-mode-hook 'tramp-my-append-buffer-name-hint)
 
 ;; diredのバッファ名
 (defun dired-my-append-buffer-name-hint ()
