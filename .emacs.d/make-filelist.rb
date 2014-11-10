@@ -47,7 +47,7 @@ def ls(dir)
       next if $EXCLUDE_REGEXP.match f
       f = File.join dir, f
       stat = File.lstat f
-      abbrev = f.sub(ENV['HOME'], '~') if ENV['HOME']
+      abbrev = f #f.sub(ENV['HOME'], '~') if ENV['HOME']
       if stat.directory? and not stat.symlink?
         puts "#{abbrev}/"
         dirs << f
