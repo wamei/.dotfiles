@@ -6,7 +6,6 @@
 (defvar helm-filelist-case-fold-search helm-case-fold-search)
 (defvar helm-filelist-grep-command "LANG=C grep")
 (defvar helm-filelist-candidate-number-limit 200)
-(defvar helm-filelist-async t)
 
 (defun helm-filelist-split-pattern (patterns)
   (delq "" (split-string patterns " ")))
@@ -52,23 +51,17 @@
              (helm-log "Error: Filelist %s"
                        (replace-regexp-in-string "\n" "" event))))))))
 
-(defun helm-filelist-init ()
-  (split-string
-   (shell-command-to-string
-    (helm-filelist-make-cmd-line helm-pattern
-                                 helm-filelist-file-name
-                                 helm-filelist-candidate-number-limit))
-   "\n"))
+(defun helm-filelist-real-to-display (candidate)
+  (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+    (abbreviate-file-name candidate)))
 
 (defun helm-source-filelist ()
   `((name . "FileList")
-    ,@(if helm-filelist-async
-          '((candidates-process . helm-filelist-init-async)
-            (delayed))
-        '((candidates . helm-filelist-init)
-          (volatile)))
+    (candidates-process . helm-filelist-init-async)
+    (delayed)
     (type . file)
     (requires-pattern . 3)
+    (real-to-display . helm-filelist-real-to-display)
     (history . ,'helm-file-name-history)
     (keymap . ,helm-generic-files-map)
     (helm-message . helm-generic-file-help-message)
@@ -79,15 +72,5 @@
   (interactive)
   (let ((helm-ff-transformer-show-only-basename nil))
     (helm-other-buffer (helm-source-filelist) "*helm filelist*")))
-
-(defun helm-filelist+ ()
-  (interactive)
-  (let ((helm-ff-transformer-show-only-basename nil))
-    (helm-other-buffer  `(helm-source-buffers-list
-                          helm-source-recentf
-                          helm-source-file-cache
-                          helm-source-files-in-current-dir
-                          ,(helm-source-filelist))
-                        "*helm filelist+*")))
 
 (provide 'helm-filelist)

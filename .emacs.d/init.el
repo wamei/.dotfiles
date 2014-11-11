@@ -1462,16 +1462,14 @@
       (init . (lambda ()
                 (require 'recentf)
                 (recentf-mode 1)))
-      (candidates . (lambda ()
-                      (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
-                        (mapcar #'(lambda (x) (abbreviate-file-name x)) recentf-list))
-                      ))
+      (candidates . recentf-list)
       (match . helm-files-match-only-basename)
       (filtered-candidate-transformer . (lambda (candidates _source)
-                                          (cl-loop for i in candidates
-                                                   if helm-ff-transformer-show-only-basename
-                                                   collect (cons (helm-basename i) i)
-                                                   else collect i)))
+                                          (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+                                            (cl-loop for i in candidates
+                                                     if helm-ff-transformer-show-only-basename
+                                                     collect (cons (helm-basename i) i)
+                                                     else collect (abbreviate-file-name i)))))
       (keymap . ,helm-generic-files-map)
       (help-message . helm-generic-file-help-message)
       (mode-line . helm-generic-file-mode-line-string)
