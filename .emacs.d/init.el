@@ -828,17 +828,6 @@
 ;; (add-hook 'find-file-hook 'tramp-my-append-buffer-name-hint)
 ;; (add-hook 'dired-mode-hook 'tramp-my-append-buffer-name-hint)
 
-;; diredのバッファ名
-(defun dired-my-append-buffer-name-hint ()
-  "Append a auxiliary string to a name of dired buffer."
-  (when (eq major-mode 'dired-mode)
-    (let* ((dir (expand-file-name list-buffers-directory))
-           (drive (if (and (eq 'system-type 'windows-nt) ;; Windows の場合はドライブレターを追加
-                           (string-match "^\\([a-zA-Z]:\\)/" dir))
-                      (match-string 1 dir) "")))
-      (rename-buffer (concat "[" drive "Dired] " (buffer-name)) t))))
-(add-hook 'dired-mode-hook 'dired-my-append-buffer-name-hint)
-
 ;; howm bufferをタイトル名に変更
 (defun howm-my-append-buffer-name-hint ()
   (when howm-mode
@@ -1417,7 +1406,7 @@
   ;; bookmarkの場所を表示
   (setq helm-bookmark-show-location t)
 
-  (defvar helm-source-buffers-list-howm-title
+  (defvar helm-source-buffers-with-howm-title
     `((name . "Buffers")
       (init . (lambda ()
                 ;; Issue #51 Create the list before `helm-buffer' creation.
@@ -1434,9 +1423,7 @@
                     ;; If a new buffer is longer that this value
                     ;; this value will be updated
                     (setq helm-buffer-max-len-mode (cdr result))))))
-      (candidates . (lambda ()
-                      (remove-if (lambda (buffer) (= 0 (or (string-match-p "\\*.+\\*" buffer) -1))) helm-buffers-list-cache)
-                      ))
+      (candidates . normal-buffer-list)
       (no-matchplugin)
       (type . buffer)
       (match helm-buffers-list--match-fn)
@@ -1447,11 +1434,21 @@
       (persistent-help
        . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
 
-  (defvar helm-source-*buffers-list
+  (defvar helm-source-dired-buffers
+    `((name . "Dired Buffers")
+      (candidates . dired-buffer-list)
+      (no-matchplugin)
+      (type . buffer)
+      (persistent-action . helm-buffers-list-persistent-action)
+      (keymap . ,helm-buffer-map)
+      (volatile)
+      (mode-line . helm-buffer-mode-line-string)
+      (persistent-help
+       . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+
+  (defvar helm-source-*buffers
     `((name . "*Buffers")
-      (candidates . (lambda ()
-                      (remove-if (lambda (buffer) (not (= 0 (or (string-match-p "\\*.+\\*" buffer) -1)))) (helm-buffer-list))
-                      ))
+      (candidates . tmp-buffer-list)
       (no-matchplugin)
       (type . buffer)
       (persistent-action . helm-buffers-list-persistent-action)
@@ -1484,10 +1481,26 @@ Set `recentf-max-saved-items' to a bigger value if default is too small.")
 
   (defun helm-filelist++ ()
     (interactive)
-    (let ((helm-ff-transformer-show-only-basename nil))
+    (let ((helm-ff-transformer-show-only-basename nil)
+          (normal-buffer-list)
+          (dired-buffer-list)
+          (tmp-buffer-list))
+      (setq helm-buffers-list-cache (helm-buffer-list))
+      (cl-loop for i in helm-buffers-list-cache
+               with normal-local
+               with dired-local
+               with tmp-local
+               if (= 0 (or (string-match-p "\\*.+\\*" i) -1)) collect i into tmp-local
+               else if (with-current-buffer (get-buffer i) (eq major-mode 'dired-mode)) collect i into dired-local
+               else collect i into normal-local end
+               finally
+               (setq normal-buffer-list normal-local)
+               (setq dired-buffer-list dired-local)
+               (setq tmp-buffer-list tmp-local))
       (helm-other-buffer
-       `(helm-source-buffers-list-howm-title
-         helm-source-*buffers-list
+       `(helm-source-buffers-with-howm-title
+         helm-source-dired-buffers
+         helm-source-*buffers
          helm-source-recentf+
          helm-source-bookmarks
          helm-source-file-cache
