@@ -1406,6 +1406,10 @@
 
   ;; tabで補完
   (define-key helm-read-file-map (kbd "C-i") 'helm-execute-persistent-action)
+  (defadvice helm-ff-kill-or-find-buffer-fname (around execute-only-if-exist activate)
+    "Execute command only if CANDIDATE exists"
+    (when (file-exists-p candidate)
+      ad-do-it))
 
   ;; descbindsを置き換え
   (helm-descbinds-mode t)
