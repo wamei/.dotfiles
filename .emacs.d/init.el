@@ -1249,6 +1249,12 @@
   (toggle-hl-line-when-idle)
   (setq hl-line-idle-interval 3)
   (set-face-background 'hl-line "#035f56")
+  (defun toggle-hl-line-mode ()
+    (interactive)
+    (if global-hl-line-mode
+        (global-hl-line-mode -1)
+      (global-hl-line-mode 1))
+    )
   )
 
 ;;
