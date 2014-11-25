@@ -7,6 +7,7 @@ archives/
 .DS_Store
 .mc-lists.el
 .session
+flycheck_init.el
 ede-projects.el
 shellenv.el
 ac-comphist.dat
