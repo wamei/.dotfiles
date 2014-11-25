@@ -1893,6 +1893,80 @@ $0"))
   )
 
 ;;
+;; eww.el
+;;----------------------------------------------------------------------------------------------------
+(require 'eww)
+;;; [2014-11-17 Mon]背景・文字色を無効化する
+(defvar eww-disable-colorize t)
+(defun shr-colorize-region--disable (orig start end fg &optional bg &rest _)
+  (unless eww-disable-colorize
+    (funcall orig start end fg)))
+(advice-add 'shr-colorize-region :around 'shr-colorize-region--disable)
+(advice-add 'eww-colorize-region :around 'shr-colorize-region--disable)
+(defun eww-disable-color ()
+  "ewwで文字色を反映させない"
+  (interactive)
+  (setq-local eww-disable-colorize t)
+  (eww-reload))
+(defun eww-enable-color ()
+  "ewwで文字色を反映させる"
+  (interactive)
+  (setq-local eww-disable-colorize nil)
+  (eww-reload))
+
+(defvar eww-data)
+(defun eww-current-url ()
+  "バージョン間の非互換を吸収する。"
+  (if (boundp 'eww-current-url)
+      eww-current-url                   ;emacs24.4
+    (plist-get eww-data :url)))         ;emacs25
+
+(defun eww-set-start-at (url-regexp search-regexp)
+  "URL-REGEXPにマッチするURLにて、SEARCH-REGEXPの行から表示させる"
+  (when (string-match url-regexp (eww-current-url))
+    (goto-char (point-min))
+    (when (re-search-forward search-regexp nil t)
+      (recenter 0))))
+
+(defun region-or-read-string (prompt &optional initial history default inherit)
+  "regionが指定されているときはその文字列を取得し、それ以外では`read-string'を呼ぶ。"
+  (if (not (region-active-p))
+      (read-string prompt initial history default inherit)
+    (prog1
+        (buffer-substring-no-properties (region-beginning) (region-end))
+      (deactivate-mark)
+      (message ""))))
+
+(defun eww-render--after (&rest _)
+  (eww-set-start-at "www.weblio.jp" "^ *Weblio 辞書")
+  (eww-set-start-at "ejje.weblio.jp" "^ *Weblio 辞書")
+  ;; 他のサイトの設定も同様に追加できる
+  )
+;;(add-hook 'eww-after-render-hook 'eww-render--after)
+(advice-add 'eww-render :after 'eww-render--after)
+
+;;; weblio
+(defun weblio (str)
+  (interactive (list
+                (region-or-read-string "Weblio: ")))
+  (eww-browse-url (format "http://www.weblio.jp/content/%s"
+                          (upcase (url-hexify-string str)))))
+
+;;; weblio-english
+(defun weblio-english (str)
+  (interactive (list
+                (region-or-read-string "Weblio[English]: ")))
+  (eww-browse-url (format "http://ejje.weblio.jp/content/%s"
+                          (upcase (url-hexify-string str)))))
+
+;;; wikipedia
+(defun wikipedia (str)
+  (interactive (list
+                (region-or-read-string "Wikipedia: ")))
+  (eww-browse-url (format "http://ja.wikipedia.org/wiki/%s"
+                          (upcase (url-hexify-string str)))))
+
+;;
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
 (setcar (cdr (assq 'helm-gtags-mode minor-mode-alist)) " GT")
