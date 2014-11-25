@@ -1000,6 +1000,7 @@
   (define-key dired-mode-map (kbd "C-b") (lambda () (interactive) (find-alternate-file "..")))
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
   (define-key dired-mode-map (kbd "e")   'wdired-change-to-wdired-mode)
+  (define-key dired-mode-map (kbd "M-s f")     nil)
   ;; lsの設定
   (require 'ls-lisp)
   (setq ls-lisp-use-insert-directory-program nil)
