@@ -585,6 +585,22 @@
 ;;
 ;; その他設定
 ;;----------------------------------------------------------------------------------------------------
+;; 引数取得用関数
+(defun region-or-read-string (prompt &optional initial history default inherit)
+  "regionが指定されているときはその文字列を取得し、それ以外では`read-string'を呼ぶ。"
+  (if (not (region-active-p))
+      (read-string prompt initial history default inherit)
+    (prog1
+        (buffer-substring-no-properties (region-beginning) (region-end))
+      (deactivate-mark)
+      (message ""))))
+
+;; OS Xの辞書を引く
+(defun look-up-in-OS-X-dictionary (str)
+  (interactive (list
+                (region-or-read-string "Look up in OS X dictionary: ")))
+  (let ((url (concat "dict://" str)))
+    (browse-url url)))
 
 ;; imenu自動再読み込み
 (setq imenu-auto-rescan t)
@@ -1928,15 +1944,6 @@ $0"))
     (goto-char (point-min))
     (when (re-search-forward search-regexp nil t)
       (recenter 0))))
-
-(defun region-or-read-string (prompt &optional initial history default inherit)
-  "regionが指定されているときはその文字列を取得し、それ以外では`read-string'を呼ぶ。"
-  (if (not (region-active-p))
-      (read-string prompt initial history default inherit)
-    (prog1
-        (buffer-substring-no-properties (region-beginning) (region-end))
-      (deactivate-mark)
-      (message ""))))
 
 (defun eww-render--after (&rest _)
   (eww-set-start-at "www.weblio.jp" "^ *Weblio 辞書")
