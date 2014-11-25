@@ -673,9 +673,11 @@
 ;; スタートページ非表示
 (setq inhibit-startup-message t)
 
+;; 新しいel,elcを読み込み
+(setq load-prefer-newer t)
+
 ;; 同名ファイルの区別
 (require 'uniquify)
-(setq uniquify-buffer-name-style 'post-forward-angle-brackets)
 
 ;; 選択範囲をisearch
 (defadvice isearch-mode (around isearch-mode-default-string (forward &optional regexp op-fun recursive-edit word-p) activate)
