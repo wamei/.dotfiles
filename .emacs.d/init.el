@@ -110,7 +110,8 @@
 (global-set-key (kbd "M-[")     'elscreen-previous)
 
 (global-set-key (kbd "M-s s")   'helm-occur)
-(global-set-key (kbd "M-s g")   'helm-git-grep)
+(global-set-key (kbd "M-s g")   'helm-cmd-t-grep)
+(global-set-key (kbd "M-s f")   'helm-cmd-t)
 (global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
@@ -787,7 +788,7 @@
         (t
          "")))
 
-;; grep
+;; grep,ag
 (defun my-ag (arg &optional topdir)
   (interactive "sgrep find: ")
   (let ((command))
@@ -810,23 +811,6 @@
 ;; Tramp設定
 (setenv "TMPDIR" "/tmp")
 
-;; Tramp bufferにユーザ名、ホスト名を追加
-;; (defun tramp-my-append-buffer-name-hint ()
-;;   "Append a hint (user, hostname) to a buffer name if visiting
-;; file is a remote file (include directory)."
-;;   (let ((name (or list-buffers-directory (buffer-file-name))))
-;;     (when (and name (tramp-tramp-file-p name))
-;;       (let* ((tramp-vec (tramp-dissect-file-name name))
-;;              (method (tramp-file-name-method tramp-vec))
-;;              (host (tramp-file-name-real-host tramp-vec))
-;;              (user (or (tramp-file-name-real-user tramp-vec)
-;;                        (nth 2 (assoc method tramp-default-user-alist))
-;;                        tramp-default-user
-;;                        user-real-login-name)))
-;;         (rename-buffer (concat "<" user "@" host "> " (buffer-name)) t)))))
-;; (add-hook 'find-file-hook 'tramp-my-append-buffer-name-hint)
-;; (add-hook 'dired-mode-hook 'tramp-my-append-buffer-name-hint)
-
 ;; howm bufferをタイトル名に変更
 (defun howm-my-append-buffer-name-hint ()
   (when howm-mode
@@ -838,6 +822,7 @@
 (defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
   (let ((vc-handled-backends '(SVN Git))) ad-do-it))
 
+;;
 ;; gtags
 ;;----------------------------------------------------------------------------------------------------
 (defun gtags-get-rootpath ()
@@ -872,6 +857,7 @@
               (message "update GTAGS error with exit status %d" result))))))))
 (add-hook 'after-save-hook 'update-gtags)
 
+;;
 ;; view-mode
 ;;----------------------------------------------------------------------------------------------------
 (setq view-read-only t)
@@ -1355,8 +1341,7 @@
   (require 'helm-descbinds)
   ;;(require 'helm-migemo)
   ;;(setq helm-use-migemo t)
-  (require 'helm-git-project)
-  (require 'helm-git-grep)
+  (require 'helm-C-x-b)
   (require 'helm-filelist)
   (require 'helm-gtags)
 
@@ -1519,8 +1504,6 @@ Set `recentf-max-saved-items' to a bigger value if default is too small.")
          helm-source-dired-buffers
          helm-source-*buffers
          helm-source-recentf+
-         helm-source-bookmarks
-         helm-source-file-cache
          ;;helm-source-files-in-current-dir
          ,(helm-source-filelist))
        "*helm filelist++*")))
@@ -1571,189 +1554,6 @@ $0"))
 ;; ssh-agent.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'ssh-agent)
-
-;;
-;; eshell.el
-;;----------------------------------------------------------------------------------------------------
-(require 'eshell)
-(setq eshell-banner-message " 可愛い女の子だと思った？ 残念！Eshellちゃんでした！\n\n")
-;; prompt文字列
-(setq eshell-highlight-prompt nil)
-(setq eshell-prompt-function
-      (lambda ()
-        (concat
-         "[" (format-time-string "%Y/%m/%d %H:%M") "]" ;; 時間
-         " "
-         (propertize (let ((pwd (eshell/pwd))
-                           (homestring (directory-file-name (expand-file-name (getenv "HOME"))))
-                           )
-                       (let ((homelength (length homestring))
-                             (pwdlength (length pwd)))
-                         (if (>= pwdlength homelength)
-                             (let ((subhome (substring pwd 0 homelength)))
-                               (if (string= subhome homestring)
-                                   (concat "~" (substring pwd homelength (length pwd)))
-                                 pwd
-                                 )
-                               )
-                           pwd)
-                         )) 'face '(:foreground "magenta" :weight bold))
-         (curr-dir-git-branch-string (eshell/pwd))
-         " \n"
-         (user-login-name) "@" (system-name) ;; ユーザ名@ホスト名
-         " "
-         (if (= (user-uid) 0)
-             "#"
-           (propertize "$" 'face '(:foreground "#fff")))
-         (propertize " " 'read-only t 'rear-nonsticky t)
-         )))
-;;(setq eshell-prompt-regexp "^[^#$]*[$#] ")
-(setq eshell-prompt-regexp "\\(^[^$#]*[$#] \\)\\|\\(^mysql> \\)")
-
-(defun gitroot ()
-  (interactive)
-  (cd (chomp
-          (shell-command-to-string "git rev-parse --show-toplevel")))
-  )
-
-(require 'vc-git)
-(defun curr-dir-git-branch-string (pwd)
-  "Returns current git branch as a string, or the empty string if
-PWD is not in a git repo (or the git command is not found)."
-  (interactive)
-  (when (and (eshell-search-path "git")
-             (locate-dominating-file pwd ".git"))
-    (let ((git-output (shell-command-to-string (concat "cd " pwd " && git branch | grep '\\*' | sed -e 's/^\\* //'"))))
-      (propertize (concat "[git:"
-              (if (> (length git-output) 0)
-                    (concat
-                     (substring git-output 0 -1)
-                     (shell-command-to-string "[[ $(git status -s | grep -e '^.M') != \"\" ]] && echo -n \"+\"")
-                     (shell-command-to-string "[[ $(git status -s | grep -e '^M') != \"\" ]]  && echo -n \"!\"")
-                     (shell-command-to-string "[[ $(git status -s | grep -e '^\?\?') != \"\" ]]  && echo -n \"?\"")
-                     ;;(shell-command-to-string "[[ $(git status | grep \"nothing to commit\") == \"\" ]] && echo -n \"*\"")
-                    )
-                "(no branch)")
-              "]") 'face `(:foreground "green"))
-      )))
-
-;; Emacs 起動時に Eshell を起動
-;;(add-hook 'after-init-hook  (lambda ()(eshell)))
-
-;; 補完時に大文字小文字を区別しない
-(setq eshell-cmpl-ignore-case t)
-;; 確認なしでヒストリ保存
-(setq eshell-ask-to-save-history (quote always))
-;; 1コマンドごとにヒストリ保存
-(defadvice eshell-send-input (after eshell-send-input-after-advice)
-  (eshell-save-some-history)
-  (eshell-save-some-last-dir))
-(ad-activate 'eshell-send-input)
-;; 補完時にサイクルする
-;;(setq eshell-cmpl-cycle-completions t)
-(setq eshell-cmpl-cycle-completions nil)
-;;補完候補がこの数値以下だとサイクルせずに候補表示
-;;(setq eshell-cmpl-cycle-cutoff-length 5)
-;; 履歴で重複を無視する
-(setq eshell-hist-ignoredups t)
-;; 文字を入力すれば末尾へジャンプ
-(setq comint-scroll-to-bottom-on-input t)
-(setq comint-scroll-show-maximum-output t)
-(setq comint-scroll-to-bottom-on-output 'all)
-
-;; sudoのあとも補完可能に
-(defun pcomplete/sudo ()
-  "Completion rules for the `sudo' command."
-  (let ((pcomplete-help "complete after sudo"))
-    (pcomplete-here (pcomplete-here (eshell-complete-commands-list)))))
-
-;; トグルする設定
-(defun my-toggle-term ()
-  "eshell と直前のバッファを行き来する。C-u 付きで呼ぶと 今いるバッファと同じディレクトリに cd して開く"
-  (interactive)
-  (let ((ignore-list '("*Help*" "*Minibuf-1*" "*Messages*" "*Completions*"
-                       "*terminal<1>*" "*terminal<2>*" "*terminal<3>*"))
-        (dir default-directory))
-    (labels
-        ((_my-toggle-term (target)
-                          (if (null (member (buffer-name (second target)) ignore-list))
-                              (if (equal eshell-buffer-name (buffer-name (window-buffer)))
-                                  (switch-to-buffer (second target))
-                                (switch-to-buffer eshell-buffer-name)
-                                (when current-prefix-arg
-                                  (cd dir)
-                                  (eshell-interactive-print (concat "cd " dir "\n"))
-                                  (eshell-emit-prompt)))
-                            (_my-toggle-term (cdr target)))))
-      (_my-toggle-term (buffer-list)))))
-
-;; eshellを新規で開く
-(defun eshell-add-new-buffer (arg)
-  (interactive "p")
-  (case arg
-    (4 (let ((input (read-string "eshell buffer name: ")))
-         (my-eshell-create input))
-       )
-    (t (my-eshell-create "")))
-  )
-(defun my-eshell-create (input)
-  (let ((bname (if (string= input "") "" (concat "<" input ">"))))
-    (let ((buf (generate-new-buffer (concat eshell-buffer-name bname))))
-      (switch-to-buffer buf)
-      (unless (fboundp 'eshell-mode)
-        (error "`eshell-auto' must be loaded before Eshell can be used"))
-      (unless (eq major-mode 'eshell-mode)
-        (eshell-mode))
-      buf
-      ))
-  )
-
-;; ファイルの場所へcdする
-(defun eshell-jump-to-current-directory ()
-  (interactive)
-  (let ((dir default-directory))
-    (eshell)
-    (cd dir)
-    (eshell-interactive-print (concat "cd " dir "\n"))
-    (eshell-emit-prompt))
-  )
-
-;; キーバインドの変更
-(add-hook 'eshell-mode-hook
-          '(lambda ()
-             (progn
-               (eshell/export "TERM" "xterm-256color")
-               (define-key eshell-mode-map (kbd "C-a") 'eshell-bol)
-               (define-key eshell-mode-map [up] 'previous-line)
-               (define-key eshell-mode-map [down] 'next-line)
-               (define-key eshell-mode-map (kbd "C-p") 'eshell-previous-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "C-n") 'eshell-next-matching-input-from-input)
-               (define-key eshell-mode-map (kbd "C-c h") 'helm-eshell-history)
-               (define-key eshell-mode-map (kbd "C-c p") 'helm-esh-pcomplete)
-               )
-             ))
-
-;; エスケープシーケンスを削除
-(require 'ansi-color)
-(require 'eshell)
-(defconst escape-drop-regexp
-  "\\(=\\|>\\|[0-9]\\|\\[\\?[0-9]+[hl]\\)"
-  "Regexp that matches ANSI control sequences to silently drop.")
-(defun escape-remove-on-region (begin end)
-  "Remove escape sequence from region"
-  (let ((start-marker (copy-marker begin))
-        (end-marker (copy-marker end)))
-    ;; First, eliminate unrecognized ANSI control sequences.
-    (save-excursion
-      (goto-char start-marker)
-      (while (re-search-forward escape-drop-regexp end-marker t)
-        (replace-match "")))))
-(add-to-list 'eshell-output-filter-functions '(lambda () (escape-remove-on-region eshell-last-output-start eshell-last-output-end)))
-
-(defun eshell-handle-ansi-color ()
-  (ansi-color-apply-on-region eshell-last-output-start
-                              eshell-last-output-end))
-(add-to-list 'eshell-output-filter-functions 'eshell-handle-ansi-color)
 
 ;;
 ;; howm-mode
