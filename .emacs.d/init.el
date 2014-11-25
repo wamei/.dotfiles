@@ -671,9 +671,6 @@
 ;; 新しいel,elcを読み込み
 (setq load-prefer-newer t)
 
-;; 同名ファイルの区別
-(require 'uniquify)
-
 ;; 選択範囲をisearch
 (defadvice isearch-mode (around isearch-mode-default-string (forward &optional regexp op-fun recursive-edit word-p) activate)
   (if (and transient-mark-mode mark-active (not (eq (mark) (point))))
