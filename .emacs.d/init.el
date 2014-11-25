@@ -652,11 +652,6 @@
 ;; 折り返ししない
 (setq truncate-lines nil)
 (setq truncate-partial-width-windows nil)
-(defun toggle-truncate-lines ()
-  (interactive)
-  (if (eq truncate-lines t)
-      (setq truncate-lines nil)
-    (setq truncate-lines t)))
 
 ;; インデント
 (setq-default c-basic-offset 4)
