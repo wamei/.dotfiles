@@ -1913,6 +1913,18 @@ $0"))
 ;; eww.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'eww)
+(defvar eww-data)
+(defun eww-current-url ()
+  "バージョン間の非互換を吸収する。"
+  (if (boundp 'eww-current-url)
+      eww-current-url                   ;emacs24.4
+    (plist-get eww-data :url)))         ;emacs25
+(defun eww-current-title ()
+  "バージョン間の非互換を吸収する。"
+  (if (boundp 'eww-current-title)
+      eww-current-title                   ;emacs24.4
+    (plist-get eww-data :title)))
+
 ;;; [2014-11-17 Mon]背景・文字色を無効化する
 (defvar eww-disable-colorize t)
 (defun shr-colorize-region--disable (orig start end fg &optional bg &rest _)
@@ -1931,13 +1943,62 @@ $0"))
   (setq-local eww-disable-colorize nil)
   (eww-reload))
 
-(defvar eww-data)
-(defun eww-current-url ()
-  "バージョン間の非互換を吸収する。"
-  (if (boundp 'eww-current-url)
-      eww-current-url                   ;emacs24.4
-    (plist-get eww-data :url)))         ;emacs25
+;; 画像を表示させない
+(defun eww-disable-images ()
+  "ewwで画像表示させない"
+  (interactive)
+  (setq-local shr-put-image-function 'shr-put-image-alt)
+  (eww-reload))
+(defun eww-enable-images ()
+  "ewwで画像表示させる"
+  (interactive)
+  (setq-local shr-put-image-function 'shr-put-image)
+  (eww-reload))
+(defun shr-put-image-alt (spec alt &optional flags)
+  (insert alt))
+(defun eww-mode-hook--disable-image ()
+  (setq-local shr-put-image-function 'shr-put-image-alt))
+(add-hook 'eww-mode-hook 'eww-mode-hook--disable-image)
 
+;; ewwのhelm history
+(require 'helm)
+(require 'cl-lib)
+
+(defun helm-eww-history-candidates ()
+  (cl-loop with hash = (make-hash-table :test 'equal)
+           for b in (buffer-list)
+           when (eq (buffer-local-value 'major-mode b) 'eww-mode)
+           append (with-current-buffer b
+                    (clrhash hash)
+                    (puthash (eww-current-url) t hash)
+                    (cons
+                     (cons (format "%s (%s) <%s>" (eww-current-title) (eww-current-url) b) b)
+                     (cl-loop for pl in eww-history
+                              unless (gethash (plist-get pl :url) hash)
+                              collect
+                              (prog1 (cons (format "%s (%s) <%s>" (plist-get pl :title) (plist-get pl :url) b)
+                                           (cons b pl))
+                                (puthash (plist-get pl :url) t hash)))))))
+(defun helm-eww-history-browse (buf-hist)
+  (if (bufferp buf-hist)
+      (switch-to-buffer buf-hist)
+    (switch-to-buffer (car buf-hist))
+    (eww-save-history)
+    (eww-restore-history (cdr buf-hist))))
+(defvar helm-source-eww-history
+  '((name . "eww history")
+    (candidates . helm-eww-history-candidates)
+    (migemo)
+    (action . helm-eww-history-browse)))
+(defvaralias 'anything-c-source-eww-history 'helm-source-eww-history)
+(defun helm-eww-history ()
+  (interactive)
+  (helm :sources 'helm-source-eww-history
+        :buffer "*helm eww*"))
+
+(define-key eww-mode-map (kbd "H") 'helm-eww-history)
+
+;; weblio検索
 (defun eww-set-start-at (url-regexp search-regexp)
   "URL-REGEXPにマッチするURLにて、SEARCH-REGEXPの行から表示させる"
   (when (string-match url-regexp (eww-current-url))
