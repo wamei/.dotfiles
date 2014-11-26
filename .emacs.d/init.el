@@ -491,7 +491,7 @@
    mode-line-position
    ;; directory and buffer/file name
    (:eval (cond
-           ((string= (substring (buffer-name) 0 1) "*")
+           ((eq buffer-file-name nil)
             (propertize (buffer-name) 'face 'mode-line-filename-face))
            (t
             (concat
