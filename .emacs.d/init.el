@@ -1904,6 +1904,10 @@ $0"))
 ;; eww.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'eww)
+(defun eww-update-header-line-format:override(&rest _))
+(advice-add 'eww-update-header-line-format :override 'eww-update-header-line-format:override)
+(defun eww-render:tab-update (&rest _) (elscreen-tab-update t))
+(advice-add 'eww-render :after 'eww-render:tab-update)
 (defvar eww-data)
 (defun eww-current-url ()
   "バージョン間の非互換を吸収する。"
@@ -2000,10 +2004,7 @@ $0"))
 (defun eww-render--after (&rest _)
   (eww-set-start-at "www.weblio.jp" "^ *Weblio 辞書")
   (eww-set-start-at "ejje.weblio.jp" "^ *Weblio 辞書")
-  (elscreen-tab-update)
-  ;; 他のサイトの設定も同様に追加できる
   )
-;;(add-hook 'eww-after-render-hook 'eww-render--after)
 (advice-add 'eww-render :after 'eww-render--after)
 
 ;;; weblio
