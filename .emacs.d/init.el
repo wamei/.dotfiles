@@ -133,13 +133,11 @@
 (global-set-key (kbd "C-q C-m") 'my-mc-put-cursor)
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
-(global-set-key (kbd "C-x m")   'hh:menu-command)
 (global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
-(global-set-key (kbd "C-x , ,") 'howm-menu)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
@@ -816,14 +814,6 @@
 ;; Tramp設定
 (setenv "TMPDIR" "/tmp")
 
-;; howm bufferをタイトル名に変更
-(defun howm-my-append-buffer-name-hint ()
-  (when howm-mode
-    (rename-buffer (concat "[Memo]" (hh:title-get-title (current-buffer))) t)
-    ))
-(add-hook 'find-file-hook 'howm-my-append-buffer-name-hint)
-(add-hook 'dired-mode-hook 'howm-my-append-buffer-name-hint)
-
 (defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
   (let ((vc-handled-backends '(SVN Git))) ad-do-it))
 
@@ -1416,7 +1406,7 @@
   ;; bookmarkの場所を表示
   (setq helm-bookmark-show-location t)
 
-  (defvar helm-source-buffers-with-howm-title
+  (defvar helm-source-normal-buffers
     `((name . "Buffers")
       (init . (lambda ()
                 ;; Issue #51 Create the list before `helm-buffer' creation.
@@ -1508,7 +1498,7 @@ Set `recentf-max-saved-items' to a bigger value if default is too small.")
                (setq dired-buffer-list dired-local)
                (setq tmp-buffer-list tmp-local))
       (helm-other-buffer
-       `(helm-source-buffers-with-howm-title
+       `(helm-source-normal-buffers
          helm-source-dired-buffers
          helm-source-*buffers
          helm-source-recentf+
@@ -1564,59 +1554,6 @@ $0"))
 (require 'ssh-agent)
 
 ;;
-;; howm-mode
-;;----------------------------------------------------------------------------------------------------
-(setq howm-prefix "\C-x,")
-(setq howm-view-title-header "*")
-(setq howm-insert-date-format "<%s>")
-(setq howm-date-format '"%Y-%m-%d %a")
-(setq howm-date-regexp-grep "[1-2][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [SMTWF][uoehra][neduit]")
-(setq howm-date-regexp "\\([1-2][0-9][0-9][0-9]\\)-\\([0-1][0-9]\\)-\\([0-3][0-9]\\) [SMTWF][uoehra][neduit]")
-(setq howm-reminder-regexp-grep-format (concat "<" howm-date-regexp-grep "[- :0-9]*>%s"))
-(setq howm-reminder-regexp-format (concat "\\(<" howm-date-regexp "[- :0-9]*>\\)\\(\\(%s\\)\\([0-9]*\\)\\)"))
-(setq howm-reminder-today-format (format howm-insert-date-format howm-date-format))
-(setq howm-directory "~/howm/")
-(when (require 'howm nil t)
-  (setq howm-menu-lang 'ja)
-  (setq howm-keyword-case-fold-search t)
-  (setq font-lock-verbose nil)
-  (setq howm-history-file "~/howm/.howm-history")
-  (setq howm-keyword-file "~/howm/.howm-keys")
-  (setq howm-file-name-format "%Y/%Y%m%d-%H%M%S.org")
-  (setq howm-menu-file "~/howm/menu.org")
-  (setq howm-view-summary-persistent nil)
-  (setq howm-prepend t)
-  (setq howm-reminder-font-lock-keywords
-        `(
-          (,(howm-reminder-regexp "[-]") (0 howm-reminder-normal-face prepend))
-          (,(howm-reminder-regexp "[+]") (0 howm-reminder-todo-face prepend))
-          (,(howm-reminder-regexp "[~]") (0 howm-reminder-defer-face prepend))
-          (,(howm-reminder-regexp "[!]") (0 howm-reminder-deadline-face prepend))
-          (,(howm-reminder-regexp "[@]") (0 howm-reminder-schedule-face prepend))
-          (,(howm-reminder-regexp "[.]") (0 howm-reminder-done-face prepend))
-          ))
-  (setq howm-dtime-format (concat "<" howm-dtime-body-format ">"))
-  (setq howm-highlight-date-regexp-format "%Y-%m-%d %a\\([- :0-9]*\\)")
-  (setq howm-template-date-format "<%Y-%m-%d %a %H:%M>")
-  (setq howm-template-file-format ">>>%s")
-  (setq howm-template "* %cursor\n%date\n")
-  (setq howm-schedule-sort-by-time t)
-  (add-hook 'org-mode-hook 'howm-mode)
-  (if (not (memq 'delete-file-if-no-contents after-save-hook))
-      (setq after-save-hook
-            (cons 'delete-file-if-no-contents after-save-hook)))
-
-  (defun delete-file-if-no-contents ()
-    (when (and
-           (buffer-file-name (current-buffer))
-           (= (point-min) (point-max)))
-      (when (y-or-n-p "Delete file and kill buffer?")
-        (delete-file
-         (buffer-file-name (current-buffer)))
-        (kill-buffer (current-buffer)))))
-  )
-
-;;
 ;; Org-mode
 ;;----------------------------------------------------------------------------------------------------
 ;; 見出しの余分な*を消す
@@ -1625,13 +1562,6 @@ $0"))
 (setq org-startup-truncated nil)
 ;; 見出しを畳んで表示する
 (setq org-startup-folded nil)
-;; 画面端改行トグル関数
-(defun change-truncation()
-  (interactive)
-  (cond ((eq truncate-lines nil)
-         (setq truncate-lines t))
-        (t
-         (setq truncate-lines nil))))
 
 ;;
 ;; flycheck.el
@@ -1749,13 +1679,6 @@ $0"))
 ;; markdown-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
-
-;;
-;; helm-howm.el
-;;----------------------------------------------------------------------------------------------------
-(require 'helm-howm)
-;; 「最近のメモ」をいくつ表示するか
-(setq hh:recent-menu-number-limit 600)
 
 ;;
 ;; AUCTeX
