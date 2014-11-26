@@ -2000,6 +2000,7 @@ $0"))
 (defun eww-render--after (&rest _)
   (eww-set-start-at "www.weblio.jp" "^ *Weblio 辞書")
   (eww-set-start-at "ejje.weblio.jp" "^ *Weblio 辞書")
+  (elscreen-tab-update)
   ;; 他のサイトの設定も同様に追加できる
   )
 ;;(add-hook 'eww-after-render-hook 'eww-render--after)

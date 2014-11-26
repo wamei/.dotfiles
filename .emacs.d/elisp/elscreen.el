@@ -1451,6 +1451,9 @@ Use \\[toggle-read-only] to permit editing."
     (walk-windows
      (lambda (window)
        (with-current-buffer (window-buffer window)
+         (if (eq major-mode 'eww-mode)
+             (setq header-line-eww-format (concat " " (eww-current-title) " : " (eww-current-url)))
+           (setq header-line-eww-format ""))
          (when (and (boundp 'elscreen-tab-format)
                     (equal header-line-format elscreen-tab-format)
                     (or (not (eq (window-buffer window)
@@ -1539,7 +1542,7 @@ Use \\[toggle-read-only] to permit editing."
                  elscreen-tab-format
                  (list
                   (propertize
-                   (make-string (window-width) ?\ )
+                   (concat header-line-eww-format (make-string (window-width) ?\ ))
                    'face 'elscreen-tab-background-face
                    'local-map (elscreen-tab-create-keymap)))))
 
