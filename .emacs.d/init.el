@@ -301,7 +301,7 @@
    `(mode-line-folder-face ((,class (:inherit mode-line-face :weight extra-light :height 0.8 :foreground "#e5e5e5"))))
    `(mode-line-position-face ((,class (:inherit mode-line-face :family "Menlo"))))
    `(mode-line-mode-face ((,class (:inherit mode-line-face :foreground "#eeeeec"))))
-   `(mode-line-minor-mode-face ((,class (:inherit mode-line-mode-face :foreground "white" :height 0.8))))
+   `(mode-line-minor-mode-face ((,class (:inherit mode-line-face :weight extra-light :height 0.8 :foreground "#cccccc"))))
    `(mode-line-process-face ((,class (:inherit mode-line-face :foreground "green"))))
    `(mode-line-80col-face ((,class (:inherit mode-line-position-face :foreground "black" :background "#eab700"))))
    `(mode-line-delim-face-1 ((,class (:inherit mode-line-face :foreground "white"))))
@@ -471,8 +471,6 @@
                         'mode-line-position-face)))
    " "
    ))
-;; git-status
-(require 'git-status)
 ;; form
 (setq-default
  mode-line-format
@@ -490,7 +488,6 @@
            (propertize "**" 'face 'mode-line-modified-face))
           (t "--")))
    " "
-   ;evil-mode-line-tag
    mode-line-position
    ;; directory and buffer/file name
    (:eval (cond
@@ -502,7 +499,7 @@
              (propertize (buffer-name) 'face 'mode-line-filename-face)))
            ))
    ;; narrow [default -- keep?]
-   " %n"
+   "%n"
    ;; mode indicators: vc, recursive edit, major mode, minor modes, process, global
    (:propertize (vc-mode vc-mode) face mode-line-git-face)
    " %["
@@ -514,15 +511,7 @@
    " "
    (:propertize mode-line-process
                 face mode-line-process-face)
-   " "
-   (:propertize user-login-name face mode-line-name-face)
-   (:propertize "@" face mode-line-name-face)
-   (:propertize system-name face mode-line-name-face)
-   " "
    (global-mode-string global-mode-string)
-   ;; " "
-   ;; nyan-mode uses nyan cat as an alternative to %p
-   ;; (:eval (when nyan-mode (list (nyan-create))))
    ))
 
 ;; Helper function
