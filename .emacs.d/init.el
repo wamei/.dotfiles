@@ -2020,6 +2020,12 @@ $0"))
 (setcar (cdr (assq 'magit-auto-revert-mode minor-mode-alist)) "")
 
 ;;
+;; bracketed paste
+;;----------------------------------------------------------------------------------------------------
+(require 'bracketed-paste)
+(bracketed-paste-enable)
+
+;;
 ;; migemo.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'migemo)
