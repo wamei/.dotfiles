@@ -106,8 +106,6 @@
 (global-set-key (kbd "M-y")     'helm-show-kill-ring)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
-(global-set-key (kbd "M-]")     'elscreen-next)
-(global-set-key (kbd "M-[")     'elscreen-previous)
 
 (global-set-key (kbd "M-s s")   'helm-occur)
 (global-set-key (kbd "M-s g")   'helm-cmd-t-grep)
@@ -175,6 +173,8 @@
     (,(kbd "C-M-f") . windmove-right)
     (,(kbd "C-M-n") . windmove-down)
     (,(kbd "C-M-p") . windmove-up)
+    (,(kbd "C-c C-w n") . elscreen-next)
+    (,(kbd "C-c C-w p") . elscreen-previous)
     (,(kbd "C-c C-w c") . elscreen-create)
     (,(kbd "C-c C-w k") . elscreen-kill)
     (,(kbd "C-c C-w A") . elscreen-screen-nickname)
