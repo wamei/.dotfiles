@@ -139,6 +139,12 @@
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
 
+(global-set-key (kbd "C-x m") nil)
+(global-set-key (kbd "C-x m a")   'org-agenda)
+(global-set-key (kbd "C-x m o")   'org-capture)
+(global-set-key (kbd "C-x m m")   'org-capture-memo)
+(global-set-key (kbd "C-x m c")   'org-capture-code-reading)
+
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
 (global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
@@ -186,6 +192,7 @@
 (add-to-list 'auto-mode-alist '("\\.markdown\\'" . markdown-mode))
 (add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
 (add-to-list 'auto-mode-alist '("\\.php\\'" . php-mode))
+(add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode))
 
 ;;
@@ -1556,12 +1563,58 @@ $0"))
 ;;
 ;; Org-mode
 ;;----------------------------------------------------------------------------------------------------
-;; 見出しの余分な*を消す
-(setq org-hide-leading-stars t)
-;; 画面端で改行する
-(setq org-startup-truncated nil)
-;; 見出しを畳んで表示する
-(setq org-startup-folded nil)
+(when (require 'org-install)
+  ;; 見出しの余分な*を消す
+  (setq org-hide-leading-stars t)
+  ;; 画面端で改行する
+  (setq org-startup-truncated nil)
+  ;; 見出しを畳んで表示する
+  (setq org-startup-folded nil)
+  ;; returnでリンクを飛ぶ
+  (setq org-return-follows-link t)
+  (setq org-directory "~/org/")
+  (setq org-default-notes-file (concat org-directory "notes.org"))
+  (setq org-capture-templates
+      '(
+        ("m" "Memo" entry (file+headline nil "Memos") "** %?\n   %T")
+        ("M" "Memo(with file link)" entry (file+headline nil "Memos") "** %?\n   %a\n   %T")
+        ))
+  ;; agendaを使う
+  (setq org-agenda-files (list org-directory))
+
+  ;; org-capture-memo
+  (defun org-capture-memo (n)
+    (interactive "p")
+    (case n
+      (4 (org-capture nil "M"))
+      (t (org-capture nil "m"))))
+
+  ;; code-reading
+  (defvar org-code-reading-software-name nil)
+  ;; ~/memo/code-reading.org に記録する
+  (defvar org-code-reading-file "code-reading.org")
+  (defun org-code-reading-read-software-name ()
+    (set (make-local-variable 'org-code-reading-software-name)
+         (read-string "Code Reading Software: " 
+                      (or org-code-reading-software-name
+                          (file-name-nondirectory
+                           (buffer-file-name))))))
+
+  (defun org-code-reading-get-prefix (lang)
+    (let ((sname (org-code-reading-read-software-name))
+          (fname (file-name-nondirectory
+                           (buffer-file-name))))
+    (concat "[" lang "]"
+            "[" sname "]"
+            (if (not (string= sname fname)) (concat "[" fname "]")))))
+  (defun org-capture-code-reading ()
+    (interactive)
+    (let* ((prefix (org-code-reading-get-prefix (substring (symbol-name major-mode) 0 -5)))
+           (org-capture-templates
+            '(("c" "Code Reading" entry (file+headline (concat org-directory org-code-reading-file) "Code Readings") "** %(identity prefix) %?\n   %a\n   %T")
+              )))
+      (org-capture nil "c")))
+  )
 
 ;;
 ;; flycheck.el
