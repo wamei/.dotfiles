@@ -1303,6 +1303,7 @@
   (add-to-list 'ac-modes 'text-mode)
   (add-to-list 'ac-modes 'org-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
+  (add-to-list 'ac-modes 'markdown-mode)
   ;; 辞書ファイル
   (add-to-list 'ac-dictionary-directories (expand-file-name "~/.emacs.d/ac-dict/"))
   (setq ac-comphist-file (expand-file-name "~/.emacs.d/ac-comphist.dat"))
