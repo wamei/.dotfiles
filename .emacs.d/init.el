@@ -108,7 +108,7 @@
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
 (global-set-key (kbd "M-s s")   'helm-occur)
-(global-set-key (kbd "M-s g")   'helm-cmd-t-grep)
+(global-set-key (kbd "M-s g")   'helm-git-grep)
 (global-set-key (kbd "M-s f")   'helm-cmd-t)
 (global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
