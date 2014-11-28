@@ -131,11 +131,13 @@
 (global-set-key (kbd "C-q C-m") 'my-mc-put-cursor)
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
-(global-set-key (kbd "C-x e")   'resize)
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
+
+(global-set-key (kbd "C-x e r")   'resize)
+(global-set-key (kbd "C-x e a")   'set-frame-alpha-interactive)
 
 (global-set-key (kbd "C-x m") nil)
 (global-set-key (kbd "C-x m a")   'org-agenda)
@@ -199,18 +201,53 @@
 ;; ウィンドウ設定
 ;;----------------------------------------------------------------------------------------------------
 
-(if window-system
-    (progn
-      (set-frame-parameter nil 'alpha 90)
-      (setq ns-pop-up-frames nil)
-      (scroll-bar-mode 0)
-      ;;(global-linum-mode t)
-      (when (require 'yascroll nil t)
-        (global-yascroll-bar-mode 1)
-        )
-      ))
-(when tool-bar-mode (tool-bar-mode 0))
-(when menu-bar-mode (menu-bar-mode 0))
+;; 透過度調整関数
+(defvar frame-alpha 85)
+(defun set-frame-alpha(n)
+  (interactive "p")
+  (when (>= n 100) (setq n 100))
+  (when (<= n 0) (setq n 0))
+  (setq frame-alpha n)
+  (set-frame-parameter nil 'alpha frame-alpha))
+(defun set-frame-alpha-interactive ()
+  "Control frame alpha."
+  (interactive)
+  (let (c)
+    (catch 'end-flag
+      (while t
+        (message "Frame alpha [%d]" frame-alpha)
+        (condition-case err
+            (setq c (read-key-sequence nil))
+          (error
+           (throw 'end-flag t)))
+        (cond ((equal c "p")
+               (set-frame-alpha (- frame-alpha 1)))
+              ((equal c "n")
+               (set-frame-alpha (+ frame-alpha 1)))
+              ((equal c "d")
+               (set-frame-alpha 85))
+              ((equal c "1")
+               (set-frame-alpha 10))
+              ((equal c "2")
+               (set-frame-alpha 20))
+              ((equal c "3")
+               (set-frame-alpha 30))
+              ((equal c "4")
+               (set-frame-alpha 40))
+              ((equal c "5")
+               (set-frame-alpha 50))
+              ((equal c "6")
+               (set-frame-alpha 60))
+              ((equal c "7")
+               (set-frame-alpha 70))
+              ((equal c "8")
+               (set-frame-alpha 80))
+              ((equal c "9")
+               (set-frame-alpha 90))
+              ((equal c "0")
+               (set-frame-alpha 100))
+              ((equal c "\C-g")
+               (message "Quit")(throw 'end-flag t)))))))
 
 ;;リサイズ用関数
 (defun resize ()
@@ -260,6 +297,20 @@
                (helm-mini))
               ((equal c "\C-g")
                (message "Quit")(throw 'end-flag t))))))))
+
+
+(if window-system
+    (progn
+      (set-frame-alpha frame-alpha)
+      (setq ns-pop-up-frames nil)
+      (scroll-bar-mode 0)
+      ;;(global-linum-mode t)
+      (when (require 'yascroll nil t)
+        (global-yascroll-bar-mode 1)
+        )
+      ))
+(when tool-bar-mode (tool-bar-mode 0))
+(when menu-bar-mode (menu-bar-mode 0))
 
 ;; サーバー起動
 (server-start)
