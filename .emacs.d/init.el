@@ -91,17 +91,18 @@
 ;; キーバインド
 ;;----------------------------------------------------------------------------------------------------
 (global-set-key (kbd "C-h")     nil)
-(define-key key-translation-map [?\C-h] [?\C-?])
 (global-set-key (kbd "C-r")     'vr/replace)
-;;(global-set-key (kbd "C-z")     'switch-to-previous-buffer)
+(global-set-key (kbd "C-v")     'scroll-up-with-cursor)
 (global-set-key (kbd "C--")     'undo-tree-undo)
+(define-key key-translation-map [?\C-h] [?\C-?])
 
 (global-set-key (kbd "M-b")     'backward-word)
 (global-set-key (kbd "M-f")     'forward-to-word)
 (global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "M-h")     'backward-kill-word)
-(global-set-key (kbd "M-n")     (kbd "C-u 5 C-v"))
-(global-set-key (kbd "M-p")     (kbd "C-u 5 M-v"))
+(global-set-key (kbd "M-n")     'forward-list)
+(global-set-key (kbd "M-p")     'backward-list)
+(global-set-key (kbd "M-v")     'scroll-down-with-cursor)
 (global-set-key (kbd "M-x")     'helm-M-x)
 (global-set-key (kbd "M-y")     'helm-show-kill-ring)
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
@@ -631,6 +632,28 @@
 ;;
 ;; その他設定
 ;;----------------------------------------------------------------------------------------------------
+;; window内のカーソル行番号
+(defun current-line ()
+  "Return the vertical position of point…"
+  (+ (count-lines (window-start) (point))
+     (if (= (current-column) 0) 1 0)
+     -1))
+
+;; 1画面スクロール
+(defun scroll-up-with-cursor()
+  "End of buffer までカーソル移動する scroll-up。"
+  (interactive)
+  (if(= (window-end) (point-max))
+      (move-to-window-line (window-end))
+    (scroll-up (window-body-height))))
+
+(defun scroll-down-with-cursor()
+  "Beginning of buffer までカーソル移動する scroll-down。"
+  (interactive)
+  (if(= (window-start) 1)
+      (move-to-window-line 0)
+    (scroll-down (window-body-height))))
+
 ;; 引数取得用関数
 (defun region-or-read-string (prompt &optional initial history default inherit)
   "regionが指定されているときはその文字列を取得し、それ以外では`read-string'を呼ぶ。"
