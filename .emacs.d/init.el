@@ -136,6 +136,7 @@
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
 
+(global-set-key (kbd "C-x e") nil)
 (global-set-key (kbd "C-x e r")   'resize)
 (global-set-key (kbd "C-x e a")   'set-frame-alpha-interactive)
 
