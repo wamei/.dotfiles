@@ -1493,18 +1493,6 @@
   ;; (add-to-list 'helm-completing-read-handlers-alist '(write-file . nil))
   ;; (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
   ;; (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
-  (defadvice helm-mode (around avoid-read-file-name activate)
-    (let ((read-file-name-function read-file-name-function)
-          (completing-read-function completing-read-function))
-      ad-do-it))
-  (setq completing-read-function 'my-helm-completing-read-default)
-  (defun my-helm-completing-read-default (&rest _)
-    (apply (cond ;; [2014-08-11 Mon]helm版のread-file-nameは重いからいらない
-            ((eq (nth 1 _) 'read-file-name-internal)
-             'completing-read-default)
-            (t
-             'helm--completing-read-default))
-           _))
 
   ;; buffer名の表示幅
   (setq helm-buffer-max-length 40)
@@ -1533,59 +1521,98 @@
   ;; bookmarkの場所を表示
   (setq helm-bookmark-show-location t)
 
-  (defvar helm-source-normal-buffers
-    `((name . "Buffers")
-      (init . (lambda ()
-                ;; Issue #51 Create the list before `helm-buffer' creation.
-                (setq helm-buffers-list-cache (helm-buffer-list))
-                (let ((result (cl-loop for b in helm-buffers-list-cache
-                                       maximize (length b) into len-buf
-                                       maximize (length (with-current-buffer b
-                                                          (symbol-name major-mode)))
-                                       into len-mode
-                                       finally return (cons len-buf len-mode))))
-                  (unless helm-buffer-max-length
-                    (setq helm-buffer-max-length (car result)))
-                  (unless helm-buffer-max-len-mode
-                    ;; If a new buffer is longer that this value
-                    ;; this value will be updated
-                    (setq helm-buffer-max-len-mode (cdr result))))))
-      (candidates . normal-buffer-list)
-      (no-matchplugin)
-      (type . buffer)
-      (match helm-buffers-list--match-fn)
-      (persistent-action . helm-buffers-list-persistent-action)
-      (keymap . ,helm-buffer-map)
-      (volatile)
-      (mode-line . helm-buffer-mode-line-string)
-      (persistent-help
-       . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+  ;; helm buffer list改
+  (defvar normal-buffer-list '())
+  (defvar dired-buffer-list '())
+  (defvar tmp-buffer-list '())
+  (defclass helm-source-normal-buffers (helm-source-sync helm-type-buffer)
+    ((init :initform (lambda ()
+                       ;; Issue #51 Create the list before `helm-buffer' creation.
+                       (setq helm-buffers-list-cache (helm-buffer-list))
+                       (let ((result (cl-loop for b in helm-buffers-list-cache
+                                              maximize (length b) into len-buf
+                                              maximize (length (with-current-buffer b
+                                                                 (symbol-name major-mode)))
+                                              into len-mode
+                                              finally return (cons len-buf len-mode))))
+                         (unless helm-buffer-max-length
+                           (setq helm-buffer-max-length (car result)))
+                         (unless helm-buffer-max-len-mode
+                           ;; If a new buffer is longer that this value
+                           ;; this value will be updated
+                           (setq helm-buffer-max-len-mode (cdr result))))
+                       (cl-loop for i in helm-buffers-list-cache
+                                with normal-local
+                                with dired-local
+                                with tmp-local
+                                if (= 0 (or (string-match-p "\\*.+\\*" i) -1)) collect i into tmp-local
+                                else if (with-current-buffer (get-buffer i) (eq major-mode 'dired-mode)) collect i into dired-local
+                                else collect i into normal-local end
+                                finally
+                                (setq normal-buffer-list normal-local)
+                                (setq dired-buffer-list dired-local)
+                                (setq tmp-buffer-list tmp-local))
+                       ))
+     (candidates :initform normal-buffer-list)
+     (matchplugin :initform nil)
+     (match :initform 'helm-buffers-list--match-fn)
+     (persistent-action :initform 'helm-buffers-list-persistent-action)
+     (keymap :initform helm-buffer-map)
+     (volatile :initform t)
+     (mode-line :initform helm-buffer-mode-line-string)
+     (persistent-help
+      :initform
+      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+  (defvar helm-source-normal-buffers-list (helm-make-source "Buffers" 'helm-source-normal-buffers))
 
-  (defvar helm-source-dired-buffers
-    `((name . "Dired Buffers")
-      (candidates . dired-buffer-list)
-      (no-matchplugin)
-      (type . buffer)
-      (persistent-action . helm-buffers-list-persistent-action)
-      (keymap . ,helm-buffer-map)
-      (volatile)
-      (mode-line . helm-buffer-mode-line-string)
-      (persistent-help
-       . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+  (defclass helm-source-dired-buffers (helm-source-sync helm-type-buffer)
+    ((candidates :initform dired-buffer-list)
+     (matchplugin :initform nil)
+     (match :initform 'helm-buffers-list--match-fn)
+     (persistent-action :initform 'helm-buffers-list-persistent-action)
+     (keymap :initform helm-buffer-map)
+     (volatile :initform t)
+     (mode-line :initform helm-buffer-mode-line-string)
+     (persistent-help
+      :initform
+      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+  (defvar helm-source-dired-buffers-list (helm-make-source "Dired Buffers" 'helm-source-dired-buffers))
 
-  (defvar helm-source-*buffers
-    `((name . "*Buffers")
-      (candidates . tmp-buffer-list)
-      (no-matchplugin)
-      (type . buffer)
-      (persistent-action . helm-buffers-list-persistent-action)
-      (keymap . ,helm-buffer-map)
-      (volatile)
-      (mode-line . helm-buffer-mode-line-string)
-      (persistent-help
-       . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+  (defclass helm-source-tmp-buffers (helm-source-sync helm-type-buffer)
+    ((candidates :initform tmp-buffer-list)
+     (matchplugin :initform nil)
+     (match :initform 'helm-buffers-list--match-fn)
+     (persistent-action :initform 'helm-buffers-list-persistent-action)
+     (keymap :initform helm-buffer-map)
+     (volatile :initform t)
+     (mode-line :initform helm-buffer-mode-line-string)
+     (persistent-help
+      :initform
+      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+  (defvar helm-source-tmp-buffers-list (helm-make-source "* Buffers" 'helm-source-tmp-buffers))
 
-  (defvar helm-source-recentf+
+;;   (defclass helm-source-recentf+ (helm-source-sync helm-type-buffer)
+;;     ((init :initform (lambda ()
+;;                (require 'recentf)
+;;                (recentf-mode 1)))
+;;      (candidates :initform recentf-list)
+;;      (match :initform 'helm-files-match-only-basename)
+;;      (filtered-candidate-transformer :initform (lambda (candidates _source)
+;;                                                  (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+;;                                                    (cl-loop for i in candidates
+;;                                                             if helm-ff-transformer-show-only-basename
+;;                                                             collect (cons (helm-basename i) i)
+;;                                                             else collect (abbreviate-file-name i)))))
+;;      (keymap :initform helm-generic-files-map)
+;;      (help-message :initform helm-generic-file-help-message)
+;;      (mode-line :initform helm-generic-file-mode-line-string)
+;;      (action :initform ,(cdr (helm-get-actions-from-type helm-source-locate)))
+;;      (persistent-help
+;;       :initform
+;;       "See (info \"(emacs)File Conveniences\").
+;; Set `recentf-max-saved-items' to a bigger value if default is too small.")))
+;;   (defvar helm-source-recentf+-list (helm-make-source "Recentf" 'helm-source-recentf+))
+  (defvar helm-source-recentf+-list
     `((name . "Recentf")
       (init . (lambda ()
                 (require 'recentf)
@@ -1608,28 +1635,12 @@ Set `recentf-max-saved-items' to a bigger value if default is too small.")
 
   (defun helm-filelist++ ()
     (interactive)
-    (let ((helm-ff-transformer-show-only-basename nil)
-          (normal-buffer-list)
-          (dired-buffer-list)
-          (tmp-buffer-list))
-      (setq helm-buffers-list-cache (helm-buffer-list))
-      (cl-loop for i in helm-buffers-list-cache
-               with normal-local
-               with dired-local
-               with tmp-local
-               if (= 0 (or (string-match-p "\\*.+\\*" i) -1)) collect i into tmp-local
-               else if (with-current-buffer (get-buffer i) (eq major-mode 'dired-mode)) collect i into dired-local
-               else collect i into normal-local end
-               finally
-               (setq normal-buffer-list normal-local)
-               (setq dired-buffer-list dired-local)
-               (setq tmp-buffer-list tmp-local))
+    (let ((helm-ff-transformer-show-only-basename nil))
       (helm-other-buffer
-       `(helm-source-normal-buffers
-         helm-source-dired-buffers
-         helm-source-*buffers
-         helm-source-recentf+
-         ;;helm-source-files-in-current-dir
+       `(helm-source-normal-buffers-list
+         helm-source-dired-buffers-list
+         helm-source-tmp-buffers-list
+         helm-source-recentf+-list
          ,(helm-source-filelist))
        "*helm filelist++*")))
   )
