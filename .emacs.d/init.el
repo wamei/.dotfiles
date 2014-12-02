@@ -814,6 +814,9 @@
   (interactive "F")
   (set-buffer (find-file (concat "/sudo::" file))))
 
+;; *scratch*の初期メッセージを消す
+(setq initial-scratch-message "")
+
 ;; *scratch*を消さない
 (defun my-make-scratch (&optional arg)
   (interactive)
@@ -836,11 +839,42 @@
                 (progn (my-make-scratch 0) nil)
               t)))
 
-(add-hook 'after-save-hook
-          ;; *scratch* バッファの内容を保存したら *scratch* バッファを新しく作る
-          (lambda ()
-            (unless (member (get-buffer "*scratch*") (buffer-list))
-              (my-make-scratch 1))))
+;; (add-hook 'after-save-hook
+;;           ;; *scratch* バッファの内容を保存したら *scratch* バッファを新しく作る
+;;           (lambda ()
+;;             (unless (member (get-buffer "*scratch*") (buffer-list))
+;;               (my-make-scratch 1))))
+
+;; スクラッチの保存と復元
+(defun save-scratch-data ()
+  (interactive)
+  (let ((str (progn
+               (set-buffer (get-buffer "*scratch*"))
+               (buffer-substring-no-properties
+                (point-min) (point-max))))
+        (file "~/.scratch"))
+    (if (get-file-buffer (expand-file-name file))
+        (setq buf (get-file-buffer (expand-file-name file)))
+      (setq buf (find-file-noselect file)))
+    (set-buffer buf)
+    (erase-buffer)
+    (insert str)
+    (save-buffer)
+    (kill-buffer buf)))
+
+(defadvice save-buffers-kill-emacs
+  (before save-scratch-buffer activate)
+  (save-scratch-data))
+
+(defun read-scratch-data ()
+  (let ((file "~/.scratch"))
+    (when (file-exists-p file)
+      (set-buffer (get-buffer "*scratch*"))
+      (erase-buffer)
+      (insert-file-contents file))
+    ))
+
+(read-scratch-data)
 
 ;; 設定ファイル再読み込み
 (defun reload-init-file (arg)
