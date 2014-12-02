@@ -177,6 +177,8 @@
     (,(kbd "C-M-f") . windmove-right)
     (,(kbd "C-M-n") . windmove-down)
     (,(kbd "C-M-p") . windmove-up)
+    (,(kbd "C-c C-w C-f") . elscreen-next)
+    (,(kbd "C-c C-w C-b") . elscreen-previous)
     (,(kbd "C-c C-w n") . elscreen-next)
     (,(kbd "C-c C-w p") . elscreen-previous)
     (,(kbd "C-c C-w c") . elscreen-create)
@@ -1115,11 +1117,11 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'elscreen nil t)
   (setq elscreen-prefix-key (kbd "C-c C-w"))
-  (elscreen-start)
   (setq elscreen-tab-display-kill-screen nil)
   (setq elscreen-tab-display-control nil)
   (setq elscreen-display-screen-number nil)
-  (setq elscreen-display-tab t)
+  (setq elscreen-display-tab 24)
+  (elscreen-start)
   )
 
 ;;
