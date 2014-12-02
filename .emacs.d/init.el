@@ -201,6 +201,14 @@
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode))
 
+(require 'org)
+(add-hook 'lisp-interaction-mode-hook 'orgtbl-mode)
+(add-hook 'text-mode-hook 'orgtbl-mode)
+(add-hook 'after-change-major-mode-hook
+          (lambda ()
+            (if (equal major-mode 'fundamental-mode)
+                (orgtbl-mode))))
+
 ;;
 ;; ウィンドウ設定
 ;;----------------------------------------------------------------------------------------------------
