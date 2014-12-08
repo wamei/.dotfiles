@@ -1185,6 +1185,7 @@
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-n") 'mc/mmlte--down)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-b") 'mc/mmlte--left)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-f") 'mc/mmlte--right)
+  (require 'phi-search-migemo)
   (define-key mc/keymap (kbd "C-s") 'phi-search-migemo)
   (define-key mc/keymap (kbd "C-r") 'phi-replace)
   (defadvice mc--in-defun (around mc--in-defun-ad activate)
