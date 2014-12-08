@@ -727,9 +727,20 @@
 (setq recentf-max-saved-items 100)
 
 ;; バックアップを残さない
-(setq make-backup-files nil)
-(setq auto-save-default nil)
-(setq auto-save-list-file-prefix nil)
+;; (setq make-backup-files nil)
+;; (setq auto-save-default nil)
+
+;; ファイルを閉じたとき、次に開くときはその場所(point)から開く
+(require 'saveplace)
+(setq-default save-place t)
+(setq save-place-file (concat user-emacs-directory "places"))
+;; backupファイル保存先
+(setq backup-directory-alist
+      (cons (cons "\\.*$" (expand-file-name "~/.emacs.d/backups/"))
+            backup-directory-alist))
+(setq auto-save-file-name-transforms
+      `((".*" ,(expand-file-name "~/.emacs.d/backups/") t)))
+(setq auto-save-list-file-prefix "~/.emacs.d/backups/")
 
 ;; 補完時に大文字小文字を区別しない
 (setq completion-ignore-case t)

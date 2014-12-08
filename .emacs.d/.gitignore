@@ -1,7 +1,7 @@
-elpa/cl-lib-0.5/
-eshell/
-url/
-auto-save-list/
+/elpa/cl-lib-0.5/
+/eshell/
+/url/
+/backups/
 archive-contents/
 archives/
 .DS_Store
@@ -13,6 +13,7 @@ shellenv.el
 ac-comphist.dat
 twittering-mode.gpg
 bookmarks
+places
 tramp
 recentf
 *.elc
