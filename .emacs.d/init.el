@@ -1608,7 +1608,6 @@
 ;;                (require 'recentf)
 ;;                (recentf-mode 1)))
 ;;      (candidates :initform recentf-list)
-;;      (match :initform 'helm-files-match-only-basename)
 ;;      (filtered-candidate-transformer :initform (lambda (candidates _source)
 ;;                                                  (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
 ;;                                                    (cl-loop for i in candidates
@@ -1630,7 +1629,6 @@
                 (require 'recentf)
                 (recentf-mode 1)))
       (candidates . recentf-list)
-      (match . helm-files-match-only-basename)
       (filtered-candidate-transformer . (lambda (candidates _source)
                                           (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
                                             (cl-loop for i in candidates
