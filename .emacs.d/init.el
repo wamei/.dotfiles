@@ -727,9 +727,20 @@
 (setq recentf-max-saved-items 100)
 
 ;; バックアップを残さない
-(setq make-backup-files nil)
-(setq auto-save-default nil)
-(setq auto-save-list-file-prefix nil)
+;; (setq make-backup-files nil)
+;; (setq auto-save-default nil)
+
+;; ファイルを閉じたとき、次に開くときはその場所(point)から開く
+(require 'saveplace)
+(setq-default save-place t)
+(setq save-place-file (concat user-emacs-directory "places"))
+;; backupファイル保存先
+(setq backup-directory-alist
+      (cons (cons "\\.*$" (expand-file-name "~/.emacs.d/backups/"))
+            backup-directory-alist))
+(setq auto-save-file-name-transforms
+      `((".*" ,(expand-file-name "~/.emacs.d/backups/") t)))
+(setq auto-save-list-file-prefix "~/.emacs.d/backups/")
 
 ;; 補完時に大文字小文字を区別しない
 (setq completion-ignore-case t)
@@ -1174,7 +1185,8 @@
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-n") 'mc/mmlte--down)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-b") 'mc/mmlte--left)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-f") 'mc/mmlte--right)
-  (define-key mc/keymap (kbd "C-s") 'phi-search)
+  (require 'phi-search-migemo)
+  (define-key mc/keymap (kbd "C-s") 'phi-search-migemo)
   (define-key mc/keymap (kbd "C-r") 'phi-replace)
   (defadvice mc--in-defun (around mc--in-defun-ad activate)
     (setq ad-return-value t))
@@ -1596,7 +1608,6 @@
 ;;                (require 'recentf)
 ;;                (recentf-mode 1)))
 ;;      (candidates :initform recentf-list)
-;;      (match :initform 'helm-files-match-only-basename)
 ;;      (filtered-candidate-transformer :initform (lambda (candidates _source)
 ;;                                                  (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
 ;;                                                    (cl-loop for i in candidates
@@ -1618,7 +1629,6 @@
                 (require 'recentf)
                 (recentf-mode 1)))
       (candidates . recentf-list)
-      (match . helm-files-match-only-basename)
       (filtered-candidate-transformer . (lambda (candidates _source)
                                           (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
                                             (cl-loop for i in candidates
