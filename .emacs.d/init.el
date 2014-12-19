@@ -987,7 +987,7 @@
             (if (= 0 result)
                 (message "GTAGS successfully updated.")
               (message "update GTAGS error with exit status %d" result))))))))
-(add-hook 'after-save-hook 'update-gtags)
+;;(add-hook 'after-save-hook 'update-gtags)
 
 ;;
 ;; view-mode
