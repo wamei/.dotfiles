@@ -1603,45 +1603,26 @@
       "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
   (defvar helm-source-tmp-buffers-list (helm-make-source "* Buffers" 'helm-source-tmp-buffers))
 
-;;   (defclass helm-source-recentf+ (helm-source-sync helm-type-buffer)
-;;     ((init :initform (lambda ()
-;;                (require 'recentf)
-;;                (recentf-mode 1)))
-;;      (candidates :initform recentf-list)
-;;      (filtered-candidate-transformer :initform (lambda (candidates _source)
-;;                                                  (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
-;;                                                    (cl-loop for i in candidates
-;;                                                             if helm-ff-transformer-show-only-basename
-;;                                                             collect (cons (helm-basename i) i)
-;;                                                             else collect (abbreviate-file-name i)))))
-;;      (keymap :initform helm-generic-files-map)
-;;      (help-message :initform helm-generic-file-help-message)
-;;      (mode-line :initform helm-generic-file-mode-line-string)
-;;      (action :initform ,(cdr (helm-get-actions-from-type helm-source-locate)))
-;;      (persistent-help
-;;       :initform
-;;       "See (info \"(emacs)File Conveniences\").
-;; Set `recentf-max-saved-items' to a bigger value if default is too small.")))
-;;   (defvar helm-source-recentf+-list (helm-make-source "Recentf" 'helm-source-recentf+))
-  (defvar helm-source-recentf+-list
-    `((name . "Recentf")
-      (init . (lambda ()
-                (require 'recentf)
-                (recentf-mode 1)))
-      (candidates . recentf-list)
-      (filtered-candidate-transformer . (lambda (candidates _source)
-                                          (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
-                                            (cl-loop for i in candidates
-                                                     if helm-ff-transformer-show-only-basename
-                                                     collect (cons (helm-basename i) i)
-                                                     else collect (abbreviate-file-name i)))))
-      (keymap . ,helm-generic-files-map)
-      (help-message . helm-generic-file-help-message)
-      (mode-line . helm-generic-file-mode-line-string)
-      (action . ,(cdr (helm-get-actions-from-type
-                       helm-source-locate))))
-    "See (info \"(emacs)File Conveniences\").
-Set `recentf-max-saved-items' to a bigger value if default is too small.")
+  (defclass helm-source-recentf+ (helm-source-sync)
+    ((init :initform (lambda ()
+                       (require 'recentf)
+                       (recentf-mode 1)))
+     (candidates :initform (lambda () recentf-list))
+     (pattern-transformer :initform 'helm-recentf-pattern-transformer)
+     (match-part :initform (lambda (candidate)
+                             (if (or helm-ff-transformer-show-only-basename
+                                     helm-recentf--basename-flag)
+                                 (helm-basename candidate) candidate)))
+     (filter-one-by-one :initform (lambda (c)
+                                    (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+                                      (if helm-ff-transformer-show-only-basename
+                                          (cons (helm-basename c) c)
+                                        (abbreviate-file-name c)))))
+     (keymap :initform helm-generic-files-map)
+     (help-message :initform helm-generic-file-help-message)
+     (mode-line :initform helm-generic-file-mode-line-string)
+     (action :initform (helm-actions-from-type-file))))
+  (defvar helm-source-recentf+-list (helm-make-source "Recentf" 'helm-source-recentf+))
 
   (defun helm-filelist++ ()
     (interactive)
