@@ -1174,6 +1174,7 @@
   (setq elscreen-tab-display-control nil)
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
+  (require 'elscreen-buffer-list)
   (elscreen-start)
   )
 
@@ -1533,6 +1534,10 @@
   ;; bookmarkの場所を表示
   (setq helm-bookmark-show-location t)
 
+  ;; sortを無効化
+  (defadvice helm-buffers-sort-transformer (around ignore activate)
+  (setq ad-return-value (ad-get-arg 0)))
+
   ;; helm buffer list改
   (defvar normal-buffer-list '())
   (defvar dired-buffer-list '())
@@ -1557,9 +1562,11 @@
                                 with normal-local
                                 with dired-local
                                 with tmp-local
+                                if (member (get-buffer i) elscreen-separate-buffer-list)
                                 if (= 0 (or (string-match-p "\\*.+\\*" i) -1)) collect i into tmp-local
                                 else if (with-current-buffer (get-buffer i) (eq major-mode 'dired-mode)) collect i into dired-local
                                 else collect i into normal-local end
+                                end
                                 finally
                                 (setq normal-buffer-list normal-local)
                                 (setq dired-buffer-list dired-local)
