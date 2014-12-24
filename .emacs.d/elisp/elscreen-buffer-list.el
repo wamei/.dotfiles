@@ -30,6 +30,20 @@
       (setq elscreen-separate-buffer-list elscreen-separate-buffer-list-default)
     )))
 
+(defun elscreen-add-separate-buffer-list (buffer)
+  (if (not (member buffer elscreen-separate-buffer-list))
+      (setq elscreen-separate-buffer-list (append (list buffer) elscreen-separate-buffer-list))))
+
+(defun elscreen-remove-separate-buffer-list (buffer)
+  (setq elscreen-separate-buffer-list (cl-loop for i in elscreen-separate-buffer-list
+                                            unless (equal i buffer)
+                                            collect i)))
+
+(defun elscreen-update-separate-buffer-list ()
+  (setq elscreen-separate-buffer-list (cl-loop for i in elscreen-separate-buffer-list
+                                            if (buffer-live-p i)
+                                            collect i)))
+
 (defun elscreen-separate-buffer-list-goto-hook ()
   "Manage screen-specific buffer lists."
   (when (elscreen-screen-live-p (elscreen-get-previous-screen))
@@ -51,20 +65,6 @@
   )
 (advice-add 'elscreen-clone :after 'elscreen-clone:load-buffer-list)
 
-(defun elscreen-add-separate-buffer-list (buffer)
-  (if (not (member buffer elscreen-separate-buffer-list))
-      (setq elscreen-separate-buffer-list (append (list buffer) elscreen-separate-buffer-list))))
-
-(defun elscreen-remove-separate-buffer-list (buffer)
-  (setq elscreen-separate-buffer-list (cl-loop for i in elscreen-separate-buffer-list
-                                            unless (equal i buffer)
-                                            collect i)))
-
-(defun elscreen-update-separate-buffer-list ()
-  (setq elscreen-separate-buffer-list (cl-loop for i in elscreen-separate-buffer-list
-                                            if (buffer-live-p i)
-                                            collect i)))
-
 (defun elscreen-kill-buffer-hook ()
   (elscreen-remove-separate-buffer-list (current-buffer)))
 (add-hook 'kill-buffer-hook 'elscreen-kill-buffer-hook)
@@ -72,10 +72,6 @@
 (defun elscreen-buffer-list-update-hook ()
   (elscreen-update-separate-buffer-list))
 (add-hook 'buffer-list-update-hook 'elscreen-buffer-list-update-hook)
-
-(defun elscreen-change-major-mode-hook ()
-  (elscreen-add-separate-buffer-list (current-buffer)))
-(add-hook 'change-major-mode-hook 'elscreen-change-major-mode-hook)
 
 (defun switch-to-buffer:elscreen-separate-buffer-list (buffer &rest _)
   (elscreen-add-separate-buffer-list (get-buffer buffer)))
@@ -85,4 +81,4 @@
   (elscreen-add-separate-buffer-list (get-buffer buffer)))
 (advice-add 'get-buffer-create :after 'get-buffer-create:elscreen-separate-buffer-list)
 
-(provide 'elscreen-buffer-list)
+(provide 'elscreen-separate-buffer-list)

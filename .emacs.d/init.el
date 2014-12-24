@@ -1174,7 +1174,7 @@
   (setq elscreen-tab-display-control nil)
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
-  (require 'elscreen-buffer-list)
+  (require 'elscreen-separate-buffer-list)
   (elscreen-start)
   )
 
