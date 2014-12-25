@@ -108,7 +108,7 @@
 (global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
-(global-set-key (kbd "M-s s")   'helm-occur)
+(global-set-key (kbd "M-s s")   'helm-swoop)
 (global-set-key (kbd "M-s g")   'helm-git-grep)
 (global-set-key (kbd "M-s f")   'helm-cmd-t)
 (global-set-key (kbd "M-s a")   'ag)
@@ -165,7 +165,7 @@
 (global-set-key [mouse-20]   '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
 (global-set-key [mouse-21]   '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
 
-(define-key isearch-mode-map (kbd "M-s") 'helm-occur-from-isearch)
+(define-key isearch-mode-map (kbd "M-s") 'helm-swoop-from-isearch)
 
 (define-minor-mode overriding-key-map-mode
   "キーマップ上書き用マイナーモード"
