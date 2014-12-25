@@ -98,7 +98,7 @@
 
 (global-set-key (kbd "M-b")     'backward-word)
 (global-set-key (kbd "M-f")     'forward-to-word)
-(global-set-key (kbd "M-g")     'goto-line)
+;;(global-set-key (kbd "M-g")     'goto-line)
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-n")     'forward-list)
 (global-set-key (kbd "M-p")     'backward-list)
@@ -2003,6 +2003,8 @@ $0"))
   (define-key git-gutter+-mode-map (kbd "C-c n") 'git-gutter+-next-hunk)
   (define-key git-gutter+-mode-map (kbd "C-c p") 'git-gutter+-previous-hunk)
   (define-key git-gutter+-mode-map (kbd "C-c d") 'git-gutter+-popup-hunk)
+  (defadvice git-gutter+-process-diff (before git-gutter+-process-diff-advice activate)
+    (ad-set-arg 0 (file-truename (ad-get-arg 0))))
   )
 
 ;;
