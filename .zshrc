@@ -168,7 +168,7 @@ precmd () {
     [[ -n "$untracked" ]] && psvar[2]="$untracked"
 }
 # prompt表示設定
-PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            
+PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}
 )%{%k%f%b%}%K{white}%F{black} %D{%Y/%m/%d %H:%M} %k%f %F{magenta}%~%f%F{green}%1(v|%1v%2v]|)%f
 %n@%m $ "
 
