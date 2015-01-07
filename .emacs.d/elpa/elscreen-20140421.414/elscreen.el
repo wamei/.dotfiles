@@ -374,7 +374,8 @@ Return the value of the last form in BODY."
          (original-buffer-live-p nil)
          (original-elscreen-window-configuration
           (elscreen-current-window-configuration))
-         (original-frame-confs (elscreen-copy-tree elscreen-frame-confs)))
+         (original-frame-confs (elscreen-copy-tree elscreen-frame-confs))
+         (original-window-histories (elscreen-get-all-window-history-alist)))
      (unwind-protect
          (save-window-excursion ,@body)
        (setq elscreen-frame-confs original-frame-confs)
@@ -388,7 +389,8 @@ Return the value of the last form in BODY."
         original-buffer-list)
        (when original-buffer-live-p
          (while (not (memq (car (buffer-list)) original-buffer-list))
-           (bury-buffer (car (buffer-list))))))))
+           (bury-buffer (car (buffer-list)))))
+       (elscreen-restore-all-window-history-alist original-window-histories))))
 
 (defsubst elscreen-get-frame-confs (frame)
   (assoc-default frame elscreen-frame-confs))

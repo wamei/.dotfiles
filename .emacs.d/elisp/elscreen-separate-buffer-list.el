@@ -5,35 +5,6 @@
                                                     (get-buffer "*Messages*")))
 (defvar elscreen-separate-buffer-list elscreen-separate-buffer-list-default)
 
-(defun reorder-buffer-list (new-list)
-  "Set buffers in NEW-LIST to be the most recently used, in order."
-  (when new-list
-    (let (firstbuf buf)
-      (while new-list
-        (setq buf (car new-list))
-        (when (stringp buf)
-          (setq buf (get-buffer buf)))
-        (unless (not (buffer-live-p buf))
-          (bury-buffer buf)
-          (unless firstbuf
-            (setq firstbuf buf)))
-        (setq new-list (cdr new-list)))
-      (setq new-list (buffer-list))
-      (while (not (eq (car new-list) firstbuf))
-        (bury-buffer (car new-list))
-        (setq new-list (cdr new-list))))))
-
-(defun elscreen-get-buffer-list (screen)
-  "Return buffer-list of SCREEN."
-  (let ((screen-property (elscreen-get-screen-property screen)))
-    (assoc-default 'buffer-list screen-property)))
-
-(defun elscreen-set-buffer-list (screen buflist)
-  "Set buffer-list of SCREEN to BUFLIST."
-  (let ((screen-property (elscreen-get-screen-property screen)))
-    (elscreen--set-alist 'screen-property 'buffer-list buflist)
-    (elscreen-set-screen-property screen screen-property)))
-
 (defun elscreen-get-separate-buffer-list (screen)
   "Return buffer-list of SCREEN."
   (let ((screen-property (elscreen-get-screen-property screen)))
@@ -45,22 +16,29 @@
     (elscreen--set-alist 'screen-property 'separate-buffer-list buflist)
     (elscreen-set-screen-property screen screen-property)))
 
-(defun elscreen-save-buffer-list (&optional screen)
+(defun elscreen-get-separate-window-history (screen)
+  "Return window-history of SCREEN."
+  (let ((screen-property (elscreen-get-screen-property screen)))
+    (assoc-default 'separate-window-history screen-property)))
+
+(defun elscreen-set-separate-window-history (screen winHistory)
+  "Set window-history of SCREEN to WINHISTORY."
+  (let ((screen-property (elscreen-get-screen-property screen)))
+    (elscreen--set-alist 'screen-property 'separate-window-history winHistory)
+    (elscreen-set-screen-property screen screen-property)))
+
+(defun elscreen-save-separate-buffer-list (&optional screen)
   "Save the buffer-list order for SCREEN, or current screen"
   (let ((screen (or screen (elscreen-get-current-screen))))
-    (elscreen-set-separate-buffer-list screen elscreen-separate-buffer-list)
-    (elscreen-set-buffer-list screen (buffer-list))
-    ))
+    (elscreen-set-separate-buffer-list screen elscreen-separate-buffer-list)))
 
-(defun elscreen-load-buffer-list (&optional screen)
+(defun elscreen-load-separate-buffer-list (&optional screen)
   "Set emacs' buffer-list order to that of SCREEN, or current screen"
   (let* ((screen (or screen (elscreen-get-current-screen)))
          (buffList (elscreen-get-separate-buffer-list screen)))
     (if buffList
         (setq elscreen-separate-buffer-list buffList)
-      (setq elscreen-separate-buffer-list elscreen-separate-buffer-list-default))
-    (reorder-buffer-list (elscreen-get-buffer-list screen))
-    ))
+      (setq elscreen-separate-buffer-list elscreen-separate-buffer-list-default))))
 
 (defun elscreen-add-separate-buffer-list (buffer)
   (if (not (member buffer elscreen-separate-buffer-list))
@@ -79,21 +57,27 @@
 (defun elscreen-separate-buffer-list-goto-hook ()
   "Manage screen-specific buffer lists."
   (when (elscreen-screen-live-p (elscreen-get-previous-screen))
-    (elscreen-save-buffer-list (elscreen-get-previous-screen)))
-  (elscreen-load-buffer-list (elscreen-get-current-screen)))
+    (elscreen-save-separate-buffer-list (elscreen-get-previous-screen)))
+  (elscreen-load-separate-buffer-list (elscreen-get-current-screen)))
 (add-hook 'elscreen-goto-hook 'elscreen-separate-buffer-list-goto-hook)
+
+(defun elscreen-goto:restore-window-history (origin &rest args)
+  (elscreen-set-separate-window-history (elscreen-get-current-screen) (elscreen-get-all-window-history-alist))
+  (apply origin args)
+  (elscreen-restore-all-window-history-alist (elscreen-get-separate-window-history (elscreen-get-current-screen))))
+(advice-add 'elscreen-goto :around 'elscreen-goto:restore-window-history)
 
 (defun elscreen-separate-buffer-list-kill-hook ()
   "Just load current buffer list' state when screen is killed"
-  (elscreen-load-buffer-list (elscreen-get-current-screen))
+  (elscreen-load-separate-buffer-list (elscreen-get-current-screen))
   )
 (add-hook 'elscreen-kill-hook 'elscreen-separate-buffer-list-kill-hook)
 
 (defun elscreen-clone:load-buffer-list (&rest _)
   "Cloning scleen also copy the buffer list' state."
   (let ((stack (elscreen-get-buffer-list (elscreen-get-previous-screen))))
-    (elscreen-set-buffer-list (elscreen-get-current-screen) stack)
-    (elscreen-load-buffer-list (elscreen-get-current-screen)))
+    (elscreen-set-separate-buffer-list (elscreen-get-current-screen) stack)
+    (elscreen-load-separate-buffer-list (elscreen-get-current-screen)))
   )
 (advice-add 'elscreen-clone :after 'elscreen-clone:load-buffer-list)
 
@@ -112,5 +96,30 @@
 (defun get-buffer-create:elscreen-separate-buffer-list (buffer &rest _)
   (elscreen-add-separate-buffer-list (get-buffer buffer)))
 (advice-add 'get-buffer-create :after 'get-buffer-create:elscreen-separate-buffer-list)
+
+(defun buffer-list:return-separate-buffer-list (origin &rest _)
+  (cl-loop for i in (apply origin _)
+           if (member (get-buffer i) elscreen-separate-buffer-list)
+           collect i))
+(advice-add 'buffer-list :around 'buffer-list:return-separate-buffer-list)
+
+
+(defun elscreen-get-all-window-history-alist ()
+  (mapcar (lambda (window)
+            (let ((prevs (window-prev-buffers window))
+                  (nexts (window-next-buffers window)))
+              (cons window (cons prevs nexts))))
+          (window-list)))
+
+(defun elscreen-restore-all-window-history-alist (history-alist)
+  (mapc (lambda (entry)
+          (let* ((window (car entry))
+                 (histories (cdr entry))
+                 (prevs (car histories))
+                 (nexts (cdr histories)))
+            (when (window-valid-p window)
+              (set-window-prev-buffers window prevs)
+              (set-window-next-buffers window nexts))))
+        history-alist))
 
 (provide 'elscreen-separate-buffer-list)
