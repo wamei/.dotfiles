@@ -1562,11 +1562,9 @@
                                 with normal-local
                                 with dired-local
                                 with tmp-local
-                                if (member (get-buffer i) elscreen-separate-buffer-list)
                                 if (= 0 (or (string-match-p "\\*.+\\*" i) -1)) collect i into tmp-local
                                 else if (with-current-buffer (get-buffer i) (eq major-mode 'dired-mode)) collect i into dired-local
                                 else collect i into normal-local end
-                                end
                                 finally
                                 (setq normal-buffer-list normal-local)
                                 (setq dired-buffer-list dired-local)
