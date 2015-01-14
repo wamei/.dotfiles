@@ -960,7 +960,12 @@
           (not (string-match "[ \t]*&[ \t]*\\'" command)) ;; background
           (bufferp output-buffer)
           (stringp output-buffer))
-      ad-do-it ;; no behavior change
+      (progn
+        ad-do-it
+        (let ((buffer (get-buffer "*Shell Command Output*")))
+          (with-current-buffer buffer
+              (view-mode))
+          (select-window (get-buffer-window buffer))))
 
     ;; else we need to set up buffer
     (let* ((command-buffer-name
@@ -979,8 +984,6 @@
 
       ;; insert command at top of buffer
       (switch-to-buffer-other-window output-buffer)
-      (insert "Running command: " command
-              "\n-------------------------------------------------------------\n\n")
 
       ;; temporarily blow away erase-buffer while doing it, to avoid
       ;; erasing the above
