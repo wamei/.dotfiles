@@ -11,13 +11,6 @@ fi
 alias ls='ls -a'
 alias la='ls -a'
 alias ll='ls -al'
-alias -g ...='../..'
-alias -g ....='../../..'
-alias -g .....='../../../..'
-alias -g ......='../../../../..'
-alias -g .......='../../../../../..'
-alias -g ........='../../../../../../..'
-alias -g .........='../../../../../../../..'
 
 # git関係alias
 alias g='git'
