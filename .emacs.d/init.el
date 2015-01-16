@@ -1104,6 +1104,7 @@
     (set-window-buffer window buf)
     window))
 (setq helm-display-function 'display-buffer-function--split-root)
+(setq helm-swoop-split-window-function 'display-buffer-function--split-root)
 
 ;;
 ;; popwin.el
