@@ -1926,7 +1926,7 @@ $0"))
 ;;----------------------------------------------------------------------------------------------------
 (setq TeX-default-mode 'japanese-latex-mode)
 (setq japanese-LaTeX-default-style "jsarticle")
-(setq japanese-LaTeX-command-default "pdfpLaTex")
+(setq japanese-LaTeX-command-default "pdfPlaTeXBib")
 (setq-default indent-tabs-mode nil) ; タブでインデント
 (setq-default TeX-newline-function 'newline-and-indent)
 (setq preview-image-type 'dvipng)
@@ -1942,8 +1942,8 @@ $0"))
 (setq TeX-engine-alist '((ptex "pTeX" "eptex" "platex" "eptex")
                          (uptex "upTeX" "euptex" "uplatex" "euptex")))
 (setq TeX-engine 'ptex)
-(setq TeX-view-program-list '(("open dvi" "/usr/bin/open -a Preview.app %s.pdf")
-                              ("open pdf" "/usr/bin/open -a Preview.app %o")))
+(setq TeX-view-program-list '(("open dvi" "open %s.pdf")
+                              ("open pdf" "open %o")))
 (setq TeX-view-program-selection '((output-pdf "open pdf")
                                    (output-dvi "open dvi")))
 (add-hook 'LaTeX-mode-hook 'TeX-source-correlate-mode)
@@ -1952,22 +1952,13 @@ $0"))
 (add-hook 'LaTeX-mode-hook
           (function (lambda ()
                       (add-to-list 'TeX-command-list
-                                   '("pdfpLaTeX" "platex %S %(mode) %t && pbibtex %s  && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run pLaTeX and dvipdfmx"))
-                      ;; (add-to-list 'TeX-command-list
-                      ;;              '("pdfpLaTeX2" "platex %S %(mode) %t && dvips -Ppdf -z -f %d | convbkmk -g > %f && ps2pdf %f"
-                      ;;                TeX-run-TeX nil (latex-mode) :help "Run pLaTeX, dvips, and ps2pdf"))
+                                   '("pdfPlaTeXBib" "platex %S %(mode) %t && pbibtex %s && dvipdfmx %d"
+                                     TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
                       (add-to-list 'TeX-command-list
-                                   '("Latexmk" "latexmk %t"
-                                     TeX-run-TeX nil (latex-mode) :help "Run Latexmk"))
+                                   '("pdfPlaTeX" "platex %S %(mode) %t && dvipdfmx %d"
+                                     TeX-run-TeX nil (latex-mode) :help "Run platex and dvipdfmx"))
                       (add-to-list 'TeX-command-list
-                                   '("pBibTeX" "pbibtex %s"
-                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
-                      (add-to-list 'TeX-command-list
-                                   '("jBibTeX" "pbibtex %s"
-                                     TeX-run-BibTeX nil t :help "Run pBibTeX"))
-                      (add-to-list 'TeX-command-list
-                                   '("open" "open %s.pdf"
+                                   '("Open" "open %s.pdf"
                                      TeX-run-discard-or-function t t :help "open pdf file")))))
 
 ;;
