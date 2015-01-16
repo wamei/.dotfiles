@@ -199,6 +199,7 @@
 (add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
 (add-to-list 'auto-mode-alist '("\\.php\\'" . php-mode))
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
+(add-to-list 'auto-mode-alist '("\\.tex\\'" . latex-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode))
 
 (require 'org)
@@ -1477,6 +1478,7 @@
   (add-to-list 'ac-modes 'org-mode)
   (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'markdown-mode)
+  (add-to-list 'ac-modes 'latex-mode)
   ;; 辞書ファイル
   (add-to-list 'ac-dictionary-directories (expand-file-name "~/.emacs.d/ac-dict/"))
   (setq ac-comphist-file (expand-file-name "~/.emacs.d/ac-comphist.dat"))
@@ -1507,10 +1509,11 @@
     (setq-local ac-sources (append '(ac-source-css-property) ac-sources)))
   (add-hook 'css-mode-hook 'ac-css-mode-setup)
 
-  ;; (when (require 'auto-complete-latex nil t)
-  ;;    (setq ac-l-dict-directory "~/.emacs.d/elisp/auto-complete/ac-l-dict/")
-  ;;    (add-to-list 'ac-modes 'latex-mode)
-  ;;    (add-hook 'LaTeX-mode-hook 'ac-l-setup))
+  ;; latex-mode
+  (require 'ac-math)
+  (defun ac-latex-mode-setup ()
+    (setq-local ac-sources (append '(ac-source-math-unicode ac-source-math-latex ac-source-latex-commands) ac-sources)))
+  (add-hook 'LaTeX-mode-hook 'ac-latex-mode-setup)
   )
 
 ;;
@@ -1924,33 +1927,39 @@ $0"))
 ;;
 ;; AUCTeX
 ;;----------------------------------------------------------------------------------------------------
-(setq TeX-default-mode 'japanese-latex-mode)
-(setq japanese-LaTeX-default-style "jsarticle")
-(setq japanese-LaTeX-command-default "pdfPlaTeXBib")
-(setq-default indent-tabs-mode nil) ; タブでインデント
+(setq TeX-default-mode 'latex-mode)
 (setq-default TeX-newline-function 'newline-and-indent)
-(setq preview-image-type 'dvipng)
-(setq TeX-source-correlate-method 'synctex)
-(setq TeX-source-correlate-start-server t)
-
-;; reftexの設定
-(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
 (setq reftex-plug-into-AUCTeX t)
-; RefTeXで使用するbibファイルの位置を指定する
-(setq reftex-default-bibliography '("~/.emacs.d/tex/references.bib"))
-
-(setq TeX-engine-alist '((ptex "pTeX" "eptex" "platex" "eptex")
-                         (uptex "upTeX" "euptex" "uplatex" "euptex")))
-(setq TeX-engine 'ptex)
 (setq TeX-view-program-list '(("open dvi" "open %s.pdf")
                               ("open pdf" "open %o")))
 (setq TeX-view-program-selection '((output-pdf "open pdf")
                                    (output-dvi "open dvi")))
+(defun guess-TeX-master (filename)
+  "Guess the master file for FILENAME from currently open .tex files."
+  (let ((candidate nil)
+        (filename (file-name-nondirectory filename)))
+    (save-excursion
+      (dolist (buffer (buffer-list))
+        (with-current-buffer buffer
+          (let ((name (buffer-name))
+                (file buffer-file-name))
+            (if (and file (string-match "\\.tex$" file))
+                (progn
+                  (goto-char (point-min))
+                  (if (re-search-forward (concat "\\\\input{" filename "}") nil t)
+                      (setq candidate file))
+                  (if (re-search-forward (concat "\\\\include{" (file-name-sans-extension filename) "}") nil t)
+                      (setq candidate file))))))))
+    (if candidate
+        (message "TeX master document: %s" (file-name-nondirectory candidate)))
+    candidate))
+(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
 (add-hook 'LaTeX-mode-hook 'TeX-source-correlate-mode)
 (add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
 (add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
 (add-hook 'LaTeX-mode-hook
           (function (lambda ()
+                      (setq TeX-master (guess-TeX-master (buffer-file-name)))
                       (add-to-list 'TeX-command-list
                                    '("pdfPlaTeXBib" "platex %S %(mode) %t && pbibtex %s && dvipdfmx %d"
                                      TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
