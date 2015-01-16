@@ -672,7 +672,8 @@
 
 (defun tss--get-ac-reference-path-candidates ()
   (save-excursion
-    (re-search-backward "[^/\"\n]+\\=" nil t)
+    (re-search-backward "[/\"=][^/\"=]*" nil t)
+    (forward-char 1)
     (let* ((currpt (point))
            (prevpath (or (when (search-backward "\"" nil t)
                            (forward-char 1)
