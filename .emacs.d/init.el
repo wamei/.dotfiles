@@ -1115,6 +1115,8 @@
                                         (direx:direx-mode :position left :width 40 :dedicated t)
                                         (occur-mode :position bottom :height 0.5)
                                         (ag-mode :position bottom :height 0.5)
+                                        (snippet-mode :position bottom :height 0.5)
+                                        ("*new snippet*" :position bottom :height 0.5)
                                         ))
   )
 
@@ -1691,12 +1693,32 @@
   ;; 単語展開キー
   (custom-set-variables '(yas-trigger-key "TAB"))
 
+  ;; other windowでnew snippet
+  (defun yas-new-snippet-other-window (&optional no-template)
+    "Pops a new buffer for writing a snippet.
+
+Expands a snippet-writing snippet, unless the optional prefix arg
+NO-TEMPLATE is non-nil."
+    (interactive "P")
+    (let ((guessed-directories (yas--guess-snippet-directories)))
+
+      (switch-to-buffer-other-window "*new snippet*")
+      (erase-buffer)
+      (kill-all-local-variables)
+      (snippet-mode)
+      (yas-minor-mode 1)
+      (set (make-local-variable 'yas--guessed-modes) (mapcar #'(lambda (d)
+                                                                 (yas--table-mode (car d)))
+                                                             guessed-directories))
+      (if (and (not no-template) yas-new-snippet-default)
+          (yas-expand-snippet yas-new-snippet-default))))
+
   ;; 既存スニペットを挿入する
   (define-key yas-minor-mode-map (kbd "C-c s i") 'yas-insert-snippet)
   ;; 新規スニペットを作成するバッファを用意する
-  (define-key yas-minor-mode-map (kbd "C-c s n") 'yas-new-snippet)
+  (define-key yas-minor-mode-map (kbd "C-c s n") 'yas-new-snippet-other-window)
   ;; 既存スニペットを閲覧・編集する
-  (define-key yas-minor-mode-map (kbd "C-c s v") 'helm-yas-visit-snippet-file)
+  (define-key yas-minor-mode-map (kbd "C-c s v") 'yas-visit-snippet-file)
 
   (defun my-yas/prompt (prompt choices &optional display-fn)
     (let* ((names (loop for choice in choices
