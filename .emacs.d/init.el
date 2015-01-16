@@ -1512,7 +1512,7 @@
   ;; latex-mode
   (require 'ac-math)
   (defun ac-latex-mode-setup ()
-    (setq-local ac-sources (append '(ac-source-math-unicode ac-source-math-latex ac-source-latex-commands) ac-sources)))
+    (setq-local ac-sources (append '(ac-source-latex-commands) ac-sources)))
   (add-hook 'LaTeX-mode-hook 'ac-latex-mode-setup)
   )
 
