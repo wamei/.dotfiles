@@ -607,35 +607,16 @@
 (set-clipboard-coding-system    'utf-8)
 
 ;; Fontを指定
-(set-face-attribute 'default nil :family "menlo" :height 120)
-(if (display-graphic-p)
-    (progn
-      (if (eq system-type 'darwin)
-          (progn
-            (set-fontset-font
-             (frame-parameter nil 'font)
-             'japanese-jisx0208
-             '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-            (set-fontset-font
-             (frame-parameter nil 'font)
-             'japanese-jisx0212
-             '("Hiragino Maru Gothic Pro" . "iso10646-1"))
-            (set-fontset-font
-             (frame-parameter nil 'font)
-             'mule-unicode-0100-24ff
-             '("menlo" . "iso10646-1"))
-            (setq face-font-rescale-alist
-                  '(("^-apple-hiragino.*" . 1.1)
-                    (".*courier-bold-.*-mac-roman" . 1.0)
-                    (".*menlo cy-bold-.*-mac-cyrillic" . 0.9)
-                    (".*menlo-bold-.*-mac-roman" . 0.9)
-                    ("-cdac$" . 1.3)))))
-      (if (eq system-type 'windows-nt)
-          (progn
-            (set-face-attribute 'default nil :family "MeiryoKe_Console" :height 100)
-            (setq line-spacing 0)
-            ))
-      ))
+(set-face-attribute 'default nil :family "Menlo" :height 140)
+(when (display-graphic-p)
+  (when (eq system-type 'darwin)
+    (set-fontset-font (frame-parameter nil 'font)
+                      'japanese-jisx0208
+                      (font-spec :family "Hiragino Kaku Gothic ProN"))
+    (add-to-list 'face-font-rescale-alist
+                 '(".*Hiragino Kaku Gothic ProN.*" . 1.2)))
+  (when (eq system-type 'windows-nt)
+    (set-face-attribute 'default nil :family "MeiryoKe_Console" :height 100)))
 
 ;;
 ;; その他設定
