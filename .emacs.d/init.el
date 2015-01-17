@@ -613,8 +613,9 @@
     (set-fontset-font (frame-parameter nil 'font)
                       'japanese-jisx0208
                       (font-spec :family "Hiragino Maru Gothic ProN"))
-    (add-to-list 'face-font-rescale-alist
-                 '(".*Hiragino Maru Gothic ProN.*" . 1.2)))
+    ;; (add-to-list 'face-font-rescale-alist
+    ;;              '(".*Hiragino Maru Gothic ProN.*" . 1.2))
+    )
   (when (eq system-type 'windows-nt)
     (set-face-attribute 'default nil :family "MeiryoKe_Console" :height 100)))
 
