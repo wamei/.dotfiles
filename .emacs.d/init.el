@@ -1912,23 +1912,31 @@ $0"))
 ;;----------------------------------------------------------------------------------------------------
 (setq TeX-default-mode 'japanese-latex-mode)
 (setq japanese-LaTeX-default-style "jsarticle")
+(setq japanese-TeX-command-default "pTeX")
+(setq japanese-LaTeX-command-default "pLaTeX")
+(setq TeX-japanese-process-input-coding-system 'utf-8)
+(setq TeX-japanese-process-output-coding-system 'utf-8)
 (setq preview-image-type 'dvipng)
-(setq TeX-auto-save t)
+(setq preview-default-option-list
+      (quote
+       ("displaymath" "floats" "graphics" "textmath" "footnotes")
+       ))
+(setq TeX-auto-save nil)
 (setq TeX-parse-self t)
 (setq-default TeX-master nil)
-(setq TeX-view-program-list '(("open dvi" "open %s.pdf") ("open pdf" "open %o")))
-(setq TeX-view-program-selection '((output-pdf "open pdf") (output-dvi "open dvi")))
-(add-hook 'LaTeX-mode-hook 'visual-line-mode)
+(setq TeX-output-view-style '(("^dvi$" "." "open '%s.pdf'")))
+(setq TeX-view-program-list '(("open" "open %o")))
+(setq TeX-view-program-selection '((output-pdf "open") (output-dvi "open")))
 (add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
 (add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
 (add-hook 'LaTeX-mode-hook
           (function (lambda ()
                       (setq-local kinsoku-limit 10)
                       (add-to-list 'TeX-command-list
-                                   '("pdfPlaTeXBib" "platex %S %(mode) %t && pbibtex %s && dvipdfmx %d"
+                                   '("pdfPlaTeXBib" "platex %t && pbibtex %s && platex %t && platex %t && dvipdfmx %d"
                                      TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
                       (add-to-list 'TeX-command-list
-                                   '("pdfPlaTeX" "platex %S %(mode) %t && dvipdfmx %d"
+                                   '("pdfPlaTeX" "platex %t && dvipdfmx %d"
                                      TeX-run-TeX nil (latex-mode) :help "Run platex and dvipdfmx"))
                       (add-to-list 'TeX-command-list
                                    '("Open" "open %s.pdf"
