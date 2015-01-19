@@ -1910,20 +1910,20 @@ $0"))
 ;;
 ;; AUCTeX
 ;;----------------------------------------------------------------------------------------------------
-(setq TeX-default-mode 'latex-mode)
+(setq TeX-default-mode 'japanese-latex-mode)
+(setq japanese-LaTeX-default-style "jsarticle")
 (setq preview-image-type 'dvipng)
 (setq TeX-auto-save t)
 (setq TeX-parse-self t)
+(setq-default TeX-master nil)
 (setq TeX-view-program-list '(("open dvi" "open %s.pdf") ("open pdf" "open %o")))
 (setq TeX-view-program-selection '((output-pdf "open pdf") (output-dvi "open dvi")))
-(setq reftex-plug-into-AUCTeX t)
-(setq-default TeX-master nil)
 (add-hook 'LaTeX-mode-hook 'visual-line-mode)
-(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
 (add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
 (add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
 (add-hook 'LaTeX-mode-hook
           (function (lambda ()
+                      (setq-local kinsoku-limit 10)
                       (add-to-list 'TeX-command-list
                                    '("pdfPlaTeXBib" "platex %S %(mode) %t && pbibtex %s && dvipdfmx %d"
                                      TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
@@ -1933,6 +1933,11 @@ $0"))
                       (add-to-list 'TeX-command-list
                                    '("Open" "open %s.pdf"
                                      TeX-run-discard-or-function t t :help "open pdf file")))))
+
+
+;; reftex
+(setq reftex-plug-into-AUCTeX t)
+(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
 
 ;;
 ;; php-mode.el
