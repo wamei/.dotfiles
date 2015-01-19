@@ -199,7 +199,7 @@
 (add-to-list 'auto-mode-alist '("\\.md\\'" . markdown-mode))
 (add-to-list 'auto-mode-alist '("\\.php\\'" . php-mode))
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
-(add-to-list 'auto-mode-alist '("\\.tex\\'" . latex-mode))
+(add-to-list 'auto-mode-alist '("\\.\\(tex\\|ltx\\|cls\\|sty\||clo\\|bbl\\)\\'" . yatex-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode))
 
 (require 'org)
@@ -741,6 +741,7 @@
 (setq truncate-partial-width-windows nil)
 
 ;; インデント
+(setq-default indent-tabs-mode nil)
 (setq-default c-basic-offset 4)
 (setq-default tab-width 4)
 (c-set-offset 'case-label '+)
@@ -1461,6 +1462,7 @@
   (add-to-list 'ac-modes 'fundamental-mode)
   (add-to-list 'ac-modes 'markdown-mode)
   (add-to-list 'ac-modes 'latex-mode)
+  (add-to-list 'ac-modes 'yatex-mode)
   ;; 辞書ファイル
   (add-to-list 'ac-dictionary-directories (expand-file-name "~/.emacs.d/ac-dict/"))
   (setq ac-comphist-file (expand-file-name "~/.emacs.d/ac-comphist.dat"))
@@ -1496,6 +1498,7 @@
   (defun ac-latex-mode-setup ()
     (setq-local ac-sources (append '(ac-source-latex-commands) ac-sources)))
   (add-hook 'LaTeX-mode-hook 'ac-latex-mode-setup)
+  (add-hook 'yatex-mode-hook 'ac-latex-mode-setup)
   )
 
 ;;
@@ -1909,29 +1912,60 @@ $0"))
 ;;
 ;; AUCTeX
 ;;----------------------------------------------------------------------------------------------------
-(setq TeX-default-mode 'latex-mode)
-(setq TeX-auto-save t)
-(setq TeX-parse-self t)
-(setq TeX-view-program-list '(("open dvi" "open %s.pdf") ("open pdf" "open %o")))
-(setq TeX-view-program-selection '((output-pdf "open pdf") (output-dvi "open dvi")))
-(setq reftex-plug-into-AUCTeX t)
-(setq-default TeX-master nil)
-(setq-default TeX-newline-function 'newline-and-indent)
-(add-hook 'LaTeX-mode-hook 'visual-line-mode)
-(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
-(add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
-(add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
-(add-hook 'LaTeX-mode-hook
-          (function (lambda ()
-                      (add-to-list 'TeX-command-list
-                                   '("pdfPlaTeXBib" "platex %S %(mode) %t && pbibtex %s && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
-                      (add-to-list 'TeX-command-list
-                                   '("pdfPlaTeX" "platex %S %(mode) %t && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run platex and dvipdfmx"))
-                      (add-to-list 'TeX-command-list
-                                   '("Open" "open %s.pdf"
-                                     TeX-run-discard-or-function t t :help "open pdf file")))))
+;; (setq TeX-default-mode 'latex-mode)
+;; (setq TeX-auto-save t)
+;; (setq TeX-parse-self t)
+;; (setq TeX-view-program-list '(("open dvi" "open %s.pdf") ("open pdf" "open %o")))
+;; (setq TeX-view-program-selection '((output-pdf "open pdf") (output-dvi "open dvi")))
+;; (setq reftex-plug-into-AUCTeX t)
+;; (setq-default TeX-master nil)
+;; (setq-default TeX-newline-function 'newline-and-indent)
+;; (add-hook 'LaTeX-mode-hook 'visual-line-mode)
+;; (add-hook 'LaTeX-mode-hook 'turn-on-reftex)
+;; (add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
+;; (add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
+;; (add-hook 'LaTeX-mode-hook
+;;           (function (lambda ()
+;;                       (add-to-list 'TeX-command-list
+;;                                    '("pdfPlaTeXBib" "platex %S %(mode) %t && pbibtex %s && dvipdfmx %d"
+;;                                      TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
+;;                       (add-to-list 'TeX-command-list
+;;                                    '("pdfPlaTeX" "platex %S %(mode) %t && dvipdfmx %d"
+;;                                      TeX-run-TeX nil (latex-mode) :help "Run platex and dvipdfmx"))
+;;                       (add-to-list 'TeX-command-list
+;;                                    '("Open" "open %s.pdf"
+;;                                      TeX-run-discard-or-function t t :help "open pdf file")))))
+
+;;
+;; YaTeX
+;;----------------------------------------------------------------------------------------------------
+(when (require 'yatex nil t)
+  (setq YaTeX-inhibit-prefix-letter t)
+  (setq YaTeX-skip-default-reader t)
+  (setq YaTeX-kanji-code nil)
+  (setq YaTeX-latex-message-code 'utf-8)
+  (setq YaTeX-use-LaTeX2e t)
+  (setq YaTeX-use-AMS-LaTeX t)
+  (setq YaTeX-dvi2-command-ext-alist
+        '(("TeXworks\\|texworks\\|Preview\\|Skim\\|TeXShop\\|evince\\|open" . ".pdf")))
+  (setq tex-command "platex")
+  (setq bibtex-command "pbibtex")
+  (setq makeindex-command "makeindex")
+  (setq dvi2-command "open")
+  (setq tex-pdfview-command "open")
+  (setq dviprint-command-format "dvipdfmx")
+  (add-hook 'yatex-mode-hook
+            '(lambda ()
+               (setq indent-tabs-mode nil)
+               (reftex-mode 1)
+               (define-key YaTeX-mode-map "\"" 'nil)
+               (define-key YaTeX-mode-map "{"  'nil)
+               (define-key YaTeX-mode-map "("  'nil)
+               (define-key YaTeX-mode-map "$"  'nil)
+               (define-key YaTeX-mode-map "|"  'nil)
+               (define-key YaTeX-mode-map "&"  'nil)
+               (define-key YaTeX-mode-map "["  'nil)
+  )))
 
 ;;
 ;; php-mode.el
