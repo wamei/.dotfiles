@@ -4,6 +4,7 @@
 /backups/
 archive-contents/
 archives/
+/elisp/multi-tramp-settings.el
 .DS_Store
 .mc-lists.el
 .session
