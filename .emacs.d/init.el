@@ -599,25 +599,14 @@
 ;; フォント関係
 ;;----------------------------------------------------------------------------------------------------
 (set-language-environment       "Japanese")
-(prefer-coding-system           'utf-8-unix)
-(setq                           default-buffer-file-coding-system 'utf-8)
+(prefer-coding-system           'utf-8)
+(setq buffer-file-coding-system 'utf-8)
 (set-buffer-file-coding-system  'utf-8)
 (set-terminal-coding-system     'utf-8)
 (set-keyboard-coding-system     'utf-8)
 (set-clipboard-coding-system    'utf-8)
 
-;; Fontを指定
-(set-face-attribute 'default nil :family "Menlo" :height 140)
-(when (display-graphic-p)
-  (when (eq system-type 'darwin)
-    (set-fontset-font (frame-parameter nil 'font)
-                      'japanese-jisx0208
-                      (font-spec :family "Hiragino Maru Gothic ProN"))
-    (add-to-list 'face-font-rescale-alist
-                 '(".*Hiragino Maru Gothic ProN.*" . 1.2))
-    )
-  (when (eq system-type 'windows-nt)
-    (set-face-attribute 'default nil :family "MeiryoKe_Console" :height 100)))
+(set-face-attribute 'default nil :family "Migu 1M" :height 140)
 
 ;;
 ;; その他設定
