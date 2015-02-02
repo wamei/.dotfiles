@@ -642,15 +642,6 @@
                 (when (string= (format "%c" (char-before)) "/")
                   (auto-complete '(ac-source-tss-referenc-path)))))))
 
-(defvar ac-source-tss-yasnippet
-  '((candidates . ac-yasnippet-candidates)
-    (action . yas/expand)
-    (candidate-face . ac-yasnippet-candidate-face)
-    (selection-face . ac-yasnippet-selection-face)
-    (symbol . "a")
-    (prefix . (tss--get-active-code-prefix "\\(?:^\\|[^a-zA-Z0-9_.]\\) *\\([a-zA-Z0-9_]+\\)"))
-    (requires . 0)))
-
 (defvar tss--last-ac-start-point 1)
 (make-variable-buffer-local 'tss--last-ac-start-point)
 (defvar tss--last-ac-candidates nil)
@@ -1166,8 +1157,7 @@
                    (not (string= tss-jump-to-definition-key "")))
           (local-set-key (read-kbd-macro tss-jump-to-definition-key) 'tss-jump-to-definition))
         ;; For auto-complete
-        (setq ac-sources '(ac-source-tss-yasnippet
-                           ac-source-tss-member
+        (setq ac-sources '(ac-source-tss-member
                            ac-source-tss-type
                            ac-source-tss-new
                            ac-source-tss-extends
