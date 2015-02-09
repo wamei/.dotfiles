@@ -1,6 +1,8 @@
 ;;; elscreen-separate-buffer-list.el --- Separate buffer list manager for elscreen
 
-;; Author: Kazuaki Hamada <wamei.cho@gmail.com>
+;; Author: wamei <wamei.cho@gmail.com>
+
+;; License:
 
 ;;; Commentary:
 
