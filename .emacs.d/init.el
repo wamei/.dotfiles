@@ -166,7 +166,7 @@
 (global-set-key (kbd "C-x m c")   'org-capture-code-reading)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
-(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
+;;(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
 (global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
@@ -1070,7 +1070,7 @@
 (when (require 'popwin nil t)
   (setq display-buffer-function 'popwin:display-buffer)
   (setq popwin:special-display-config '(
-                                        (direx:direx-mode :position left :width 40 :dedicated t)
+                                        ;;(direx:direx-mode :position left :width 40 :dedicated t)
                                         (occur-mode :position bottom :height 0.5)
                                         (ag-mode :position bottom :height 0.5)
                                         (snippet-mode :position bottom :height 0.5)
@@ -1082,24 +1082,24 @@
 ;;
 ;; direx.el
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'direx nil t)
-  (defun direx:jump-to-git-project-directory ()
-    (interactive)
-    (let* ((git-root-dir))
-      (setq git-root-dir (git-root-directory))
-      (unless (string= git-root-dir "")
-        (direx:find-directory-noselect git-root-dir))
-      (direx:jump-to-directory-other-window)))
-  (setq direx:leaf-icon "  ")
-  (setq direx:open-icon "▾ ")
-  (setq direx:closed-icon "▸ ")
-  (add-hook 'direx:direx-mode-hook '(lambda () (hl-line-mode) ))
-  (define-key direx:direx-mode-map (kbd "n") 'direx:next-sibling-item)
-  (define-key direx:direx-mode-map (kbd "p") 'direx:previous-sibling-item)
-  (define-key direx:direx-mode-map (kbd "u") 'direx:up-item)
-  (define-key direx:direx-mode-map (kbd "d") 'direx:down-item)
-  (define-key direx:direx-mode-map (kbd "q") 'delete-window)
-  )
+;; (when (require 'direx nil t)
+;;   (defun direx:jump-to-git-project-directory ()
+;;     (interactive)
+;;     (let* ((git-root-dir))
+;;       (setq git-root-dir (git-root-directory))
+;;       (unless (string= git-root-dir "")
+;;         (direx:find-directory-noselect git-root-dir))
+;;       (direx:jump-to-directory-other-window)))
+;;   (setq direx:leaf-icon "  ")
+;;   (setq direx:open-icon "▾ ")
+;;   (setq direx:closed-icon "▸ ")
+;;   (add-hook 'direx:direx-mode-hook '(lambda () (hl-line-mode) ))
+;;   (define-key direx:direx-mode-map (kbd "n") 'direx:next-sibling-item)
+;;   (define-key direx:direx-mode-map (kbd "p") 'direx:previous-sibling-item)
+;;   (define-key direx:direx-mode-map (kbd "u") 'direx:up-item)
+;;   (define-key direx:direx-mode-map (kbd "d") 'direx:down-item)
+;;   (define-key direx:direx-mode-map (kbd "q") 'delete-window)
+;;   )
 
 ;;
 ;; dired.el
