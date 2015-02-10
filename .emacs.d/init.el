@@ -154,6 +154,8 @@
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
+(global-set-key (kbd "C-x i")   'dired-jump-to-git-project-directory)
+(global-set-key (kbd "C-x j")   'dired-jump-other-window)
 
 (global-set-key (kbd "C-x e") nil)
 (global-set-key (kbd "C-x e r")   'resize)
@@ -166,8 +168,6 @@
 (global-set-key (kbd "C-x m c")   'org-capture-code-reading)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
-;;(global-set-key (kbd "C-x C-i") 'direx:jump-to-git-project-directory)
-(global-set-key (kbd "C-x C-j") 'dired-jump-other-window)
 
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
@@ -1080,31 +1080,10 @@
   )
 
 ;;
-;; direx.el
-;;----------------------------------------------------------------------------------------------------
-;; (when (require 'direx nil t)
-;;   (defun direx:jump-to-git-project-directory ()
-;;     (interactive)
-;;     (let* ((git-root-dir))
-;;       (setq git-root-dir (git-root-directory))
-;;       (unless (string= git-root-dir "")
-;;         (direx:find-directory-noselect git-root-dir))
-;;       (direx:jump-to-directory-other-window)))
-;;   (setq direx:leaf-icon "  ")
-;;   (setq direx:open-icon "▾ ")
-;;   (setq direx:closed-icon "▸ ")
-;;   (add-hook 'direx:direx-mode-hook '(lambda () (hl-line-mode) ))
-;;   (define-key direx:direx-mode-map (kbd "n") 'direx:next-sibling-item)
-;;   (define-key direx:direx-mode-map (kbd "p") 'direx:previous-sibling-item)
-;;   (define-key direx:direx-mode-map (kbd "u") 'direx:up-item)
-;;   (define-key direx:direx-mode-map (kbd "d") 'direx:down-item)
-;;   (define-key direx:direx-mode-map (kbd "q") 'delete-window)
-;;   )
-
-;;
 ;; dired.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'dired nil t)
+  (require 'dired-subtree)
   ;; dired-find-alternate-file の有効化
   (put 'dired-find-alternate-file 'disabled nil)
   ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
@@ -1133,10 +1112,20 @@
   (define-key dired-mode-map (kbd "C-f") 'dired-open-in-accordance-with-situation)
   (define-key dired-mode-map (kbd "e")   'wdired-change-to-wdired-mode)
   (define-key dired-mode-map (kbd "M-s f")     nil)
+  (define-key dired-mode-map (kbd "i") 'dired-subtree-insert)
+  (define-key dired-mode-map (kbd "r") 'dired-subtree-remove)
+  (define-key dired-mode-map (kbd "<tab>") 'dired-subtree-toggle)
   ;; lsの設定
   (require 'ls-lisp)
   (setq ls-lisp-use-insert-directory-program nil)
   (setq ls-lisp-dirs-first t)
+  (defun dired-jump-to-git-project-directory ()
+    (interactive)
+    (let* ((git-root-dir))
+      (setq git-root-dir (git-root-directory))
+      (unless (string= git-root-dir "")
+        (dired-jump git-root-dir))
+      (dired-jump-other-window)))
   )
 
 ;;
