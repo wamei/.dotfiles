@@ -91,8 +91,8 @@
 ;;
 ;; キーバインド
 ;;----------------------------------------------------------------------------------------------------
-(global-set-key (kbd "C-a")     'mwim-beginning-of-code-or-line)
-(global-set-key (kbd "C-e")     'mwim-end-of-code-or-line)
+(global-set-key (kbd "C-a")     'mwim-beginning-of-line-or-code)
+(global-set-key (kbd "C-e")     'mwim-end-of-line-or-code)
 (global-set-key (kbd "C-h")     nil)
 (global-set-key (kbd "C-r")     'vr/replace)
 (global-set-key (kbd "C-v")     'scroll-up-with-cursor)
@@ -112,38 +112,39 @@
 
 (global-set-key (kbd "M-s s")   'helm-swoop)
 (global-set-key (kbd "M-s g")   'helm-git-grep)
-(global-set-key (kbd "M-s f")   'helm-cmd-t)
 (global-set-key (kbd "M-s a")   'ag)
 (global-set-key (kbd "M-s o")   'occur)
 
-(hydra-create "M-g"
-  '(("p" flycheck-previous-error "previous error")
-    ("n" flycheck-next-error "next error")
-    ("l" flycheck-list-errors "error list")
-    ))
+(defhydra hydra-error (global-map "M-g")
+  "goto-error"
+  ("p" flycheck-previous-error "previous")
+  ("n" flycheck-next-error "next")
+  ("l" flycheck-list-errors "list")
+  ("v" recenter-top-bottom "recenter")
+  ("q" nil "quit")
+  )
 
 (global-set-key (kbd "C-c C-c") 'quickrun)
 (global-set-key (kbd "C-c C-u") 'pop-tag-mark)
-(hydra-create "C-c"
-  '(("p" git-gutter+-previous-hunk "previous hunk")
-    ("n" git-gutter+-next-hunk "next hunk")
-    ("d" git-gutter+-popup-hunk "show diff")
-    ))
+(defhydra hydra-git-gutter (global-map "C-c")
+  "git-gutter"
+  ("p" git-gutter+-previous-hunk "previous hunk")
+  ("n" git-gutter+-next-hunk "next hunk")
+  ("d" git-gutter+-popup-hunk "show diff")
+  ("q" nil "quit")
+  )
 
 (global-set-key (kbd "C-q") nil)
-(hydra-create "C-q"
-  '(("C-q" er/expand-region "expand")
-    ("C-z" er/contract-region "contract")
-    ("a" mc/mark-all-like-this-dwim "all")
-    ("n" mc/mark-next-like-this "next")
-    ("u" mc/unmark-next-like-this "unmark")
-    ("s" mc/skip-to-next-like-this "skip")
-    ("N" mc/mark-previous-like-this "previous")
-    ("U" mc/unmark-previous-like-this "unmark(p)")
-    ("S" mc/skip-to-previous-like-this "skip(p)")
-    ))
+(defhydra hydra-expand-region (global-map "C-q")
+  "expand-region"
+  ("C-q" er/expand-region "expand")
+  ("C-z" er/contract-region "contract")
+  ("C-a" mc/mark-all-like-this-dwim "mark all")
+  )
+
 (global-set-key (kbd "C-q C-l") 'mc/edit-lines)
 (global-set-key (kbd "C-q C-r") 'vr/mc-mark)
+(global-set-key (kbd "C-q C-a") 'mc/mark-all-like-this-dwim)
 (global-set-key (kbd "C-q C-s") 'mc/mark-all-symbols-like-this)
 (global-set-key (kbd "C-q C-d") 'mc/mark-all-symbols-like-this-in-defun)
 (global-set-key (kbd "C-q C-m") 'my-mc-put-cursor)
@@ -579,7 +580,7 @@
            (t
             (concat
              (propertize (shorten-directory default-directory 20) 'face 'mode-line-folder-face)
-             (propertize (buffer-name) 'face 'mode-line-filename-face)))
+             (propertize (file-name-nondirectory (buffer-file-name)) 'face 'mode-line-filename-face)))
            ))
    ;; narrow [default -- keep?]
    "%n"
@@ -697,8 +698,6 @@
 
 ;; ispellの代わりにaspellを使う
 (setq ispell-program-name "aspell")
-(eval-after-load "ispell"
-  '(add-to-list 'ispell-skip-region-alist '("[^\000-\377]+")))
 
 ;; re-builderの設定をstringに
 (require 're-builder)
@@ -795,31 +794,6 @@
           (set-visited-file-name new-name)
           (set-buffer-modified-p nil))))))
 
-;; ファイルを管理者権限で開く
-(defun th-rename-tramp-buffer ()
-  (when (file-remote-p (buffer-file-name))
-    (rename-buffer
-     (format "%s:%s"
-             (file-remote-p (buffer-file-name) 'method)
-             (buffer-name)))))
-
-(add-hook 'find-file-hook
-          'th-rename-tramp-buffer)
-
-(defadvice find-file (around th-find-file activate)
-  "Open FILENAME using tramp's sudo method if it's read-only."
-  (if (and (not (file-writable-p (ad-get-arg 0)))
-           (y-or-n-p (concat "File "
-                             (ad-get-arg 0)
-                             " is read-only.  Open it as root? ")))
-      (th-find-file-sudo (ad-get-arg 0))
-    ad-do-it))
-
-(defun th-find-file-sudo (file)
-  "Opens FILE with root privileges."
-  (interactive "F")
-  (set-buffer (find-file (concat "/sudo::" file))))
-
 ;; *scratch*の初期メッセージを消す
 (setq initial-scratch-message "")
 
@@ -844,12 +818,6 @@
             (if (string= "*scratch*" (buffer-name))
                 (progn (my-make-scratch 0) nil)
               t)))
-
-;; (add-hook 'after-save-hook
-;;           ;; *scratch* バッファの内容を保存したら *scratch* バッファを新しく作る
-;;           (lambda ()
-;;             (unless (member (get-buffer "*scratch*") (buffer-list))
-;;               (my-make-scratch 1))))
 
 ;; スクラッチの保存と復元
 (defun save-scratch-data ()
@@ -1527,7 +1495,6 @@
   (require 'helm-descbinds)
   ;;(require 'helm-migemo)
   ;;(setq helm-use-migemo t)
-  (require 'helm-C-x-b)
   (require 'helm-filelist)
   (require 'helm-gtags)
 
