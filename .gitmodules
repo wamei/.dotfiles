@@ -1,0 +1,3 @@
+[submodule ".emacs.d/elisp/elscreen-separate-buffer-list"]
+	path = .emacs.d/elisp/elscreen-separate-buffer-list
+	url = git@github.com:wamei/elscreen-separate-buffer-list.git
