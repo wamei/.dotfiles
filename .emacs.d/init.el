@@ -764,6 +764,9 @@
 ;; 新しいel,elcを読み込み
 (setq load-prefer-newer t)
 
+;; switch-toでvisibleなbufferには遷移しない
+(setq switch-to-visible-buffer nil)
+
 ;; 選択範囲をisearch
 (defadvice isearch-mode (around isearch-mode-default-string (forward &optional regexp op-fun recursive-edit word-p) activate)
   (if (and transient-mark-mode mark-active (not (eq (mark) (point))))
@@ -860,11 +863,6 @@
        )
     (t (load-file "~/.emacs.d/init.el")))
   )
-
-;; 一つ前のバッファへトグル
-(defun switch-to-previous-buffer ()
-  (interactive)
-  (switch-to-buffer (other-buffer (current-buffer) 1)))
 
 ;; git関係便利関数
 (defun chomp (str)
@@ -1161,8 +1159,8 @@
   (setq elscreen-tab-display-control nil)
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
-  (require 'elscreen-separate-buffer-list)
   (elscreen-start)
+  (require 'elscreen-separate-buffer-list)
   )
 
 ;;
@@ -1287,7 +1285,7 @@
     (let* ((screen-number (elscreen-get-current-screen))
            (buffer (get-buffer (format "*screen terminal<%d>*" screen-number))))
       (cond ((equal buffer (current-buffer))
-             (switch-to-buffer (other-buffer (current-buffer) 1)))
+             (switch-to-prev-buffer))
             (buffer
              (switch-to-buffer buffer))
             (t
