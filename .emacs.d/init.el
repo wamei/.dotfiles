@@ -131,6 +131,7 @@
   ("p" git-gutter+-previous-hunk "previous hunk")
   ("n" git-gutter+-next-hunk "next hunk")
   ("d" git-gutter+-popup-hunk "show diff")
+  ("v" recenter-top-bottom "recenter")
   ("q" nil "quit")
   )
 
@@ -154,8 +155,6 @@
 (global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
-(global-set-key (kbd "C-x i")   'dired-jump-to-git-project-directory)
-(global-set-key (kbd "C-x j")   'dired-jump-other-window)
 
 (global-set-key (kbd "C-x e") nil)
 (global-set-key (kbd "C-x e r")   'resize)
@@ -168,6 +167,7 @@
 (global-set-key (kbd "C-x m c")   'org-capture-code-reading)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
+(global-set-key (kbd "C-x C-i")   'dired-jump-to-git-project-directory)
 
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
@@ -1070,7 +1070,6 @@
 (when (require 'popwin nil t)
   (setq display-buffer-function 'popwin:display-buffer)
   (setq popwin:special-display-config '(
-                                        ;;(direx:direx-mode :position left :width 40 :dedicated t)
                                         (occur-mode :position bottom :height 0.5)
                                         (ag-mode :position bottom :height 0.5)
                                         (snippet-mode :position bottom :height 0.5)
@@ -1121,11 +1120,10 @@
   (setq ls-lisp-dirs-first t)
   (defun dired-jump-to-git-project-directory ()
     (interactive)
-    (let* ((git-root-dir))
-      (setq git-root-dir (git-root-directory))
-      (unless (string= git-root-dir "")
-        (dired-jump git-root-dir))
-      (dired-jump-other-window)))
+    (let ((git-root-dir (git-root-directory)))
+      (if (string= git-root-dir "")
+          (dired-jump)
+        (dired git-root-dir))))
   )
 
 ;;
