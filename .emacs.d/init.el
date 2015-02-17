@@ -2022,9 +2022,15 @@ $0"))
 (when (require 'git-gutter+ nil t)
   (when window-system
     (require 'git-gutter-fringe+))
-  (global-git-gutter+-mode t)
   (defadvice git-gutter+-process-diff (before git-gutter+-process-diff-advice activate)
     (ad-set-arg 0 (file-truename (ad-get-arg 0))))
+  ;;(global-git-gutter+-mode t)
+  ;; trampでgit-gutterを付けるとバグるのでとりあえずOFFに
+  (defun tramp-disable-git-gutter ()
+    (let ((name (or list-buffers-directory (buffer-file-name))))
+      (unless (and name (tramp-tramp-file-p name))
+        (git-gutter+-mode t))))
+  (add-to-list 'find-file-hook 'tramp-disable-git-gutter)
   )
 
 ;;
