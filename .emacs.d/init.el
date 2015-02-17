@@ -131,6 +131,7 @@
   ("p" git-gutter+-previous-hunk "previous hunk")
   ("n" git-gutter+-next-hunk "next hunk")
   ("d" git-gutter+-popup-hunk "show diff")
+  ("r" git-gutter+-revert-hunk "revert hunk")
   ("v" recenter-top-bottom "recenter")
   ("q" nil "quit")
   )
