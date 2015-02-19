@@ -1246,14 +1246,14 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'magit nil t)
   (defadvice magit-status (around magit-fullscreen activate)
-    (window-configuration-to-register :magit-fullscreen)
+    (window-configuration-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
     ad-do-it
     (delete-other-windows))
 
   (defun my/magit-quit-session ()
     (interactive)
     (kill-buffer)
-    (jump-to-register :magit-fullscreen)
+    (jump-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
     (if git-gutter+-mode
         (if (and (git-gutter+-file-buffer-p)
                  (git-gutter+-in-git-repository-p (buffer-file-name)))
