@@ -1162,6 +1162,7 @@
   (setq elscreen-display-tab 24)
   (elscreen-start)
   (require 'elscreen-separate-buffer-list)
+  (elscreen-separate-buffer-list-mode)
   )
 
 ;;
