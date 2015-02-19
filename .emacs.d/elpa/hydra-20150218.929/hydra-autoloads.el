@@ -3,30 +3,8 @@
 ;;; Code:
 (add-to-list 'load-path (or (file-name-directory #$) (car load-path)))
 
-;;;### (autoloads nil "hydra" "hydra.el" (21730 56003 0 0))
+;;;### (autoloads nil "hydra" "hydra.el" (21733 39466 0 0))
 ;;; Generated autoloads from hydra.el
-
-(autoload 'hydra-create "hydra" "\
-Create a hydra with a BODY prefix and HEADS with METHOD.
-This will result in `global-set-key' statements with the keys
-being the concatenation of BODY and each head in HEADS.  HEADS is
-an list of (KEY FUNCTION &optional HINT).
-
-After one of the HEADS is called via BODY+KEY, it and the other
-HEADS can be called with only KEY (no need for BODY).  This state
-is broken once any key binding that is not in HEADS is called.
-
-METHOD is a lambda takes two arguments: a KEY and a COMMAND.
-It defaults to `global-set-key'.
-When `(keymapp METHOD)`, it becomes:
-
-    (lambda (key command) (define-key METHOD key command))
-
-\(fn BODY HEADS &optional METHOD)" nil t)
-
-(put 'hydra-create 'lisp-indent-function '1)
-
-(make-obsolete 'hydra-create 'defhydra '"0.8.0")
 
 (autoload 'defhydra "hydra" "\
 Create a Hydra - a family of functions with prefix NAME.
@@ -48,8 +26,18 @@ format:
 
 BODY-MAP is a keymap; `global-map' is used quite often.  Each
 function generated from HEADS will be bound in BODY-MAP to
-BODY-KEY + KEY, and will set the transient map so that all
-following heads can be called though KEY only.
+BODY-KEY + KEY (both are strings passed to `kbd'), and will set
+the transient map so that all following heads can be called
+though KEY only.
+
+CMD is a callable expression: either an interactive function
+name, or an interactive lambda, or a single sexp (it will be
+wrapped in an interactive lambda).
+
+HINT is a short string that identifies its head. It will be
+printed beside KEY in the echo erea if `hydra-is-helpful' is not
+nil. If you don't even want the KEY to be printed, set HINT
+explicitly to nil.
 
 The heads inherit their PLIST from the body and are allowed to
 override each key.  The keys recognized are :color and :bind.
@@ -64,14 +52,19 @@ except a blue head can stop the Hydra state.
 - nil: this head will not be bound in BODY-MAP.
 - a lambda taking KEY and CMD used to bind a head
 
+It is possible to omit both BODY-MAP and BODY-KEY if you don't
+want to bind anything. In that case, typically you will bind the
+generated NAME/body command. This command is also the return
+result of `defhydra'.
+
 \(fn NAME BODY &optional DOCSTRING &rest HEADS)" nil t)
 
 (put 'defhydra 'lisp-indent-function 'defun)
 
 ;;;***
 
-;;;### (autoloads nil nil ("hydra-examples.el" "hydra-pkg.el") (21730
-;;;;;;  56003 713242 0))
+;;;### (autoloads nil nil ("hydra-examples.el" "hydra-pkg.el" "lv.el")
+;;;;;;  (21733 39467 41194 0))
 
 ;;;***
 

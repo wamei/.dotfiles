@@ -4,7 +4,7 @@
 
 ;; Author: Syohei YOSHIDA <syohex@gmail.com>
 ;; URL: https://github.com/syohex/emacs-helm-ag
-;; Version: 20150216.728
+;; Version: 20150217.2226
 ;; X-Original-Version: 0.33
 ;; Package-Requires: ((helm "1.5.6") (cl-lib "0.5"))
 
@@ -299,7 +299,7 @@ They are specified to `--ignore' options."
        (or (equal current-prefix-arg '(4))
            (equal current-prefix-arg '(-4)))))
 
-(defun helm-ag--default-directory ()
+(defun helm-ag--get-default-directory ()
   (if (helm-ag--has-c-u-preffix-p)
       (file-name-as-directory
        (read-directory-name "Search directory: " nil nil t))
@@ -319,7 +319,8 @@ They are specified to `--ignore' options."
 (defun helm-ag--edit-commit ()
   (interactive)
   (goto-char (point-min))
-  (let ((read-only-files 0))
+  (let ((read-only-files 0)
+        (default-directory helm-ag--default-directory))
     (while (re-search-forward "^\\([^:]+\\):\\([1-9][0-9]*\\):\\(.*\\)$" nil t)
       (let ((file (match-string-no-properties 1))
             (line (string-to-number (match-string-no-properties 2)))
@@ -337,7 +338,7 @@ They are specified to `--ignore' options."
     (helm-ag--kill-edit-buffer)
     (if (not (zerop read-only-files))
         (message "%d files are read-only and not editable." read-only-files)
-      (message "Success helm-ag-edit"))))
+      (message "Success update"))))
 
 (defun helm-ag--edit-abort ()
   (interactive)
@@ -355,6 +356,7 @@ They are specified to `--ignore' options."
 (defun helm-ag--edit (_candidate)
   (with-current-buffer (get-buffer-create "*helm-ag-edit*")
     (erase-buffer)
+    (set (make-local-variable 'helm-ag--default-directory) helm-ag--default-directory)
     (let (buf-content)
       (with-current-buffer (get-buffer "*helm-ag*")
         (goto-char (point-min))
@@ -371,7 +373,9 @@ They are specified to `--ignore' options."
       (add-text-properties (point-min) (point-max)
                            '(read-only t rear-nonsticky t front-sticky t))
       (let ((inhibit-read-only t))
-        (setq header-line-format "[C-c C-c] Commit, [C-c C-k] Abort")
+        (setq header-line-format
+              (format "[%s] C-c C-c: Commit, C-c C-k: Abort"
+                      (abbreviate-file-name helm-ag--default-directory)))
         (goto-char (point-min))
         (while (re-search-forward "^\\(\\(?:[^:]+:\\)\\{1,2\\}\\)\\(.*\\)$" nil t)
           (let ((file-line-begin (match-beginning 1))
@@ -426,7 +430,7 @@ They are specified to `--ignore' options."
   (interactive)
   (setq helm-ag--original-window (selected-window))
   (helm-ag--clear-variables)
-  (let ((helm-ag--default-directory (or basedir (helm-ag--default-directory))))
+  (let ((helm-ag--default-directory (or basedir (helm-ag--get-default-directory))))
     (helm-ag--query)
     (let ((source (helm-ag--select-source)))
       (helm-attrset 'search-this-file nil

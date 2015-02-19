@@ -5,7 +5,7 @@
 ;; Author: Oleh Krehel <ohwoeowho@gmail.com>
 ;; Maintainer: Oleh Krehel <ohwoeowho@gmail.com>
 ;; URL: https://github.com/abo-abo/hydra
-;; Version: 0.9.0
+;; Version: 0.10.0
 ;; Keywords: bindings
 ;; Package-Requires: ((cl-lib "0.5"))
 
@@ -77,6 +77,7 @@
 ;;; Code:
 ;;* Requires
 (require 'cl-lib)
+(require 'lv)
 
 (defalias 'hydra-set-transient-map
   (if (fboundp 'set-transient-map)
@@ -98,6 +99,10 @@
   "This binding will quit an amaranth Hydra.
 It's the only other way to quit it besides though a blue head.
 It's possible to set this to nil.")
+
+(defcustom hydra-lv t
+  "When non-nil, `lv-message' will be used to display hints instead of `message'."
+  :type 'boolean)
 
 (defface hydra-face-red
     '((t (:foreground "#7F0055" :bold t)))
@@ -251,6 +256,13 @@ It's intended for the echo area, when a Hydra is active."
              (nreverse (mapcar #'cdr alist))
              ", "))))
 
+(defun hydra-cleanup ()
+  "Clean up after a Hydra."
+  (when (window-live-p lv-wnd)
+    (let ((buf (window-buffer lv-wnd)))
+      (delete-window lv-wnd)
+      (kill-buffer buf))))
+
 (defun hydra-disable ()
   "Disable the current Hydra."
   (cond
@@ -269,6 +281,13 @@ It's intended for the echo area, when a Hydra is active."
                  (equal (cl-cdaar emulation-mode-map-alists) ',keymap))
        (setq emulation-mode-map-alists
              (cdr emulation-mode-map-alists))))))
+
+(defun hydra--message (format-str &rest args)
+  "Forward to (`message' FORMAT-STR ARGS).
+Or to `lv-message' if `hydra-lv' is non-nil."
+  (if hydra-lv
+      (apply #'lv-message format-str args)
+    (apply #'message format-str args)))
 
 (defun hydra--doc (body-key body-name heads)
   "Generate a part of Hydra docstring.
@@ -296,6 +315,7 @@ BODY-COLOR, BODY-PRE, BODY-POST, and OTHER-POST are used as well."
      (interactive)
      ,@(when body-pre (list body-pre))
      (hydra-disable)
+     ,@(when (eq color 'blue) '((hydra-cleanup)))
      (catch 'hydra-disable
        ,@(delq nil
                (if (eq color 'blue)
@@ -307,50 +327,21 @@ BODY-COLOR, BODY-PRE, BODY-POST, and OTHER-POST are used as well."
                                  (call-interactively #',cmd))
                              (error
                               (message "%S" err)
-                              (sit-for 0.8)
+                              (unless hydra-lv
+                                (sit-for 0.8))
                               nil)))
                     (when hydra-is-helpful
-                      (message ,hint))
+                      (,hint))
                     (setq hydra-last
                           (hydra-set-transient-map
                            (setq hydra-curr-map ',keymap)
                            t
-                           ,@(if (and (not (eq body-color 'amaranth)) body-post)
-                                 `((lambda () ,body-post)))))
+                           ,(if (and (not (eq body-color 'amaranth)) body-post)
+                                `(lambda () (hydra-cleanup) ,body-post)
+                                `(lambda () (hydra-cleanup)))))
                     ,other-post))))))
 
 ;;* Macros
-;;** hydra-create
-;;;###autoload
-(defmacro hydra-create (body heads &optional method)
-  "Create a hydra with a BODY prefix and HEADS with METHOD.
-This will result in `global-set-key' statements with the keys
-being the concatenation of BODY and each head in HEADS.  HEADS is
-an list of (KEY FUNCTION &optional HINT).
-
-After one of the HEADS is called via BODY+KEY, it and the other
-HEADS can be called with only KEY (no need for BODY).  This state
-is broken once any key binding that is not in HEADS is called.
-
-METHOD is a lambda takes two arguments: a KEY and a COMMAND.
-It defaults to `global-set-key'.
-When `(keymapp METHOD)`, it becomes:
-
-    (lambda (key command) (define-key METHOD key command))"
-  (declare (indent 1)
-           (obsolete defhydra "0.8.0"))
-  `(defhydra ,(intern
-               (concat
-                "hydra-" (replace-regexp-in-string " " "_" body)))
-       ,(cond ((hydra--callablep method)
-              method)
-             ((null method)
-              `(global-map ,body))
-             (t
-              (list method body)))
-     "hydra"
-     ,@(eval heads)))
-
 ;;** defhydra
 ;;;###autoload
 (defmacro defhydra (name body &optional docstring &rest heads)
@@ -373,8 +364,18 @@ format:
 
 BODY-MAP is a keymap; `global-map' is used quite often.  Each
 function generated from HEADS will be bound in BODY-MAP to
-BODY-KEY + KEY, and will set the transient map so that all
-following heads can be called though KEY only.
+BODY-KEY + KEY (both are strings passed to `kbd'), and will set
+the transient map so that all following heads can be called
+though KEY only.
+
+CMD is a callable expression: either an interactive function
+name, or an interactive lambda, or a single sexp (it will be
+wrapped in an interactive lambda).
+
+HINT is a short string that identifies its head. It will be
+printed beside KEY in the echo erea if `hydra-is-helpful' is not
+nil. If you don't even want the KEY to be printed, set HINT
+explicitly to nil.
 
 The heads inherit their PLIST from the body and are allowed to
 override each key.  The keys recognized are :color and :bind.
@@ -387,7 +388,12 @@ except a blue head can stop the Hydra state.
 
 :bind can be:
 - nil: this head will not be bound in BODY-MAP.
-- a lambda taking KEY and CMD used to bind a head"
+- a lambda taking KEY and CMD used to bind a head
+
+It is possible to omit both BODY-MAP and BODY-KEY if you don't
+want to bind anything. In that case, typically you will bind the
+generated NAME/body command. This command is also the return
+result of `defhydra'."
   (declare (indent defun))
   (unless (stringp docstring)
     (setq heads (cons docstring heads))
@@ -404,6 +410,7 @@ except a blue head can stop the Hydra state.
                                        (concat "lambda-" (car x)))))))
                  heads))
          (body-name (intern (format "%S/body" name)))
+         (hint-name (intern (format "%S/hint" name)))
          (body-key (unless (hydra--callablep body)
                      (cadr body)))
          (body-color (if (hydra--callablep body)
@@ -438,14 +445,16 @@ except a blue head can stop the Hydra state.
                  (message "An amaranth Hydra can only exit through a blue head")
                  (hydra-set-transient-map hydra-curr-map t)
                  (when hydra-is-helpful
-                   (sit-for 0.8)
-                   (message ,hint)))))
+                   (unless hydra-lv
+                     (sit-for 0.8))
+                   (,hint-name)))))
         (error "An amaranth Hydra must have at least one blue head in order to exit"))
       (when hydra-keyboard-quit
         (define-key keymap hydra-keyboard-quit
           `(lambda ()
              (interactive)
              (hydra-disable)
+             (hydra-cleanup)
              ,body-post))))
     `(progn
        ,@(cl-mapcar
@@ -453,7 +462,7 @@ except a blue head can stop the Hydra state.
             (hydra--make-defun
              name (hydra--make-callable (cadr head)) (hydra--color head body-color)
              (format "%s\n\nCall the head: `%S'." doc (cadr head))
-             hint keymap
+             hint-name keymap
              body-color body-pre body-post))
           heads names)
        ,@(unless (or (null body-key)
@@ -488,9 +497,69 @@ except a blue head can stop the Hydra state.
                             (t
                              (error "Invalid :bind property %S" head))))))
                 heads names))
-       ,(hydra--make-defun body-name nil nil doc hint keymap
+       (defun ,hint-name ()
+         (hydra--message ,hint))
+       ,(hydra--make-defun body-name nil nil doc hint-name keymap
                            body-color body-pre body-post
                            '(setq prefix-arg current-prefix-arg)))))
+
+(defmacro defhydradio (name body &rest heads)
+  "Create toggles with prefix NAME.
+BODY specifies the options; there are none currently.
+HEADS have the format:
+
+    (TOGGLE-NAME &optional VALUE DOC)
+
+TOGGLE-NAME will be used along with NAME to generate a variable
+name and a function that cycles it with the same name.  VALUE
+should be an array. The first element of VALUE will be used to
+inialize the variable.
+VALUE defaults to [nil t].
+DOC defaults to TOGGLE-NAME split and capitalized."
+  (declare (indent defun))
+  (cons 'progn
+        (apply #'append
+               (mapcar (lambda (h)
+                         (hydra--radio name h))
+                       heads))))
+
+(defun hydra--radio (parent head)
+  "Generate a hydradio from HEAD."
+  (let* ((name (car head))
+         (full-name (intern (format "%S/%S" parent name)))
+         (val (or (cadr head) [nil t]))
+         (doc (or (cl-caddr head)
+                  (mapconcat #'capitalize
+                             (split-string (symbol-name name) "-")
+                             " "))))
+    `((defvar ,full-name ,(hydra--quote-maybe (aref val 0)) ,doc)
+      (put ',full-name 'range ,val)
+      (defun ,full-name ()
+        (hydra--cycle-radio ',full-name)))))
+
+(defun hydra--quote-maybe (x)
+  "Quote X if it's a symbol."
+  (if (symbolp x)
+      (list 'quote x)
+    x))
+
+(defun hydra--cycle-radio (sym)
+  "Set SYM to the next value in its range."
+  (let* ((val (symbol-value sym))
+         (range (get sym 'range))
+         (i 0)
+         (l (length range)))
+    (setq i (catch 'done
+              (while (< i l)
+                (if (equal (aref range i) val)
+                    (throw 'done (1+ i))
+                  (incf i)))
+              (error "Val not in range for %S" sym)))
+    (set sym
+         (aref range
+               (if (>= i l)
+                   0
+                 i)))))
 
 (provide 'hydra)
 
