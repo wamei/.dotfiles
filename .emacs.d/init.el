@@ -691,6 +691,22 @@
     )
   )
 
+;; 突然の死
+(defun sudden-death (str)
+  "Sudden death generater."
+  (interactive "sSudden Death: ")
+  (let ((len (string-width str))
+        (l1 "")
+        (l3 "")
+        (ret))
+    (loop for i from 0 to (+ (/ len 2) 1)
+          do (setq l1 (concat l1 "人")))
+    (loop for i from 0 to (- (/ len 2) 1)
+          do (setq l3 (concat l3 "^Y")))
+    (setq ret (concat "＿" l1 "＿\n＞　" str "　＜\n￣Y" l3 "￣"))
+    (kill-new ret)
+    (message "%s" ret)))
+
 ;; ロックファイルを作らない
 (setq create-lockfiles nil)
 
