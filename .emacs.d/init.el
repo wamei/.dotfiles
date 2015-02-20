@@ -1407,6 +1407,11 @@
 
   ;; キーバインド
   (setq ac-use-menu-map t)
+  (define-key ac-completing-map (kbd "RET") nil)
+  (define-key ac-menu-map (kbd "RET")   'ac-complete)
+  (define-key ac-menu-map "\r"          'ac-complete)
+  (define-key ac-menu-map "\C-m"        'ac-complete)
+  (define-key ac-menu-map [return]      'ac-complete)
   (define-key ac-menu-map (kbd "C-n")   'ac-next)
   (define-key ac-menu-map (kbd "C-p")   'ac-previous)
   (define-key ac-menu-map (kbd "TAB")   'ac-next)
@@ -1418,7 +1423,7 @@
   ;; 補完メニューを自動表示
   (setq ac-auto-show-menu t)
   ;; 最適なカラム計算をオフ
-  ;;(setq popup-use-optimized-column-computation nil)
+  (setq popup-use-optimized-column-computation nil)
   ;; ツールチップの表示なし
   (setq ac-use-quick-help nil)
   ;; do i what mean
@@ -1426,7 +1431,7 @@
   ;; 大文字小文字を区別しない
   (setq ac-ignore-case t)
   ;; 補完候補を自動展開しない
-  (setq ac-expand-on-auto-complete nil)
+  (setq ac-expand-on-auto-complete t)
   ;; font-lock
   (setq ac-disable-faces '(font-lock-comment-face font-lock-doc-face))
   ;; 起動モード
