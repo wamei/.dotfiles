@@ -694,7 +694,7 @@
 ;; 突然の死
 (defun sudden-death (str)
   "Sudden death generater."
-  (interactive "sSudden Death: ")
+  (interactive (list (region-or-read-string "Sudden death : ")))
   (let ((len (string-width str))
         (l1 "")
         (l3 "")
