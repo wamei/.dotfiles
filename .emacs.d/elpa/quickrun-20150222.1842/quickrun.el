@@ -4,8 +4,8 @@
 
 ;; Author: Syohei YOSHIDA <syohex@gmail.com>
 ;; URL: https://github.com/syohex/emacs-quickrun
-;; Version: 20150128.1525
-;; X-Original-Version: 2.2.2
+;; Version: 20150222.1842
+;; X-Original-Version: 2.2.3
 ;; Package-Requires: ((emacs "24") (cl-lib "0.5"))
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -388,7 +388,13 @@
                (:description . "Compile ATS2 and execute")))
     ("r" . ((:command . "Rscript")
             (:exec "Rscript --vanilla %s")
-    	    (:description . "Run an R script"))))
+            (:description . "Run an R script")))
+
+    ("nim" . ((:command . "nim")
+              (:exec . "%c compile --run --verbosity:0 %s")
+              (:remove . ("nimcache" "%n"))
+              (:description . "Run nim script"))))
+
   "List of each programming languages information.
 Parameter form is (\"language\" . parameter-alist). parameter-alist has
 5 keys and those values , :command, :exec, :remove.
@@ -450,7 +456,8 @@ if you set your own language configuration.
     ("\\.tcl\\'" . "tcl")
     ("\\.swift\\'" . "swift")
     ("\\.dats\\'" . "ats")
-    ("\\.\\(r\\|R\\)\\'" . "r"))
+    ("\\.\\(r\\|R\\)\\'" . "r")
+    ("\\.nim\\'". "nim"))
   "Alist of (file-regexp . key)")
 
 (defvar quickrun/major-mode-alist
@@ -494,7 +501,8 @@ if you set your own language configuration.
     (tcl-mode . "tcl")
     (swift-mode . "swift")
     (ats-mode . "ats")
-    (ess-mode . "r"))
+    (ess-mode . "r")
+    (nim-mode . "nim"))
   "Alist of major-mode and langkey")
 
 (defun quickrun/decide-file-type (filename)
@@ -971,7 +979,7 @@ Place holders are beginning with '%' and replaced by:
     "javascript" "clojure" "erlang" "ocaml" "fsharp" "go" "io" "haskell" "java"
     "d" "markdown" "coffee" "scala" "groovy" "sass" "less" "shellscript" "awk"
     "lua" "rust" "dart" "elixir" "tcl" "jsx" "typescript" "fortran" "haml"
-    "swift" "ats" "r")
+    "swift" "ats" "r" "nim")
   "Programming languages and Markup languages supported as default
 by quickrun.el. But you can register your own command for some languages")
 

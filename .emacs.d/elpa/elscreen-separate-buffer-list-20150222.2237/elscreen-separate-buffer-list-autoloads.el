@@ -4,7 +4,7 @@
 (add-to-list 'load-path (or (file-name-directory #$) (car load-path)))
 
 ;;;### (autoloads nil "elscreen-separate-buffer-list" "elscreen-separate-buffer-list.el"
-;;;;;;  (21737 55902 318270 218000))
+;;;;;;  (21738 54733 0 0))
 ;;; Generated autoloads from elscreen-separate-buffer-list.el
 
 (defvar elscreen-separate-buffer-list-mode nil "\

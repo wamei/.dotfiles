@@ -1,12 +1,12 @@
 ;;; go-eldoc.el --- eldoc for go-mode -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2014 by Syohei YOSHIDA
+;; Copyright (C) 2015 by Syohei YOSHIDA
 
 ;; Author: Syohei YOSHIDA <syohex@gmail.com>
 ;; URL: https://github.com/syohex/emacs-go-eldoc
-;; Version: 20141218.2036
-;; X-Original-Version: 0.21
-;; Package-Requires: ((go-mode "0") (cl-lib "0.5"))
+;; Version: 20150222.1500
+;; X-Original-Version: 0.22
+;; Package-Requires: ((go-mode "1.0.0") (cl-lib "0.5"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
