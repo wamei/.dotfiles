@@ -153,7 +153,6 @@
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
 (global-set-key (kbd "C-x g")   'magit-status)
-(global-set-key (kbd "C-x n")   'linum-mode)
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'twittering-update-status-interactive)
 
@@ -166,6 +165,9 @@
 (global-set-key (kbd "C-x m o")   'org-capture)
 (global-set-key (kbd "C-x m m")   'org-capture-memo)
 (global-set-key (kbd "C-x m c")   'org-capture-code-reading)
+
+(global-set-key (kbd "C-x n n") 'linum-mode)
+(global-set-key (kbd "C-x n r") 'narrow-to-region)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
 (global-set-key (kbd "C-x C-i")   'dired-jump-to-git-project-directory)
@@ -1087,9 +1089,6 @@
   (setq popwin:special-display-config '(
                                         (occur-mode :position bottom :height 0.5)
                                         (ag-mode :position bottom :height 0.5)
-                                        (snippet-mode :position bottom :height 0.5)
-                                        ("*new snippet*" :position bottom :height 0.5)
-                                        ("*git-gutter+-diff*" :position bottom :height 0.5 :stick t :noselect t)
                                         ))
   )
 
