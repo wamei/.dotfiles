@@ -694,18 +694,20 @@
   )
 
 ;; 突然の死
-(defun sudden-death (str)
+(defun sudden-death (n)
   "Sudden death generater."
-  (interactive (list (region-or-read-string "Sudden death : ")))
-  (let ((len (string-width str))
-        (l1 "")
-        (l3 "")
-        (ret))
-    (loop for i from 0 to (+ (/ len 2) 1)
+  (interactive "p")
+  (let* ((str (region-or-read-string "Sudden death : "))
+         (len (string-width str))
+         (l1 "")(l2 "")(n1 (+ (/ len 2) 1))(n2)(ret))
+    (if (= n 1)
+        (setq n2 (/ len 2))
+      (setq n2 (- (/ len 2) 1)))
+    (loop for i from 0 to n1
           do (setq l1 (concat l1 "人")))
-    (loop for i from 0 to (- (/ len 2) 1)
-          do (setq l3 (concat l3 "^Y")))
-    (setq ret (concat "＿" l1 "＿\n＞　" str "　＜\n￣Y" l3 "￣"))
+    (loop for i from 0 to n2
+          do (setq l2 (concat l2 "^Y")))
+    (setq ret (concat "＿" l1 "＿\n＞　" str "　＜\n￣Y" l2 "￣"))
     (kill-new ret)
     (message "%s" ret)))
 
