@@ -184,10 +184,6 @@
 (when (eq system-type 'cygwin)
   ;; altをmetaキーに
   (setq w32-alt-is-meta t)
-  ;; IME初期化
-  (w32-ime-initialize)
-  ;; デフォルトIME
-  (setq default-input-method "W32-IME")
   ;; 漢字/変換キー入力時のエラーメッセージ抑止
   (global-set-key (kbd "<A-kanji>") 'ignore)
   (global-set-key (kbd "<M-kanji>") 'ignore)
