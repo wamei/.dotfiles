@@ -19,62 +19,9 @@
 (add-to-load-path "elpa")
 
 ;; load environment value
-(cond ((eq system-type 'darwin)
-       (require 'exec-path-from-shell)
-       (let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
-         (exec-path-from-shell-copy-envs envs)))
-       ;;(exec-pathth-from-shell-initialize)
-       ((eq system-type 'windows-nt)
-        ;; ------------------------------------------------------------------------
-        ;; @ setup-cygwin
-        (setq cygwin-mount-cygwin-bin-directory
-              (concat (getenv "CYGWIN_DIR") "\\bin"))
-        (require 'setup-cygwin)
-        (file-name-shadow-mode -1)
-
-        ;; ------------------------------------------------------------------------
-        ;; @ shell
-        (require 'shell)
-        (setq explicit-shell-file-name "bash.exe")
-        (setq shell-command-switch "-c")
-        (setq shell-file-name "bash.exe")
-
-        ;; (M-! and M-| and compile.el)
-        (modify-coding-system-alist 'process ".*sh\\.exe" 'cp932)
-
-        (add-hook 'comint-output-filter-functions 'shell-strip-ctrl-m nil t)
-
-        (setq shell-file-name-chars "~/A-Za-z0-9_^$!#%&{}@'`.,;()-")
-
-        (autoload 'ansi-color-for-comint-mode-on "ansi-color"
-          "Set `ansi-color-for-comint-mode' to t." t)
-
-        (setq shell-mode-hook
-              (function
-               (lambda ()
-                 (set-buffer-process-coding-system 'sjis-dos 'sjis-unix)
-                 (set-buffer-file-coding-system    'sjis-unix)
-                 )))
-
-        ;; ------------------------------------------------------------------------
-        ;; @ w32-symlinks
-
-        (custom-set-variables '(w32-symlinks-handle-shortcuts t))
-        (require 'w32-symlinks)
-
-        (defadvice insert-file-contents-literally
-          (before insert-file-contents-literally-before activate)
-          (set-buffer-multibyte nil))
-
-        (defadvice minibuffer-complete (before expand-symlinks activate)
-          (let ((file (expand-file-name
-                       (buffer-substring-no-properties
-                        (line-beginning-position) (line-end-position)))))
-            (when (file-symlink-p file)
-              (delete-region (line-beginning-position) (line-end-position))
-              (insert (w32-symlinks-parse-symlink file)))))
-        )
-       )
+(require 'exec-path-from-shell)
+(let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
+  (exec-path-from-shell-copy-envs envs))
 
 ;;; package.el
 (when (require 'package nil t)
@@ -232,6 +179,35 @@
                 (orgtbl-mode))))
 
 ;;
+;; windows用設定
+;;----------------------------------------------------------------------------------------------------
+(when (eq system-type 'cygwin)
+  ;; altをmetaキーに
+  (setq w32-alt-is-meta t)
+  ;; IME初期化
+  (w32-ime-initialize)
+  ;; デフォルトIME
+  (setq default-input-method "W32-IME")
+  ;; 漢字/変換キー入力時のエラーメッセージ抑止
+  (global-set-key (kbd "<A-kanji>") 'ignore)
+  (global-set-key (kbd "<M-kanji>") 'ignore)
+  (global-set-key (kbd "<kanji>") 'ignore)
+
+  (require 'shell)
+  (setq explicit-shell-file-name "bash.exe")
+  (setq shell-command-switch "-c")
+  (setq shell-file-name "bash.exe")
+
+  ;; (M-! and M-| and compile.el)
+  (setq shell-file-name "bash.exe")
+  (modify-coding-system-alist 'process ".*sh\\.exe" 'utf-8)
+
+  (require 'server)
+  (defun server-ensure-safe-dir (dir) "Noop" t)
+  (setq server-socket-dir "~/.emacs.d")
+  )
+
+;;
 ;; ウィンドウ設定
 ;;----------------------------------------------------------------------------------------------------
 
@@ -345,6 +321,8 @@
       ))
 (when tool-bar-mode (tool-bar-mode 0))
 (when menu-bar-mode (menu-bar-mode 0))
+(setq frame-title-format
+      '("emacs " emacs-version (buffer-file-name " - %f")))
 
 ;;
 ;; テーマの読み込み
@@ -394,6 +372,7 @@
    `(mode-line-delim-face-1 ((,class (:inherit mode-line-face :foreground "white"))))
    `(mode-line-git-face ((,class (:inherit mode-line-face :foreground "green"))))
    `(mode-line-name-face ((,class (:inherit mode-line-face :foreground "#ed74cd"))))
+   `(linum ((,class (:height 0.75))))
    ;; Escape and prompt faces
    `(minibuffer-prompt ((,class (:foreground "#729fcf" :weight bold))))
    ;; Font lock faces
@@ -627,7 +606,10 @@
 (set-keyboard-coding-system     'utf-8)
 (set-clipboard-coding-system    'utf-8)
 
-(set-face-attribute 'default nil :family "Migu 1M" :height 140)
+(set-face-attribute 'default nil :family "Migu 1M" :height 110)
+(set-face-attribute 'variable-pitch nil :family "Migu 1M" :height 110)
+(set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height 110)
+(set-face-attribute 'tooltip nil :family "Migu 1M" :height 90)
 
 ;;
 ;; その他設定
@@ -923,7 +905,8 @@
   )
 
 ;; Tramp設定
-(setenv "TMPDIR" "/tmp")
+(unless (eq system-type 'cygwin)
+    (setenv "TMPDIR" "/tmp"))
 
 (defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
   (let ((vc-handled-backends '(SVN Git))) ad-do-it))
@@ -1289,7 +1272,7 @@
 (when (require 'multi-term nil t)
   (setenv "TERMINFO" "~/.terminfo")
   (setq multi-term-program "zsh")
-  (if (eq system-type 'windows-nt)
+  (if (eq system-type 'cygwin)
       (setq multi-term-program "bash.exe"))
   (add-to-list 'term-unbind-key-list '"M-x")
   (add-to-list 'term-unbind-key-list '"C-t")
@@ -2216,12 +2199,6 @@ $0"))
   (setq migemo-user-dictionary nil)
   (setq migemo-regex-dictionary nil)
   (setq migemo-coding-system 'utf-8-unix)
-  (cond ((eq system-type 'windows-nt)
-         (setq migemo-command (concat (getenv "INST_DIR")
-                                      "\\app\\cmigemo\\cmigemo.exe"))
-         (setq migemo-dictionary (concat (getenv "INST_DIR")
-                                         "\\app\\cmigemo\\dict\\utf-8\\migemo-dict"))
-         ))
   (load-library "migemo")
   (migemo-init)
   )
