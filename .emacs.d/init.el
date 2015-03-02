@@ -398,8 +398,10 @@
    ;; Diff
    `(diff-file-header ((,class (:foreground "#eeeeee" :background "#222222"))))
    `(diff-header ((,class (:foreground "#eeeeee" :background "#555555"))))
-   `(diff-added ((,class (:foreground "#00f900" :background nil))))
-   `(diff-removed ((,class (:foreground "#ff2600" :background nil))))
+   `(diff-added ((,class (:foreground "#33aa33" :background nil))))
+   `(diff-refine-added ((,class (:foreground "#00f900" :background nil))))
+   `(diff-removed ((,class (:foreground "#aa2600" :background nil))))
+   `(diff-refine-removed ((,class (:foreground "#ff2600" :background nil))))
    `(diff-context ((,class (:foreground "#eeeeee" :background nil))))
    `(magit-item-highlight ((,class (:background "#000000"))))
    `(magit-branch ((,class (:foreground "#34cae2" :background nil))))
@@ -602,10 +604,10 @@
 (set-keyboard-coding-system     'utf-8)
 (set-clipboard-coding-system    'utf-8)
 
-(set-face-attribute 'default nil :family "Migu 1M" :height 110)
-(set-face-attribute 'variable-pitch nil :family "Migu 1M" :height 110)
-(set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height 110)
-(set-face-attribute 'tooltip nil :family "Migu 1M" :height 90)
+(set-face-attribute 'default nil :family "Migu 1M" :height 120)
+(set-face-attribute 'variable-pitch nil :family "Migu 1M" :height 120)
+(set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height 120)
+(set-face-attribute 'tooltip nil :family "Migu 1M" :height 110)
 
 ;;
 ;; その他設定
@@ -1241,6 +1243,7 @@
 ;; magit.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'magit nil t)
+  (setq magit-diff-refine-hunk 'all)
   (defadvice magit-status (around magit-fullscreen activate)
     (window-configuration-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
     ad-do-it
