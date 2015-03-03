@@ -106,6 +106,8 @@
 (global-set-key (kbd "C-x e") nil)
 (global-set-key (kbd "C-x e r")   'resize)
 (global-set-key (kbd "C-x e a")   'set-frame-alpha-interactive)
+(global-set-key (kbd "C-x e l")   'rotate-layout)
+(global-set-key (kbd "C-x e w")   'rotate-window)
 
 (global-set-key (kbd "C-x m") nil)
 (global-set-key (kbd "C-x m a")   'org-agenda)
@@ -1162,6 +1164,14 @@
   (require 'elscreen-separate-buffer-list)
   (elscreen-separate-buffer-list-mode)
   )
+
+;;
+;; rotate.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'rotate nil t)
+  (defun rotate-cursor:after-rotate-window ()
+    (other-window 1))
+  (advice-add 'rotate-window :after 'rotate-cursor:after-rotate-window))
 
 ;;
 ;; multiple-cursor.el
