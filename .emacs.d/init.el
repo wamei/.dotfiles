@@ -2015,6 +2015,19 @@ $0"))
 )
 
 ;;
+;; itail.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'itail nil t)
+  (setq itail-fancy-mode-line t)
+  (setq itail-highlight-list
+        '(;; errorとwarningを赤で表示
+          ("[eE]rror\\|[wW]arning" . hi-red-b)
+          ;; HTTPのmethodを緑で表示
+          ("GET\\|POST\\|DELETE\\|PUT" . hi-green-b)
+          ;; IPアドレスを文字列の色で表示
+          ("[0-9]\\{1,3\\}\\.[0-9]\\{1,3\\}\\.[0-9]\\{1,3\\}\\.[0-9]\\{1,3\\}" . font-lock-string-face))))
+
+;;
 ;; twittering-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'twittering-mode nil t)
