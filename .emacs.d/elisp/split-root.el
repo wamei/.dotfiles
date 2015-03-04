@@ -117,7 +117,7 @@
                     width
                   (round (/ (float (* child-width width))
                             w)))))
-          (message "width %s" new-child-width)
+          ;; (message "width %s" new-child-width)
           ;; and resize the child, if big enough
           (unless (< new-child-width window-min-width)
             ;; subtract what we used up
@@ -147,7 +147,7 @@
                   (round (/ (float (* child-height height))
                             h)))))
           ;; and resize the child, if big enough
-          (message "height %s" new-child-height)
+          ;; (message "height %s" new-child-height)
           (unless (< new-child-height window-min-height)
             ;; subtract what we used up
             (setq h (- h child-height))
