@@ -3,12 +3,16 @@
 ;;; Code:
 (add-to-list 'load-path (or (file-name-directory #$) (car load-path)))
 
-;;;### (autoloads nil "json-reformat" "json-reformat.el" (21646 22165
+;;;### (autoloads nil "json-reformat" "json-reformat.el" (21753 13340
 ;;;;;;  0 0))
 ;;; Generated autoloads from json-reformat.el
 
 (autoload 'json-reformat-region "json-reformat" "\
-Reformat the JSON in the region from BEGIN to END.
+Reformat the JSON in the specified region.
+
+If you want to customize the reformat style,
+please see the documentation of `json-reformat:indent-width'
+and `json-reformat:pretty-string?'.
 
 \(fn BEGIN END)" t nil)
 
