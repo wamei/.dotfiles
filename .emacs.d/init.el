@@ -111,9 +111,11 @@
 
 (global-set-key (kbd "C-x m") nil)
 (global-set-key (kbd "C-x m a")   'org-agenda)
+(global-set-key (kbd "C-x m s")   'helm-org-agenda-files-headings)
 (global-set-key (kbd "C-x m o")   'org-capture)
 (global-set-key (kbd "C-x m m")   'org-capture-memo)
 (global-set-key (kbd "C-x m c")   'org-capture-code-reading)
+(global-set-key (kbd "C-x m h")   'helm-org-code-reading-headings)
 
 (global-set-key (kbd "C-x n n") 'linum-mode)
 (global-set-key (kbd "C-x n r") 'narrow-to-region)
@@ -1500,7 +1502,6 @@
   (require 'helm-gtags)
 
   (helm-mode 1)
-  (setq helm-samewindow nil)
   ;; gtags
   (add-hook 'c-mode-hook (lambda () (helm-gtags-mode)))
   (add-hook 'php-mode-hook (lambda () (helm-gtags-mode)))
@@ -1516,23 +1517,12 @@
                (local-set-key (kbd "C-c C-n") 'helm-gtags-next-history)
                (local-set-key (kbd "C-c C-s") 'helm-gtags-show-stack)
                ))
-  ;; helmで置き換えない
-  ;; (add-to-list 'helm-completing-read-handlers-alist '(find-alternate-file . nil))
-  ;; (add-to-list 'helm-completing-read-handlers-alist '(find-file . nil))
-  ;; (add-to-list 'helm-completing-read-handlers-alist '(write-file . nil))
-  ;; (add-to-list 'helm-completing-read-handlers-alist '(kill-buffer . nil))
-  ;; (add-to-list 'helm-completing-read-handlers-alist '(ag . nil))
 
   ;; buffer名の表示幅
   (setq helm-buffer-max-length 40)
 
   ;; kill-ring
   (setq kill-ring-max 50)
-
-  ;; 遅延を短く
-  (setq helm-idle-delay 0.1)
-  (setq helm-input-idle-delay 0.1)
-  (setq helm-candidate-number-limit 200)
 
   ;; 自動補完をやめる
   (setq helm-ff-auto-update-initial-value nil)
@@ -1550,111 +1540,21 @@
   ;; bookmarkの場所を表示
   (setq helm-bookmark-show-location t)
 
-  ;; sortを無効化
-  (defadvice helm-buffers-sort-transformer (around ignore activate)
-  (setq ad-return-value (ad-get-arg 0)))
-
-  ;; helm buffer list改
-  (defvar normal-buffer-list '())
-  (defvar dired-buffer-list '())
-  (defvar tmp-buffer-list '())
-  (defclass helm-source-normal-buffers (helm-source-sync helm-type-buffer)
-    ((init :initform (lambda ()
-                       ;; Issue #51 Create the list before `helm-buffer' creation.
-                       (setq helm-buffers-list-cache (helm-buffer-list))
-                       (let ((result (cl-loop for b in helm-buffers-list-cache
-                                              maximize (length b) into len-buf
-                                              maximize (length (with-current-buffer b
-                                                                 (symbol-name major-mode)))
-                                              into len-mode
-                                              finally return (cons len-buf len-mode))))
-                         (unless helm-buffer-max-length
-                           (setq helm-buffer-max-length (car result)))
-                         (unless helm-buffer-max-len-mode
-                           ;; If a new buffer is longer that this value
-                           ;; this value will be updated
-                           (setq helm-buffer-max-len-mode (cdr result))))
-                       (cl-loop for i in helm-buffers-list-cache
-                                with normal-local
-                                with dired-local
-                                with tmp-local
-                                if (= 0 (or (string-match-p "\\*.+\\*" i) -1)) collect i into tmp-local
-                                else if (with-current-buffer (get-buffer i) (eq major-mode 'dired-mode)) collect i into dired-local
-                                else collect i into normal-local end
-                                finally
-                                (setq normal-buffer-list normal-local)
-                                (setq dired-buffer-list dired-local)
-                                (setq tmp-buffer-list tmp-local))
-                       ))
-     (candidates :initform normal-buffer-list)
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-list--match-fn)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (keymap :initform helm-buffer-map)
-     (volatile :initform t)
-     (mode-line :initform helm-buffer-mode-line-string)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-  (defvar helm-source-normal-buffers-list (helm-make-source "Buffers" 'helm-source-normal-buffers))
-
-  (defclass helm-source-dired-buffers (helm-source-sync helm-type-buffer)
-    ((candidates :initform dired-buffer-list)
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-list--match-fn)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (keymap :initform helm-buffer-map)
-     (volatile :initform t)
-     (mode-line :initform helm-buffer-mode-line-string)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-  (defvar helm-source-dired-buffers-list (helm-make-source "Dired Buffers" 'helm-source-dired-buffers))
-
-  (defclass helm-source-tmp-buffers (helm-source-sync helm-type-buffer)
-    ((candidates :initform tmp-buffer-list)
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-list--match-fn)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (keymap :initform helm-buffer-map)
-     (volatile :initform t)
-     (mode-line :initform helm-buffer-mode-line-string)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-  (defvar helm-source-tmp-buffers-list (helm-make-source "* Buffers" 'helm-source-tmp-buffers))
-
-  (defclass helm-source-recentf+ (helm-source-sync)
-    ((init :initform (lambda ()
-                       (require 'recentf)
-                       (recentf-mode 1)))
-     (candidates :initform (lambda () recentf-list))
-     (pattern-transformer :initform 'helm-recentf-pattern-transformer)
-     (match-part :initform (lambda (candidate)
-                             (if (or helm-ff-transformer-show-only-basename
-                                     helm-recentf--basename-flag)
-                                 (helm-basename candidate) candidate)))
-     (filter-one-by-one :initform (lambda (c)
-                                    (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
-                                      (if helm-ff-transformer-show-only-basename
-                                          (cons (helm-basename c) c)
-                                        (abbreviate-file-name c)))))
-     (keymap :initform helm-generic-files-map)
-     (help-message :initform helm-generic-file-help-message)
-     (mode-line :initform helm-generic-file-mode-line-string)
-     (action :initform (helm-actions-from-type-file))))
-  (defvar helm-source-recentf+-list (helm-make-source "Recentf" 'helm-source-recentf+))
-
   (defun helm-filelist++ ()
     (interactive)
-    (let ((helm-ff-transformer-show-only-basename nil))
-      (helm-other-buffer
-       `(helm-source-normal-buffers-list
-         helm-source-dired-buffers-list
-         helm-source-tmp-buffers-list
-         helm-source-recentf+-list
-         ,(helm-source-filelist))
-       "*helm filelist++*")))
+    (unless helm-source-buffers-list
+      (setq helm-source-buffers-list
+            (helm-make-source "Buffers" 'helm-source-buffers)))
+    (let ((helm-ff-transformer-show-only-basename nil)
+          (recentf-list (mapcar (lambda (path)
+                                   (replace-regexp-in-string (expand-file-name (getenv "HOME")) "~" path))
+                                 recentf-list)))
+      (helm :sources `(helm-source-buffers-list
+                       helm-source-recentf
+                       helm-source-buffer-not-found
+                       ,(helm-source-filelist))
+            :buffer "*helm filelist++*"
+            :truncate-lines t)))
   )
 
 ;;
@@ -1777,6 +1677,11 @@ $0"))
             '(("c" "Code Reading" entry (file+headline (concat org-directory org-code-reading-file) "Code Readings") "** %(identity prefix) %?\n   %a\n   %T")
               )))
       (org-capture nil "c")))
+  (defun helm-org-code-reading-headings ()
+    (interactive)
+    (helm :sources (helm-source-org-headings-for-files (list (concat org-directory org-code-reading-file)))
+          :candidate-number-limit 99999
+          :buffer "*helm org code reading headings*"))
   )
 
 ;;
