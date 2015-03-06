@@ -1415,6 +1415,9 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'auto-complete nil t)
   (require 'auto-complete-config)
+  (require 'org-ac)
+
+  (org-ac/config-default)
 
   ;; キーバインド
   (setq ac-use-menu-map t)
@@ -1627,6 +1630,8 @@ $0"))
 ;; Org-mode
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'org-install)
+  ;; src blockのhighlightを行う
+  (setq org-src-fontify-natively t)
   ;; 見出しの余分な*を消す
   (setq org-hide-leading-stars t)
   ;; 画面端で改行する
