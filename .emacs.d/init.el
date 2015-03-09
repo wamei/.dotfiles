@@ -1688,6 +1688,18 @@ $0"))
     (helm :sources (helm-source-org-headings-for-files (list (concat org-directory org-code-reading-file)))
           :candidate-number-limit 99999
           :buffer "*helm org code reading headings*"))
+  ;; orglink
+  (require 'orglink)
+  (setq orglink-activate-in-modes
+        '(emacs-lisp-mode
+          ruby-mode
+          php-mode
+          web-mode
+          typescript-mode
+          js2-mode
+          markdown-mode
+          json-mode))
+  (global-orglink-mode 1)
   )
 
 ;;
@@ -2109,6 +2121,7 @@ $0"))
 (setcar (cdr (assq 'flymake-mode minor-mode-alist)) " FM")
 (setcar (cdr (assq 'yas-minor-mode minor-mode-alist)) " YS")
 (setcar (cdr (assq 'eldoc-mode minor-mode-alist)) " EL")
+(setcar (cdr (assq 'orglink-mode minor-mode-alist)) " OL")
 (setcar (cdr (assq 'orgtbl-mode minor-mode-alist)) " OT")
 (setcar (cdr (assq 'undo-tree-mode minor-mode-alist)) "")
 (setcar (cdr (assq 'rainbow-mode minor-mode-alist)) "")
