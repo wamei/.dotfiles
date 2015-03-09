@@ -1369,18 +1369,13 @@ or when `helm-pattern' is equal to \"~/\"."
 (defun helm-ff-auto-expand-to-home-or-root ()
   "Allow expanding to home/user directory or root or text yanked after pattern."
   (when (and (helm-file-completion-source-p)
-             (string-match
-              "/\\$.*/\\|/\\./\\|/\\.\\./\\|/~.*/\\|//\\|\\(/[[:alpha:]]:/\\|\\s\\+\\)"
-              helm-pattern)
+             (string-match "/\\./\\|/\\.\\./\\|/~.*/\\|//\\|\\(/[[:alpha:]]:/\\|\\s\\+\\)"
+                           helm-pattern)
              (with-current-buffer (window-buffer (minibuffer-window)) (eolp))
              (not (string-match helm-ff-url-regexp helm-pattern)))
     (let* ((match (match-string 0 helm-pattern))
            (input (cond ((string= match "/./") default-directory)
                         ((string= helm-pattern "/../") "/")
-                        ((string-match-p "\\`/\\$" match)
-                         (let ((sub (substitute-in-file-name match)))
-                           (if (file-directory-p sub)
-                               sub (replace-regexp-in-string "/\\'" "" sub))))
                         (t (expand-file-name
                             (helm-substitute-in-filename helm-pattern)
                             ;; [Windows] On UNC paths "/" expand to current machine,
@@ -1474,9 +1469,7 @@ purpose."
     ;; In some rare cases tramp can return a nil input,
     ;; so be sure pattern is a string for safety (Issue #476).
     (unless pattern (setq pattern ""))
-    (cond ((string-match "\\`\\$" pattern)
-           (substitute-in-file-name pattern))
-          ((string= pattern "") "")
+    (cond ((string= pattern "") "")
           ((string-match "\\`[.]\\{1,2\\}/\\'" pattern)
            (expand-file-name pattern))
           ((string-match ".*\\(~?/?[.]\\{1\\}/\\)\\'" pattern)
@@ -1879,7 +1872,6 @@ return FNAME prefixed with [?]."
 Return candidates prefixed with basename of `helm-input' first."
   (if (or (and (file-directory-p helm-input)
                (string-match "/\\'" helm-input))
-          (string-match "\\`\\$" helm-input)
           (null candidates))
       candidates
       (let* ((c1        (car candidates))
@@ -1998,7 +1990,6 @@ Return candidates prefixed with basename of `helm-input' first."
 
 (defun helm-ff-gnus-attach-files (_candidate)
   "Run `gnus-dired-attach' on `helm-marked-candidates' or CANDIDATE."
-  (require 'gnus-dired)
   (let ((flist (helm-marked-candidates :with-wildcard t)))
     (gnus-dired-attach flist)))
 

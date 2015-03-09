@@ -120,27 +120,22 @@
       (string-match helm-pattern (bookmark-location candidate))
     (string-match helm-pattern candidate)))
 
-(defun helm-bookmark-toggle-filename-1 (_candidate)
-  (let* ((real (helm-get-selection helm-buffer))
-         (trunc (if (> (string-width real) bookmark-bmenu-file-column)
-                    (helm-substring real bookmark-bmenu-file-column)
-                    real))
-         (loc (bookmark-location real)))
-    (setq helm-bookmark-show-location (not helm-bookmark-show-location))
-    (helm-force-update (if helm-bookmark-show-location
-                           (concat (regexp-quote trunc)
-                                   " +"
-                                   (regexp-quote
-                                    (if (listp loc) (car loc) loc)))
-                           real))))
-
 (defun helm-bookmark-toggle-filename ()
   "Toggle bookmark location visibility."
   (interactive)
   (with-helm-alive-p
-    (helm-attrset 'toggle-filename
-                  '(helm-bookmark-toggle-filename-1 . never-split))
-    (helm-execute-persistent-action 'toggle-filename)))
+    (let* ((real (helm-get-selection helm-buffer))
+           (trunc (if (> (string-width real) bookmark-bmenu-file-column)
+                      (helm-substring real bookmark-bmenu-file-column)
+                    real))
+           (loc (bookmark-location real)))
+      (setq helm-bookmark-show-location (not helm-bookmark-show-location))
+      (helm-force-update (if helm-bookmark-show-location
+                             (concat (regexp-quote trunc)
+                                     " +"
+                                     (regexp-quote
+                                      (if (listp loc) (car loc) loc)))
+                           real)))))
 
 (defun helm-bookmark-jump (candidate)
   "Jump to bookmark from keyboard."

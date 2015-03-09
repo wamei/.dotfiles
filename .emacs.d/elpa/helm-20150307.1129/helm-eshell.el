@@ -32,7 +32,6 @@
 (declare-function eshell-send-input "esh-mode" (&optional use-region queue-p no-newline))
 (declare-function eshell-bol "esh-mode")
 (declare-function eshell-parse-arguments "esh-arg" (beg end))
-(declare-function eshell-backward-argument "esh-mode" (&optional arg))
 
 (defvar helm-eshell-history-map
   (let ((map (make-sparse-keymap)))
@@ -177,11 +176,9 @@ The function that call this should set `helm-ec-target' to thing at point."
          (beg (save-excursion (eshell-bol) (point)))
          (args (catch 'eshell-incomplete
                  (eshell-parse-arguments beg end)))
-         (target
-          (buffer-substring-no-properties
-           (save-excursion
-             (eshell-backward-argument 1) (point))
-           end))
+         ;; Use thing-at-point instead of last args value
+         ;; to exclude possible delimiters e.g "(".
+         (target (thing-at-point 'symbol))
          (first (car args)) ; Maybe lisp delimiter "(".
          last) ; Will be the last but parsed by pcomplete.
     (setq helm-ec-target (or target " ")

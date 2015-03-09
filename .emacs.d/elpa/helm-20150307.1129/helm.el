@@ -1600,7 +1600,6 @@ in the source where point is."
            (setq helm-quit t)
            (exit-minibuffer)
            (keyboard-quit)
-           ;; See comment about this in `with-local-quit'.
            (eval '(ignore nil)))))
 
 (defun helm-compose (arg-lst func-lst)
@@ -1643,18 +1642,6 @@ This is used in transformers to modify candidates list."
     (apply 'helm-funcall-with-source source
            (lambda (&rest oargs) (helm-compose oargs funcs))
            args)))
-
-(defun helm-stringify (str-or-sym)
-  "Get string of STR-OR-SYM."
-  (if (stringp str-or-sym)
-      str-or-sym
-    (symbol-name str-or-sym)))
-
-(defun helm-symbolify (str-or-sym)
-  "Get symbol of STR-OR-SYM."
-  (if (symbolp str-or-sym)
-      str-or-sym
-    (intern str-or-sym)))
 
 
 ;; Core: entry point
@@ -2495,16 +2482,8 @@ It will override `helm-map' with the local map of current source.
 If no map is found in current source do nothing (keep previous map)."
   (with-helm-buffer
     (helm-aif (assoc-default 'keymap (helm-get-current-source))
-        ;; We need the timer to leave enough time
-        ;; to helm to setup its buffer when changing source
-        ;; from a recursive minibuffer.
-        ;; e.g C-x C-f M-y C-g
-        ;; => *find-files have now the bindings of *kill-ring.
-        (run-with-idle-timer
-         0.01 nil
-         (lambda ()
-           (with-current-buffer (window-buffer (minibuffer-window))
-             (setq minor-mode-overriding-map-alist `((helm--minor-mode . ,it)))))))))
+        (with-current-buffer (window-buffer (minibuffer-window))
+          (setq minor-mode-overriding-map-alist `((helm--minor-mode . ,it)))))))
 
 ;;; Prevent loosing focus when using mouse.
 ;;
@@ -2816,7 +2795,7 @@ e.g helm.el$
     => \"[^h]*h[^e]*e[^l]*l[^m]*m[^.]*[.][^e]*e[^l]*l$\"
     ^helm.el$
     => \"helm[.]el$\"."
-  (let ((ls (split-string-and-unquote pattern "")))
+  (let ((ls (split-string pattern "" t)))
     (if (string= "^" (car ls))
         ;; Exact match.
         (mapconcat (lambda (c)
@@ -2972,7 +2951,7 @@ sort on the real part."
   "The default function to highlight matches in fuzzy matching.
 It is meant to use with `filter-one-by-one' slot."
   (let* ((pair (and (consp candidate) candidate))
-         (display (helm-stringify (if pair (car pair) candidate)))
+         (display (if pair (car pair) candidate))
          (real (cdr pair)))
     (with-temp-buffer
       (insert display)
@@ -3962,12 +3941,8 @@ don't exit and send message 'no match'."
                         (unless (if minibuffer-completing-file-name
                                     (and minibuffer-completion-predicate
                                          (funcall minibuffer-completion-predicate sel))
-                                    (and (stringp sel)
-                                         ;; SEL may be a cons cell when helm-comp-read
-                                         ;; is called directly with a collection composed
-                                         ;; of (display . real) and real is a cons cell.
-                                         (try-completion sel minibuffer-completion-table
-                                                         minibuffer-completion-predicate)))
+                                    (try-completion sel minibuffer-completion-table
+                                                    minibuffer-completion-predicate))
                           unknown))
                     (eq minibuffer-completion-confirm t))
                (minibuffer-message " [No match]"))

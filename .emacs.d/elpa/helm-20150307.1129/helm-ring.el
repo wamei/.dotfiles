@@ -59,20 +59,21 @@ If nil or zero (disabled), don't truncate candidate, show all."
   "Keymap for `helm-show-kill-ring'.")
 
 (defvar helm-source-kill-ring
-  (helm-build-sync-source "Kill Ring"
-    :init (lambda () (helm-attrset 'last-command last-command))
-    :candidates #'helm-kill-ring-candidates
-    :filtered-candidate-transformer #'helm-kill-ring-transformer
-    :action '(("Yank" . helm-kill-ring-action)
-              ("Delete" . (lambda (candidate)
-                            (cl-loop for cand in (helm-marked-candidates)
-                                     do (setq kill-ring
-                                              (delete cand kill-ring))))))
-    :persistent-action (lambda (_candidate) (ignore))
-    :persistent-help "DoNothing"
-    :keymap helm-kill-ring-map
-    :migemo t
-    :multiline t)
+  `((name . "Kill Ring")
+    (init . (lambda () (helm-attrset 'last-command last-command)))
+    (candidates . helm-kill-ring-candidates)
+    (filtered-candidate-transformer helm-kill-ring-transformer)
+    (action . (("Yank" . helm-kill-ring-action)
+               ("Delete" . (lambda (candidate)
+                             (cl-loop for cand in (helm-marked-candidates)
+                                   do (setq kill-ring
+                                            (delete cand kill-ring)))))))
+    (persistent-action . (lambda (_candidate) (ignore)))
+    (persistent-help . "DoNothing")
+    (keymap . ,helm-kill-ring-map)
+    (last-command)
+    (migemo)
+    (multiline))
   "Source for browse and insert contents of kill-ring.")
 
 (defun helm-kill-ring-candidates ()
@@ -157,32 +158,32 @@ replace with STR as yanked string."
           finally return recip)))
 
 (defvar helm-source-mark-ring
-  (helm-build-sync-source "mark-ring"
-    :candidates #'helm-mark-ring-get-candidates
-    :action '(("Goto line"
-               . (lambda (candidate)
-                   (helm-goto-line (string-to-number candidate))))) 
-    :persistent-action (lambda (candidate)
-                         (helm-goto-line (string-to-number candidate))
-                         (helm-highlight-current-line))
-    :persistent-help "Show this line"))
+  '((name . "mark-ring")
+    (candidates . helm-mark-ring-get-candidates)
+    (action . (("Goto line"
+                . (lambda (candidate)
+                    (helm-goto-line (string-to-number candidate)))))) 
+    (persistent-action . (lambda (candidate)
+                           (helm-goto-line (string-to-number candidate))
+                           (helm-highlight-current-line)))
+    (persistent-help . "Show this line")))
 
 
 ;;; Global-mark-ring
 (defvar helm-source-global-mark-ring
-  (helm-build-sync-source "global-mark-ring"
-    :candidates #'helm-global-mark-ring-get-candidates
-    :action '(("Goto line"
-              . (lambda (candidate)
-                  (let ((items (split-string candidate ":")))
-                    (switch-to-buffer (cl-second items))
-                    (helm-goto-line (string-to-number (car items)))))))
-    :persistent-action (lambda (candidate)
-                         (let ((items (split-string candidate ":")))
-                           (switch-to-buffer (cl-second items))
-                           (helm-goto-line (string-to-number (car items)))
-                           (helm-highlight-current-line)))
-    :persistent-help "Show this line"))
+  '((name . "global-mark-ring")
+    (candidates . helm-global-mark-ring-get-candidates)
+    (action . (("Goto line"
+                . (lambda (candidate)
+                    (let ((items (split-string candidate ":")))
+                      (switch-to-buffer (cl-second items))
+                      (helm-goto-line (string-to-number (car items))))))))
+    (persistent-action . (lambda (candidate)
+                           (let ((items (split-string candidate ":")))
+                             (switch-to-buffer (cl-second items))
+                             (helm-goto-line (string-to-number (car items)))
+                             (helm-highlight-current-line))))
+    (persistent-help . "Show this line")))
 
 (defun helm-global-mark-ring-format-buffer (marker)
   (with-current-buffer (marker-buffer marker)
@@ -212,11 +213,11 @@ replace with STR as yanked string."
 ;;;; <Register>
 ;;; Insert from register
 (defvar helm-source-register
-  (helm-build-sync-source "Registers"
-    :candidates #'helm-register-candidates
-    :action-transformer #'helm-register-action-transformer
-    :multiline t
-    :action nil)
+  '((name . "Registers")
+    (candidates . helm-register-candidates)
+    (action-transformer . helm-register-action-transformer)
+    (multiline)
+    (action))
   "See (info \"(emacs)Registers\")")
 
 (defun helm-register-candidates ()
