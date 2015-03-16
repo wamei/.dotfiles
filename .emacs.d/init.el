@@ -84,18 +84,13 @@
 (global-set-key (kbd "C-c C-u") 'pop-tag-mark)
 
 (global-set-key (kbd "C-q") nil)
-(defhydra hydra-expand-region (global-map "C-q")
-  "expand-region"
-  ("C-q" er/expand-region "expand")
-  ("C-z" er/contract-region "contract")
-  ("C-a" mc/mark-all-like-this-dwim "mark all")
-  )
-
+(global-set-key (kbd "C-q C-q") 'er/expand-region)
 (global-set-key (kbd "C-q C-l") 'mc/edit-lines)
 (global-set-key (kbd "C-q C-r") 'vr/mc-mark)
 (global-set-key (kbd "C-q C-a") 'mc/mark-all-like-this-dwim)
 (global-set-key (kbd "C-q C-s") 'mc/mark-all-symbols-like-this)
 (global-set-key (kbd "C-q C-d") 'mc/mark-all-symbols-like-this-in-defun)
+(global-set-key (kbd "C-q C-n") 'mc/mark-more-like-this-extended)
 (global-set-key (kbd "C-q C-m") 'my-mc-put-cursor)
 
 (global-set-key (kbd "C-x b")   'helm-bookmarks)
@@ -121,7 +116,6 @@
 (global-set-key (kbd "C-x n r") 'narrow-to-region)
 
 (global-set-key (kbd "C-x C-b") 'helm-filelist++)
-(global-set-key (kbd "C-x C-i")   'dired-jump-to-git-project-directory)
 
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
@@ -1126,6 +1120,12 @@
       (if (string= git-root-dir "")
           (dired-jump)
         (dired git-root-dir))))
+  (defun dired-jump-to-current-or-git-project-directory (n)
+    (interactive "p")
+    (if (= n 1)
+        (dired-jump)
+      (dired-jump-to-git-project-directory)))
+  (global-set-key (kbd "C-x C-j") 'dired-jump-to-current-or-git-project-directory)
   )
 
 ;;
