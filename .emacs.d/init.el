@@ -1378,33 +1378,6 @@
   )
 
 ;;
-;; hl-line+.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'hl-line+ nil t)
-  (toggle-hl-line-when-idle)
-  (setq hl-line-idle-interval 3)
-  (set-face-background 'hl-line "#035f56")
-  (defun toggle-hl-line-mode ()
-    (interactive)
-    (if global-hl-line-mode
-        (global-hl-line-mode -1)
-      (global-hl-line-mode 1))
-    )
-  )
-
-;;
-;; rainbow.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'rainbow-mode nil t)
-  (add-hook 'js-mode-hook 'rainbow-mode)
-  (add-hook 'css-mode-hook 'rainbow-mode)
-  (add-hook 'scss-mode-hook 'rainbow-mode)
-  (add-hook 'php-mode-hook 'rainbow-mode)
-  (add-hook 'html-mode-hook 'rainbow-mode)
-  (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
-  )
-
-;;
 ;; undo-tree.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'undo-tree nil t)
@@ -2111,6 +2084,53 @@ $0"))
                   (region-or-read-string "Wikipedia: ")))
     (eww-browse-url (format "http://ja.wikipedia.org/wiki/%s"
                             (upcase (url-hexify-string str)))))
+  )
+
+;;
+;; hl-line+.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'hl-line+ nil t)
+  (toggle-hl-line-when-idle)
+  (setq hl-line-idle-interval 3)
+  (set-face-background 'hl-line "#035f56")
+  (defun toggle-hl-line-mode ()
+    (interactive)
+    (if global-hl-line-mode
+        (global-hl-line-mode -1)
+      (global-hl-line-mode 1))
+    )
+  )
+
+;;
+;; rainbow.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'rainbow-mode nil t)
+  (add-hook 'js-mode-hook 'rainbow-mode)
+  (add-hook 'css-mode-hook 'rainbow-mode)
+  (add-hook 'scss-mode-hook 'rainbow-mode)
+  (add-hook 'php-mode-hook 'rainbow-mode)
+  (add-hook 'html-mode-hook 'rainbow-mode)
+  (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
+  (add-hook 'go-mode-hook 'rainbow-mode)
+  (add-hook 'coffee-mode-hook 'rainbow-mode)
+  )
+
+;;
+;; highlight-thing.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'highlight-thing nil t)
+  (setq highlight-thing-delay-seconds 3)
+  (setq highlight-thing-limit-to-defun t)
+  (set-face-attribute 'highlight-thing nil
+                      :inherit t
+                      :foreground "#4271ae")
+  (add-hook 'emacs-lisp-mode-hook 'highlight-thing-mode)
+  (add-hook 'typescript-mode-hook 'highlight-thing-mode)
+  (add-hook 'php-mode-hook 'highlight-thing-mode)
+  (add-hook 'lisp-interaction-mode-hook 'highlight-thing-mode)
+  (add-hook 'js-mode-hook 'highlight-thing-mode)
+  (add-hook 'go-mode-hook 'highlight-thing-mode)
+  (add-hook 'coffee-mode-hook 'highlight-thing-mode)
   )
 
 ;;
