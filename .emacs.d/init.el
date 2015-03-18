@@ -138,7 +138,7 @@
   t
   ""
   `(
-    (,(kbd "C-z") . switch-to-multi-term)
+    (,(kbd "C-z") . emt-toggle-multi-term)
     (,(kbd "C-M-b") . windmove-left)
     (,(kbd "C-M-f") . windmove-right)
     (,(kbd "C-M-n") . windmove-down)
@@ -1166,6 +1166,7 @@
   (elscreen-start)
   (require 'elscreen-separate-buffer-list)
   (elscreen-separate-buffer-list-mode)
+  (require 'elscreen-multi-term)
   )
 
 ;;
@@ -1288,29 +1289,7 @@
       (setq multi-term-program "bash.exe"))
   (add-to-list 'term-unbind-key-list '"M-x")
   (add-to-list 'term-unbind-key-list '"C-t")
-  (defun init-multi-term (number)
-    (let ((mt-buffer-name "*terminal<1>*"))
-      (multi-term)
-      (with-current-buffer mt-buffer-name
-        (rename-buffer (format "*screen terminal<%d>*" number))))
-    )
-  (defun switch-to-multi-term ()
-    (interactive)
-    (let* ((screen-number (elscreen-get-current-screen))
-           (buffer (get-buffer (format "*screen terminal<%d>*" screen-number))))
-      (cond ((equal buffer (current-buffer))
-             (switch-to-prev-buffer))
-            (buffer
-             (switch-to-buffer buffer))
-            (t
-             (init-multi-term screen-number))))
-    )
-  (defadvice elscreen-kill (before elscreen-kill-with-terminal activate)
-    (let* ((screen-number (elscreen-get-current-screen))
-           (buffer (get-buffer (format "*screen terminal<%d>*" screen-number))))
-      (cond (buffer
-             (kill-buffer buffer))))
-    )
+
   (defadvice term-send-return (after check-cd-action activate)
     (let* ((cmd (term-get-old-input-default))
            (match (string-match-p "$ cd" cmd)))
@@ -1319,20 +1298,20 @@
           (if (equal (length dir) 0)
               (setq dir "~")
             (setq dir (substring dir 1)))
-          (cd dir)))
-      ))
+          (cd dir)))))
+
   (defun term-send-current-directory(&optional dir)
     (interactive)
     (let* ((screen-number (elscreen-get-current-screen))
            (mt-buffer-name (buffer-name (get-buffer (format "*screen terminal<%d>*" screen-number)))))
       (unless dir (setq dir (chomp (shell-command-to-string "pwd"))))
-      (comint-send-string (get-buffer-process mt-buffer-name) (format "cd %s\n" dir)))
-    )
+      (comint-send-string (get-buffer-process mt-buffer-name) (format "cd %s\n" dir))))
+
   (defun term-send-cd ()
     (interactive)
     (call-interactively 'cd)
-    (term-send-current-directory)
-    )
+    (term-send-current-directory))
+
   (defun term-send-forward-char ()
     (interactive)
     (term-send-raw-string "\C-f"))
@@ -1364,7 +1343,7 @@
                (define-key term-raw-map (kbd "M-<backspace>") 'term-send-backward-kill-word)
                (define-key term-raw-map (kbd "M-DEL") 'term-send-backward-kill-word)
                (define-key term-raw-map (kbd "M-h") 'term-send-backward-kill-word)
-               (define-key term-raw-map (kbd "C-t") 'switch-to-multi-term)
+               (define-key term-raw-map (kbd "C-t") 'emt-toggle-multi-term)
                (define-key term-raw-map (kbd "TAB") 'term-send-tab)
                (define-key term-raw-map (kbd "M-p") 'previous-line)
                (define-key term-raw-map (kbd "M-n") 'next-line)
@@ -2123,7 +2102,8 @@ $0"))
   (setq highlight-thing-limit-to-defun t)
   (set-face-attribute 'highlight-thing nil
                       :inherit t
-                      :foreground "#4271ae")
+                      ;:foreground "#4271ae"
+                      :underline t)
   (add-hook 'emacs-lisp-mode-hook 'highlight-thing-mode)
   (add-hook 'typescript-mode-hook 'highlight-thing-mode)
   (add-hook 'php-mode-hook 'highlight-thing-mode)
