@@ -2095,25 +2095,6 @@ $0"))
   )
 
 ;;
-;; highlight-thing.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'highlight-thing nil t)
-  (setq highlight-thing-delay-seconds 3)
-  (setq highlight-thing-limit-to-defun t)
-  (set-face-attribute 'highlight-thing nil
-                      :inherit t
-                      ;:foreground "#4271ae"
-                      :underline t)
-  (add-hook 'emacs-lisp-mode-hook 'highlight-thing-mode)
-  (add-hook 'typescript-mode-hook 'highlight-thing-mode)
-  (add-hook 'php-mode-hook 'highlight-thing-mode)
-  (add-hook 'lisp-interaction-mode-hook 'highlight-thing-mode)
-  (add-hook 'js-mode-hook 'highlight-thing-mode)
-  (add-hook 'go-mode-hook 'highlight-thing-mode)
-  (add-hook 'coffee-mode-hook 'highlight-thing-mode)
-  )
-
-;;
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
 (setcar (cdr (assq 'helm-gtags-mode minor-mode-alist)) " GT")
