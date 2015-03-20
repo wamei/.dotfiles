@@ -1185,8 +1185,8 @@
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-n") 'mc/mmlte--down)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-b") 'mc/mmlte--left)
   (define-key mc/mark-more-like-this-extended-keymap (kbd "C-f") 'mc/mmlte--right)
-  (require 'phi-search-migemo)
-  (define-key mc/keymap (kbd "C-s") 'phi-search-migemo)
+  ;;(require 'phi-search-migemo)
+  (define-key mc/keymap (kbd "C-s") 'phi-search)
   (define-key mc/keymap (kbd "C-r") 'phi-replace)
   (defadvice mc--in-defun (around mc--in-defun-ad activate)
     (setq ad-return-value t))
@@ -1452,8 +1452,6 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'helm-config nil t)
   (require 'helm-descbinds)
-  ;;(require 'helm-migemo)
-  ;;(setq helm-use-migemo t)
   (require 'helm-filelist)
   (require 'helm-gtags)
 
@@ -1943,127 +1941,7 @@ $0"))
   (defun eww-update-header-line-format:override(&rest _))
   (advice-add 'eww-update-header-line-format :override 'eww-update-header-line-format:override)
   (defun eww-render:tab-update (&rest _) (elscreen-tab-update t))
-  (advice-add 'eww-render :after 'eww-render:tab-update)
-  (defvar eww-data)
-  (defun eww-current-url ()
-    "バージョン間の非互換を吸収する。"
-    (if (boundp 'eww-current-url)
-        eww-current-url                   ;emacs24.4
-      (plist-get eww-data :url)))         ;emacs25
-  (defun eww-current-title ()
-    "バージョン間の非互換を吸収する。"
-    (if (boundp 'eww-current-title)
-        eww-current-title                   ;emacs24.4
-      (plist-get eww-data :title)))
-
-  ;; [2014-11-17 Mon]背景・文字色を無効化する
-  (defvar eww-disable-colorize t)
-  (defun shr-colorize-region--disable (orig start end fg &optional bg &rest _)
-    (unless eww-disable-colorize
-      (funcall orig start end fg)))
-  (advice-add 'shr-colorize-region :around 'shr-colorize-region--disable)
-  (advice-add 'eww-colorize-region :around 'shr-colorize-region--disable)
-  (defun eww-disable-color ()
-    "ewwで文字色を反映させない"
-    (interactive)
-    (setq-local eww-disable-colorize t)
-    (eww-reload))
-  (defun eww-enable-color ()
-    "ewwで文字色を反映させる"
-    (interactive)
-    (setq-local eww-disable-colorize nil)
-    (eww-reload))
-
-  ;; 画像を表示させない
-  (defun eww-disable-images ()
-    "ewwで画像表示させない"
-    (interactive)
-    (setq-local shr-put-image-function 'shr-put-image-alt)
-    (eww-reload))
-  (defun eww-enable-images ()
-    "ewwで画像表示させる"
-    (interactive)
-    (setq-local shr-put-image-function 'shr-put-image)
-    (eww-reload))
-  (defun shr-put-image-alt (spec alt &optional flags)
-    (insert alt))
-  (defun eww-mode-hook--disable-image ()
-    (setq-local shr-put-image-function 'shr-put-image-alt))
-  (add-hook 'eww-mode-hook 'eww-mode-hook--disable-image)
-
-  ;; ewwのhelm history
-  (require 'helm)
-  (require 'cl-lib)
-
-  (defun helm-eww-history-candidates ()
-    (cl-loop with hash = (make-hash-table :test 'equal)
-             for b in (buffer-list)
-             when (eq (buffer-local-value 'major-mode b) 'eww-mode)
-             append (with-current-buffer b
-                      (clrhash hash)
-                      (puthash (eww-current-url) t hash)
-                      (cons
-                       (cons (format "%s (%s) <%s>" (eww-current-title) (eww-current-url) b) b)
-                       (cl-loop for pl in eww-history
-                                unless (gethash (plist-get pl :url) hash)
-                                collect
-                                (prog1 (cons (format "%s (%s) <%s>" (plist-get pl :title) (plist-get pl :url) b)
-                                             (cons b pl))
-                                  (puthash (plist-get pl :url) t hash)))))))
-  (defun helm-eww-history-browse (buf-hist)
-    (if (bufferp buf-hist)
-        (switch-to-buffer buf-hist)
-      (switch-to-buffer (car buf-hist))
-      (eww-save-history)
-      (eww-restore-history (cdr buf-hist))))
-  (defvar helm-source-eww-history
-    '((name . "eww history")
-      (candidates . helm-eww-history-candidates)
-      (migemo)
-      (action . helm-eww-history-browse)))
-  (defvaralias 'anything-c-source-eww-history 'helm-source-eww-history)
-  (defun helm-eww-history ()
-    (interactive)
-    (helm :sources 'helm-source-eww-history
-          :buffer "*helm eww*"))
-
-  (define-key eww-mode-map (kbd "H") 'helm-eww-history)
-
-  ;; weblio検索
-  (defun eww-set-start-at (url-regexp search-regexp)
-    "URL-REGEXPにマッチするURLにて、SEARCH-REGEXPの行から表示させる"
-    (when (string-match url-regexp (eww-current-url))
-      (goto-char (point-min))
-      (when (re-search-forward search-regexp nil t)
-        (recenter 0))))
-
-  (defun eww-render--after (&rest _)
-    (eww-set-start-at "www.weblio.jp" "^ *Weblio 辞書")
-    (eww-set-start-at "ejje.weblio.jp" "^ *Weblio 辞書")
-    )
-  (advice-add 'eww-render :after 'eww-render--after)
-
-  ;; weblio
-  (defun weblio (str)
-    (interactive (list
-                  (region-or-read-string "Weblio: ")))
-    (eww-browse-url (format "http://www.weblio.jp/content/%s"
-                            (upcase (url-hexify-string str)))))
-
-  ;; weblio-english
-  (defun weblio-english (str)
-    (interactive (list
-                  (region-or-read-string "Weblio[English]: ")))
-    (eww-browse-url (format "http://ejje.weblio.jp/content/%s"
-                            (upcase (url-hexify-string str)))))
-
-  ;; wikipedia
-  (defun wikipedia (str)
-    (interactive (list
-                  (region-or-read-string "Wikipedia: ")))
-    (eww-browse-url (format "http://ja.wikipedia.org/wiki/%s"
-                            (upcase (url-hexify-string str)))))
-  )
+  (advice-add 'eww-render :after 'eww-render:tab-update))
 
 ;;
 ;; hl-line+.el
@@ -2121,16 +1999,16 @@ $0"))
 ;;
 ;; migemo.el
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'migemo)
-  (setq migemo-command "cmigemo")
-  (setq migemo-options '("-q" "--emacs"))
-  (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
-  (setq migemo-user-dictionary nil)
-  (setq migemo-regex-dictionary nil)
-  (setq migemo-coding-system 'utf-8-unix)
-  (load-library "migemo")
-  (migemo-init)
-  )
+;; (when (require 'migemo)
+;;   (setq migemo-command "cmigemo")
+;;   (setq migemo-options '("-q" "--emacs"))
+;;   (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
+;;   (setq migemo-user-dictionary nil)
+;;   (setq migemo-regex-dictionary nil)
+;;   (setq migemo-coding-system 'utf-8-unix)
+;;   (load-library "migemo")
+;;   (migemo-init)
+;;   )
 
 ;;
 ;; サーバー起動
