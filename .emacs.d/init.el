@@ -139,10 +139,6 @@
   ""
   `(
     (,(kbd "C-z") . emt-toggle-multi-term)
-    (,(kbd "C-M-b") . windmove-left)
-    (,(kbd "C-M-f") . windmove-right)
-    (,(kbd "C-M-n") . windmove-down)
-    (,(kbd "C-M-p") . windmove-up)
     (,(kbd "C-q C-w C-f") . elscreen-next)
     (,(kbd "C-q C-w C-b") . elscreen-previous)
     (,(kbd "C-q C-w n") . elscreen-next)
@@ -1289,6 +1285,7 @@
       (setq multi-term-program "bash.exe"))
   (add-to-list 'term-unbind-key-list '"M-x")
   (add-to-list 'term-unbind-key-list '"C-t")
+  (setq multi-term-scroll-show-maximum-output t)
 
   (defadvice term-send-return (after check-cd-action activate)
     (let* ((cmd (term-get-old-input-default))
