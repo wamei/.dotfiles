@@ -1164,9 +1164,9 @@
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
   (elscreen-start)
+  (require 'elscreen-multi-term)
   (require 'elscreen-separate-buffer-list)
   (elscreen-separate-buffer-list-mode)
-  (require 'elscreen-multi-term)
   )
 
 ;;

@@ -70,7 +70,9 @@
          (buffer (get-buffer (format emt-term-buffer-name screen))))
     (when origin-return
       (cond (buffer
-             (kill-buffer buffer))))))
+             (delete-process buffer)
+             (kill-buffer buffer))))
+    origin-return))
 
 (defun emt-screen-swap:around (origin &rest args)
   "SCREENのSWAP時に対応するTERMを入れ替える."
