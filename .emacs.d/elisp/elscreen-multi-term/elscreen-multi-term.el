@@ -80,11 +80,16 @@
              (previous-screen (elscreen-get-previous-screen))
              (current-buffer (get-buffer (format emt-term-buffer-name current-screen)))
              (previous-buffer (get-buffer (format emt-term-buffer-name previous-screen))))
-        (with-current-buffer current-buffer
-          (rename-buffer (format (concat emt-term-buffer-name "-tmp") previous-screen))
-          (with-current-buffer previous-buffer
-            (rename-buffer (format emt-term-buffer-name current-screen)))
-          (rename-buffer (format emt-term-buffer-name previous-screen)))
+        (if current-buffer
+          (with-current-buffer current-buffer
+            (rename-buffer (format (concat emt-term-buffer-name "-tmp") previous-screen))
+            (when previous-buffer
+              (with-current-buffer previous-buffer
+                (rename-buffer (format emt-term-buffer-name current-screen))))
+            (rename-buffer (format emt-term-buffer-name previous-screen)))
+          (when previous-buffer
+            (with-current-buffer previous-buffer
+              (rename-buffer (format emt-term-buffer-name current-screen)))))
         ))))
 
 (advice-add 'elscreen-kill :around 'emt-screen-kill:around)
