@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: select
+# key: select
+# --
+SELECT ${1:*} FROM ${2:}${3: WHERE $4}$0;

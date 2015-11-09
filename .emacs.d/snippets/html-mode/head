@@ -1,0 +1,7 @@
+# -*- mode: snippet -*-
+# name: head
+# key: head
+# --
+<head>
+    $0
+</head>
