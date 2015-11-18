@@ -126,6 +126,7 @@
 
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
+(global-set-key (kbd "C-M-h")   'c-hungry-backspace)
 
 (global-set-key (kbd "C-S-h")   'kill-whole-line)
 
@@ -1793,7 +1794,7 @@ $0"))
             (lambda ()
               (tide-setup)
               (flycheck-mode t)
-              (setq flycheck-check-syntax-automatically '(save mode-enabled))
+              ;;(setq flycheck-check-syntax-automatically '(save mode-enabled))
               (eldoc-mode t)
               (company-mode-on)
               (add-to-list 'company-backends '(company-tide :with company-yasnippet))
