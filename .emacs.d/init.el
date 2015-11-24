@@ -1731,36 +1731,6 @@ $0"))
       (4 (org-capture nil "M"))
       (t (org-capture nil "m"))))
 
-  ;; code-reading
-  (defvar org-code-reading-software-name nil)
-  ;; ~/memo/code-reading.org に記録する
-  (defvar org-code-reading-file "code-reading.org")
-  (defun org-code-reading-read-software-name ()
-    (set (make-local-variable 'org-code-reading-software-name)
-         (read-string "Code Reading Software: " 
-                      (or org-code-reading-software-name
-                          (file-name-nondirectory
-                           (buffer-file-name))))))
-
-  (defun org-code-reading-get-prefix (lang)
-    (let ((sname (org-code-reading-read-software-name))
-          (fname (file-name-nondirectory
-                           (buffer-file-name))))
-    (concat "[" lang "]"
-            "[" sname "]"
-            (if (not (string= sname fname)) (concat "[" fname "]")))))
-  (defun org-capture-code-reading ()
-    (interactive)
-    (let* ((prefix (org-code-reading-get-prefix (substring (symbol-name major-mode) 0 -5)))
-           (org-capture-templates
-            '(("c" "Code Reading" entry (file+headline (concat org-directory org-code-reading-file) "Code Readings") "** %(identity prefix) %?\n   %a\n   %T")
-              )))
-      (org-capture nil "c")))
-  (defun helm-org-code-reading-headings ()
-    (interactive)
-    (helm :sources (helm-source-org-headings-for-files (list (concat org-directory org-code-reading-file)))
-          :candidate-number-limit 99999
-          :buffer "*helm org code reading headings*"))
   ;; orglink
   (require 'orglink)
   (setq orglink-activate-in-modes
