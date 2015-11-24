@@ -147,7 +147,7 @@
   ""
   `(
     (,(kbd "C-z") . emt-pop-multi-term)
-    (,(kbd "C-x C-j") . dired-jump-to-current-or-project-directory)
+    (,(kbd "C-x C-j") . dired-toggle-current-or-project-directory)
     (,(kbd "C-q n") . elscreen-next)
     (,(kbd "C-q p") . elscreen-previous)
     (,(kbd "C-q c") . elscreen-create)
@@ -1101,12 +1101,77 @@
 ;;----------------------------------------------------------------------------------------------------
 
 ;;
+;; dired.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'dired nil t)
+  (require 'dired-subtree)
+  (require 'dired-toggle)
+  ;; dired-find-alternate-file の有効化
+  (put 'dired-find-alternate-file 'disabled nil)
+  ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
+  (setq dired-dwim-target t)
+  ;; ディレクトリを再帰的にコピーする
+  (setq dired-recursive-copies 'always)
+  ;; diredバッファでC-sした時にファイル名だけにマッチするように
+  (setq dired-isearch-filenames t)
+  ;; lsの設定
+  (require 'ls-lisp)
+  (setq ls-lisp-use-insert-directory-program nil)
+  (setq ls-lisp-dirs-first t)
+
+  (define-key dired-mode-map (kbd "C-c C-s") 'dired-toggle-sudo)
+  (define-key dired-mode-map (kbd "RET")     'dired-find-file)
+  (define-key dired-mode-map [mouse-1]       'dired-find-file)
+  (define-key dired-mode-map [mouse-2]       'dired-find-file)
+  (define-key dired-mode-map (kbd "a")       'dired-find-alternate-file)
+  (define-key dired-mode-map (kbd "^")       'dired-up-directory)
+  (define-key dired-mode-map (kbd "C-<tab>") '(lambda () (interactive) (dired-subtree-up) (dired-subtree-toggle)))
+  (define-key dired-mode-map (kbd "<tab>")   'dired-subtree-toggle)
+  (define-key dired-mode-map (kbd "M-n")     'dired-subtree-next-sibling)
+  (define-key dired-mode-map (kbd "M-p")     'dired-subtree-previous-sibling)
+  (define-key dired-mode-map (kbd "C-M-n")   'dired-subtree-down)
+  (define-key dired-mode-map (kbd "C-M-p")   'dired-subtree-up)
+  (define-key dired-mode-map (kbd "C-b")     'backward-char)
+  (define-key dired-mode-map (kbd "C-f")     'forward-char)
+  (define-key dired-mode-map (kbd "e")       'wdired-change-to-wdired-mode)
+  (define-key dired-mode-map (kbd "M-s f")   nil)
+  (define-key dired-mode-map (kbd "M-s a")   'ag)
+
+  (add-hook 'dired-mode-hook '(lambda () (company-mode -1)))
+
+  (defun dired-toggle-elscreen-tab-update:around (orig &optional force)
+    (cl-letf ((orig-func (symbol-function 'frame-first-window))
+              ((symbol-function 'frame-first-window)
+               (lambda ()
+                 (let ((win (funcall orig-func)))
+                   (if (and (dired-toggle-mode-buffer-p (window-buffer win))
+                            (not (one-window-p)))
+                       (save-excursion
+                         (other-window 1)
+                         (selected-window))
+                     win)))))
+      (funcall orig force)))
+  (advice-add 'elscreen-tab-update :around 'dired-toggle-elscreen-tab-update:around)
+
+  (defun dired-toggle-current-or-project-directory (n)
+    (interactive "p")
+    (cond ((= n 1)
+           (let ((dir (projectile-project-p)))
+             (if dir
+                 (dired-toggle dir)
+               (dired-toggle))))
+          ((= n 4)
+           (dired-jump))
+          (t
+           (projectile-dired))))
+  )
+
+;;
 ;; split-root.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'split-root nil t)
-  (defvar split-root-window-height nil)
-  (defun display-buffer-function--split-root (buf &optional horflag top-left)
-    (let* ((window (split-root-window split-root-window-height horflag top-left)))
+  (defun display-buffer-function--split-root (buf &optional size horflag top-left)
+    (let* ((window (split-root-window size horflag top-left)))
       (set-window-buffer window buf)
       window))
   (setq helm-display-function 'display-buffer-function--split-root)
@@ -1116,55 +1181,15 @@
 ;; popwin.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'popwin nil t)
+  (defun popwin:close-popup-window-if-necessary:around (orign)
+    (let ((last-command nil))
+    (funcall orign)))
+  (advice-add 'popwin:close-popup-window-if-necessary :around 'popwin:close-popup-window-if-necessary:around)
   (setq display-buffer-function 'popwin:display-buffer)
-  (setq popwin:special-display-config '((occur-mode :position bottom :height 0.5)
-                                        (ag-mode :position bottom :height 0.5)))
-  )
-
-;;
-;; dired.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'dired nil t)
-  (require 'dired-subtree)
-  ;; dired-find-alternate-file の有効化
-  (put 'dired-find-alternate-file 'disabled nil)
-  ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
-  (setq dired-dwim-target t)
-  ;; ディレクトリを再帰的にコピーする
-  (setq dired-recursive-copies 'always)
-  ;; diredバッファでC-sした時にファイル名だけにマッチするように
-  (setq dired-isearch-filenames t)
-  ;; ファイルなら別バッファで、ディレクトリなら同じバッファで開く
-  (defun dired-open-in-accordance-with-situation ()
-    (interactive)
-    (cond ((string-match "\\(\\.\\.\\)"
-                         (format "%s" (thing-at-point 'filename)))
-           (dired-find-alternate-file))
-          ((file-directory-p (dired-get-filename))
-           (dired-find-alternate-file))
-          (t
-           (dired-find-file))))
-  (define-key dired-mode-map (kbd "C-c C-s") 'dired-toggle-sudo)
-  (define-key dired-mode-map (kbd "RET")     'dired-find-file)
-  (define-key dired-mode-map (kbd "a")       'dired-find-file)
-  (define-key dired-mode-map (kbd "^")       'dired-up-directory)
-  (define-key dired-mode-map (kbd "C-b")     'backward-char)
-  (define-key dired-mode-map (kbd "C-f")     'forward-char)
-  (define-key dired-mode-map (kbd "e")       'wdired-change-to-wdired-mode)
-  (define-key dired-mode-map (kbd "M-s f")   nil)
-  (define-key dired-mode-map (kbd "M-s a")   'ag)
-  (define-key dired-mode-map (kbd "i")       'dired-subtree-insert)
-  (define-key dired-mode-map (kbd "r")       'dired-subtree-remove)
-  (define-key dired-mode-map (kbd "<tab>")   'dired-subtree-toggle)
-  ;; lsの設定
-  (require 'ls-lisp)
-  (setq ls-lisp-use-insert-directory-program nil)
-  (setq ls-lisp-dirs-first t)
-  (defun dired-jump-to-current-or-project-directory (n)
-    (interactive "p")
-    (if (= n 1)
-        (dired-jump)
-      (projectile-dired)))
+  (push '(occur-mode :position bottom :height 0.5) popwin:special-display-config)
+  (push '(ag-mode :position bottom :height 0.5) popwin:special-display-config)
+  (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
+  (push `("\\*FileTree\\* .*" :regexp t :position left :width 40 :stick t) popwin:special-display-config)
   )
 
 ;;
@@ -1206,11 +1231,6 @@
   (require 'elscreen-multi-term)
   (require 'elscreen-separate-buffer-list)
   (elscreen-separate-buffer-list-mode)
-
-  (defun emt-pop-to-buffer-root (buffer)
-    (select-window (display-buffer-function--split-root buffer))
-    (switch-to-buffer buffer))
-  (setq emt-pop-to-buffer-function 'emt-pop-to-buffer-root)
   )
 
 ;;
@@ -1322,13 +1342,12 @@
   (defun my/magit-quit-session ()
     (interactive)
     (kill-buffer)
-    (jump-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen))))))
+    (jump-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
+    (git-gutter:update-all-windows))
 
   (define-key magit-status-mode-map (kbd "q") 'my/magit-quit-session)
 
-  (add-hook 'magit-mode-hook
-            '(lambda ()
-              (company-mode -1)))
+  (add-hook 'magit-mode-hook '(lambda () (company-mode -1)))
   )
 
 ;;
