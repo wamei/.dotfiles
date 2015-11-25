@@ -1105,6 +1105,7 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'dired nil t)
   (require 'dired-subtree)
+  (require 'dired-rainbow)
   (require 'dired-toggle)
   ;; dired-find-alternate-file の有効化
   (put 'dired-find-alternate-file 'disabled nil)
@@ -1114,6 +1115,8 @@
   (setq dired-recursive-copies 'always)
   ;; diredバッファでC-sした時にファイル名だけにマッチするように
   (setq dired-isearch-filenames t)
+  ;; auto revert
+  (setq dired-auto-revert-buffer t)
   ;; lsの設定
   (require 'ls-lisp)
   (setq ls-lisp-use-insert-directory-program nil)
@@ -1137,21 +1140,7 @@
   (define-key dired-mode-map (kbd "M-s f")   nil)
   (define-key dired-mode-map (kbd "M-s a")   'ag)
 
-  (add-hook 'dired-mode-hook '(lambda () (company-mode -1)))
-
-  (defun dired-toggle-elscreen-tab-update:around (orig &optional force)
-    (cl-letf ((orig-func (symbol-function 'frame-first-window))
-              ((symbol-function 'frame-first-window)
-               (lambda ()
-                 (let ((win (funcall orig-func)))
-                   (if (and (dired-toggle-mode-buffer-p (window-buffer win))
-                            (not (one-window-p)))
-                       (save-excursion
-                         (other-window 1)
-                         (selected-window))
-                     win)))))
-      (funcall orig force)))
-  (advice-add 'elscreen-tab-update :around 'dired-toggle-elscreen-tab-update:around)
+  (add-hook 'dired-mode-hook '(lambda () (company-mode -1) (auto-revert-mode t)))
 
   (defun dired-toggle-current-or-project-directory (n)
     (interactive "p")
@@ -1164,6 +1153,10 @@
            (dired-jump))
           (t
            (projectile-dired))))
+
+  (setq dired-subtree-use-backgrounds nil)
+  (dired-rainbow-define dotfiles "#aaaaaa" "\\..*")
+  (dired-rainbow-define-chmod executable-unix "Green" "-.*x.*")
   )
 
 ;;
@@ -1713,7 +1706,7 @@ $0"))
   ;; 見出しを畳んで表示する
   (setq org-startup-folded nil)
   ;; returnでリンクを飛ぶ
-  (setq org-return-follows-link t)
+  (setq org-return-follows-link nil)
   (setq org-directory "~/org/")
   (setq org-default-notes-file (concat org-directory "notes.org"))
   (setq org-capture-templates

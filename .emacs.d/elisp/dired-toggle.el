@@ -58,11 +58,6 @@
       (dired-hide-details-mode t)
       (toggle-truncate-lines t)
       (dired-toggle-mode 1)
-      (setq dired-buffers
-            (cl-remove-if
-             (lambda (elm)
-               (dired-toggle-mode-buffer-p (cdr elm)))
-             dired-buffers))
       ;; default-directory and dired-actual-switches are set now
       ;; (buffer-local), so we can call dired-readin:
       (unwind-protect
@@ -175,17 +170,41 @@
       (other-window count))))
 (advice-add 'other-window :after 'dired-toggle-other-window:after)
 
+(defun dired-toggle-find-buffer-nocreate:around (orign dirname &optional mode)
+  (let ((dired-buffers (cl-remove-if
+                        (lambda (elm)
+                          (dired-toggle-mode-buffer-p (cdr elm)))
+                        dired-buffers)))
+    (funcall orign dirname mode)))
+(advice-add 'dired-find-buffer-nocreate :around 'dired-toggle-find-buffer-nocreate:around)
+
+(when (require 'elscreen nil t)
+  (defun dired-toggle-elscreen-tab-update:around (orig &optional force)
+    (cl-letf ((orig-func (symbol-function 'frame-first-window))
+              ((symbol-function 'frame-first-window)
+               (lambda ()
+                 (let* ((win (funcall orig-func))
+                       (ret win))
+                   (if (and (dired-toggle-mode-buffer-p (window-buffer win))
+                            (not (one-window-p)))
+                       (save-selected-window
+                         (advice-remove 'other-window 'dired-toggle-other-window:after)
+                         (select-window ret)
+                         (other-window 1)
+                         (setq ret (selected-window))
+                         (advice-add 'other-window :after 'dired-toggle-other-window:after)))
+                   ret))))
+      (funcall orig force)))
+  (advice-add 'elscreen-tab-update :around 'dired-toggle-elscreen-tab-update:around))
+
 ;;;###autoload
 (defun dired-toggle (&optional dir)
   "Toggle current buffer's directory."
   (interactive)
-  (let* ((win (selected-window))
-         (buf (buffer-name))
-         (file (buffer-file-name))
+  (let* ((file (buffer-file-name))
          (dir (or dir (if file (file-name-directory file) default-directory)))
-         (target-buf (dired-toggle-get-or-create-buffer dir))
-         (target-window (get-buffer-window target-buf))
-         (is-current-buffer (eq (current-buffer) target-buf))
+         (buffer (dired-toggle-get-or-create-buffer dir))
+         (is-current-buffer (dired-toggle-mode-buffer-p (current-buffer)))
          (is-shown nil)
          (window))
     (cond ((and (not (one-window-p)) is-current-buffer)
@@ -193,14 +212,15 @@
           ((not is-current-buffer)
            (walk-windows
             (lambda (win)
-              (when (eq (window-buffer win) target-buf)
+              (when (dired-toggle-mode-buffer-p (window-buffer win))
                 (setq window win)
+                (setq buffer (window-buffer win))
                 (setq is-shown t))))
            (cond (is-shown
                   (select-window window)
-                  (switch-to-buffer target-buf))
+                  (switch-to-buffer buffer))
                  (t
-                  (funcall dired-toggle-pop-to-buffer-function target-buf)
+                  (funcall dired-toggle-pop-to-buffer-function buffer)
                   ))))))
 
 (provide 'dired-toggle)
