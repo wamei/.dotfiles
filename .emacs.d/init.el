@@ -411,7 +411,7 @@
    `(helm-buffer-directory ((,class (:foreground "#eeeeec" :background "#4271ae"))))
    ;; Elscreen faces
    `(elscreen-tab-background-face ((,class (:background "#2e2e2e"))))
-   `(elscreen-tab-current-screen-face ((,class (:foreground "#e67128" :background "#1e1e1e"))))
+   `(elscreen-tab-current-screen-face ((,class (:foreground "#eab700" :background "#1e1e1e"))))
    `(elscreen-tab-other-screen-face ((,class (:foreground "#888888" :background "#2e2e2e"))))
    ;; Diff
    `(diff-file-header ((,class (:foreground "#eeeeee" :background "#222222"))))
