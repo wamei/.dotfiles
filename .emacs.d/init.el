@@ -1154,6 +1154,23 @@
           (t
            (projectile-dired))))
 
+  (defun dired-toggle-rotate (original &rest args)
+    (let ((has nil)
+          (dir))
+      (walk-windows
+       (lambda (win)
+         (let ((buffer (window-buffer win)))
+           (when (dired-toggle-mode-buffer-p buffer)
+             (setq has t)
+             (with-current-buffer buffer
+               (setq dir dired-directory))))))
+      (when has
+        (dired-toggle dir)
+        (other-window 1)
+        (shrink-window-horizontally 20)))
+    (apply original args))
+  (advice-add 'dired-toggle-temporary-disable :around 'dired-toggle-rotate)
+
   (setq dired-subtree-use-backgrounds nil)
   (dired-rainbow-define dotfiles "#aaaaaa" "\\..*")
   (dired-rainbow-define-chmod executable-unix "Green" "-.*x.*")
