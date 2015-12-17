@@ -173,22 +173,26 @@
 
 (defun dired-toggle-temporary-disable (original &rest args)
   "Disable dired-toggle while running ORIGINAL function with ARGS."
-  (let ((has nil)
+  (let ((window nil)
         (dir))
-    (walk-windows
-     (lambda (win)
-       (let ((buffer (window-buffer win)))
-         (when (dired-toggle-mode-buffer-p buffer)
-           (setq has t)
-           (with-current-buffer buffer
-             (setq dir dired-directory))))))
-    (when has
-      (dired-toggle dir)
-      (dired-toggle-action-quit))
+    (save-window-excursion
+      (walk-windows
+       (lambda (win)
+         (let ((buffer (window-buffer win)))
+           (when (dired-toggle-mode-buffer-p buffer)
+             (setq window win)
+             (with-current-buffer buffer
+               (setq dir dired-directory)))))))
+    (when window (delete-window window))
+    (advice-remove 'other-window 'dired-toggle-other-window:after)
+    (advice-remove 'select-window 'dired-toggle-select-window:around)
     (apply original args)
-    (when (and (not (dired-toggle-mode-buffer-p (window-buffer (selected-window)))) has)
+    (advice-add 'other-window :after 'dired-toggle-other-window:after)
+    (advice-add 'select-window :around 'dired-toggle-select-window:around)
+    (when (and (not (dired-toggle-mode-buffer-p (window-buffer (selected-window)))) window)
       (dired-toggle dir)
-      (other-window 1))))
+      (other-window 1))
+    ))
 
 (defun dired-toggle-other-window:after (count &optional all-frames)
   "Skip dired file tree window."
