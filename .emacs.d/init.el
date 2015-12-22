@@ -116,8 +116,7 @@
 (global-set-key (kbd "C-x m s")   'helm-org-agenda-files-headings)
 (global-set-key (kbd "C-x m o")   'org-capture)
 (global-set-key (kbd "C-x m m")   'org-capture-memo)
-(global-set-key (kbd "C-x m c")   'org-capture-code-reading)
-(global-set-key (kbd "C-x m h")   'helm-org-code-reading-headings)
+(global-set-key (kbd "C-x m t")   'generate-buffer)
 
 (global-set-key (kbd "C-x n n") 'linum-mode)
 (global-set-key (kbd "C-x n r") 'narrow-to-region)
@@ -909,6 +908,11 @@
     ))
 
 (read-scratch-data)
+
+;; tmp buffer作成
+(defun generate-buffer ()
+  (interactive)
+  (switch-to-buffer (make-temp-name "*scratch* ")))
 
 ;; 設定ファイル再読み込み
 (defun reload-init-file (arg)
