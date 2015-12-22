@@ -912,7 +912,9 @@
 ;; tmp buffer作成
 (defun generate-buffer ()
   (interactive)
-  (switch-to-buffer (make-temp-name "*scratch* ")))
+  (switch-to-buffer (make-temp-name "*scratch* "))
+  (org-mode)
+  (whitespace-mode))
 
 ;; 設定ファイル再読み込み
 (defun reload-init-file (arg)
