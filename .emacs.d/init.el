@@ -1709,6 +1709,8 @@ $0"))
   (setq org-src-fontify-natively t)
   ;; 見出しの余分な*を消す
   (setq org-hide-leading-stars t)
+  ;; indent-mode
+  (setq org-startup-indented t)
   ;; 画面端で改行する
   (setq org-startup-truncated nil)
   ;; 見出しを畳んで表示する
@@ -1719,8 +1721,8 @@ $0"))
   (setq org-default-notes-file (concat org-directory "notes.org"))
   (setq org-capture-templates
       '(
-        ("m" "Memo" entry (file+headline nil "Memos") "** %?\n   %T")
-        ("M" "Memo(with file link)" entry (file+headline nil "Memos") "** %?\n   %a\n   %T")
+        ("m" "Memo" entry (file+headline nil "Memos") "** %?\n%T")
+        ("M" "Memo(with file link)" entry (file+headline nil "Memos") "** %?\n%a\n%T")
         ))
   ;; agendaを使う
   (setq org-agenda-files (list org-directory))
