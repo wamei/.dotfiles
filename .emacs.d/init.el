@@ -1112,7 +1112,6 @@
 (when (require 'dired nil t)
   (require 'dired-subtree)
   (require 'dired-rainbow)
-  (require 'dired-toggle)
   ;; dired-find-alternate-file の有効化
   (put 'dired-find-alternate-file 'disabled nil)
   ;; diredを2つのウィンドウで開いている時に、デフォルトの移動orコピー先をもう一方のdiredで開いているディレクトリにする
@@ -1148,6 +1147,7 @@
 
   (add-hook 'dired-mode-hook '(lambda () (company-mode -1) (auto-revert-mode t)))
 
+  ;; (require 'dired-toggle)
   (defun dired-toggle-current-or-project-directory (n)
     (interactive "p")
     (let ((dir (projectile-project-p)))
@@ -1157,10 +1157,11 @@
              (if dir
                  (projectile-dired)
                (dired-jump)))
-            (t
-             (if dir
-                 (dired-toggle dir)
-               (dired-toggle))))))
+            ;; (t
+            ;;  (if dir
+            ;;      (dired-toggle dir)
+            ;;    (dired-toggle)))
+            )))
 
   (setq dired-subtree-use-backgrounds nil)
   (dired-rainbow-define dotfiles "#aaaaaa" "\\..*")
