@@ -1753,9 +1753,9 @@ $0"))
 ;; flycheck.el
 ;;----------------------------------------------------------------------------------------------------
 (add-hook 'after-init-hook #'global-flycheck-mode)
-(eval-after-load 'flycheck
-  '(custom-set-variables
-   '(flycheck-display-errors-function #'flycheck-pos-tip-error-messages)))
+(custom-set-variables '(flycheck-pos-tip-timeout 3600))
+(with-eval-after-load 'flycheck
+  (flycheck-pos-tip-mode))
 
 ;;
 ;; which-key.el
