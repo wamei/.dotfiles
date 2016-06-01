@@ -1134,7 +1134,7 @@
   (define-key dired-mode-map (kbd "a")       'dired-find-alternate-file)
   (define-key dired-mode-map (kbd "^")       'dired-up-directory)
   (define-key dired-mode-map (kbd "C-<tab>") '(lambda () (interactive) (dired-subtree-up) (dired-subtree-toggle)))
-  (define-key dired-mode-map (kbd "<tab>")   'dired-subtree-toggle)
+  (define-key dired-mode-map (kbd "C-i")   'dired-subtree-toggle)
   (define-key dired-mode-map (kbd "M-n")     'dired-subtree-next-sibling)
   (define-key dired-mode-map (kbd "M-p")     'dired-subtree-previous-sibling)
   (define-key dired-mode-map (kbd "C-M-n")   'dired-subtree-down)
