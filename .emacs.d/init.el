@@ -46,19 +46,14 @@
 (global-set-key (kbd "C-e")     'mwim-end-of-line-or-code)
 (global-set-key (kbd "C-h")     nil)
 (global-set-key (kbd "C-r")     'vr/replace)
-(global-set-key (kbd "C-v")     'scroll-up-with-cursor)
 (global-set-key (kbd "C--")     'undo-tree-undo)
 (define-key key-translation-map [?\C-h] [?\C-?])
 
 (global-set-key (kbd "M-b")     'backward-word)
 (global-set-key (kbd "M-f")     'forward-to-word)
 (global-set-key (kbd "M-h")     'backward-kill-word)
-(global-set-key (kbd "M-n")     'forward-list)
-(global-set-key (kbd "M-p")     'backward-list)
-(global-set-key (kbd "M-v")     'scroll-down-with-cursor)
 (global-set-key (kbd "M-x")     'helm-M-x)
 (global-set-key (kbd "M-y")     'helm-show-kill-ring)
-(global-set-key (kbd "M-;")     'comment-or-uncomment-region)
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
 (global-set-key (kbd "M-s s")   'helm-swoop)
@@ -111,13 +106,6 @@
 (global-set-key (kbd "C-x e v")   'rotate:even-vertical)
 (global-set-key (kbd "C-x e h")   'rotate:even-horizontal)
 
-(global-set-key (kbd "C-x m") nil)
-(global-set-key (kbd "C-x m a")   'org-agenda)
-(global-set-key (kbd "C-x m s")   'helm-org-agenda-files-headings)
-(global-set-key (kbd "C-x m o")   'org-capture)
-(global-set-key (kbd "C-x m m")   'org-capture-memo)
-(global-set-key (kbd "C-x m t")   'generate-buffer)
-
 (global-set-key (kbd "C-x n n") 'linum-mode)
 (global-set-key (kbd "C-x n r") 'narrow-to-region)
 
@@ -126,8 +114,6 @@
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
 (global-set-key (kbd "C-M-h")   'c-hungry-backspace)
-
-(global-set-key (kbd "C-S-h")   'kill-whole-line)
 
 (global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 2)))
 (global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   2)))
@@ -171,6 +157,7 @@
 (add-to-list 'auto-mode-alist '("\\.\\(tex\\|ltx\\|cls\\|sty\||clo\\|bbl\\)\\'" . latex-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\)\\'" . web-mode))
 
+;; org table mode
 (require 'org)
 (require 'org-table)
 (add-hook 'lisp-interaction-mode-hook 'turn-on-orgtbl)
@@ -214,8 +201,8 @@
   (setq mac-option-modifier (quote meta))
 
   (require 'shell)
-  (setq explicit-shell-file-name "zsh")
-  (setq shell-file-name "zsh")
+  (setq explicit-shell-file-name "bash")
+  (setq shell-file-name "bash")
   )
 
 ;;
@@ -325,9 +312,6 @@
       (set-frame-alpha frame-alpha)
       (setq ns-pop-up-frames nil)
       (scroll-bar-mode 0)
-      ;; (when (require 'yascroll nil t)
-      ;;   (global-yascroll-bar-mode 1)
-      ;;   )
       ))
 (when tool-bar-mode (tool-bar-mode 0))
 (when menu-bar-mode (menu-bar-mode 0))
@@ -637,14 +621,6 @@
 ;;
 ;; フォント関係
 ;;----------------------------------------------------------------------------------------------------
-(set-language-environment       "Japanese")
-(prefer-coding-system           'utf-8)
-(setq buffer-file-coding-system 'utf-8)
-(set-buffer-file-coding-system  'utf-8)
-(set-terminal-coding-system     'utf-8)
-(set-keyboard-coding-system     'utf-8)
-(set-clipboard-coding-system    'utf-8)
-
 (set-face-attribute 'default nil :family "Migu 1M" :height 120)
 (set-face-attribute 'variable-pitch nil :family "Migu 1M" :height 120)
 (set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height 120)
@@ -663,21 +639,6 @@
      (if (= (current-column) 0) 1 0)
      -1))
 
-;; 1画面スクロール
-(defun scroll-up-with-cursor()
-  "End of buffer までカーソル移動する scroll-up。"
-  (interactive)
-  (if(= (window-end) (point-max))
-      (move-to-window-line (window-end))
-    (scroll-up (window-body-height))))
-
-(defun scroll-down-with-cursor()
-  "Beginning of buffer までカーソル移動する scroll-down。"
-  (interactive)
-  (if(= (window-start) 1)
-      (move-to-window-line 0)
-    (scroll-down (window-body-height))))
-
 ;; 引数取得用関数
 (defun region-or-read-string (prompt &optional initial history default inherit)
   "regionが指定されているときはその文字列を取得し、それ以外では`read-string'を呼ぶ。"
@@ -687,13 +648,6 @@
         (buffer-substring-no-properties (region-beginning) (region-end))
       (deactivate-mark)
       (message ""))))
-
-;; OS Xの辞書を引く
-(defun look-up-in-OS-X-dictionary (str)
-  (interactive (list
-                (region-or-read-string "Look up in OS X dictionary: ")))
-  (let ((url (concat "dict://" str)))
-    (browse-url url)))
 
 ;; imenu自動再読み込み
 (setq imenu-auto-rescan t)
@@ -726,24 +680,6 @@
         (t
          (setq interprogram-cut-function 'paste-to-tmux)
          (setq interprogram-paste-function 'copy-from-tmux))))
-
-;; 突然の死
-(defun sudden-death (n)
-  "Sudden death generater."
-  (interactive "p")
-  (let* ((str (region-or-read-string "Sudden death : "))
-         (len (string-width str))
-         (l1 "")(l2 "")(n1 (+ (/ len 2) 1))(n2)(ret))
-    (if (= n 1)
-        (setq n2 (/ len 2))
-      (setq n2 (- (/ len 2) 1)))
-    (loop for i from 0 to n1
-          do (setq l1 (concat l1 "人")))
-    (loop for i from 0 to n2
-          do (setq l2 (concat l2 "^Y")))
-    (setq ret (concat "＿" l1 "＿\n＞　" str "　＜\n￣Y" l2 "￣"))
-    (kill-new ret)
-    (message "%s" ret)))
 
 ;; ロックファイルを作らない
 (setq create-lockfiles nil)
@@ -942,32 +878,13 @@
         (t
          "")))
 
-;; grep,ag
-(defun my-ag (arg &optional topdir)
-  (interactive "sgrep find: ")
-  (let ((command))
-    (if topdir
-        (cd topdir))
-    (setq command "ag --nocolor --nogroup --ignore-case --line-numbers ")
-    (setq command (concat command arg))
-    (grep-find command)))
-(defun popup-my-ag-buffer ()
-  (interactive)
-  (let ((buffer (get-buffer "*grep*")))
-    (cond ((and current-prefix-arg buffer)
-           (pop-to-buffer buffer))
-          (t
-           (popwin:close-popup-window)
-           (call-interactively 'my-ag)))
-    )
-  )
-
 ;; Tramp設定
-(unless (eq system-type 'cygwin)
-  (setenv "TMPDIR" "/tmp"))
+(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
+;; (unless (eq system-type 'cygwin)
+;;   (setenv "TMPDIR" "/tmp"))
 
-(defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
-  (let ((vc-handled-backends '(SVN Git))) ad-do-it))
+;; (defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
+;;   (let ((vc-handled-backends '(SVN Git))) ad-do-it))
 
 ;; 非同期shell command
 (defadvice erase-buffer (around erase-buffer-noop)
@@ -1006,83 +923,9 @@
       (ad-deactivate-regexp "erase-buffer-noop"))))
 
 ;;
-;; gtags
-;;----------------------------------------------------------------------------------------------------
-(defun gtags-get-rootpath ()
-  (let (path buffer)
-    (save-excursion
-      (setq buffer (generate-new-buffer (generate-new-buffer-name "*rootdir*")))
-      (set-buffer buffer)
-      (setq n (process-file "global" nil t nil "-pr"))
-      (if (= n 0)
-          (setq path (file-name-as-directory (buffer-substring (point-min)(1- (point-max))))))
-      (kill-buffer buffer))
-    (if (and (fboundp 'tramp-tramp-file-p)
-             (tramp-tramp-file-p default-directory))
-        (with-parsed-tramp-file-name default-directory tr
-          (when path
-            (concat (substring default-directory 0 (* -1 (length tr-localname)))
-                    path)))
-      path)))
-(defun update-gtags (&optional prefix)
-  (interactive "P")
-  (let ((rootdir (gtags-get-rootpath))
-        (args (if prefix "-v" "-iv")))
-    (when rootdir
-      (let* ((default-directory rootdir)
-             (buffer (get-buffer-create "*update GTAGS*")))
-        (save-excursion
-          (set-buffer buffer)
-          (erase-buffer)
-          (let ((result (process-file "gtags" nil buffer nil args)))
-            (if (= 0 result)
-                (message "GTAGS successfully updated.")
-              (message "update GTAGS error with exit status %d" result))))))))
-;;(add-hook 'after-save-hook 'update-gtags)
-
-;;
 ;; view-mode
 ;;----------------------------------------------------------------------------------------------------
 (setq view-read-only t)
-(defvar view-mode-jump-to-definition
-  (lambda ()
-    (interactive)
-    (tide-jump-to-definition)))
-(defun jump-to-definition ()
-  (interactive)
-  (call-interactively view-mode-jump-to-definition)
-  (read-only-mode)
-  )
-(defvar pager-keybind
-      `( ;; vi-like
-        ("h" . backward-word)
-        ("l" . forward-to-word)
-        ("j" . (lambda (arg) (interactive "p") (scroll-up     arg)))
-        ("k" . (lambda (arg) (interactive "p") (scroll-down   arg)))
-        ("n" . next-line)
-        ("p" . previous-line)
-        ("b" . backward-char)
-        ("f" . forward-char)
-        ("u" . scroll-down)
-        ("d" . scroll-up)
-        (" " . scroll-up)
-        ("o" . jump-to-definition)
-        ("i" . pop-tag-mark)
-        ))
-(defun define-many-keys (keymap key-table &optional includes)
-  (let (key cmd)
-    (dolist (key-cmd key-table)
-      (setq key (car key-cmd)
-            cmd (cdr key-cmd))
-      (if (or (not includes) (member key includes))
-        (define-key keymap key cmd))))
-  keymap)
-
-(defun view-mode-hook0 ()
-  (define-many-keys view-mode-map pager-keybind)
-  (define-key view-mode-map " " 'scroll-up))
-(add-hook 'view-mode-hook 'view-mode-hook0)
-
 ;; 書き込み不能なファイルはview-modeで開くように
 (defadvice find-file
   (around find-file-switch-to-view-file (file &optional wild) activate)
@@ -1335,8 +1178,8 @@
 ;; magit.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'magit nil t)
-  (setq magit-last-seen-setup-instructions "1.4.0")
-  (setq magit-diff-refine-hunk 'all)
+  ;; (setq magit-last-seen-setup-instructions "1.4.0")
+  ;; (setq magit-diff-refine-hunk 'all)
   (defadvice magit-status (around magit-fullscreen activate)
     (window-configuration-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
     ad-do-it
@@ -1704,53 +1547,6 @@ $0"))
 (require 'ssh-agent)
 
 ;;
-;; Org-mode
-;;----------------------------------------------------------------------------------------------------
-(when (require 'org-install)
-  ;; src blockのhighlightを行う
-  (setq org-src-fontify-natively t)
-  ;; 見出しの余分な*を消す
-  (setq org-hide-leading-stars t)
-  ;; indent-mode
-  (setq org-startup-indented t)
-  ;; 画面端で改行する
-  (setq org-startup-truncated nil)
-  ;; 見出しを畳んで表示する
-  (setq org-startup-folded nil)
-  ;; returnでリンクを飛ぶ
-  (setq org-return-follows-link nil)
-  (setq org-directory "~/org/")
-  (setq org-default-notes-file (concat org-directory "notes.org"))
-  (setq org-capture-templates
-      '(
-        ("m" "Memo" entry (file+headline nil "Memos") "** %?\n%T")
-        ("M" "Memo(with file link)" entry (file+headline nil "Memos") "** %?\n%a\n%T")
-        ))
-  ;; agendaを使う
-  (setq org-agenda-files (list org-directory))
-
-  ;; org-capture-memo
-  (defun org-capture-memo (n)
-    (interactive "p")
-    (case n
-      (4 (org-capture nil "M"))
-      (t (org-capture nil "m"))))
-
-  ;; orglink
-  (require 'orglink)
-  (setq orglink-activate-in-modes
-        '(emacs-lisp-mode
-          ruby-mode
-          php-mode
-          web-mode
-          typescript-mode
-          js2-mode
-          markdown-mode
-          json-mode))
-  (global-orglink-mode 1)
-  )
-
-;;
 ;; flycheck.el
 ;;----------------------------------------------------------------------------------------------------
 (add-hook 'after-init-hook #'global-flycheck-mode)
@@ -1802,11 +1598,6 @@ $0"))
   )
 
 ;;
-;; coffee-mode.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'coffee nil t))
-
-;;
 ;; js2-mode
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'js2 nil t)
@@ -1829,45 +1620,6 @@ $0"))
 ;; markdown-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
-
-;;
-;; AUCTeX
-;;----------------------------------------------------------------------------------------------------
-(setq TeX-default-mode 'japanese-latex-mode)
-(setq japanese-LaTeX-default-style "jsarticle")
-(setq japanese-TeX-command-default "pTeX")
-(setq japanese-LaTeX-command-default "pLaTeX")
-(setq TeX-japanese-process-input-coding-system 'utf-8)
-(setq TeX-japanese-process-output-coding-system 'utf-8)
-(setq preview-image-type 'dvipng)
-(setq preview-default-option-list
-      (quote
-       ("displaymath" "floats" "graphics" "textmath" "footnotes")
-       ))
-(setq TeX-auto-save nil)
-(setq TeX-parse-self t)
-(setq-default TeX-master nil)
-(setq TeX-output-view-style '(("^dvi$" "." "open '%s.pdf'")))
-(setq TeX-view-program-list '(("open" "open %o")))
-(setq TeX-view-program-selection '((output-pdf "open") (output-dvi "open")))
-(add-hook 'LaTeX-mode-hook 'TeX-PDF-mode)
-(add-hook 'LaTeX-mode-hook
-          (function (lambda ()
-                      (setq-local kinsoku-limit 10)
-                      (add-to-list 'TeX-command-list
-                                   '("pdfPlaTeXBib" "platex %t && pbibtex %s && platex %t && platex %t && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run platex, pbibtex and dvipdfmx"))
-                      (add-to-list 'TeX-command-list
-                                   '("pdfPlaTeX" "platex %t && dvipdfmx %d"
-                                     TeX-run-TeX nil (latex-mode) :help "Run platex and dvipdfmx"))
-                      (add-to-list 'TeX-command-list
-                                   '("Open" "open %s.pdf"
-                                     TeX-run-discard-or-function t t :help "open pdf file")))))
-
-
-;; reftex
-(setq reftex-plug-into-AUCTeX t)
-(add-hook 'LaTeX-mode-hook 'turn-on-reftex)
 
 ;;
 ;; php-mode.el
@@ -1931,36 +1683,6 @@ $0"))
   )
 
 ;;
-;; itail.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'itail nil t)
-  (setq itail-fancy-mode-line t)
-  (setq itail-highlight-list
-        '(;; errorとwarningを赤で表示
-          ("[eE]rror\\|[wW]arning" . hi-red-b)
-          ;; HTTPのmethodを緑で表示
-          ("GET\\|POST\\|DELETE\\|PUT" . hi-green-b)
-          ;; IPアドレスを文字列の色で表示
-          ("[0-9]\\{1,3\\}\\.[0-9]\\{1,3\\}\\.[0-9]\\{1,3\\}\\.[0-9]\\{1,3\\}" . font-lock-string-face))))
-
-;;
-;; twittering-mode.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'twittering-mode nil t)
-  (setq twittering-use-master-password t)
-  (setq twittering-private-info-file "~/.emacs.d/twittering-mode.gpg")
-
-  (setq twittering-icon-mode t)
-  (setq twittering-convert-fix-size 30)
-  (setq twittering-timer-interval 120)
-  (setq twittering-status-format "%RT{RT by %S@%s\n}%i %S@%s %p: %@\n%T\n------------------------------------------------------------")
-  (defadvice twittering-update-status-from-pop-up-buffer (around split-root activate)
-    ""
-    (let ((display-buffer-function 'display-buffer-function--split-root)
-          (split-root-window-height 26))
-      ad-do-it))
-  )
-;;
 ;; git-gutter.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'git-gutter nil t)
@@ -1972,39 +1694,13 @@ $0"))
    '(git-gutter:update-interval 1))
   (custom-set-variables
    '(git-gutter:lighter ""))
-  (defun git-gutter:my-original-file-content (file)
-    (let ((file (replace-regexp-in-string (concat (git-root-directory) "/") "" (file-truename file))))
-      (with-temp-buffer
-        (when (zerop (process-file "git" nil t nil "show" (concat "HEAD:" file)))
-          (buffer-substring-no-properties (point-min) (point-max))))))
-  (advice-add 'git-gutter:original-file-content :override 'git-gutter:my-original-file-content)
+  ;; (defun git-gutter:my-original-file-content (file)
+  ;;   (let ((file (replace-regexp-in-string (concat (git-root-directory) "/") "" (file-truename file))))
+  ;;     (with-temp-buffer
+  ;;       (when (zerop (process-file "git" nil t nil "show" (concat "HEAD:" file)))
+  ;;         (buffer-substring-no-properties (point-min) (point-max))))))
+  ;; (advice-add 'git-gutter:original-file-content :override 'git-gutter:my-original-file-content)
   )
-
-;;
-;; eww.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'eww nil t)
-  (defun eww-update-header-line-format:override(&rest _))
-  (advice-add 'eww-update-header-line-format :override 'eww-update-header-line-format:override)
-  (defun eww-render:tab-update (&rest _) (elscreen-tab-update t))
-  (advice-add 'eww-render :after 'eww-render:tab-update)
-  (setq eww-search-prefix "http://www.google.co.jp/search?q=")
-  (defvar eww-disable-colorize t)
-  (defun shr-colorize-region--disable (orig start end fg &optional bg &rest _)
-    (unless eww-disable-colorize
-      (funcall orig start end fg)))
-  (advice-add 'shr-colorize-region :around 'shr-colorize-region--disable)
-  (advice-add 'eww-colorize-region :around 'shr-colorize-region--disable)
-  (defun eww-disable-color ()
-    "eww で文字色を反映させない"
-    (interactive)
-    (setq-local eww-disable-colorize t)
-    (eww-reload))
-  (defun eww-enable-color ()
-    "eww で文字色を反映させる"
-    (interactive)
-    (setq-local eww-disable-colorize nil)
-    (eww-reload)))
 
 ;;
 ;; hl-line+.el
@@ -2066,20 +1762,6 @@ $0"))
 ;;----------------------------------------------------------------------------------------------------
 (require 'bracketed-paste)
 (bracketed-paste-enable)
-
-;;
-;; migemo.el
-;;----------------------------------------------------------------------------------------------------
-;; (when (require 'migemo)
-;;   (setq migemo-command "cmigemo")
-;;   (setq migemo-options '("-q" "--emacs"))
-;;   (setq migemo-dictionary "/usr/local/share/migemo/utf-8/migemo-dict")
-;;   (setq migemo-user-dictionary nil)
-;;   (setq migemo-regex-dictionary nil)
-;;   (setq migemo-coding-system 'utf-8-unix)
-;;   (load-library "migemo")
-;;   (migemo-init)
-;;   )
 
 ;;
 ;; サーバー起動
