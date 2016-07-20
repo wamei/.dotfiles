@@ -630,9 +630,8 @@
 ;; その他設定
 ;;----------------------------------------------------------------------------------------------------
 ;; 文字コード
+(set-language-environment "Japanese")
 (prefer-coding-system 'utf-8)
-(setq coding-system-for-read 'utf-8)
-(setq coding-system-for-write 'utf-8)
 
 ;; GCのしきい値変更
 (setq gc-cons-threshold 40960000)
