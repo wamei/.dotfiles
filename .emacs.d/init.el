@@ -98,13 +98,14 @@
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'emt-pop-multi-term)
 
-(global-set-key (kbd "C-x e") nil)
-(global-set-key (kbd "C-x e r")   'resize)
-(global-set-key (kbd "C-x e a")   'set-frame-alpha-interactive)
-(global-set-key (kbd "C-x e l")   'rotate-layout)
-(global-set-key (kbd "C-x e w")   'rotate-window)
-(global-set-key (kbd "C-x e v")   'rotate:even-vertical)
-(global-set-key (kbd "C-x e h")   'rotate:even-horizontal)
+(defhydra hydra-rotate (global-map "C-c l")
+  "rotate"
+  ("l" rotate-layout "layout")
+  ("w" rotate-window "window")
+  ("h" rotate:even-horizontal "horizontal")
+  ("v" rotate:even-vertical "vertical")
+  ("q" nil "quit")
+  )
 
 (global-set-key (kbd "C-x n n") 'linum-mode)
 (global-set-key (kbd "C-x n r") 'narrow-to-region)
@@ -217,95 +218,6 @@
   (when (<= n 0) (setq n 0))
   (setq frame-alpha n)
   (set-frame-parameter nil 'alpha frame-alpha))
-(defun set-frame-alpha-interactive ()
-  "Control frame alpha."
-  (interactive)
-  (let (c)
-    (catch 'end-flag
-      (while t
-        (message "Frame alpha [%d]" frame-alpha)
-        (condition-case err
-            (setq c (read-key-sequence nil))
-          (error
-           (throw 'end-flag t)))
-        (cond ((equal c "p")
-               (set-frame-alpha (- frame-alpha 1)))
-              ((equal c "n")
-               (set-frame-alpha (+ frame-alpha 1)))
-              ((equal c "d")
-               (set-frame-alpha 85))
-              ((equal c "1")
-               (set-frame-alpha 10))
-              ((equal c "2")
-               (set-frame-alpha 20))
-              ((equal c "3")
-               (set-frame-alpha 30))
-              ((equal c "4")
-               (set-frame-alpha 40))
-              ((equal c "5")
-               (set-frame-alpha 50))
-              ((equal c "6")
-               (set-frame-alpha 60))
-              ((equal c "7")
-               (set-frame-alpha 70))
-              ((equal c "8")
-               (set-frame-alpha 80))
-              ((equal c "9")
-               (set-frame-alpha 90))
-              ((equal c "0")
-               (set-frame-alpha 100))
-              ((equal c "\C-g")
-               (message "Quit")(throw 'end-flag t)))))))
-
-;;リサイズ用関数
-(defun resize ()
-  "Control frame and window size."
-  (interactive)
-  (let (c)
-    (catch 'end-flag
-      (while t
-        (let ((window-obj (selected-window))
-              (dx (if (= (nth 0 (window-edges)) 0) 1
-                    -1))
-              (dy (if (= (nth 1 (window-edges)) 0) 1
-                    -1))
-              )
-        (message "Window[%dx%d]"
-                 (window-width)
-                 (window-height))
-        (condition-case err
-            (setq c (read-key-sequence nil))
-          (error
-           (throw 'end-flag t)))
-        (cond ((equal c "f")
-               (enlarge-window-horizontally dx))
-              ((equal c "b")
-               (shrink-window-horizontally dx))
-              ((equal c "p")
-               (shrink-window dy))
-              ((equal c "n")
-               (enlarge-window dy))
-              ((equal c "\C-p")
-               (windmove-up))
-              ((equal c "\C-n")
-               (windmove-down))
-              ((equal c "\C-f")
-               (windmove-right))
-              ((equal c "\C-b")
-               (windmove-left))
-              ((equal c "\C-x0")
-               (delete-window))
-              ((equal c "\C-x1")
-               (delete-other-window))
-              ((equal c "\C-x2")
-               (split-window-vertically))
-              ((equal c "\C-x3")
-               (split-window-horizontally))
-              ((equal c "\C-x\C-b")
-               (helm-mini))
-              ((equal c "\C-g")
-               (message "Quit")(throw 'end-flag t))))))))
-
 
 (if window-system
     (progn
