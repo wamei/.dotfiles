@@ -533,10 +533,11 @@
 ;;
 ;; フォント関係
 ;;----------------------------------------------------------------------------------------------------
-(set-face-attribute 'default nil :family "Migu 1M" :height 120)
-(set-face-attribute 'variable-pitch nil :family "Migu 1M" :height 120)
-(set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height 120)
-(set-face-attribute 'tooltip nil :family "Migu 1M" :height 110)
+(defvar font-size 140)
+(set-face-attribute 'default nil :family "Migu 1M" :height font-size)
+(set-face-attribute 'variable-pitch nil :family "Migu 1M" :height font-size)
+(set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height font-size)
+(set-face-attribute 'tooltip nil :family "Migu 1M" :height font-size)
 
 ;;
 ;; その他設定
