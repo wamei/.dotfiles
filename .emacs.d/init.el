@@ -1300,7 +1300,7 @@
   (setq helm-buffer-max-length 40)
 
   ;; kill-ring
-  (setq kill-ring-max 50)
+  (setq kill-ring-max 1000)
 
   ;; 自動補完をやめる
   (setq helm-ff-auto-update-initial-value nil)
