@@ -1276,7 +1276,6 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'helm-config nil t)
   (require 'helm-descbinds)
-  (require 'helm-filelist)
   (require 'helm-gtags)
 
   (helm-mode 1)
@@ -1378,6 +1377,24 @@
       :initform
       "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
 
+  (setq helm-locate-command
+        (concat "locate_case=$(echo '%s' | sed 's/-//'); cat /tmp/all.filelist |"
+        ;;(concat "locate_case=$(echo '%s' | sed 's/-//'); locate '' |"
+                "perl -ne \"$(echo '%s' |"
+                "sed -r -e 's/[\\\\ ] /__SpAcE__/g' "
+                "-e 's/^ +//' "
+                "-e 's/ +$//' "
+                "-e 's_/_\\\\&_g' "
+                "-e 's_ +_/'$locate_case' \\&\\& m/_g' "
+                "-e 's_.*_$| = 1; print if (m/&/'$locate_case')_' "
+                "-e 's_m/!_!m/_g' "
+                "-e 's/__SpAcE__/ /g')\" 2> /dev/null |"
+                "head -n " (number-to-string helm-candidate-number-limit)))
+  (defun helm-filelist-real-to-display (candidate)
+    (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+      (abbreviate-file-name candidate)))
+  (setq helm-source-locate (cons '(real-to-display . helm-filelist-real-to-display) helm-source-locate))
+
   (defvar helm-source-normal-buffers-list nil)
   (defvar helm-source-dired-buffers-list nil)
   (defun helm-filelist++ ()
@@ -1396,7 +1413,7 @@
                        helm-source-dired-buffers-list
                        helm-source-recentf
                        helm-source-buffer-not-found
-                       ,(helm-source-filelist))
+                       helm-source-locate)
             :buffer "*helm filelist++*"
             :truncate-lines t)))
   )
