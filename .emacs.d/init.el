@@ -1555,16 +1555,21 @@ $0"))
 ;;
 ;; php-mode.el
 ;;----------------------------------------------------------------------------------------------------
-(require 'php-mode)
-(setq php-mode-force-pear t)
-(require 'php-extras)
-(add-hook 'php-mode-hook (function (lambda () (add-to-list 'company-backends '(php-extras-company company-dabbrev-code company-gtags company-keywords :with company-yasnippet)))))
+(when (require 'php-mode)
+  (setq php-mode-force-pear t)
+  (defun my-php-mode-hook ()
+    (require 'company-php)
+    (add-to-list 'company-backends '(company-ac-php-backend company-dabbrev-code company-gtags company-keywords :with company-yasnippet))
+    )
+  (add-hook 'php-mode-hook 'my-php-mode-hook)
+  )
 
 ;;
 ;; web-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'web-mode)
   (defun my-web-mode-hook ()
+    (require 'company-web-html)
     (setq web-mode-markup-indent-offset 2)
     (setq web-mode-css-indent-offset    4)
     (setq web-mode-code-indent-offset   4)
@@ -1573,8 +1578,9 @@ $0"))
     (setq web-mode-block-padding  0)
     (setq web-mode-enable-auto-pairing nil)
     (setq web-mode-enable-css-colorization t)
+    (add-to-list 'company-backends '(company-web-html company-dabbrev-code company-gtags company-keywords :with company-yasnippet))
     )
-  (add-hook 'web-mode-hook  'my-web-mode-hook)
+  (add-hook 'web-mode-hook 'my-web-mode-hook)
 )
 
 ;;
