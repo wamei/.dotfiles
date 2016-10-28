@@ -624,8 +624,11 @@
 (setq auto-save-default nil)
 
 ;; ファイルを閉じたとき、次に開くときはその場所(point)から開く
-(require 'saveplace)
-(setq-default save-place t)
+(if (and (>= emacs-major-version 24) (>= emacs-minor-version 5))
+    ;; For GNU Emacs 24.5 and older versions.
+    (progn (require 'saveplace) (setq-default save-place t))
+  ;; For GNU Emacs 25.1 and newer versions.
+  (save-place-mode 1))
 (setq save-place-file (concat user-emacs-directory "places"))
 ;; backupファイル保存先
 (setq backup-directory-alist
