@@ -1493,13 +1493,6 @@ $0"))
   (flycheck-pos-tip-mode))
 
 ;;
-;; which-key.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'which-key nil t)
-  (which-key-setup-side-window-bottom)
-  (which-key-mode 1))
-
-;;
 ;; go-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'go-mode nil t)
