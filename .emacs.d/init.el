@@ -24,8 +24,8 @@
 
 ;; load environment value
 (require 'exec-path-from-shell)
-(let ((envs '("PATH" "VIRTUAL_ENV" "GOROOT" "GOPATH")))
-  (exec-path-from-shell-copy-envs envs))
+(when (memq window-system '(mac ns))
+  (exec-path-from-shell-initialize))
 
 ;;; package.el
 (when (require 'package nil t)
@@ -1384,7 +1384,9 @@
         (concat "locate_case=$(echo '%s' | sed 's/-//'); cat /tmp/all.filelist |"
         ;;(concat "locate_case=$(echo '%s' | sed 's/-//'); locate '' |"
                 "perl -ne \"$(echo '%s' |"
-                "sed -r -e 's/[\\\\ ] /__SpAcE__/g' "
+                (if (eq system-type 'darwin)
+                    "sed -E -e 's/[\\\\ ] /__SpAcE__/g' "
+                  "sed -r -e 's/[\\\\ ] /__SpAcE__/g' ")
                 "-e 's/^ +//' "
                 "-e 's/ +$//' "
                 "-e 's_/_\\\\&_g' "

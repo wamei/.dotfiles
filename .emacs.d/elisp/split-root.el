@@ -56,7 +56,7 @@
            (width (- (nth 2 pos) (nth 0 pos)))
            (height (- (nth 3 pos) (nth 1 pos)))
            (horflag (not (car tree)))
-           (children (mapcar '(lambda (child)
+           (children (mapcar #'(lambda (child)
                                 (let ((size (calculate-window-tree child)))
                                   size)) (cddr tree))))
       `(,horflag ,width ,height ,@children))))
