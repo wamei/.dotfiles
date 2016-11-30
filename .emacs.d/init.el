@@ -119,11 +119,6 @@
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
 (global-set-key (kbd "C-M-h")   'c-hungry-backspace)
 
-(global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 1)))
-(global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   1)))
-(global-set-key [mouse-4]    '(lambda () (interactive) (scroll-down 1)))
-(global-set-key [mouse-5]    '(lambda () (interactive) (scroll-up   1)))
-
 (define-key isearch-mode-map (kbd "M-s") 'helm-swoop-from-isearch)
 
 (define-minor-mode overriding-key-map-mode
@@ -552,6 +547,11 @@
 (require 'mouse)
 (require 'mwheel)
 (mouse-wheel-mode t)
+
+(setq mouse-wheel-scroll-amount '(1 ((shift) . 1))) ;; one line at a time
+(setq mouse-wheel-progressive-speed nil) ;; don't accelerate scrolling
+(setq mouse-wheel-follow-mouse 't) ;; scroll window under mouse
+(setq scroll-step 1) ;; keyboard scroll one line at a time
 
 ;; GCのしきい値変更
 (setq gc-cons-threshold 40960000)
