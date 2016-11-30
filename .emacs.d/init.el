@@ -119,14 +119,10 @@
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
 (global-set-key (kbd "C-M-h")   'c-hungry-backspace)
 
-(global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 2)))
-(global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   2)))
-(global-set-key [mouse-4]    '(lambda () (interactive) (scroll-down 2)))
-(global-set-key [mouse-5]    '(lambda () (interactive) (scroll-up   2)))
-(global-set-key [mouse-8]    '(lambda () (interactive) (scroll-down 1)))
-(global-set-key [mouse-9]    '(lambda () (interactive) (scroll-up   1)))
-(global-set-key [mouse-20]   '(lambda () (interactive) (scroll-down (/ (window-height) 2))))
-(global-set-key [mouse-21]   '(lambda () (interactive) (scroll-up   (/ (window-height) 2))))
+(global-set-key [wheel-up]   '(lambda () (interactive) (scroll-down 1)))
+(global-set-key [wheel-down] '(lambda () (interactive) (scroll-up   1)))
+(global-set-key [mouse-4]    '(lambda () (interactive) (scroll-down 1)))
+(global-set-key [mouse-5]    '(lambda () (interactive) (scroll-up   1)))
 
 (define-key isearch-mode-map (kbd "M-s") 'helm-swoop-from-isearch)
 
@@ -548,6 +544,14 @@
 ;; 文字コード
 (set-language-environment "Japanese")
 (prefer-coding-system 'utf-8)
+
+;; mouse
+(unless (fboundp 'track-mouse)
+  (defun track-mouse (e)))
+(xterm-mouse-mode t)
+(require 'mouse)
+(require 'mwheel)
+(mouse-wheel-mode t)
 
 ;; GCのしきい値変更
 (setq gc-cons-threshold 40960000)
