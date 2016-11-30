@@ -10,6 +10,7 @@ archives/
 .DS_Store
 .mc-lists.el
 .session
+custom.el
 flycheck_init.el
 ede-projects.el
 projectile.cache

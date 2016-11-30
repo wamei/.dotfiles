@@ -2,7 +2,7 @@
 
 ;; Author: wamei <wamei.cho@gmail.com>
 ;; Keywords: elscreen
-;; Package-Version: 20150521.2345
+;; Package-Version: 20161106.1958
 ;; Version: 0.1.3
 ;; Package-Requires: ((emacs "24.4") (elscreen "1.4.6"))
 
@@ -224,10 +224,10 @@
 
 (defun esbl-set-ido-separate-buffer-list ()
   "IDO-MAKE-BUFFER-LISTが呼ばれた際にSEPARATE-BUFFER-LISTでフィルタリングを行う."
-  (let ((list (loop for i in (buffer-list)
+  (let ((list (loop for i in ido-temp-list
                    if (member (get-buffer i) (esbl-get-separate-buffer-list))
-                   collect (buffer-name i))))
-    (setq ido-temp-list (append (cdr list) (list (car list))))))
+                   collect i)))
+    (setq ido-temp-list list)))
 
 (defun esbl-switch-frame:around (origin &rest args)
   "FRAMEの切替時にSEPARATE-BUFFER-LIST,WINDOW-HISTORYを保存・復元する."

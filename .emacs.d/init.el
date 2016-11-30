@@ -34,6 +34,9 @@
   ;; (add-to-list 'package-archives '("ELPA" . "http://tromey.com/elpa/"))
   )
 
+;; Avoid to write `package-selected-packages` in init.el
+(load (setq custom-file (expand-file-name "custom.el" user-emacs-directory)))
+
 (require 'misc)
 (require 'expand-region)
 (require 'visual-regexp-steroids)
@@ -989,6 +992,155 @@
   )
 
 ;;
+;; helm.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'helm-config nil t)
+  (require 'helm-descbinds)
+  (require 'helm-gtags)
+
+  (helm-mode 1)
+  ;; gtags
+  (add-hook 'c-mode-hook (lambda () (helm-gtags-mode)))
+  (add-hook 'php-mode-hook (lambda () (helm-gtags-mode)))
+  ;; customize
+  (setq helm-c-gtags-path-style 'relative)
+  (setq helm-c-gtags-ignore-case t)
+  ;; key bindings
+  (add-hook 'helm-gtags-mode-hook
+            '(lambda ()
+               (local-set-key (kbd "C-c C-j") 'helm-gtags-dwim)
+               (local-set-key (kbd "C-c C-u") 'helm-gtags-previous-history)
+               (local-set-key (kbd "C-c C-p") 'helm-gtags-previous-history)
+               (local-set-key (kbd "C-c C-n") 'helm-gtags-next-history)
+               (local-set-key (kbd "C-c C-s") 'helm-gtags-show-stack)
+               ))
+
+  ;; buffer名の表示幅
+  (setq helm-buffer-max-length 40)
+
+  ;; kill-ring
+  (setq kill-ring-max 1000)
+
+  ;; 自動補完をやめる
+  (setq helm-ff-auto-update-initial-value nil)
+
+  ;; tabで補完
+  (define-key helm-read-file-map (kbd "C-i") 'helm-execute-persistent-action)
+  (defadvice helm-ff-kill-or-find-buffer-fname (around execute-only-if-exist activate)
+    "Execute command only if CANDIDATE exists"
+    (when (file-exists-p candidate)
+      ad-do-it))
+
+  ;; descbindsを置き換え
+  (helm-descbinds-mode t)
+
+  ;; bookmarkの場所を表示
+  (setq helm-bookmark-show-location t)
+
+  (defclass helm-source-normal-buffers (helm-source-sync helm-type-buffer)
+    ((buffer-list
+      :initarg :buffer-list
+      :initform #'helm-buffer-list
+      :custom function
+      :documentation
+      "  A function with no arguments to create dired buffer list.")
+     (init :initform 'helm-buffers-list--init)
+     (candidates :initform (lambda ()
+                             (cl-remove-if
+                              (lambda (elm)
+                                (with-current-buffer elm
+                                  (equal major-mode 'dired-mode)))
+                              helm-buffers-list-cache)))
+     (matchplugin :initform nil)
+     (match :initform 'helm-buffers-match-function)
+     (persistent-action :initform 'helm-buffers-list-persistent-action)
+     (resume :initform (lambda ()
+                         (run-with-idle-timer
+                          0.1 nil (lambda ()
+                                    (with-helm-buffer
+                                      (helm-force-update))))))
+     (keymap :initform helm-buffer-map)
+     (migemo :initform 'nomultimatch)
+     (volatile :initform t)
+     (help-message :initform 'helm-buffer-help-message)
+     (persistent-help
+      :initform
+      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+
+  (defclass helm-source-dired-buffers (helm-source-sync helm-type-buffer)
+    ((buffer-list
+      :initarg :buffer-list
+      :initform #'helm-buffer-list
+      :custom function
+      :documentation
+      "  A function with no arguments to create dired buffer list.")
+     (init :initform 'helm-buffers-list--init)
+     (candidates :initform (lambda ()
+                             (cl-remove-if-not
+                              (lambda (elm)
+                                (with-current-buffer elm
+                                  (equal major-mode 'dired-mode)))
+                              helm-buffers-list-cache)))
+     (matchplugin :initform nil)
+     (match :initform 'helm-buffers-match-function)
+     (persistent-action :initform 'helm-buffers-list-persistent-action)
+     (resume :initform (lambda ()
+                         (run-with-idle-timer
+                          0.1 nil (lambda ()
+                                    (with-helm-buffer
+                                      (helm-force-update))))))
+     (keymap :initform helm-buffer-map)
+     (migemo :initform 'nomultimatch)
+     (volatile :initform t)
+     (help-message :initform 'helm-buffer-help-message)
+     (persistent-help
+      :initform
+      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
+
+  (setq helm-locate-command
+        (concat "locate_case=$(echo '%s' | sed 's/-//'); cat /tmp/all.filelist |"
+        ;;(concat "locate_case=$(echo '%s' | sed 's/-//'); locate '' |"
+                "perl -ne \"$(echo '%s' |"
+                (if (eq system-type 'darwin)
+                    "sed -E -e 's/[\\\\ ] /__SpAcE__/g' "
+                  "sed -r -e 's/[\\\\ ] /__SpAcE__/g' ")
+                "-e 's/^ +//' "
+                "-e 's/ +$//' "
+                "-e 's_/_\\\\&_g' "
+                "-e 's_ +_/'$locate_case' \\&\\& m/_g' "
+                "-e 's_.*_$| = 1; print if (m/&/'$locate_case')_' "
+                "-e 's_m/!_!m/_g' "
+                "-e 's/__SpAcE__/ /g')\" 2> /dev/null |"
+                "head -n " (number-to-string helm-candidate-number-limit)))
+  (defun helm-filelist-real-to-display (candidate)
+    (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
+      (abbreviate-file-name candidate)))
+  (setq helm-source-locate (cons '(real-to-display . helm-filelist-real-to-display) helm-source-locate))
+
+  (defvar helm-source-normal-buffers-list nil)
+  (defvar helm-source-dired-buffers-list nil)
+  (defun helm-filelist++ ()
+    (interactive)
+    (unless helm-source-normal-buffers-list
+      (setq helm-source-normal-buffers-list
+            (helm-make-source "Buffers" 'helm-source-normal-buffers)))
+    (unless helm-source-dired-buffers-list
+      (setq helm-source-dired-buffers-list
+            (helm-make-source "Dired Buffers" 'helm-source-dired-buffers)))
+    (let ((helm-ff-transformer-show-only-basename nil)
+          (recentf-list (mapcar (lambda (path)
+                                   (replace-regexp-in-string (expand-file-name (getenv "HOME")) "~" path))
+                                 recentf-list)))
+      (helm :sources `(helm-source-normal-buffers-list
+                       helm-source-dired-buffers-list
+                       helm-source-recentf
+                       helm-source-buffer-not-found
+                       helm-source-locate)
+            :buffer "*helm filelist++*"
+            :truncate-lines t)))
+  )
+
+;;
 ;; elscreen.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'elscreen nil t)
@@ -1194,10 +1346,6 @@
                (define-key term-raw-map (kbd "M-n") 'next-line)
                (define-key term-raw-map (kbd "M-f") 'forward-char)
                (define-key term-raw-map (kbd "M-b") 'backward-char)
-               (define-key term-raw-map (kbd "<up>")   'scroll-down-line)
-               (define-key term-raw-map (kbd "<down>") 'scroll-up-line)
-               (define-key term-raw-map (kbd "<right>")'scroll-left)
-               (define-key term-raw-map (kbd "<left>") 'scroll-right)
                ))
   )
 
@@ -1275,161 +1423,11 @@
   )
 
 ;;
-;; helm.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'helm-config nil t)
-  (require 'helm-descbinds)
-  (require 'helm-gtags)
-
-  (helm-mode 1)
-  ;; gtags
-  (add-hook 'c-mode-hook (lambda () (helm-gtags-mode)))
-  (add-hook 'php-mode-hook (lambda () (helm-gtags-mode)))
-  ;; customize
-  (setq helm-c-gtags-path-style 'relative)
-  (setq helm-c-gtags-ignore-case t)
-  ;; key bindings
-  (add-hook 'helm-gtags-mode-hook
-            '(lambda ()
-               (local-set-key (kbd "C-c C-j") 'helm-gtags-dwim)
-               (local-set-key (kbd "C-c C-u") 'helm-gtags-previous-history)
-               (local-set-key (kbd "C-c C-p") 'helm-gtags-previous-history)
-               (local-set-key (kbd "C-c C-n") 'helm-gtags-next-history)
-               (local-set-key (kbd "C-c C-s") 'helm-gtags-show-stack)
-               ))
-
-  ;; buffer名の表示幅
-  (setq helm-buffer-max-length 40)
-
-  ;; kill-ring
-  (setq kill-ring-max 1000)
-
-  ;; 自動補完をやめる
-  (setq helm-ff-auto-update-initial-value nil)
-
-  ;; tabで補完
-  (define-key helm-read-file-map (kbd "C-i") 'helm-execute-persistent-action)
-  (defadvice helm-ff-kill-or-find-buffer-fname (around execute-only-if-exist activate)
-    "Execute command only if CANDIDATE exists"
-    (when (file-exists-p candidate)
-      ad-do-it))
-
-  ;; descbindsを置き換え
-  (helm-descbinds-mode t)
-
-  ;; bookmarkの場所を表示
-  (setq helm-bookmark-show-location t)
-
-  (defclass helm-source-normal-buffers (helm-source-sync helm-type-buffer)
-    ((buffer-list
-      :initarg :buffer-list
-      :initform #'helm-buffer-list
-      :custom function
-      :documentation
-      "  A function with no arguments to create dired buffer list.")
-     (init :initform 'helm-buffers-list--init)
-     (candidates :initform (lambda ()
-                             (cl-remove-if
-                              (lambda (elm)
-                                (with-current-buffer elm
-                                  (equal major-mode 'dired-mode)))
-                              helm-buffers-list-cache)))
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-match-function)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (resume :initform (lambda ()
-                         (run-with-idle-timer
-                          0.1 nil (lambda ()
-                                    (with-helm-buffer
-                                      (helm-force-update))))))
-     (keymap :initform helm-buffer-map)
-     (migemo :initform 'nomultimatch)
-     (volatile :initform t)
-     (help-message :initform 'helm-buffer-help-message)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-
-  (defclass helm-source-dired-buffers (helm-source-sync helm-type-buffer)
-    ((buffer-list
-      :initarg :buffer-list
-      :initform #'helm-buffer-list
-      :custom function
-      :documentation
-      "  A function with no arguments to create dired buffer list.")
-     (init :initform 'helm-buffers-list--init)
-     (candidates :initform (lambda ()
-                             (cl-remove-if-not
-                              (lambda (elm)
-                                (with-current-buffer elm
-                                  (equal major-mode 'dired-mode)))
-                              helm-buffers-list-cache)))
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-match-function)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (resume :initform (lambda ()
-                         (run-with-idle-timer
-                          0.1 nil (lambda ()
-                                    (with-helm-buffer
-                                      (helm-force-update))))))
-     (keymap :initform helm-buffer-map)
-     (migemo :initform 'nomultimatch)
-     (volatile :initform t)
-     (help-message :initform 'helm-buffer-help-message)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-
-  (setq helm-locate-command
-        (concat "locate_case=$(echo '%s' | sed 's/-//'); cat /tmp/all.filelist |"
-        ;;(concat "locate_case=$(echo '%s' | sed 's/-//'); locate '' |"
-                "perl -ne \"$(echo '%s' |"
-                (if (eq system-type 'darwin)
-                    "sed -E -e 's/[\\\\ ] /__SpAcE__/g' "
-                  "sed -r -e 's/[\\\\ ] /__SpAcE__/g' ")
-                "-e 's/^ +//' "
-                "-e 's/ +$//' "
-                "-e 's_/_\\\\&_g' "
-                "-e 's_ +_/'$locate_case' \\&\\& m/_g' "
-                "-e 's_.*_$| = 1; print if (m/&/'$locate_case')_' "
-                "-e 's_m/!_!m/_g' "
-                "-e 's/__SpAcE__/ /g')\" 2> /dev/null |"
-                "head -n " (number-to-string helm-candidate-number-limit)))
-  (defun helm-filelist-real-to-display (candidate)
-    (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
-      (abbreviate-file-name candidate)))
-  (setq helm-source-locate (cons '(real-to-display . helm-filelist-real-to-display) helm-source-locate))
-
-  (defvar helm-source-normal-buffers-list nil)
-  (defvar helm-source-dired-buffers-list nil)
-  (defun helm-filelist++ ()
-    (interactive)
-    (unless helm-source-normal-buffers-list
-      (setq helm-source-normal-buffers-list
-            (helm-make-source "Buffers" 'helm-source-normal-buffers)))
-    (unless helm-source-dired-buffers-list
-      (setq helm-source-dired-buffers-list
-            (helm-make-source "Dired Buffers" 'helm-source-dired-buffers)))
-    (let ((helm-ff-transformer-show-only-basename nil)
-          (recentf-list (mapcar (lambda (path)
-                                   (replace-regexp-in-string (expand-file-name (getenv "HOME")) "~" path))
-                                 recentf-list)))
-      (helm :sources `(helm-source-normal-buffers-list
-                       helm-source-dired-buffers-list
-                       helm-source-recentf
-                       helm-source-buffer-not-found
-                       helm-source-locate)
-            :buffer "*helm filelist++*"
-            :truncate-lines t)))
-  )
-
-;;
 ;; yasnippet.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'yasnippet nil t)
-  (setq yas-snippet-dirs
-        '("~/.emacs.d/snippets" ;; 作成するスニペットはここに入る
-          ))
+  ;; 作成するスニペットはここに入る
+  (setq yas-snippet-dirs '("~/.emacs.d/snippets"))
   (yas-global-mode 1)
   ;; 単語展開キー
   (custom-set-variables '(yas-trigger-key "TAB"))

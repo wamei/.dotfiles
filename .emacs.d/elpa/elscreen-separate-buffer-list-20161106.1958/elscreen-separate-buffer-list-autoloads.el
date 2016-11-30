@@ -1,15 +1,16 @@
 ;;; elscreen-separate-buffer-list-autoloads.el --- automatically extracted autoloads
 ;;
 ;;; Code:
-(add-to-list 'load-path (or (file-name-directory #$) (car load-path)))
+(add-to-list 'load-path (directory-file-name (or (file-name-directory #$) (car load-path))))
 
 ;;;### (autoloads nil "elscreen-separate-buffer-list" "elscreen-separate-buffer-list.el"
-;;;;;;  (21858 34932 0 0))
+;;;;;;  (22561 22239 0 0))
 ;;; Generated autoloads from elscreen-separate-buffer-list.el
 
 (defvar elscreen-separate-buffer-list-mode nil "\
 Non-nil if Elscreen-Separate-Buffer-List mode is enabled.
-See the command `elscreen-separate-buffer-list-mode' for a description of this minor mode.
+See the `elscreen-separate-buffer-list-mode' command
+for a description of this minor mode.
 Setting this variable directly does not take effect;
 either customize it (see the info node `Easy Customization')
 or call the function `elscreen-separate-buffer-list-mode'.")
