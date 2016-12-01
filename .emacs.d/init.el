@@ -35,7 +35,9 @@
   )
 
 ;; Avoid to write `package-selected-packages` in init.el
-(load (setq custom-file (expand-file-name "custom.el" user-emacs-directory)))
+(let ((custom-file-path (expand-file-name "custom.el" user-emacs-directory)))
+  (when (file-exists-p custom-file-path)
+    (load (setq custom-file custom-file-path))))
 
 (require 'misc)
 (require 'expand-region)
