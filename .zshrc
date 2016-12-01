@@ -25,6 +25,14 @@ function git_root() {
 alias gro=git_root
 alias gitroot=git_root
 
+if [ "$EMACS" ]; then
+    export EDITOR="emacsclient"
+    alias ec='emacsclient -n'
+else
+    export EDITOR="emacsclient -t"
+    alias ec='emacsclient -t'
+fi
+
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '
 
@@ -33,26 +41,10 @@ case ${OSTYPE} in
     # Mac用の設定
     darwin*)
         alias ls='ls -G'
-        alias emacs='/Applications/Emacs.app/Contents/MacOS/Emacs'
-        alias emacsclient='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient'
-        if [ "$EMACS" ]; then
-            export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient"
-            alias ec='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -n'
-        else
-            export EDITOR="/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -t"
-            alias ec='/Applications/Emacs.app/Contents/MacOS/bin/emacsclient -t'
-        fi
         ;;
     #Linux用の設定
     linux*)
         alias ls='ls --color=auto'
-        if [ "$EMACS" ]; then
-            export EDITOR="emacsclient"
-            alias ec='emacsclient -n'
-        else
-            export EDITOR="emacsclient -t"
-            alias ec='emacsclient -t'
-        fi
         ;;
 esac
 
