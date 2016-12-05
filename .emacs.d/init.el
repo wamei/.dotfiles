@@ -91,6 +91,7 @@
 (global-set-key (kbd "C-c C-u") 'pop-tag-mark)
 
 (global-set-key (kbd "C-q") nil)
+(global-set-key (kbd "C-q C-i") 'string-inflection-toggle)
 (global-set-key (kbd "C-q C-q") 'er/expand-region)
 (global-set-key (kbd "C-q C-l") 'mc/edit-lines)
 (global-set-key (kbd "C-q C-r") 'vr/mc-mark)
