@@ -1565,6 +1565,8 @@ $0"))
       (if (eq depth nil) 0 depth)))
 
   (defun my-js2-mode-hook ()
+    (require 'tern)
+    (setq tern-command (append tern-command '("--no-port-file")))
     (tern-mode t)
     (add-to-list 'company-backends '(company-tern company-yasnippet :with company-dabbrev-code))
     )
