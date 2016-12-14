@@ -1406,19 +1406,6 @@
   (setq company-idle-delay 0)
   (setq company-selection-wrap-around t)
 
-  ;; Add yasnippet support for all company backends
-  ;; https://github.com/syl20bnr/spacemacs/pull/179
-  (defvar company-mode/enable-yas t
-    "Enable yasnippet for all backends.")
-
-  (defun company-mode/backend-with-yas (backend)
-    (if (or (not company-mode/enable-yas) (and (listp backend) (member 'company-yasnippet backend)))
-        backend
-      (append (if (consp backend) backend (list backend))
-              '(:with company-yasnippet))))
-
-  (setq company-backends (mapcar #'company-mode/backend-with-yas company-backends))
-
   ;; 色の設定
   (set-face-attribute 'company-tooltip nil
                       :foreground "black"
@@ -1557,7 +1544,7 @@ $0"))
 ;;
 ;; js2-mode
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'js2 nil t)
+(when (require 'js2-mode nil t)
   (setq js2-cleanup-whitespace nil
         js2-mirror-mode nil
         js2-bounce-indent-flag nil)
@@ -1571,6 +1558,17 @@ $0"))
              (point))))
       (skip-chars-forward "\s " point-of-indentation)))
   (define-key js2-mode-map "\C-i" 'indent-and-back-to-indentation)
+;;  (setq company-tern-property-marker "")
+  (defun company-tern-depth (candidate)
+    "Return depth attribute for CANDIDATE. 'nil' entries are treated as 0."
+    (let ((depth (get-text-property 0 'depth candidate)))
+      (if (eq depth nil) 0 depth)))
+
+  (defun my-js2-mode-hook ()
+    (tern-mode t)
+    (add-to-list 'company-backends '(company-tern company-yasnippet :with company-dabbrev-code))
+    )
+  (add-hook 'js2-mode-hook 'my-js2-mode-hook)
   )
 
 ;;
@@ -1585,7 +1583,7 @@ $0"))
   (setq php-mode-force-pear t)
   (defun my-php-mode-hook ()
     (require 'company-php)
-    (add-to-list 'company-backends '(company-ac-php-backend company-dabbrev-code company-gtags company-keywords :with company-yasnippet))
+    (add-to-list 'company-backends '(company-ac-php-backend company-yasnippet :with company-dabbrev-code))
     )
   (add-hook 'php-mode-hook 'my-php-mode-hook)
   )
@@ -1604,7 +1602,7 @@ $0"))
     (setq web-mode-block-padding  0)
     (setq web-mode-enable-auto-pairing nil)
     (setq web-mode-enable-css-colorization t)
-    (add-to-list 'company-backends '(company-web-html company-dabbrev-code company-gtags company-keywords :with company-yasnippet))
+    (add-to-list 'company-backends '(company-web-html company-yasnippet :with company-dabbrev-code))
     )
   (add-hook 'web-mode-hook 'my-web-mode-hook)
 )
