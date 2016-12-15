@@ -1369,6 +1369,7 @@
                (define-key term-raw-map (kbd "M-n") 'next-line)
                (define-key term-raw-map (kbd "M-f") 'forward-char)
                (define-key term-raw-map (kbd "M-b") 'backward-char)
+               (define-key term-raw-map (kbd "s-v") 'term-paste)
                ))
   )
 
