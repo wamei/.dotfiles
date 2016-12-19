@@ -1546,9 +1546,10 @@ $0"))
 ;; js2-mode
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'js2-mode nil t)
-  (setq js2-cleanup-whitespace nil
-        js2-mirror-mode nil
-        js2-bounce-indent-flag nil)
+  (setq js2-cleanup-whitespace nil)
+  (setq js2-mirror-mode nil)
+  (setq js2-bounce-indent-flag nil)
+  (setq js2-include-node-externs t)
 
   (defun indent-and-back-to-indentation ()
     (interactive)
