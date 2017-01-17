@@ -1280,6 +1280,7 @@
 (when (require 'magit nil t)
   ;; (setq magit-last-seen-setup-instructions "1.4.0")
   ;; (setq magit-diff-refine-hunk 'all)
+  (setq magit-diff-auto-show nil)
   (defadvice magit-status (around magit-fullscreen activate)
     (window-configuration-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
     ad-do-it
