@@ -813,12 +813,13 @@
          "")))
 
 ;; Tramp設定
-(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
+(setq tramp-copy-size-limit nil)
+(setq tramp-shell-prompt-pattern "^.*[#$%>] *")
+(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
+(add-to-list 'tramp-remote-process-environment "HISTFILE=/dev/null")
+;;(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
 ;; (unless (eq system-type 'cygwin)
 ;;   (setenv "TMPDIR" "/tmp"))
-
-;; (defadvice tramp-handle-vc-registered (around tramp-handle-vc-registered-around activate)
-;;   (let ((vc-handled-backends '(SVN Git))) ad-do-it))
 
 ;; 非同期shell command
 (defadvice erase-buffer (around erase-buffer-noop)
