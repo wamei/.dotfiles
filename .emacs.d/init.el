@@ -104,6 +104,14 @@
 (global-set-key (kbd "C-x p")   'helm-resume)
 (global-set-key (kbd "C-x t")   'emt-pop-multi-term)
 
+(defhydra hydra-resize (global-map "C-x")
+  "resize"
+  ("{" shrink-window-horizontally "shrink-horizontally")
+  ("}" enlarge-window-horizontally "enlarge-horizontally")
+  ("^" enlarge-window "enlarge")
+  ("q" nil "quit")
+  )
+
 (defhydra hydra-rotate (global-map "C-c l")
   "rotate"
   ("l" rotate-layout "layout")
@@ -535,6 +543,12 @@
 (set-face-attribute 'variable-pitch nil :family "Migu 1M" :height font-size)
 (set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height font-size)
 (set-face-attribute 'tooltip nil :family "Migu 1M" :height font-size)
+
+;;
+;; bracketed paste
+;;----------------------------------------------------------------------------------------------------
+(require 'bracketed-paste)
+(bracketed-paste-enable)
 
 ;;
 ;; その他設定
@@ -1696,6 +1710,34 @@ $0"))
   )
 
 ;;
+;; eww
+;;----------------------------------------------------------------------------------------------------
+(require 'eww)
+(require 'helm-eww-history)
+(define-key eww-mode-map "r" 'eww-reload)
+(define-key eww-mode-map "P" 'eww-previous-url)
+(define-key eww-mode-map "N" 'eww-next-url)
+(define-key eww-mode-map "p" 'scroll-down)
+(define-key eww-mode-map "n" 'scroll-up)
+(setq eww-search-prefix "http://www.google.co.jp/search?q=")
+(defvar eww-disable-colorize t)
+(defun shr-colorize-region--disable (orig start end fg &optional bg &rest _)
+  (unless eww-disable-colorize
+    (funcall orig start end fg)))
+(advice-add 'shr-colorize-region :around 'shr-colorize-region--disable)
+(advice-add 'eww-colorize-region :around 'shr-colorize-region--disable)
+(defun eww-disable-color ()
+  "eww で文字色を反映させない"
+  (interactive)
+  (setq-local eww-disable-colorize t)
+  (eww-reload))
+(defun eww-enable-color ()
+  "eww で文字色を反映させる"
+  (interactive)
+  (setq-local eww-disable-colorize nil)
+  (eww-reload))
+
+;;
 ;; マイナーモードの省略
 ;;----------------------------------------------------------------------------------------------------
 (defun shorten-minor-mode-name (mode-sym short-name &optional face)
@@ -1720,12 +1762,6 @@ $0"))
 (shorten-minor-mode-name 'global-whitespace-mode "")
 
 (setq eldoc-minor-mode-string " El")
-
-;;
-;; bracketed paste
-;;----------------------------------------------------------------------------------------------------
-(require 'bracketed-paste)
-(bracketed-paste-enable)
 
 ;;
 ;; サーバー起動

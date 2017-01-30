@@ -689,8 +689,12 @@ from `elscreen-frame-confs', a cons cell."
            (when (null screen-name)
              (let* ((elscreen-window-configuration
                     (elscreen-get-window-configuration screen))
-                    (marker (cadr elscreen-window-configuration)))
-               (setq screen-name (buffer-name (marker-buffer marker)))))
+                    (marker (cadr elscreen-window-configuration))
+                    (buffer (marker-buffer marker)))
+               (if (eq (buffer-local-value 'major-mode buffer) 'eww-mode)
+                   (with-current-buffer buffer
+                     (setq screen-name (eww-current-title)))
+                 (setq screen-name (buffer-name buffer)))))
 
            (elscreen--set-alist 'screen-to-name-alist screen screen-name))
          screen-list)
