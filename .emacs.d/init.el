@@ -262,7 +262,7 @@
        (:background "#1e1e1e" :foreground "#e1e1e0"))))
    `(cursor ((,class (:background "#a4a4a4"))))
    ;; Highlighting faces
-   `(fringe ((,class (:background "#2e3748"))))
+   `(fringe ((,class (:background "#2e2e2e"))))
    `(highlight ((,class (:background "#035f56"))))
    `(region ((,class (:background "#98514B" :foreground "#878787"))))
    `(isearch ((,class (:background "#fcffad" :foreground "#000000"))))
@@ -1171,6 +1171,15 @@
   (setq elscreen-tab-display-control nil)
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
+
+  (require 'navbarx-elscreen)
+  (setq navbar-item-list '(navbarx-elscreen))
+  (setq navbarx-elscreen-tab-truncate elscreen-display-tab)
+  (setq navbarx-elscreen-tab-body-format (concat "%s:%n"))
+  (navbar-mode)
+  (navbar-revive-workaround)
+
+
   (elscreen-start)
   (require 'elscreen-multi-term)
   (require 'elscreen-separate-buffer-list)
