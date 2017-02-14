@@ -741,7 +741,7 @@ stored as SCREEN."
 If NOERROR is not nil, no message is displayed in mini buffer
 when error is occurred."
   (cond
-   ((>= (elscreen-get-number-of-screens) 10)
+   ((>= (elscreen-get-number-of-screens) 100)
     (unless noerror
       (elscreen-message "No more screens."))
     nil)
@@ -1551,7 +1551,7 @@ Use \\[toggle-read-only] to permit editing."
 (defun elscreen-split ()
   (interactive)
   (if (and (null (one-window-p))
-           (< (elscreen-get-number-of-screens) 10))
+           (< (elscreen-get-number-of-screens) 100))
       (let ((elscreen-split-buffer (current-buffer)))
         (delete-window)
         (elscreen-create)

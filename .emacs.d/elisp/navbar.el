@@ -329,6 +329,32 @@ Disabled items are ignored."
 	(erase-buffer)
 	(insert (apply #'concat strings))))))
 
+
+(defvar navbar-scroll-position 0)
+(defun navbar-scroll-left (&optional num)
+  (interactive)
+  (let ((num (or num 1)))
+    (navbar-scroll num)))
+(defun navbar-scroll-right (&optional num)
+  (interactive)
+  (let ((num (- 0 (or num 1))))
+    (navbar-scroll num)))
+
+(defun navbar-scroll (num)
+  (interactive)
+  (setq navbar-scroll-position (+ navbar-scroll-position num))
+  (let* ((frame-width (frame-width))
+         (navbar-width (with-current-buffer (navbar-buffer)
+                         (length (buffer-substring-no-properties (point-min) (point-max)))))
+         (diff (- navbar-width frame-width)))
+    (if (> navbar-scroll-position diff)
+        (if (> diff 0)
+            (setq navbar-scroll-position diff)
+          (setq navbar-scroll-position 0))
+      (when (< navbar-scroll-position 0)
+        (setq navbar-scroll-position 0))))
+  (navbar-update))
+
 (defun navbar-update (&optional frame)
   "Update navbar of FRAME."
   (unless frame
@@ -336,7 +362,8 @@ Disabled items are ignored."
   (with-selected-frame frame
     (funcall navbar-display-function
 	     (mapcar #'cdr navbar-item-alist)
-	     (navbar-buffer frame))))
+	     (navbar-buffer frame))
+    (set-window-hscroll (navbar-window) navbar-scroll-position)))
 
 (defun navbar--funcall-with-no-display (function &rest arguments)
   (let ((navbar-display-function #'ignore))
@@ -400,6 +427,12 @@ Also, this runs :deinitialize functions without updating the navbar buffer."
 	    (define-key map
 	      (kbd (concat modifier "<" repeat kind mouse ">"))
 	      'ignore)))))
+    (define-key map [wheel-left] 'navbar-scroll-right)
+    (define-key map [double-wheel-left] '(lambda () (interactive) (navbar-scroll-right 2)))
+    (define-key map [triple-wheel-left] '(lambda () (interactive) (navbar-scroll-right 5)))
+    (define-key map [wheel-right] 'navbar-scroll-left)
+    (define-key map [double-wheel-right] '(lambda () (interactive) (navbar-scroll-left 2)))
+    (define-key map [triple-wheel-right] '(lambda () (interactive) (navbar-scroll-left 5)))
     map)
   "Keymap ignoring all mouse events.")
 
