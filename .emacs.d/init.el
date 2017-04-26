@@ -882,30 +882,6 @@
       (ad-deactivate-regexp "erase-buffer-noop"))))
 
 ;;
-;; view-mode
-;;----------------------------------------------------------------------------------------------------
-(setq view-read-only t)
-;; 書き込み不能なファイルはview-modeで開くように
-(defadvice find-file
-  (around find-file-switch-to-view-file (file &optional wild) activate)
-  (if (and (not (file-writable-p file))
-           (not (file-directory-p file)))
-      (view-file file)
-    ad-do-it))
-;; 書き込み不能な場合はview-modeを抜けないように
-(defvar view-mode-force-exit nil)
-(defmacro do-not-exit-view-mode-unless-writable-advice (f)
-  `(defadvice ,f (around do-not-exit-view-mode-unless-writable activate)
-     (if (and (buffer-file-name)
-              (not view-mode-force-exit)
-              (not (file-writable-p (buffer-file-name))))
-         (message "File is unwritable, so stay in view-mode.")
-       ad-do-it)))
-
-(do-not-exit-view-mode-unless-writable-advice view-mode-exit)
-(do-not-exit-view-mode-unless-writable-advice view-mode-disable)
-
-;;
 ;; パッケージ関係
 ;;----------------------------------------------------------------------------------------------------
 
@@ -1651,7 +1627,7 @@ $0")
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'web-mode)
   (defun my-web-mode-hook ()
-    (require 'company-web-html)
+    ;;(require 'company-web-html)
     (setq web-mode-markup-indent-offset 2)
     (setq web-mode-css-indent-offset    4)
     (setq web-mode-code-indent-offset   4)
@@ -1660,7 +1636,7 @@ $0")
     (setq web-mode-block-padding  0)
     (setq web-mode-enable-auto-pairing nil)
     (setq web-mode-enable-css-colorization t)
-    (add-to-list 'company-backends '(company-web-html :with company-yasnippet :with company-dabbrev-code))
+    ;;(add-to-list 'company-backends '(company-web-html :with company-yasnippet :with company-dabbrev-code))
     )
   (add-hook 'web-mode-hook 'my-web-mode-hook)
 )
