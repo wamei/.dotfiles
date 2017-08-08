@@ -263,13 +263,14 @@
 (make-face 'mode-line-name-face)
 (make-face 'mode-line-projectile-face)
 (make-face 'mode-line-time-face)
+(setq frame-background-mode 'dark)
 (let ((class '((class color) (min-colors 89))))
 (custom-set-faces
    ;; Ensure sufficient contrast on 256-color xterms.
-   `(default ((((class color) (min-colors 4096))
-       (:background "#1e1e1e" :foreground "#e1e1e0"))
-       (,class
-       (:background "#1e1e1e" :foreground "#e1e1e0"))))
+ `(default ((((class color) (min-colors 89) (type tty))
+             (:foreground "#e1e1e0"))
+            (,class
+             (:background "#1e1e1e" :foreground "#e1e1e0"))))
    `(cursor ((,class (:background "#a4a4a4"))))
    ;; Highlighting faces
    `(fringe ((,class (:background "#2e2e2e"))))
