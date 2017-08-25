@@ -125,6 +125,7 @@
 (global-set-key (kbd "C-x n r") 'narrow-to-region)
 
 (global-set-key (kbd "C-x C-b")   'helm-filelist++)
+(global-set-key (kbd "C-x C-f")   'helm-find-files)
 
 (global-set-key (kbd "C-M-r")   'vr/query-replace)
 (global-set-key (kbd "C-M-s")   'vr/isearch-forward)
@@ -1008,6 +1009,9 @@
   (require 'helm-descbinds)
   (require 'helm-gtags)
 
+  (define-key helm-map (kbd "<tab>") 'helm-execute-persistent-action)
+  (define-key helm-map (kbd "C-i") 'helm-execute-persistent-action)
+  (define-key helm-map (kbd "C-z") 'helm-select-action)
   (helm-mode 1)
   ;; gtags
   (add-hook 'c-mode-hook (lambda () (helm-gtags-mode)))
