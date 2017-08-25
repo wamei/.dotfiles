@@ -138,6 +138,7 @@
   ""
   `(
     (,(kbd "C-z") . emt-pop-multi-term)
+    (,(kbd "C-c C-c") . quickrun)
     (,(kbd "C-x C-j") . dired-toggle-current-or-project-directory)
     (,(kbd "C-q n")   . elscreen-next)
     (,(kbd "C-q p")   . elscreen-previous)
@@ -171,7 +172,7 @@
 (add-to-list 'auto-mode-alist '("\\.php\\'" . php-mode))
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(tex\\|ltx\\|cls\\|sty\||clo\\|bbl\\)\\'" . latex-mode))
-(add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\|vue\\)\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\|vue\\|twig\\)\\'" . web-mode))
 
 ;; org table mode
 (require 'org)
