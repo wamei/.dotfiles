@@ -52,6 +52,7 @@
 (global-set-key (kbd "C-h")     nil)
 (global-set-key (kbd "C-r")     'vr/replace)
 (global-set-key (kbd "C--")     'undo-tree-undo)
+(global-set-key (kbd "C-?")     'undo-tree-redo)
 (define-key key-translation-map [?\C-h] [?\C-?])
 
 (global-set-key (kbd "M-b")     'backward-word)
@@ -139,7 +140,6 @@
   ""
   `(
     (,(kbd "C-z") . emt-pop-multi-term)
-    (,(kbd "C-c C-c") . quickrun)
     (,(kbd "C-x C-j") . dired-toggle-current-or-project-directory)
     (,(kbd "C-q n")   . elscreen-next)
     (,(kbd "C-q p")   . elscreen-previous)
