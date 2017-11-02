@@ -1,11 +1,5 @@
 忘れないように入れるxxx
 
-## All filelist
-```
-# cron
-*/10 * * * * ruby /home/{{user}}/.dotfiles/.emacs.d/make-filelist.rb > /tmp/all.filelist
-```
-
 ## Homebrew (Mac)
 ```
 $ ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
@@ -25,14 +19,6 @@ $ sudo apt-get install silversearcher-ag
 $ git clone git://github.com/creationix/nvm.git ~/.nvm
 ```
 
-## Migemo
-```
-# Mac
-$ brew install cmigome
-
-# Ubuntu
-$ sudo apt-get install cmigemo
-```
 
 ## GO
 http://qiita.com/senda-akiha/items/8bbdd3e59c51d5619ea7
