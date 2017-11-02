@@ -1116,6 +1116,7 @@
       (abbreviate-file-name candidate)))
   (setq helm-source-locate (cons '(real-to-display . helm-filelist-real-to-display) helm-source-locate))
 
+  (require 'helm-x-files)
   (defvar helm-source-normal-buffers-list nil)
   (defvar helm-source-dired-buffers-list nil)
   (defun helm-filelist++ ()
