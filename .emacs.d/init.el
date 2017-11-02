@@ -1007,27 +1007,14 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'helm-config nil t)
   (require 'helm-descbinds)
-  (require 'helm-gtags)
 
   (define-key helm-map (kbd "<tab>") 'helm-execute-persistent-action)
   (define-key helm-map (kbd "C-i") 'helm-execute-persistent-action)
   (define-key helm-map (kbd "C-z") 'helm-select-action)
   (helm-mode 1)
-  ;; gtags
-  (add-hook 'c-mode-hook (lambda () (helm-gtags-mode)))
-  (add-hook 'php-mode-hook (lambda () (helm-gtags-mode)))
   ;; customize
   (setq helm-c-gtags-path-style 'relative)
   (setq helm-c-gtags-ignore-case t)
-  ;; key bindings
-  (add-hook 'helm-gtags-mode-hook
-            '(lambda ()
-               (local-set-key (kbd "C-c C-j") 'helm-gtags-dwim)
-               (local-set-key (kbd "C-c C-u") 'helm-gtags-previous-history)
-               (local-set-key (kbd "C-c C-p") 'helm-gtags-previous-history)
-               (local-set-key (kbd "C-c C-n") 'helm-gtags-next-history)
-               (local-set-key (kbd "C-c C-s") 'helm-gtags-show-stack)
-               ))
 
   ;; buffer名の表示幅
   (setq helm-buffer-max-length 40)
@@ -1609,7 +1596,11 @@ $0")
   (setq php-mode-force-pear t)
   (defun my-php-mode-hook ()
     (require 'company-php)
-    (add-to-list 'company-backends '(company-ac-php-backend :with company-yasnippet :with company-dabbrev-code))
+    (ac-php-core-eldoc-setup) ;; enable eldoc
+    (make-local-variable 'company-backends)
+    (add-to-list 'company-backends 'company-ac-php-backend :with company-yasnippet :with company-dabbrev-code)
+    (define-key php-mode-map  (kbd "C-c C-j") 'ac-php-find-symbol-at-point)
+    (define-key php-mode-map  (kbd "C-c C-u") 'ac-php-location-stack-back)
     )
   (add-hook 'php-mode-hook 'my-php-mode-hook)
   )
@@ -1758,8 +1749,6 @@ $0")
         (setq short-name (concat short-name)))
       (setcar (cdr cell) short-name))
     ))
-
-(shorten-minor-mode-name 'helm-gtags-mode " GT")
 (shorten-minor-mode-name 'abbrev-mode " Ab")
 (shorten-minor-mode-name 'yas-minor-mode " Ys")
 (shorten-minor-mode-name 'orglink-mode " OL")
