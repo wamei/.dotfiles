@@ -152,11 +152,12 @@
     (esbl-save-separate-buffer-list (elscreen-get-previous-screen)))
   (esbl-restore-separate-buffer-list (elscreen-get-current-screen)))
 
-(defun esbl-clone:after (&rest _)
+(defun esbl-clone:after (&optional screen)
   "SCREENの複製時にSEPARATE-BUFFER-LISTも複製する."
-  (esbl-restore-separate-buffer-list (elscreen-get-previous-screen))
-  (loop for i in (esbl-get-separate-buffer-list)
-        do (esbl-separate-buffer-list-count-inc i)))
+  (let ((screen (or screen (elscreen-get-previous-screen))))
+    (esbl-restore-separate-buffer-list screen)
+    (loop for i in (esbl-get-separate-buffer-list)
+          do (esbl-separate-buffer-list-count-inc i))))
 
 (defvar esbl-kill-buffer-another-screen-p nil)
 

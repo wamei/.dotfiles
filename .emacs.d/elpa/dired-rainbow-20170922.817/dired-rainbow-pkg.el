@@ -1,1 +1,0 @@
-(define-package "dired-rainbow" "20170922.817" "Extended file highlighting according to its type" '((dash "2.5.0") (dired-hacks-utils "0.0.1")) :commit "3468b0f757a6b616788cf19378f94c6ae798a582" :keywords '("files"))
