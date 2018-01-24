@@ -1585,6 +1585,14 @@ $0")
   )
 
 ;;
+;; json-mode
+;;----------------------------------------------------------------------------------------------------
+(add-hook 'json-mode-hook
+          (lambda ()
+            (make-local-variable 'js-indent-level)
+            (setq js-indent-level 2)))
+
+;;
 ;; markdown-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (autoload 'markdown-mode "markdown-mode.el" "Major mode for editing Markdown files" t)
@@ -1612,10 +1620,10 @@ $0")
   (defun my-web-mode-hook ()
     ;;(require 'company-web-html)
     (setq web-mode-markup-indent-offset 2)
-    (setq web-mode-css-indent-offset    4)
+    (setq web-mode-css-indent-offset    2)
     (setq web-mode-code-indent-offset   4)
-    (setq web-mode-style-padding  2)
-    (setq web-mode-script-padding 2)
+    (setq web-mode-style-padding  0)
+    (setq web-mode-script-padding 0)
     (setq web-mode-block-padding  0)
     (setq web-mode-enable-auto-pairing nil)
     (setq web-mode-enable-css-colorization t)
