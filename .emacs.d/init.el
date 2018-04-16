@@ -861,8 +861,8 @@
 ;; Tramp設定
 (setq tramp-copy-size-limit nil)
 (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
-(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
-(add-to-list 'tramp-remote-process-environment "HISTFILE=/dev/null")
+;;(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
+;;(add-to-list 'tramp-remote-process-environment "HISTFILE=/dev/null")
 ;;(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
 ;; (unless (eq system-type 'cygwin)
 ;;   (setenv "TMPDIR" "/tmp"))
