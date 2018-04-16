@@ -3,27 +3,10 @@ export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
 export PAGER='less -R'
 export PATH=$HOME/bin:$PATH:$HOME/Library/Android/sdk/platform-tools
-if [ -x "`which go`" ]; then
-    export GOROOT=`go env GOROOT`
-    export GOPATH=$HOME/go
-    export PATH=$PATH:$GOPATH/bin:$GOROOT/bin
-fi
 
 # git関係alias
 alias g='git'
 alias gst='git status'
-alias glo='git mylog'
-alias ggr='git graph'
-alias gdi='git diff'
-alias gbr='git branch'
-alias gco='git checkout'
-function git_root() {
-    if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-        cd `git rev-parse --show-toplevel`
-    fi
-}
-alias gro=git_root
-alias gitroot=git_root
 
 if [ "$EMACS" ]; then
     export EDITOR="emacsclient"
@@ -44,7 +27,7 @@ case ${OSTYPE} in
         ;;
     #Linux用の設定
     linux*)
-        alias ls='ls --color=auto'
+        alias ls='ls --color=auto --group-directories-first'
         ;;
 esac
 
@@ -163,9 +146,6 @@ PROMPT2='[%n]> '
 
 # nvm読み込み
 if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi
-
-# cd ls
-function chpwd() { ls }
 
 # 圧縮ファイルの解凍
 function extract() {
