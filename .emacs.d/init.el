@@ -924,9 +924,10 @@
   ;; auto revert
   (setq dired-auto-revert-buffer t)
   ;; lsの設定
-  (require 'ls-lisp)
-  (setq ls-lisp-use-insert-directory-program nil)
-  (setq ls-lisp-dirs-first t)
+  ;; (require 'ls-lisp)
+  ;; (setq ls-lisp-use-insert-directory-program nil)
+  ;; (setq ls-lisp-dirs-first t)
+  (setq dired-listing-switches "-al --color=auto --group-directories-first")
 
   (define-key dired-mode-map (kbd "C-c C-s") 'dired-toggle-sudo)
   (define-key dired-mode-map (kbd "RET")     'dired-find-file)
