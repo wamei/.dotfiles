@@ -43,6 +43,7 @@
 (require 'expand-region)
 (require 'visual-regexp-steroids)
 (require 'hydra)
+(require 's)
 
 ;;
 ;; キーバインド
@@ -222,6 +223,13 @@
   (setq explicit-shell-file-name "bash")
   (setq shell-file-name "bash")
   )
+
+;;
+;; WSL用設定
+;;----------------------------------------------------------------------------------------------------
+(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
+  (and (s-starts-with? "Linux" name)
+       (s-matches? "Microsoft" name))))
 
 ;;
 ;; ウィンドウ設定
@@ -626,11 +634,22 @@
     (let ((proc (start-process "pbcopy" "*Messages*" "pbcopy")))
       (process-send-string proc text)
       (process-send-eof proc))))
+(defun copy-from-wsl ()
+  (shell-command-to-string "win32yank.exe -o"))
+(defun paste-to-wsl (text &optional push)
+  (paste-to-tmux text push)
+  (let ((process-connection-type nil))
+    (let ((proc (start-process "win32yank.exe" "*Messages*" "win32yank.exe" "-i")))
+      (process-send-string proc text)
+      (process-send-eof proc))))
 (if window-system
     (setq x-select-enable-clipboard t)
   (cond ((eq system-type 'darwin)
          (setq interprogram-cut-function 'paste-to-osx)
          (setq interprogram-paste-function 'copy-from-osx))
+        (is-wsl
+         (setq interprogram-cut-function 'paste-to-wsl)
+         (setq interprogram-paste-function 'copy-from-wsl))
         (t
          (setq interprogram-cut-function 'paste-to-tmux)
          (setq interprogram-paste-function 'copy-from-tmux))))
