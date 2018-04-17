@@ -514,7 +514,7 @@
 ;;
 ;; フォント関係
 ;;----------------------------------------------------------------------------------------------------
-(defvar font-size 120)
+(defvar font-size 130)
 (set-face-attribute 'default nil :family "Migu 1M" :height font-size)
 (set-face-attribute 'variable-pitch nil :family "Migu 1M" :height font-size)
 (set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height font-size)
