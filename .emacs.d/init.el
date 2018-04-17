@@ -529,10 +529,6 @@
 ;;
 ;; その他設定
 ;;----------------------------------------------------------------------------------------------------
-;; 文字コード
-(set-language-environment "Japanese")
-(prefer-coding-system 'utf-8)
-
 ;; mouse
 (unless (fboundp 'track-mouse)
   (defun track-mouse (e)))
@@ -1789,6 +1785,8 @@ $0")
   (server-start))
 
 ;;
-;; multi-tramp-settings
+;; 文字コード
 ;;----------------------------------------------------------------------------------------------------
-(when (require 'multi-tramp-settings nil t))
+;; 文字コード
+(set-language-environment "Japanese")
+(prefer-coding-system 'utf-8)
