@@ -230,6 +230,9 @@
 (defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
   (and (s-starts-with? "Linux" name)
        (s-matches? "Microsoft" name))))
+(when is-wsl
+  (custom-set-variables '(tramp-chunksize 1024))
+  (setq-default find-file-visit-truename t))
 
 ;;
 ;; ウィンドウ設定
@@ -1058,93 +1061,27 @@
   ;; bookmarkの場所を表示
   (setq helm-bookmark-show-location t)
 
-  (defclass helm-source-normal-buffers (helm-source-sync helm-type-buffer)
-    ((buffer-list
-      :initarg :buffer-list
-      :initform #'helm-buffer-list
-      :custom function
-      :documentation
-      "  A function with no arguments to create dired buffer list.")
-     (init :initform 'helm-buffers-list--init)
-     (candidates :initform (lambda ()
-                             (cl-remove-if
-                              (lambda (elm)
-                                (with-current-buffer elm
-                                  (equal major-mode 'dired-mode)))
-                              helm-buffers-list-cache)))
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-match-function)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (resume :initform (lambda ()
-                         (run-with-idle-timer
-                          0.1 nil (lambda ()
-                                    (with-helm-buffer
-                                      (helm-force-update))))))
-     (keymap :initform helm-buffer-map)
-     (migemo :initform 'nomultimatch)
-     (volatile :initform t)
-     (help-message :initform 'helm-buffer-help-message)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-
-  (defclass helm-source-dired-buffers (helm-source-sync helm-type-buffer)
-    ((buffer-list
-      :initarg :buffer-list
-      :initform #'helm-buffer-list
-      :custom function
-      :documentation
-      "  A function with no arguments to create dired buffer list.")
-     (init :initform 'helm-buffers-list--init)
-     (candidates :initform (lambda ()
-                             (cl-remove-if-not
-                              (lambda (elm)
-                                (with-current-buffer elm
-                                  (equal major-mode 'dired-mode)))
-                              helm-buffers-list-cache)))
-     (matchplugin :initform nil)
-     (match :initform 'helm-buffers-match-function)
-     (persistent-action :initform 'helm-buffers-list-persistent-action)
-     (resume :initform (lambda ()
-                         (run-with-idle-timer
-                          0.1 nil (lambda ()
-                                    (with-helm-buffer
-                                      (helm-force-update))))))
-     (keymap :initform helm-buffer-map)
-     (migemo :initform 'nomultimatch)
-     (volatile :initform t)
-     (help-message :initform 'helm-buffer-help-message)
-     (persistent-help
-      :initform
-      "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer")))
-
   (defun helm-filelist-real-to-display (candidate)
     (let ((directory-abbrev-alist `((,(concat "\\`" (getenv "HOME")) . "~"))))
       (abbreviate-file-name candidate)))
   (setq helm-source-locate (cons '(real-to-display . helm-filelist-real-to-display) helm-source-locate))
 
   (require 'helm-x-files)
-  (defvar helm-source-normal-buffers-list nil)
-  (defvar helm-source-dired-buffers-list nil)
   (defun helm-filelist++ ()
     (interactive)
-    (unless helm-source-normal-buffers-list
-      (setq helm-source-normal-buffers-list
-            (helm-make-source "Buffers" 'helm-source-normal-buffers)))
-    (unless helm-source-dired-buffers-list
-      (setq helm-source-dired-buffers-list
-            (helm-make-source "Dired Buffers" 'helm-source-dired-buffers)))
+    (unless helm-source-buffers-list
+      (setq helm-source-buffers-list
+            (helm-make-source "Buffers" 'helm-source-buffers)))
     (let ((helm-ff-transformer-show-only-basename nil)
           (recentf-list (mapcar (lambda (path)
                                    (replace-regexp-in-string (expand-file-name (getenv "HOME")) "~" path))
                                  recentf-list)))
-      (helm :sources `(helm-source-normal-buffers-list
-                       helm-source-dired-buffers-list
+      (helm :sources `(helm-source-buffers-list
                        helm-source-recentf
                        helm-source-buffer-not-found
                        helm-source-locate)
             :buffer "*helm filelist++*"
-            :truncate-lines t)))
+            :truncate-lines helm-buffers-truncate-lines)))
   )
 
 ;;
