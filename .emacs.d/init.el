@@ -187,54 +187,6 @@
                 (orgtbl-mode))))
 
 ;;
-;; windows用設定
-;;----------------------------------------------------------------------------------------------------
-(when (eq system-type 'cygwin)
-  ;; altをmetaキーに
-  (setq w32-alt-is-meta t)
-  ;; 漢字/変換キー入力時のエラーメッセージ抑止
-  (global-set-key (kbd "<A-kanji>") 'ignore)
-  (global-set-key (kbd "<M-kanji>") 'ignore)
-  (global-set-key (kbd "<kanji>") 'ignore)
-
-  (require 'shell)
-  (setq explicit-shell-file-name "bash.exe")
-  (setq shell-command-switch "-c")
-
-  ;; (M-! and M-| and compile.el)
-  (setq shell-file-name "bash.exe")
-  (modify-coding-system-alist 'process ".*sh\\.exe" 'utf-8)
-
-  (require 'server)
-  (defun server-ensure-safe-dir (dir) "Noop" t)
-  (setq server-socket-dir "~/.emacs.d")
-  )
-
-;;
-;; mac用設定
-;;----------------------------------------------------------------------------------------------------
-(when (eq system-type 'darwin)
-  ;; optionをmetaキーに
-  (setq option-modifier (quote meta))
-  (setq ns-option-modifier (quote meta))
-  (setq mac-option-modifier (quote meta))
-
-  (require 'shell)
-  (setq explicit-shell-file-name "bash")
-  (setq shell-file-name "bash")
-  )
-
-;;
-;; WSL用設定
-;;----------------------------------------------------------------------------------------------------
-(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
-  (and (s-starts-with? "Linux" name)
-       (s-matches? "Microsoft" name))))
-(when is-wsl
-  (custom-set-variables '(tramp-chunksize 1024))
-  (setq-default find-file-visit-truename t))
-
-;;
 ;; ウィンドウ設定
 ;;----------------------------------------------------------------------------------------------------
 
@@ -562,11 +514,11 @@
 ;;
 ;; フォント関係
 ;;----------------------------------------------------------------------------------------------------
-(defvar font-size 140)
+(defvar font-size 120)
 (set-face-attribute 'default nil :family "Migu 1M" :height font-size)
 (set-face-attribute 'variable-pitch nil :family "Migu 1M" :height font-size)
 (set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height font-size)
-(set-face-attribute 'tooltip nil :family "Migu 1M" :height font-size)
+(set-face-attribute 'tooltip nil :family "Migu 1M" :height 90)
 
 ;;
 ;; bracketed paste
@@ -1725,6 +1677,63 @@ $0")
 (shorten-minor-mode-name 'global-whitespace-mode "")
 
 (setq eldoc-minor-mode-string " El")
+
+;;
+;; windows用設定
+;;----------------------------------------------------------------------------------------------------
+(when (eq system-type 'cygwin)
+  ;; altをmetaキーに
+  (setq w32-alt-is-meta t)
+  ;; 漢字/変換キー入力時のエラーメッセージ抑止
+  (global-set-key (kbd "<A-kanji>") 'ignore)
+  (global-set-key (kbd "<M-kanji>") 'ignore)
+  (global-set-key (kbd "<kanji>") 'ignore)
+
+  (require 'shell)
+  (setq explicit-shell-file-name "bash.exe")
+  (setq shell-command-switch "-c")
+
+  ;; (M-! and M-| and compile.el)
+  (setq shell-file-name "bash.exe")
+  (modify-coding-system-alist 'process ".*sh\\.exe" 'utf-8)
+
+  (require 'server)
+  (defun server-ensure-safe-dir (dir) "Noop" t)
+  (setq server-socket-dir "~/.emacs.d")
+  )
+
+;;
+;; mac用設定
+;;----------------------------------------------------------------------------------------------------
+(when (eq system-type 'darwin)
+  ;; optionをmetaキーに
+  (setq option-modifier (quote meta))
+  (setq ns-option-modifier (quote meta))
+  (setq mac-option-modifier (quote meta))
+
+  (require 'shell)
+  (setq explicit-shell-file-name "bash")
+  (setq shell-file-name "bash")
+  )
+
+;;
+;; WSL用設定
+;;----------------------------------------------------------------------------------------------------
+(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
+  (and (s-starts-with? "Linux" name)
+       (s-matches? "Microsoft" name))))
+(when is-wsl
+  (require 'windows-path)
+  (custom-set-variables '(tramp-chunksize 1024))
+  (setq-default find-file-visit-truename t)
+  (advice-add 'helm-reduce-file-name
+              :override (lambda (&rest args)
+                          (let ((fname (nth 0 args))
+                                (level (nth 1 args)))
+                            (while (> level 0)
+                              (setq fname (expand-file-name (concat fname "/../")))
+                              (setq level (1- level)))
+                            fname))))
 
 ;;
 ;; サーバー起動

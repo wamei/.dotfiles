@@ -50,3 +50,4 @@
 (add-to-list 'file-name-handler-alist
              (cons windows-path-style-regexp
                    'windows-path-map-drive-hook-function))
+(provide 'windows-path)
