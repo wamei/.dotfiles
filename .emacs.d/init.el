@@ -6,6 +6,11 @@
 ;; You may delete these explanatory comments.
 (package-initialize)
 
+(require 's)
+(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
+  (and (s-starts-with? "Linux" name)
+       (s-matches? "Microsoft" name))))
+
 (defun add-to-load-path (&rest paths)
   (let (path)
     (dolist (path paths paths)
@@ -43,7 +48,6 @@
 (require 'expand-region)
 (require 'visual-regexp-steroids)
 (require 'hydra)
-(require 's)
 
 ;;
 ;; キーバインド
@@ -1725,9 +1729,6 @@ $0")
 ;;
 ;; WSL用設定
 ;;----------------------------------------------------------------------------------------------------
-(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
-  (and (s-starts-with? "Linux" name)
-       (s-matches? "Microsoft" name))))
 (when is-wsl
   (require 'windows-path)
   (custom-set-variables '(tramp-chunksize 1024))
