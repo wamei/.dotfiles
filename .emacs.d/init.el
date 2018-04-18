@@ -1784,7 +1784,8 @@ $0")
 ;;----------------------------------------------------------------------------------------------------
 (unless (server-running-p)
   (server-start)
-  (require 'elscreen-server))
+  (require 'elscreen-server)
+  (setq with-editor-emacsclient-executable nil))
 
 ;;
 ;; 文字コード
