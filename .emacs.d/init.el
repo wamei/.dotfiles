@@ -1,15 +1,8 @@
 ;; -*- Mode: Emacs-Lisp ; Coding: utf-8 -*-
-;;----------------------------------------------------------------------------------------------------
-;; Added by Package.el.  This must come before configurations of
-;; installed packages.  Don't delete this line.  If you don't want it,
-;; just comment it out by adding a semicolon to the start of the line.
-;; You may delete these explanatory comments.
+;;; package.el
+(require 'package)
+(add-to-list 'package-archives '("melpa" . "http://melpa.org/packages/"))
 (package-initialize)
-
-(require 's)
-(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
-  (and (s-starts-with? "Linux" name)
-       (s-matches? "Microsoft" name))))
 
 (defun add-to-load-path (&rest paths)
   (let (path)
@@ -19,25 +12,18 @@
         (if (fboundp 'normal-top-level-add-subdirs-to-load-path)
             (normal-top-level-add-subdirs-to-load-path))))))
 
-;; load-pathに追加するフォルダ
-;; 2つ以上フォルダを指定する場合の引数 => (add-to-load-path "elisp" "xxx" "xxx")
 (add-to-load-path "elisp")
-
 (when (< emacs-major-version 24.3) (require 'cl-lib))
 
-(add-to-load-path "elpa")
+(require 's)
+(defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
+  (and (s-starts-with? "Linux" name)
+       (s-matches? "Microsoft" name))))
 
 ;; load environment value
 (require 'exec-path-from-shell)
 (when (memq window-system '(mac ns))
   (exec-path-from-shell-initialize))
-
-;;; package.el
-(when (require 'package nil t)
-  ;; (add-to-list 'package-archives '("marmalade" . "http://marmalade-repo.org/packages/"))
-  (add-to-list 'package-archives '("melpa" . "http://melpa.org/packages/"))
-  ;; (add-to-list 'package-archives '("ELPA" . "http://tromey.com/elpa/"))
-  )
 
 ;; Avoid to write `package-selected-packages` in init.el
 (let ((custom-file-path (expand-file-name "custom.el" user-emacs-directory)))
