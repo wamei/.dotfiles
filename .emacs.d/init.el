@@ -22,7 +22,7 @@
 
 ;; load environment value
 (require 'exec-path-from-shell)
-(when (memq window-system '(mac ns))
+(when (memq window-system '(mac ns x))
   (exec-path-from-shell-initialize))
 
 ;; Avoid to write `package-selected-packages` in init.el
@@ -875,10 +875,12 @@
   ;; auto revert
   (setq dired-auto-revert-buffer t)
   ;; lsの設定
-  ;; (require 'ls-lisp)
-  ;; (setq ls-lisp-use-insert-directory-program nil)
-  ;; (setq ls-lisp-dirs-first t)
-  (setq dired-listing-switches "-al --color=auto --group-directories-first")
+  (require 'ls-lisp)
+  (setq ls-lisp-use-insert-directory-program nil)
+  (setq ls-lisp-ignore-case t)
+  (setq ls-lisp-dirs-first t)
+  (setq dired-listing-switches "-alG")
+  (when (> emacs-major-version 25.1) (setq ls-lisp-UCA-like-collation nil))
 
   (define-key dired-mode-map (kbd "C-c C-s") 'dired-toggle-sudo)
   (define-key dired-mode-map (kbd "RET")     'dired-find-file)
