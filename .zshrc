@@ -262,3 +262,35 @@ function tmux-yank () {
 }
 zle -N tmux-yank
 bindkey "^y" tmux-yank
+
+if [[ `uname -a` =~ Linux && `uname -a` =~ Microsoft ]]; then
+
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+    if [ "$INSIDE_EMACS" ]; then
+        TERM=eterm-color
+    fi
+
+    umask 022
+    export DISPLAY=localhost:0.0
+
+    (
+        # command_path="/mnt/c/Program Files (x86)/VcXsrv/vcxsrv.exe"
+        command_path="/mnt/c/Program Files/VcXsrv/vcxsrv.exe"
+
+        command_name=$(basename "$command_path")
+
+        if ! tasklist.exe 2> /dev/null | fgrep -q "$command_name"; then
+            # "$command_path" :0 -multiwindow -xkbmodel jp106 -xkblayout jp -clipboard -noprimary -wgl > /dev/null 2>&1 & # for jp-keyboard
+            "$command_path" :0 -multiwindow -clipboard -noprimary -wgl > /dev/null 2>&1 & # for us-keyboard
+        fi
+    )
+    alias emacs="NO_AT_BRIDGE=1 LIBGL_ALWAYS_INDIRECT=1 emacs"
+
+    # 必要であれば、以下をアンコメント化する
+    keychain -q ~/.ssh/id_rsa
+    source ~/.keychain/`hostname`-sh
+
+fi

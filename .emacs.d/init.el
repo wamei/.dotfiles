@@ -1715,6 +1715,150 @@ $0"))
                               (setq fname (expand-file-name (concat fname "/../")))
                               (setq level (1- level)))
                             fname)))
+  (require 'browse-url)
+  (setq browse-url-browser-function 'browse-url-generic)
+  (setq browse-url-generic-program "wslstart")
+
+  ;; OSタイプ を調べる
+  (defun os-type ()
+    (let ((os-type (shell-command-to-string "uname")))
+      (cond ((string-match "CYGWIN" os-type)
+             'cygwin)
+            ((string-match "Linux" os-type)
+             'linux)
+            ((string-match "Darwin" os-type)
+             'darwin))))
+
+  ;; OS でファイル、ディレクトリを直接開くためのコマンドを決定する
+  (defun os-open-command-name (os-type)
+    (let ((command-name-list (cl-case os-type
+                               ('cygwin
+                                '("cygstart"))
+                               ('linux
+                                '("wslstart" "xdg-open" "gnome-open"))
+                               ('darwin
+                                '("open")))))
+      (catch 'loop
+        (dolist (command-name command-name-list)
+          (let* ((command1 (concat "which " command-name " 2> /dev/null"))
+                 (command2 (if (file-remote-p default-directory)
+                               ;; リモートではログインシェルでコマンドを実行する
+                               (format "$0 -l -c '%s' 2> /dev/null" command1)
+                             command1))
+                 (absolute-path-command-name (replace-regexp-in-string
+                                              "\n" ""
+                                              (shell-command-to-string command2))))
+            (unless (string= absolute-path-command-name "")
+              (throw 'loop absolute-path-command-name)))))))
+
+  ;; os-open-command のキャッシュ
+  (defvar os-open-command-cache nil)
+
+  ;; キャッシュを検索・登録する
+  (defun os-open-command-cache ()
+    (let* ((hostname (if (file-remote-p default-directory)
+                         (let* ((vec (tramp-dissect-file-name default-directory))
+                                (host (tramp-file-name-host vec))
+                                (user (tramp-file-name-user vec)))
+                           (if user
+                               (format "%s@%s" user host)
+                             host))
+                       "<localhost>")))
+      (cdr (or (assoc hostname os-open-command-cache)
+               (let* ((os-type (os-type))
+                      (os-open-command-name (os-open-command-name os-type)))
+                 (car (push (cons hostname (list os-type os-open-command-name))
+                            os-open-command-cache)))))))
+
+  ;; OS で直接、ファイル、ディレクトリを開く
+  (defun os-open-command (filename)
+    (interactive)
+    (let ((default-directory (cond ((or (file-regular-p filename)
+                                        ;; Cygwin の ln -s で作成したショートカットが、MinGW版 emacs では
+                                        ;; レギュラーファイルと認識されない。但し、シンボリックファイルと
+                                        ;; しては認識されたので、以下の設定を追加する。
+                                        (file-symlink-p filename))
+                                    (file-name-directory filename))
+                                   ((file-directory-p filename)
+                                    filename))))
+      (if default-directory
+          (let* ((cache (os-open-command-cache))
+                 (os-type (nth 0 cache))
+                 (os-open-command-name (nth 1 cache)))
+            (if os-open-command-name
+                (let ((localname (if (file-remote-p filename)
+                                     (tramp-file-name-localname
+                                      (tramp-dissect-file-name filename))
+                                   filename)))
+                  (message "%s %s" (file-name-nondirectory os-open-command-name) localname)
+                  (cond ((and (eq os-type 'linux)
+                              (not (file-remote-p default-directory)))
+                         ;; 以下の URL の対策を行う
+                         ;; http://d.hatena.ne.jp/mooz/20100915/p1
+                         ;; http://i-yt.info/?date=20090829#p01
+                         (let (process-connection-type)
+                           (start-process "os-open-command" nil os-open-command-name localname)))
+                        (t
+                         ;; リモートでもコマンドを実行できるように、start-process ではなく shell-command系を使う
+                         (shell-command-to-string (concat os-open-command-name " "
+                                                          (shell-quote-argument localname) " &")))))
+              (message "利用できるコマンドがありません。")))
+        (message "オープンできるファイルではありません。"))))
+
+  ;; dired で W 押下時に、カーソル位置のファイルを OS で直接起動する
+  (define-key dired-mode-map (kbd "W")
+    (lambda ()
+      (interactive)
+      (let ((filename (dired-get-filename nil t)))
+        (recentf-push filename) ; recentf に追加する
+        (os-open-command filename))))
+
+  ;; dired で E 押下時に、開いているディレクトリを OS で直接開く
+  (define-key dired-mode-map (kbd "E")
+    (lambda ()
+      (interactive)
+      (os-open-command (dired-current-directory))))
+
+  ;; OS で起動したいファイルの拡張子一覧
+  (setq os-open-file-suffixes '("doc" "docx"
+                                "xls" "xlsx"
+                                "ppt" "pptx"
+                                "mdb" "mdbx"
+                                "vsd" "vdx" "vsdx"
+                                "mpp"
+                                "pdf"
+                                "bmp" "jpg" "png" "gif"
+                                "odt" "ott"
+                                "odg" "otg"
+                                "odp" "otp"
+                                "ods" "ots"
+                                "odf"
+                                "exe"
+                                ))
+
+  ;; OS で直接開きたいファイルかどうかを判定する
+  (defun os-open-file-p (filename)
+    (when (file-regular-p filename)
+      (let ((ext (file-name-extension filename)))
+        (when (and ext
+                   (member (downcase ext) os-open-file-suffixes))
+          t))))
+
+  ;; dired でファイルを f で開く際に、os-open-file-suffixes リストに指定してあるサフィックスのファイルは OS で直接起動する
+  (advice-add 'find-file
+              :around (lambda (orig-fun &rest args)
+                        (let* ((file-name (nth 0 args))
+                               (symlink-name (file-symlink-p file-name))
+                               (target-name (if symlink-name
+                                                symlink-name
+                                              file-name)))
+                          (cond ((os-open-file-p target-name)
+                                 (let ((filename (expand-file-name file-name)))
+                                   (recentf-push filename) ; recentf に追加する
+                                   (os-open-command filename)))
+                                (t
+                                 (apply orig-fun args))))))
+
   (if window-system
       (progn
         (require 'mozc)
