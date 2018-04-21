@@ -144,9 +144,6 @@ PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}
 
 PROMPT2='[%n]> '
 
-# nvm読み込み
-if [[ -s ~/.nvm/nvm.sh ]] ; then source ~/.nvm/nvm.sh ; fi
-
 # 圧縮ファイルの解凍
 function extract() {
     case $1 in
@@ -263,11 +260,11 @@ function tmux-yank () {
 zle -N tmux-yank
 bindkey "^y" tmux-yank
 
-if [[ `uname -a` =~ Linux && `uname -a` =~ Microsoft ]]; then
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+if [[ `uname -a` =~ Linux && `uname -a` =~ Microsoft ]]; then
 
     if [ "$INSIDE_EMACS" ]; then
         TERM=eterm-color
