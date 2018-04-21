@@ -1396,27 +1396,7 @@ $0"))
 ;;----------------------------------------------------------------------------------------------------
 (add-hook 'after-init-hook #'global-flycheck-mode)
 (custom-set-variables
- ;; custom-set-variables was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(ag-highlight-search t)
- '(ag-reuse-buffers (quote t))
- '(ag-reuse-window (quote nil))
- '(flycheck-pos-tip-timeout 3600)
- '(git-gutter:lighter "")
- '(git-gutter:update-interval 1)
- '(package-selected-packages
-   (quote
-    (yaxception yasnippet yascroll wgrep-ag web-mode visual-regexp-steroids undo-tree tide string-inflection skewer-mode session rotate rainbow-mode quickrun popwin phi-search-migemo pcmpl-git orglink org-octopress mwim multiple-cursors math-symbol-lists markdown-mode magit mag-menu log4e list-processes+ json-mode hydra hl-line+ helm-swoop helm-projectile helm-package helm-migemo helm-gtags helm-git-grep helm-descbinds helm-ag-r helm-ag go-eldoc git-gutter-fringe ggtags flycheck-pos-tip expand-region exec-path-from-shell elscreen-separate-buffer-list elscreen-multi-term edit-indirect dired-toggle-sudo dired-subtree dired-rainbow company-web company-tern company-statistics company-php coffee-mode bracketed-paste ag)))
- '(yas-new-snippet-default
-   "# -*- mode: snippet -*-
-# name: $1
-# key: ${2:${1:$(yas--key-from-desc yas-text)}}
-# --
-$0")
- '(yas-prompt-functions (quote (my-yas/prompt)))
- '(yas-trigger-key "TAB"))
+ '(flycheck-pos-tip-timeout 3600))
 (with-eval-after-load 'flycheck
   (flycheck-pos-tip-mode))
 
@@ -1730,7 +1710,6 @@ $0")
   (if window-system
       (progn
         (require 'mozc)
-        (set-language-environment "japanese")
         (setq default-input-method "japanese-mozc")
 
         (global-set-key (kbd "M-`") 'toggle-input-method)
