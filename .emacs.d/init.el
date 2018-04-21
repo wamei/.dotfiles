@@ -1693,6 +1693,12 @@ $0"))
   )
 
 ;;
+;; 文字コード
+;;----------------------------------------------------------------------------------------------------
+(set-language-environment "Japanese")
+(prefer-coding-system 'utf-8)
+
+;;
 ;; WSL用設定
 ;;----------------------------------------------------------------------------------------------------
 (when is-wsl
@@ -1711,6 +1717,8 @@ $0"))
       (progn
         (require 'mozc)
         (setq default-input-method "japanese-mozc")
+        (require 'mozc-popup)
+        (setq mozc-candidate-style 'popup)
 
         (global-set-key (kbd "M-`") 'toggle-input-method)
         (define-key helm-map (kbd "M-`") 'toggle-input-method)
@@ -1751,9 +1759,3 @@ $0"))
   (server-start)
   (require 'elscreen-server)
   (setq with-editor-emacsclient-executable nil))
-
-;;
-;; 文字コード
-;;----------------------------------------------------------------------------------------------------
-(set-language-environment "Japanese")
-(prefer-coding-system 'utf-8)
