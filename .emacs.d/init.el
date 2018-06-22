@@ -654,8 +654,8 @@
 (column-number-mode t)
 
 ;; 折り返ししない
-(setq truncate-lines nil)
-(setq truncate-partial-width-windows nil)
+(setq truncate-lines t)
+(setq truncate-partial-width-windows t)
 
 ;; インデント
 (setq-default indent-tabs-mode nil)
@@ -1897,6 +1897,13 @@ $0"))
                     :before (lambda (&rest args)
                               (deactivate-input-method)))
         )))
+
+(when window-system
+  (add-hook 'kill-emacs-query-functions
+            (function
+             (lambda ()
+               (y-or-n-p "Really quit emacs? ")
+               ))))
 
 ;;
 ;; サーバー起動
