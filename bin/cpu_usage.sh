@@ -1,10 +1,26 @@
-#! /bin/bash
-cpu_usage="/tmp/cpu.usage"
-if [ "$(uname)" == 'Darwin' ]; then
-    which top > /dev/null 2>&1 && top -R -F -u -l 1 | head -n 4 | tail -n 1 | awk '{print "CPU:" (100.0-substr($7, 1, index($7, "%")-1)) "%"}'
-elif type vmstat > /dev/null 2>&1; then
-    vmstat | tail -n 1 | awk '{print "CPU:" ($13+$14) "%"}'
-elif [ "$(expr substr $(uname -s) 1 5)" == 'Linux' ]; then
-    [ -f $cpu_usage ] && cat $cpu_usage | awk '{print "CPU:" $1}'
-    ~/.dotfiles/bin/cpu_usage_sub.sh > /dev/null 2>&1 &
-fi
+#!/bin/bash
+# by Paul Colby (http://colby.id.au), no rights reserved ;)
+
+PREV_TOTAL=0
+PREV_IDLE=0
+
+CPU=(`cat /proc/stat | grep '^cpu '`) # Get the total CPU statistics.
+unset CPU[0]                          # Discard the "cpu" prefix.
+IDLE=${CPU[4]}                        # Get the idle CPU time.
+
+# Calculate the total CPU time.
+TOTAL=0
+
+for VALUE in "${CPU[@]:0:4}"; do
+    let "TOTAL=$TOTAL+$VALUE"
+done
+
+# Calculate the CPU usage since we last checked.
+let "DIFF_IDLE=$IDLE-$PREV_IDLE"
+let "DIFF_TOTAL=$TOTAL-$PREV_TOTAL"
+let "DIFF_USAGE=(1000*($DIFF_TOTAL-$DIFF_IDLE)/$DIFF_TOTAL+5)/10"
+echo "CPU:$DIFF_USAGE%"
+
+# Remember the total and idle CPU times for the next check.
+PREV_TOTAL="$TOTAL"
+PREV_IDLE="$IDLE"
