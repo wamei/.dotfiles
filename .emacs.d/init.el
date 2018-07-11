@@ -928,17 +928,6 @@
   )
 
 ;;
-;; split-root.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'split-root nil t)
-  (defun display-buffer-function--split-root (buf &optional size horflag top-left)
-    (let* ((window (split-root-window size horflag top-left)))
-      (set-window-buffer window buf)
-      window))
-  (setq helm-display-function 'display-buffer-function--split-root)
-  (setq helm-swoop-split-window-function 'display-buffer-function--split-root))
-
-;;
 ;; popwin.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'popwin nil t)
