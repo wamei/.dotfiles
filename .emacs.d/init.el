@@ -940,6 +940,7 @@
   (push '(ag-mode :position bottom :height 0.5) popwin:special-display-config)
   (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
   (push `("\\*FileTree\\* .*" :regexp t :position left :width 40 :stick t) popwin:special-display-config)
+  (push `("\\*[hH]elm" :regexp t :position bottom :height 0.5) popwin:special-display-config)
   )
 
 ;;
@@ -973,6 +974,8 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'helm-config nil t)
   (require 'helm-descbinds)
+
+  (setq helm-display-function #'display-buffer)
 
   (define-key helm-map (kbd "<tab>") 'helm-execute-persistent-action)
   (define-key helm-map (kbd "C-i") 'helm-execute-persistent-action)
