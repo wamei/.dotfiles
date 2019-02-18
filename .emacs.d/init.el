@@ -46,7 +46,7 @@
 (global-set-key (kbd "C-?")     'undo-tree-redo)
 (define-key key-translation-map [?\C-h] [?\C-?])
 
-(global-set-key (kbd "M-b")     'backward-word)
+(global-set-key (kbd "M-b")     'backward-to-word)
 (global-set-key (kbd "M-f")     'forward-to-word)
 (global-set-key (kbd "M-h")     'backward-kill-word)
 (global-set-key (kbd "M-x")     'helm-M-x)
