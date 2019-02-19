@@ -566,7 +566,7 @@
   (paste-to-remote text push)
   (shell-command-to-string (concat "[ ! -z \"$TMUX\" ] && tmux set-buffer '" (replace-regexp-in-string ";\\'" "\\\\;" (replace-regexp-in-string "'" "'\\\\''" text)) "'")))
 (defun paste-to-remote (text &optional push)
-  (shell-command-to-string (concat "which rpbcopy 1>/dev/null 2>&1 && echo -n '" (replace-regexp-in-string "'" "'\\\\''" text) "' | rpbcopy")))
+  (call-process-shell-command (concat "which rpbcopy 1>/dev/null 2>&1 && echo -n '" (replace-regexp-in-string "'" "'\\\\''" text) "' | rpbcopy &") nil 0))
 (defun copy-from-osx ()
   (shell-command-to-string "pbpaste"))
 (defun paste-to-osx (text &optional push)
