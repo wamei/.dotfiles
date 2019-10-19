@@ -969,11 +969,11 @@
 ;; popwin.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'popwin nil t)
+  (popwin-mode 1)
   (defun popwin:close-popup-window-if-necessary:around (orign)
     (let ((last-command nil))
     (funcall orign)))
   (advice-add 'popwin:close-popup-window-if-necessary :around 'popwin:close-popup-window-if-necessary:around)
-  (setq display-buffer-function 'popwin:display-buffer)
   (push '(occur-mode :position bottom :height 0.5) popwin:special-display-config)
   (push '(ag-mode :position bottom :height 0.5) popwin:special-display-config)
   (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
@@ -1078,13 +1078,12 @@
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
 
-  (require 'navbarx-elscreen)
-  (setq navbar-item-list '(navbarx-elscreen))
-  (setq navbarx-elscreen-tab-truncate elscreen-display-tab)
-  (setq navbarx-elscreen-tab-body-format (concat "%s:%n"))
-  (navbar-mode)
-  (navbar-revive-workaround)
-
+  ;; (require 'navbarx-elscreen)
+  ;; (setq navbar-item-list '(navbarx-elscreen))
+  ;; (setq navbarx-elscreen-tab-truncate elscreen-display-tab)
+  ;; (setq navbarx-elscreen-tab-body-format (concat "%s:%n"))
+  ;; (navbar-mode)
+  ;; (navbar-revive-workaround)
 
   (elscreen-start)
   (require 'elscreen-multi-term)
