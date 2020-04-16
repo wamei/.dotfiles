@@ -3,6 +3,58 @@
 ## Homebrew (Mac)
 ```
 $ ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+$ brew update
+```
+
+## apt (Ubuntu)
+```
+$ sudo apt-get update
+```
+
+## zsh
+```
+# Mac
+$ brew install zsh
+$ chsh -s $(which zsh)
+
+# Ubuntu
+$ sudo apt-get install zsh
+$ chsh -s $(which zsh)
+```
+zsh compinit: insecure directories, run compaudit for list.って言われたら
+```
+$ chmod 755 /usr/local/share/zsh/site-functions
+$ chmod 755 /usr/local/share/zsh
+```
+
+## tmux
+```
+# Mac
+$ brew install tmux
+
+# Ubuntu
+# aptからだと少し古い
+$ sudo apt-get install tmux
+
+# sourceからbuild
+$ sudo apt install git automake bison build-essential pkg-config libevent-dev libncurses5-dev
+$ cd /usr/local/src/
+$ git clone https://github.com/tmux/tmux
+$ cd ./tmux/
+$ ./autogen.sh
+$ ./configure --prefix=/usr/local
+$ make
+$ sudo make install
+```
+
+## Emacs
+```
+# Mac
+$ brew install emacs
+$ brew cask install emacs
+
+# Ubuntu
+$ sudo apt-get install emacs
 ```
 
 ## The Silver Searcher
@@ -14,18 +66,12 @@ $ brew install ag
 $ sudo apt-get install silversearcher-ag
 ```
 
-## node.js
+## nodenv
 ```
-$ git clone git://github.com/creationix/nvm.git ~/.nvm
-```
+# Mac
+$ brew install nodenv
 
-
-## GO
-http://qiita.com/senda-akiha/items/8bbdd3e59c51d5619ea7
-```
-$ brew install go
-$ brew install mercurial
-$ go get -u code.google.com/p/rog-go/exp/cmd/godef
-$ go get -u github.com/nsf/gocode
-$ go get -u github.com/golang/lint/golint
+# Ubuntu
+$ git clone git://github.com/nodenv/nodenv.git ~/.nodenv
+$ git clone git://github.com/nodenv/node-build.git ~/.nodenv/plugins/node-build
 ```
