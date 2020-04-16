@@ -1,4 +1,7 @@
-忘れないように入れるxxx
+## Init
+```
+$ ./init.sh
+```
 
 ## Homebrew (Mac)
 ```
