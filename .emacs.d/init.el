@@ -1479,6 +1479,9 @@ $0"))
   (setq js2-mirror-mode nil)
   (setq js2-bounce-indent-flag nil)
   (setq js2-include-node-externs t)
+  (setq js2-strict-missing-semi-warning nil)
+  (setq js2-missing-semi-one-line-override nil)
+  (setq js-indent-level 2)
 
   (defun indent-and-back-to-indentation ()
     (interactive)
@@ -1534,6 +1537,25 @@ $0"))
   )
 
 ;;
+;; ruby-mode.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'ruby-mode)
+  ;; rbenvパス設定
+  (setenv "PATH" (concat (expand-file-name "~/.rbenv/shims/ruby") (getenv "PATH")))
+
+  (require 'rbenv)
+  (setq rbenv-installation-dir "~/.rbenv")
+
+  (add-hook 'ruby-mode-hook 'robe-mode)
+  (autoload 'robe-mode "robe" "Code navigation, documentation lookup and completion for Ruby" t nil)
+  (eval-after-load 'company
+    '(push 'company-robe company-backends))
+  (add-hook 'ruby-mode-hook (lambda()
+      (company-mode)
+      ))
+  )
+
+;;
 ;; web-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'web-mode)
@@ -1548,6 +1570,7 @@ $0"))
     (setq web-mode-block-padding  0)
     (setq web-mode-enable-auto-pairing nil)
     (setq web-mode-enable-css-colorization t)
+    (add-to-list 'web-mode-indentation-params '("lineup-calls" . nil))
     ;;(add-to-list 'company-backends '(company-web-html :with company-yasnippet :with company-dabbrev-code))
     )
   (add-hook 'web-mode-hook 'my-web-mode-hook)
