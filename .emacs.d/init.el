@@ -1639,7 +1639,6 @@
       (setcar (cdr cell) short-name))
     ))
 (shorten-minor-mode-name 'abbrev-mode " Ab")
-(shorten-minor-mode-name 'yas-minor-mode " Ys")
 (shorten-minor-mode-name 'orglink-mode " OL")
 (shorten-minor-mode-name 'orgtbl-mode " OT")
 (shorten-minor-mode-name 'undo-tree-mode "")
