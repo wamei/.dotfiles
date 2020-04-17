@@ -2,12 +2,9 @@
 export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
 export PAGER='less -R'
-export PATH=$HOME/bin:$PATH:$HOME/Library/Android/sdk/platform-tools
+export PATH=$HOME/bin:$PATH
 
-# git関係alias
-alias g='git'
-alias gst='git status'
-
+# Emacs
 if [ "$EMACS" ]; then
     export EDITOR="emacsclient"
     alias ec='emacsclient -n'
@@ -15,6 +12,11 @@ else
     export EDITOR="emacsclient -t"
     alias ec='emacsclient -t'
 fi
+
+# emacsclientのdiredで開く
+function dired () {
+  ec -e "(dired \"${1:a}\")"
+}
 
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '
@@ -31,8 +33,6 @@ case ${OSTYPE} in
         ;;
 esac
 
-[[ $TERM = "eterm-color" ]] && TERM=xterm-color
-
 # emacs 風キーバインドにする
 bindkey -e
 
@@ -40,43 +40,25 @@ bindkey -e
 autoload -Uz colors
 colors
 
-# 日本語ファイル名を表示可能にする
-setopt print_eight_bit
-
-# '#' 以降をコメントとして扱う
+# コマンドライン実行時に # 以降をコメントとして扱う
 setopt interactive_comments
 
 # 補完機能を有効にする
 autoload -Uz compinit
 compinit
 # 補完で小文字でも大文字にマッチさせる
-#zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z} r:|[._-]=*'
-# ../ の後は今いるディレクトリを補完しない
-zstyle ':completion:*' ignore-parents parent pwd ..
-# sudo の後ろでコマンド名を補完する
-zstyle ':completion:*:sudo:*' command-path /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin /usr/X11R6/bin
-# ps コマンドのプロセス名補完
-zstyle ':completion:*:processes' command 'ps x -o pid,s,args'
-# 補完候補が複数あるときに自動的に一覧表示する
-setopt auto_menu
-## 補完方法毎にグループ化する。
-### 補完方法の表示方法
-###   %B...%b: 「...」を太字にする。
-###   %d: 補完方法のラベル
+# 補完方法毎にグループ化する
 zstyle ':completion:*' format '%B%d%b'
 zstyle ':completion:*' group-name ''
-## 補完侯補をメニューから選択する。
-### select=2: 補完候補を一覧から選択する。
-###           ただし、補完候補が2つ以上なければすぐに補完する。
-zstyle ':completion:*:default' menu select=2 interactive
-## 補完候補に色を付ける。
-### "": 空文字列はデフォルト値を使うという意味。
-zstyle ':completion:*:default' list-colors ""
-# Go completion
-if [ -f $GOROOT/../share/zsh/site-functions/go ]; then
-    source $GOROOT/../share/zsh/site-functions/go
-fi
+# 補完侯補をメニューから選択する
+zstyle ':completion:*:default' menu select=2
+# 補完候補に色を付ける
+zstyle ':completion:*:default' list-colors "${LS_COLORS}"
+# コマンドにsudoを付けても補完する
+zstyle ':completion:*:sudo:*' command-path /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin /usr/X11R6/bin
+# 補完リストが多いときに尋ねない
+LISTMAX=1000
 
 # ヒストリの補完
 autoload history-search-end
@@ -84,36 +66,29 @@ zle -N history-beginning-search-backward-end history-search-end
 zle -N history-beginning-search-forward-end history-search-end
 bindkey "^P" history-beginning-search-backward-end
 bindkey "^N" history-beginning-search-forward-end
-
+# 高機能なワイルドカード展開を使用する
+setopt extended_glob
+# ^R でヒストリ検索をするときに * でワイルドカードを使用出来るようにする
+bindkey '^R' history-incremental-pattern-search-backward
 # ヒストリの設定
-HISTFILE=~/.zsh_history
+HISTFILE=${HOME}/.zsh_history
 HISTSIZE=1000000
 SAVEHIST=1000000
 # 同じコマンドをヒストリに残さない
 setopt hist_ignore_all_dups
 # ヒストリファイルに保存するとき、すでに重複したコマンドがあったら古い方を削除する
 setopt hist_save_nodups
-# スペースから始まるコマンド行はヒストリに残さない
-setopt hist_ignore_space
 # ヒストリに保存するときに余分なスペースを削除する
 setopt hist_reduce_blanks
-
-# 高機能なワイルドカード展開を使用する
-setopt extended_glob
-# ^R でヒストリ検索をするときに * でワイルドカードを使用出来るようにする
-bindkey '^R' history-incremental-pattern-search-backward
 
 # 単語の区切り文字を指定する
 autoload -Uz select-word-style
 select-word-style default
-# ここで指定した文字は単語区切りとみなされる
-# / も区切りと扱うので、^W でディレクトリ１つ分を削除できる
 zstyle ':zle:*' word-chars " /=;@:{},|"
 zstyle ':zle:*' word-style unspecified
 
 # ディレクトリスタックに追加
 setopt auto_pushd
-setopt pushd_ignore_dups
 
 ## PROMPT内で変数展開・コマンド置換・算術演算を実行する。
 setopt prompt_subst
@@ -163,21 +138,6 @@ function extract() {
 
 #圧縮ファイルを実行すると解凍するように
 alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
-
-export PATH="$PATH:$HOME/.rvm/bin" # Add RVM to PATH for scripting
-[[ -s "$HOME/.rvm/scripts/rvm" ]] && . "$HOME/.rvm/scripts/rvm" # Load RVM function
-
-## Invoke the ``dired'' of current working directory in Emacs buffer.
-function dired () {
-  emacsclient -t -e "(dired \"${1:a}\")"
-}
-
-## Chdir to the ``default-directory'' of currently opened in Emacs buffer.
-function cde () {
-    EMACS_CWD=`emacsclient -e "(return-current-working-directory-to-shell)" | sed 's/^"\(.*\)"$/\1/'`
-    echo "chdir to $EMACS_CWD"
-    cd "$EMACS_CWD"
-}
 
 function tmux-set-buffer () {
     [ ! -z "$TMUX" ] && tmux set-buffer $1
@@ -260,10 +220,7 @@ function tmux-yank () {
 zle -N tmux-yank
 bindkey "^y" tmux-yank
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
+# WSL時のemacs設定
 if [[ `uname -a` =~ Linux && `uname -a` =~ Microsoft ]]; then
 
     if [ "$INSIDE_EMACS" ]; then
@@ -291,3 +248,16 @@ if [[ `uname -a` =~ Linux && `uname -a` =~ Microsoft ]]; then
     source ~/.keychain/`hostname`-sh
 
 fi
+
+# rbenv
+[[ -d ${HOME}/.rbenv ]] && \
+  export PATH=${HOME}/.rbenv/bin:${PATH} && \
+  eval "$(rbenv init -)"
+
+# nodenv
+[[ -d ${HOME}/.nodenv ]] && \
+  export PATH=${HOME}/.nodenv/bin:${PATH} && \
+  eval "$(nodenv init -)"
+
+# load local settings
+[[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
