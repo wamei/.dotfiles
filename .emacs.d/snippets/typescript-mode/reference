@@ -1,5 +1,0 @@
-# -*- mode: snippet -*-
-# name: reference
-# key: reference
-# --
-/// <reference path="$0" />

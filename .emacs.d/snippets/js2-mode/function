@@ -1,5 +1,0 @@
-# -*- mode: snippet nil -*-
-# key: function
-# name: function() {}
-# --
-function($1) {}

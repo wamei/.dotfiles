@@ -543,10 +543,10 @@
 ;; フォント関係
 ;;----------------------------------------------------------------------------------------------------
 (defvar font-size 130)
-(set-face-attribute 'default nil :family "Migu 1M" :height font-size)
-(set-face-attribute 'variable-pitch nil :family "Migu 1M" :height font-size)
-(set-face-attribute 'fixed-pitch nil :family "Migu 1M" :height font-size)
-(set-face-attribute 'tooltip nil :family "Migu 1M" :height 90)
+(set-face-attribute 'default nil :family "Migu 2M" :height font-size)
+(set-face-attribute 'variable-pitch nil :family "Migu 2M" :height font-size)
+(set-face-attribute 'fixed-pitch nil :family "Migu 2M" :height font-size)
+(set-face-attribute 'tooltip nil :family "Migu 2M" :height 90)
 
 ;;
 ;; bracketed paste
@@ -569,9 +569,6 @@
 (setq mouse-wheel-progressive-speed t)
 (setq mouse-wheel-follow-mouse 't)
 (setq scroll-step 1)
-
-;; GCのしきい値変更
-(setq gc-cons-threshold 40960000)
 
 ;; window内のカーソル行番号
 (defun current-line ()
@@ -841,7 +838,7 @@
 (require 'tramp)
 (require 'tramp-sh)
 (setq tramp-default-method "scp")
-(setq tramp-encoding-shell "bash")
+(setq tramp-encoding-shell "zsh")
 (setq tramp-copy-size-limit nil)
 (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
 ;;(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
@@ -1362,66 +1359,6 @@
   )
 
 ;;
-;; yasnippet.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'yasnippet nil t)
-  ;; 作成するスニペットはここに入る
-  (setq yas-snippet-dirs '("~/.emacs.d/snippets"))
-  (yas-global-mode 1)
-  ;; 単語展開キー
-  (custom-set-variables '(yas-trigger-key "TAB"))
-
-  ;; other windowでnew snippet
-  (defun yas-new-snippet-other-window (&optional no-template)
-    "Pops a new buffer for writing a snippet.
-
-Expands a snippet-writing snippet, unless the optional prefix arg
-NO-TEMPLATE is non-nil."
-    (interactive "P")
-    (let ((guessed-directories (yas--guess-snippet-directories)))
-
-      (switch-to-buffer-other-window "*new snippet*")
-      (erase-buffer)
-      (kill-all-local-variables)
-      (snippet-mode)
-      (yas-minor-mode 1)
-      (set (make-local-variable 'yas--guessed-modes) (mapcar #'(lambda (d)
-                                                                 (yas--table-mode (car d)))
-                                                             guessed-directories))
-      (if (and (not no-template) yas-new-snippet-default)
-          (yas-expand-snippet yas-new-snippet-default))))
-
-  ;; 既存スニペットを挿入する
-  (define-key yas-minor-mode-map (kbd "C-c s i") 'yas-insert-snippet)
-  ;; 新規スニペットを作成するバッファを用意する
-  (define-key yas-minor-mode-map (kbd "C-c s n") 'yas-new-snippet-other-window)
-  ;; 既存スニペットを閲覧・編集する
-  (define-key yas-minor-mode-map (kbd "C-c s v") 'yas-visit-snippet-file)
-
-  (defun my-yas/prompt (prompt choices &optional display-fn)
-    (let* ((names (loop for choice in choices
-                        collect (or (and display-fn (funcall display-fn choice))
-                                    choice)))
-           (selected (helm-other-buffer
-                      `(((name . ,(format "%s" prompt))
-                         (candidates . names)
-                         (action . (("Insert snippet" . (lambda (arg) arg))))))
-                      "*helm yas/prompt*")))
-      (if selected
-          (let ((n (position selected names :test 'equal)))
-            (nth n choices))
-        (signal 'quit "user quit!"))))
-  (custom-set-variables '(yas/prompt-functions '(my-yas/prompt)))
-
-  (custom-set-variables '(yas-new-snippet-default "\
-# -*- mode: snippet -*-
-# name: $1
-# key: ${2:${1:$(yas--key-from-desc yas-text)}}
-# --
-$0"))
-  )
-
-;;
 ;; ssh-agent.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'ssh-agent)
@@ -1461,7 +1398,7 @@ $0"))
               ;;(setq flycheck-check-syntax-automatically '(save mode-enabled))
               (eldoc-mode t)
               (company-mode-on)
-              (add-to-list 'company-backends '(company-tide :with company-yasnippet))
+              (add-to-list 'company-backends '(company-tide))
               ))
 
   (define-key typescript-mode-map (kbd "C-c C-j") 'tide-jump-to-definition)
@@ -1502,7 +1439,7 @@ $0"))
     (require 'tern)
     (setq tern-command (append tern-command '("--no-port-file")))
     (tern-mode t)
-    (add-to-list 'company-backends '(company-tern :with company-yasnippet :with company-dabbrev-code))
+    (add-to-list 'company-backends '(company-tern :with company-dabbrev-code))
     )
   (add-hook 'js2-mode-hook 'my-js2-mode-hook)
   )
@@ -1529,7 +1466,7 @@ $0"))
     (require 'company-php)
     (ac-php-core-eldoc-setup) ;; enable eldoc
     (make-local-variable 'company-backends)
-    (add-to-list 'company-backends 'company-ac-php-backend :with company-yasnippet :with company-dabbrev-code)
+    (add-to-list 'company-backends 'company-ac-php-backend :with company-dabbrev-code)
     (define-key php-mode-map  (kbd "C-c C-j") 'ac-php-find-symbol-at-point)
     (define-key php-mode-map  (kbd "C-c C-u") 'ac-php-location-stack-back)
     )
@@ -1560,7 +1497,7 @@ $0"))
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'web-mode)
   (defun my-web-mode-hook ()
-    ;;(require 'company-web-html)
+    (require 'company-web-html)
     (setq web-mode-markup-indent-offset 2)
     (setq web-mode-attr-indent-offset 2)
     (setq web-mode-css-indent-offset 2)
@@ -1571,7 +1508,7 @@ $0"))
     (setq web-mode-enable-auto-pairing nil)
     (setq web-mode-enable-css-colorization t)
     (add-to-list 'web-mode-indentation-params '("lineup-calls" . nil))
-    ;;(add-to-list 'company-backends '(company-web-html :with company-yasnippet :with company-dabbrev-code))
+    (add-to-list 'company-backends '(company-web-html :with company-dabbrev-code))
     )
   (add-hook 'web-mode-hook 'my-web-mode-hook)
 )
@@ -1762,7 +1699,7 @@ $0"))
   (setq mac-option-modifier (quote meta))
 
   (require 'shell)
-  (setq shell-file-name "bash")
+  (setq shell-file-name "zsh")
   (setq shell-command-switch "-c")
   (setq explicit-shell-file-name shell-file-name)
   )
@@ -1772,7 +1709,7 @@ $0"))
 ;;----------------------------------------------------------------------------------------------------
 (when (eq system-type 'gnu/linux)
   (require 'shell)
-  (setq shell-file-name "bash")
+  (setq shell-file-name "zsh")
   (setq shell-command-switch "-c")
   (setq explicit-shell-file-name shell-file-name)
 

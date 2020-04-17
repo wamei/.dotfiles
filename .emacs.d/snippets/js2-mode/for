@@ -1,7 +1,0 @@
-# -*- mode: snippet nil -*-
-# key: for
-# name: for(var i,n; i<n; i++) {}
-# --
-for(var i = $1, n = $2; i < n; i++) {
-    $3
-}

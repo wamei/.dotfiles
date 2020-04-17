@@ -1,7 +1,0 @@
-# -*- mode: snippet -*-
-# name: style
-# key: style
-# --
-<style type="${1:text/css}">
-$0
-</style>
