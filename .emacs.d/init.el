@@ -12,13 +12,12 @@
         (if (fboundp 'normal-top-level-add-subdirs-to-load-path)
             (normal-top-level-add-subdirs-to-load-path))))))
 
-(add-to-load-path "elisp")
 (when (< emacs-major-version 24.3) (require 'cl-lib))
 
 (require 's)
 (defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
   (and (s-starts-with? "Linux" name)
-       (s-matches? "Microsoft" name))))
+       (s-matches? "microsoft" name))))
 
 ;; load environment value
 (require 'exec-path-from-shell)
@@ -165,6 +164,7 @@
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(tex\\|ltx\\|cls\\|sty\||clo\\|bbl\\)\\'" . latex-mode))
 (add-to-list 'auto-mode-alist '("\\.\\(html\\|xhtml\\|shtml\\|tpl\\|hbs\\|vue\\|twig\\)\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("Dockerfile\\'" . dockerfile-mode))
 
 ;; org table mode
 (require 'org)
@@ -941,7 +941,6 @@
 
   (add-hook 'dired-mode-hook '(lambda () (company-mode -1) (auto-revert-mode t)))
 
-  ;; (require 'dired-toggle)
   (defun dired-toggle-current-or-project-directory (n)
     (interactive "p")
     (let ((dir (projectile-project-p)))
@@ -951,10 +950,6 @@
              (if dir
                  (projectile-dired)
                (dired-jump)))
-            ;; (t
-            ;;  (if dir
-            ;;      (dired-toggle dir)
-            ;;    (dired-toggle)))
             )))
 
   (setq dired-subtree-use-backgrounds nil)
@@ -1075,17 +1070,20 @@
   (setq elscreen-display-screen-number nil)
   (setq elscreen-display-tab 24)
 
-  ;; (require 'navbarx-elscreen)
-  ;; (setq navbar-item-list '(navbarx-elscreen))
-  ;; (setq navbarx-elscreen-tab-truncate elscreen-display-tab)
-  ;; (setq navbarx-elscreen-tab-body-format (concat "%s:%n"))
-  ;; (navbar-mode)
-  ;; (navbar-revive-workaround)
-
   (elscreen-start)
   (require 'elscreen-multi-term)
   (require 'elscreen-separate-buffer-list)
   (elscreen-separate-buffer-list-mode)
+
+  (defun my-esbl-buffer-name-filter (buffer-names)
+    (let ((buffer-names-to-keep (mapcar #'buffer-name
+                                        esbl-separate-buffer-list)))
+      (seq-filter (lambda (elt)
+                    (member elt buffer-names-to-keep))
+                  buffer-names)))
+
+  (advice-add 'helm-buffer-list
+              :filter-return #'my-esbl-buffer-name-filter)
 
   (defun return-current-working-directory-to-shell ()
     (expand-file-name
@@ -1359,18 +1357,18 @@
   )
 
 ;;
-;; ssh-agent.el
-;;----------------------------------------------------------------------------------------------------
-(require 'ssh-agent)
-
-;;
 ;; flycheck.el
 ;;----------------------------------------------------------------------------------------------------
 (add-hook 'after-init-hook #'global-flycheck-mode)
-(custom-set-variables
- '(flycheck-pos-tip-timeout 3600))
-(with-eval-after-load 'flycheck
-  (flycheck-pos-tip-mode))
+
+;;
+;; docker
+;;----------------------------------------------------------------------------------------------------
+(require 'docker)
+(require 'dockerfile-mode)
+(require 'docker-compose-mode)
+(require 'docker-tramp-compat)
+(set-variable 'docker-tramp-use-names t)
 
 ;;
 ;; go-mode.el
@@ -1557,16 +1555,6 @@
     (require 'git-gutter-fringe))
   (global-git-gutter-mode t)
   (add-to-list 'git-gutter:update-commands 'my/magit-quit-session)
-  (custom-set-variables
-   '(git-gutter:update-interval 1))
-  (custom-set-variables
-   '(git-gutter:lighter ""))
-  ;; (defun git-gutter:my-original-file-content (file)
-  ;;   (let ((file (replace-regexp-in-string (concat (git-root-directory) "/") "" (file-truename file))))
-  ;;     (with-temp-buffer
-  ;;       (when (zerop (process-file "git" nil t nil "show" (concat "HEAD:" file)))
-  ;;         (buffer-substring-no-properties (point-min) (point-max))))))
-  ;; (advice-add 'git-gutter:original-file-content :override 'git-gutter:my-original-file-content)
   )
 
 ;;
@@ -1602,7 +1590,6 @@
 ;; eww
 ;;----------------------------------------------------------------------------------------------------
 (require 'eww)
-(require 'helm-eww-history)
 (define-key eww-mode-map "r" 'eww-reload)
 (define-key eww-mode-map "P" 'eww-previous-url)
 (define-key eww-mode-map "N" 'eww-next-url)
@@ -1731,7 +1718,6 @@
 ;; WSL用設定
 ;;----------------------------------------------------------------------------------------------------
 (when is-wsl
-  (require 'windows-path)
   (custom-set-variables '(tramp-chunksize 1024))
   (setq-default find-file-visit-truename t)
   (advice-add 'helm-reduce-file-name
