@@ -838,25 +838,24 @@
 
 ;; Tramp設定
 (require 'tramp)
-(setq tramp-default-method "ssh")
 ;;(setq tramp-encoding-shell "zsh")
-(setq tramp-copy-size-limit nil)
-(setq tramp-shell-prompt-pattern "^.*[#$%>] *")
+;; (setq tramp-copy-size-limit nil)
+;; (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
 ;;(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
 ;;(add-to-list 'tramp-remote-process-environment "HISTFILE=/dev/null")
 ;;(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
 ;; (unless (eq system-type 'cygwin)
 ;;   (setenv "TMPDIR" "/tmp"))
-(customize-set-variable
- 'tramp-password-prompt-regexp
-  (concat
-   "^.*"
-   (regexp-opt
-    '("passphrase" "Passphrase"
-      "password" "Password"
-      "Your OTP")
-    t)
-   ".*:\0? *"))
+;; (customize-set-variable
+;;  'tramp-password-prompt-regexp
+;;   (concat
+;;    "^.*"
+;;    (regexp-opt
+;;     '("passphrase" "Passphrase"
+;;       "password" "Password"
+;;       "Your OTP")
+;;     t)
+;;    ".*:\0? *"))
 
 ;; 非同期shell command
 (defadvice erase-buffer (around erase-buffer-noop)
