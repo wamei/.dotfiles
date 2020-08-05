@@ -401,15 +401,6 @@
 
 (defvar mode-line-shorten-p nil)
 (defvar mode-line-shorten-length 20)
-;; 時刻の表示( 曜日 月 日 時間:分 )
-(setq display-time-day-and-date t)
-(setq display-time-24hr-format t)
-(setq display-time-string-forms
-      '((propertize (format " %s/%s(%s)%s:%s"
-                month day dayname
-                24-hours minutes
-                ) 'face 'mode-line-time-face)))
-(display-time-mode t)
 
 ;; mode-line-setup
 (setq-default
@@ -1303,6 +1294,13 @@
   )
 
 ;;
+;; editorconfig.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'editorconfig nil t)
+  (editorconfig-mode 1)
+  )
+
+;;
 ;; company.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'company nil t)
@@ -1361,7 +1359,7 @@
 (add-hook 'after-init-hook #'global-flycheck-mode)
 
 ;;
-;; docker
+;; docker.el
 ;;----------------------------------------------------------------------------------------------------
 (require 'docker)
 (require 'dockerfile-mode)
@@ -1407,7 +1405,7 @@
   )
 
 ;;
-;; js2-mode
+;; js2-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'js2-mode nil t)
   (setq js2-cleanup-whitespace nil)
@@ -1445,7 +1443,7 @@
   )
 
 ;;
-;; json-mode
+;; json-mode.el
 ;;----------------------------------------------------------------------------------------------------
 (add-hook 'json-mode-hook
           (lambda ()
