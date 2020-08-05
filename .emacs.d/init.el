@@ -1584,59 +1584,33 @@
 ;;
 ;; WSL用設定
 ;;----------------------------------------------------------------------------------------------------
-;; (when is-wsl
-;;   (custom-set-variables '(tramp-chunksize 1024))
-;;   (setq-default find-file-visit-truename t)
-;;   (advice-add 'helm-reduce-file-name
-;;               :override (lambda (&rest args)
-;;                           (let ((fname (nth 0 args))
-;;                                 (level (nth 1 args)))
-;;                             (while (> level 0)
-;;                               (setq fname (expand-file-name (concat fname "/../")))
-;;                               (setq level (1- level)))
-;;                             fname)))
-;;   (require 'browse-url)
-;;   (setq browse-url-browser-function 'browse-url-generic)
-;;   (setq browse-url-generic-program "wslstart")
+(when is-wsl
+  (require 'browse-url)
+  (setq browse-url-browser-function 'browse-url-generic)
+  (setq browse-url-generic-program "wslstart")
 
-;;   (if window-system
-;;       (progn
-;;         (require 'mozc)
-;;         (setq default-input-method "japanese-mozc")
-;;         (require 'mozc-popup)
-;;         (setq mozc-candidate-style 'popup)
+  (require 'mozc)
+  (setq default-input-method "japanese-mozc")
+  (require 'mozc-popup)
+  (setq mozc-candidate-style 'popup)
 
-;;         (global-set-key (kbd "M-`") 'toggle-input-method)
-;;         (define-key helm-map (kbd "M-`") 'toggle-input-method)
+  (global-set-key (kbd "M-`") 'toggle-input-method)
+  (define-key helm-map (kbd "M-`") 'toggle-input-method)
 
-;;         ;; helm でミニバッファの入力時に IME の状態を継承しない
-;;         (setq helm-inherit-input-method nil)
+  ;; ;; helm でミニバッファの入力時に IME の状態を継承しない
+  ;; (setq helm-inherit-input-method nil)
 
-;;         ;; helm の検索パターンを mozc を使って入力した場合にエラーが発生することがあるのを改善する
-;;         (advice-add 'mozc-helper-process-recv-response
-;;                     :around (lambda (orig-fun &rest args)
-;;                               (cl-loop for return-value = (apply orig-fun args)
-;;                                        if return-value return it)))
-
-;;         ;; helm の検索パターンを mozc を使って入力する場合、入力中は helm の候補の更新を停止する
-;;         (advice-add 'mozc-candidate-dispatch
-;;                     :before (lambda (&rest args)
-;;                               (when helm-alive-p
-;;                                 (cl-case (nth 0 args)
-;;                                   ('update
-;;                                    (unless helm-suspend-update-flag
-;;                                      (helm-kill-async-processes)
-;;                                      (setq helm-pattern "")
-;;                                      (setq helm-suspend-update-flag t)))
-;;                                   ('clean-up
-;;                                    (when helm-suspend-update-flag
-;;                                      (setq helm-suspend-update-flag nil)))))))
-
-;;         ;; helm で候補のアクションを表示する際に IME を OFF にする
-;;         (advice-add 'helm-select-action
-;;                     :before (lambda (&rest args)
-;;                               (deactivate-input-method)))
-;;         )))
+  ;; (custom-set-variables '(tramp-chunksize 1024))
+  ;; (setq-default find-file-visit-truename t)
+  ;; (advice-add 'helm-reduce-file-name
+  ;;             :override (lambda (&rest args)
+  ;;                         (let ((fname (nth 0 args))
+  ;;                               (level (nth 1 args)))
+  ;;                           (while (> level 0)
+  ;;                             (setq fname (expand-file-name (concat fname "/../")))
+  ;;                             (setq level (1- level)))
+  ;;                           fname)))
+  )
 
 ;;
 ;; サーバー起動
