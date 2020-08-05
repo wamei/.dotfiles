@@ -53,8 +53,8 @@
 (global-set-key (kbd "M--")     'undo-tree-redo)
 
 (global-set-key (kbd "M-s s")   'helm-swoop)
-(global-set-key (kbd "M-s g")   'helm-git-grep)
-(global-set-key (kbd "M-s a")   'ag)
+(global-set-key (kbd "M-s g")   'helm-do-ag-project-root)
+(global-set-key (kbd "M-s a")   'helm-do-ag)
 (global-set-key (kbd "M-s o")   'projectile-multi-occur)
 (global-set-key (kbd "M-s f")   'helm-projectile-find-file)
 (global-set-key (kbd "M-s p")   'helm-projectile-switch-project)
@@ -838,7 +838,6 @@
 
 ;; Tramp設定
 (require 'tramp)
-;;(setq tramp-encoding-shell "zsh")
 ;; (setq tramp-copy-size-limit nil)
 ;; (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
 ;;(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
@@ -1225,7 +1224,7 @@
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'multi-term nil t)
   (setenv "TERMINFO" "~/.terminfo")
-  (setq multi-term-program "zsh")
+  ;; (setq multi-term-program "zsh")
   (if (eq system-type 'cygwin)
       (setq multi-term-program "bash.exe"))
   (add-to-list 'term-unbind-key-list '"M-x")
@@ -1675,13 +1674,6 @@
   (global-set-key (kbd "<M-kanji>") 'ignore)
   (global-set-key (kbd "<kanji>") 'ignore)
 
-  (require 'shell)
-  ;; (M-! and M-| and compile.el)
-  (setq shell-file-name "bash.exe")
-  (setq shell-command-switch "-c")
-  (setq explicit-shell-file-name shell-file-name)
-  (modify-coding-system-alist 'process ".*sh\\.exe" 'utf-8)
-
   (require 'server)
   (defun server-ensure-safe-dir (dir) "Noop" t)
   (setq server-socket-dir "~/.emacs.d")
@@ -1695,23 +1687,13 @@
   (setq option-modifier (quote meta))
   (setq ns-option-modifier (quote meta))
   (setq mac-option-modifier (quote meta))
-
-  (require 'shell)
-  (setq shell-file-name "zsh")
-  (setq shell-command-switch "-c")
-  (setq explicit-shell-file-name shell-file-name)
   )
 
 ;;
 ;; Linux用設定
 ;;----------------------------------------------------------------------------------------------------
 (when (eq system-type 'gnu/linux)
-  (require 'shell)
-  (setq shell-file-name "zsh")
-  (setq shell-command-switch "-c")
-  (setq explicit-shell-file-name shell-file-name)
   )
-
 
 ;;
 ;; WSL用設定
