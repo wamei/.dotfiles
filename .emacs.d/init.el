@@ -1354,6 +1354,51 @@
   )
 
 ;;
+;; git-gutter.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'git-gutter nil t)
+  (when window-system
+    (require 'git-gutter-fringe))
+  (global-git-gutter-mode t)
+  (add-to-list 'git-gutter:update-commands 'my/magit-quit-session)
+  )
+
+;;
+;; hl-line+.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'hl-line+ nil t)
+  (toggle-hl-line-when-idle)
+  (setq hl-line-idle-interval 3)
+  (set-face-background 'hl-line "#035f56")
+  (defun toggle-hl-line-mode ()
+    (interactive)
+    (if global-hl-line-mode
+        (global-hl-line-mode -1)
+      (global-hl-line-mode 1))
+    )
+  )
+
+;;
+;; rainbow.el
+;;----------------------------------------------------------------------------------------------------
+(when (require 'rainbow-mode nil t)
+  (add-hook 'js-mode-hook 'rainbow-mode)
+  (add-hook 'js2-mode-hook 'rainbow-mode)
+  (add-hook 'json-mode-hook 'rainbow-mode)
+  (add-hook 'tide-mode-hook 'rainbow-mode)
+  (add-hook 'css-mode-hook 'rainbow-mode)
+  (add-hook 'scss-mode-hook 'rainbow-mode)
+  (add-hook 'markdown-mode-hook 'rainbow-mode)
+  (add-hook 'php-mode-hook 'rainbow-mode)
+  (add-hook 'html-mode-hook 'rainbow-mode)
+  (add-hook 'www-mode-hook 'rainbow-mode)
+  (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
+  (add-hook 'go-mode-hook 'rainbow-mode)
+  (add-hook 'coffee-mode-hook 'rainbow-mode)
+  (add-hook 'ruby-mode-hook 'rainbow-mode)
+  )
+
+;;
 ;; flycheck.el
 ;;----------------------------------------------------------------------------------------------------
 (add-hook 'after-init-hook #'global-flycheck-mode)
@@ -1521,161 +1566,10 @@
 )
 
 ;;
-;; edit-indirect.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'edit-indirect nil t)
-  (define-key web-mode-map (kbd "C-c C-c") 'edit-indirect-dwim)
-  (defvar edit-indirect-guess-mode-alist
-    '(("<script.*>"  "</script.*>" js2-mode)
-      ("<style.*>"  "</style.*>" css-mode)))
-  (defun edit-indirect-guess-mode-at-point ()
-    (cl-loop with s
-             with e
-             with region-start
-             with region-end
-             with pt = (point)
-             for (start end mode) in
-             edit-indirect-guess-mode-alist
-             when
-             (save-excursion
-               (setq s (re-search-backward start nil t)
-                     region-start (match-end 0))
-               (setq e (re-search-forward end nil t)
-                     region-end (match-beginning 0))
-               (and s e (< s pt e)))
-             return (list mode region-start region-end)))
-  (defun edit-indirect-dwim (s e)
-    (interactive "r")
-    (let (it)
-      (cond ((region-active-p)
-             (edit-indirect-region s e t))
-            ((setq it (edit-indirect-guess-mode-at-point))
-             (edit-indirect-region (nth 1 it) (nth 2 it) t)
-             (funcall (car it)))
-            (t
-                        (user-error "No region")))))
-  )
-
-;;
-;; git-gutter.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'git-gutter nil t)
-  (when window-system
-    (require 'git-gutter-fringe))
-  (global-git-gutter-mode t)
-  (add-to-list 'git-gutter:update-commands 'my/magit-quit-session)
-  )
-
-;;
-;; hl-line+.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'hl-line+ nil t)
-  (toggle-hl-line-when-idle)
-  (setq hl-line-idle-interval 3)
-  (set-face-background 'hl-line "#035f56")
-  (defun toggle-hl-line-mode ()
-    (interactive)
-    (if global-hl-line-mode
-        (global-hl-line-mode -1)
-      (global-hl-line-mode 1))
-    )
-  )
-
-;;
-;; rainbow.el
-;;----------------------------------------------------------------------------------------------------
-(when (require 'rainbow-mode nil t)
-  (add-hook 'js-mode-hook 'rainbow-mode)
-  (add-hook 'css-mode-hook 'rainbow-mode)
-  (add-hook 'scss-mode-hook 'rainbow-mode)
-  (add-hook 'php-mode-hook 'rainbow-mode)
-  (add-hook 'html-mode-hook 'rainbow-mode)
-  (add-hook 'emacs-lisp-mode-hook 'rainbow-mode)
-  (add-hook 'go-mode-hook 'rainbow-mode)
-  (add-hook 'coffee-mode-hook 'rainbow-mode)
-  )
-
-;;
-;; eww
-;;----------------------------------------------------------------------------------------------------
-(require 'eww)
-(define-key eww-mode-map "r" 'eww-reload)
-(define-key eww-mode-map "P" 'eww-previous-url)
-(define-key eww-mode-map "N" 'eww-next-url)
-(define-key eww-mode-map "p" 'previous-line)
-(define-key eww-mode-map "n" 'next-line)
-(setq eww-search-prefix "http://www.google.co.jp/search?q=")
-(defvar eww-disable-colorize t)
-(defun shr-colorize-region--disable (orig start end fg &optional bg &rest _)
-  (unless eww-disable-colorize
-    (funcall orig start end fg)))
-(advice-add 'shr-colorize-region :around 'shr-colorize-region--disable)
-(advice-add 'eww-colorize-region :around 'shr-colorize-region--disable)
-(defun eww-disable-color ()
-  "eww で文字色を反映させない"
-  (interactive)
-  (setq-local eww-disable-colorize t)
-  (eww-reload))
-(defun eww-enable-color ()
-  "eww で文字色を反映させる"
-  (interactive)
-  (setq-local eww-disable-colorize nil)
-  (eww-reload))
-
-;;
-;; マイナーモードの省略
-;;----------------------------------------------------------------------------------------------------
-(defun shorten-minor-mode-name (mode-sym short-name &optional face)
-  "minor-modeの名前を短くする。"
-  (let ((cell (assq mode-sym minor-mode-alist)))
-    (when (consp cell)
-      (if face
-          (setq short-name (propertize short-name 'face face))
-        (setq short-name (concat short-name)))
-      (setcar (cdr cell) short-name))
-    ))
-(shorten-minor-mode-name 'abbrev-mode " Ab")
-(shorten-minor-mode-name 'orglink-mode " OL")
-(shorten-minor-mode-name 'orgtbl-mode " OT")
-(shorten-minor-mode-name 'undo-tree-mode "")
-(shorten-minor-mode-name 'rainbow-mode "")
-(shorten-minor-mode-name 'helm-mode "")
-(shorten-minor-mode-name 'whitespace-mode "")
-(shorten-minor-mode-name 'global-whitespace-mode "")
-
-(setq eldoc-minor-mode-string " El")
-
-;;
 ;; 文字コード
 ;;----------------------------------------------------------------------------------------------------
 (set-language-environment "Japanese")
 (prefer-coding-system 'utf-8)
-
-;; OSタイプ を調べる
-(defun os-type ()
-  (let ((os-type (shell-command-to-string "uname")))
-    (cond ((string-match "CYGWIN" os-type)
-           'cygwin)
-          ((string-match "Linux" os-type)
-           'linux)
-          ((string-match "Darwin" os-type)
-           'darwin))))
-
-;;
-;; windows用設定
-;;----------------------------------------------------------------------------------------------------
-(when (eq system-type 'cygwin)
-  ;; altをmetaキーに
-  (setq w32-alt-is-meta t)
-  ;; 漢字/変換キー入力時のエラーメッセージ抑止
-  (global-set-key (kbd "<A-kanji>") 'ignore)
-  (global-set-key (kbd "<M-kanji>") 'ignore)
-  (global-set-key (kbd "<kanji>") 'ignore)
-
-  (require 'server)
-  (defun server-ensure-safe-dir (dir) "Noop" t)
-  (setq server-socket-dir "~/.emacs.d")
-  )
 
 ;;
 ;; mac用設定
@@ -1688,207 +1582,61 @@
   )
 
 ;;
-;; Linux用設定
-;;----------------------------------------------------------------------------------------------------
-(when (eq system-type 'gnu/linux)
-  )
-
-;;
 ;; WSL用設定
 ;;----------------------------------------------------------------------------------------------------
-(when is-wsl
-  (custom-set-variables '(tramp-chunksize 1024))
-  (setq-default find-file-visit-truename t)
-  (advice-add 'helm-reduce-file-name
-              :override (lambda (&rest args)
-                          (let ((fname (nth 0 args))
-                                (level (nth 1 args)))
-                            (while (> level 0)
-                              (setq fname (expand-file-name (concat fname "/../")))
-                              (setq level (1- level)))
-                            fname)))
-  (require 'browse-url)
-  (setq browse-url-browser-function 'browse-url-generic)
-  (setq browse-url-generic-program "wslstart")
+;; (when is-wsl
+;;   (custom-set-variables '(tramp-chunksize 1024))
+;;   (setq-default find-file-visit-truename t)
+;;   (advice-add 'helm-reduce-file-name
+;;               :override (lambda (&rest args)
+;;                           (let ((fname (nth 0 args))
+;;                                 (level (nth 1 args)))
+;;                             (while (> level 0)
+;;                               (setq fname (expand-file-name (concat fname "/../")))
+;;                               (setq level (1- level)))
+;;                             fname)))
+;;   (require 'browse-url)
+;;   (setq browse-url-browser-function 'browse-url-generic)
+;;   (setq browse-url-generic-program "wslstart")
 
-  (if window-system
-      (progn
-        (require 'mozc)
-        (setq default-input-method "japanese-mozc")
-        (require 'mozc-popup)
-        (setq mozc-candidate-style 'popup)
+;;   (if window-system
+;;       (progn
+;;         (require 'mozc)
+;;         (setq default-input-method "japanese-mozc")
+;;         (require 'mozc-popup)
+;;         (setq mozc-candidate-style 'popup)
 
-        (global-set-key (kbd "M-`") 'toggle-input-method)
-        (define-key helm-map (kbd "M-`") 'toggle-input-method)
+;;         (global-set-key (kbd "M-`") 'toggle-input-method)
+;;         (define-key helm-map (kbd "M-`") 'toggle-input-method)
 
-        ;; helm でミニバッファの入力時に IME の状態を継承しない
-        (setq helm-inherit-input-method nil)
+;;         ;; helm でミニバッファの入力時に IME の状態を継承しない
+;;         (setq helm-inherit-input-method nil)
 
-        ;; helm の検索パターンを mozc を使って入力した場合にエラーが発生することがあるのを改善する
-        (advice-add 'mozc-helper-process-recv-response
-                    :around (lambda (orig-fun &rest args)
-                              (cl-loop for return-value = (apply orig-fun args)
-                                       if return-value return it)))
+;;         ;; helm の検索パターンを mozc を使って入力した場合にエラーが発生することがあるのを改善する
+;;         (advice-add 'mozc-helper-process-recv-response
+;;                     :around (lambda (orig-fun &rest args)
+;;                               (cl-loop for return-value = (apply orig-fun args)
+;;                                        if return-value return it)))
 
-        ;; helm の検索パターンを mozc を使って入力する場合、入力中は helm の候補の更新を停止する
-        (advice-add 'mozc-candidate-dispatch
-                    :before (lambda (&rest args)
-                              (when helm-alive-p
-                                (cl-case (nth 0 args)
-                                  ('update
-                                   (unless helm-suspend-update-flag
-                                     (helm-kill-async-processes)
-                                     (setq helm-pattern "")
-                                     (setq helm-suspend-update-flag t)))
-                                  ('clean-up
-                                   (when helm-suspend-update-flag
-                                     (setq helm-suspend-update-flag nil)))))))
+;;         ;; helm の検索パターンを mozc を使って入力する場合、入力中は helm の候補の更新を停止する
+;;         (advice-add 'mozc-candidate-dispatch
+;;                     :before (lambda (&rest args)
+;;                               (when helm-alive-p
+;;                                 (cl-case (nth 0 args)
+;;                                   ('update
+;;                                    (unless helm-suspend-update-flag
+;;                                      (helm-kill-async-processes)
+;;                                      (setq helm-pattern "")
+;;                                      (setq helm-suspend-update-flag t)))
+;;                                   ('clean-up
+;;                                    (when helm-suspend-update-flag
+;;                                      (setq helm-suspend-update-flag nil)))))))
 
-        ;; helm で候補のアクションを表示する際に IME を OFF にする
-        (advice-add 'helm-select-action
-                    :before (lambda (&rest args)
-                              (deactivate-input-method)))
-        )))
-
-;;
-;; 設定
-;;----------------------------------------------------------------------------------------------------
-;; OS でファイル、ディレクトリを直接開くためのコマンドを決定する
-(defun os-open-command-name (os-type)
-  (let ((command-name-list (cl-case os-type
-                             ('cygwin
-                              '("cygstart"))
-                             ('linux
-                              '("wslstart" "xdg-open" "gnome-open"))
-                             ('darwin
-                              '("open")))))
-    (catch 'loop
-      (dolist (command-name command-name-list)
-        (let* ((command1 (concat "which " command-name " 2> /dev/null"))
-               (command2 (if (file-remote-p default-directory)
-                             ;; リモートではログインシェルでコマンドを実行する
-                             (format "$0 -l -c '%s' 2> /dev/null" command1)
-                           command1))
-               (absolute-path-command-name (replace-regexp-in-string
-                                            "\n" ""
-                                            (shell-command-to-string command2))))
-          (unless (string= absolute-path-command-name "")
-            (throw 'loop absolute-path-command-name)))))))
-
-;; os-open-command のキャッシュ
-(defvar os-open-command-cache nil)
-
-;; キャッシュを検索・登録する
-(defun os-open-command-cache ()
-  (let* ((hostname (if (file-remote-p default-directory)
-                       (let* ((vec (tramp-dissect-file-name default-directory))
-                              (host (tramp-file-name-host vec))
-                              (user (tramp-file-name-user vec)))
-                         (if user
-                             (format "%s@%s" user host)
-                           host))
-                     "<localhost>")))
-    (cdr (or (assoc hostname os-open-command-cache)
-             (let* ((os-type (os-type))
-                    (os-open-command-name (os-open-command-name os-type)))
-               (car (push (cons hostname (list os-type os-open-command-name))
-                          os-open-command-cache)))))))
-
-;; OS で直接、ファイル、ディレクトリを開く
-(defun os-open-command (filename)
-  (interactive)
-  (let ((default-directory (cond ((or (file-regular-p filename)
-                                      ;; Cygwin の ln -s で作成したショートカットが、MinGW版 emacs では
-                                      ;; レギュラーファイルと認識されない。但し、シンボリックファイルと
-                                      ;; しては認識されたので、以下の設定を追加する。
-                                      (file-symlink-p filename))
-                                  (file-name-directory filename))
-                                 ((file-directory-p filename)
-                                  filename))))
-    (if default-directory
-        (let* ((cache (os-open-command-cache))
-               (os-type (nth 0 cache))
-               (os-open-command-name (nth 1 cache)))
-          (if os-open-command-name
-              (let ((localname (if (file-remote-p filename)
-                                   (tramp-file-name-localname
-                                    (tramp-dissect-file-name filename))
-                                 filename)))
-                (message "%s %s" (file-name-nondirectory os-open-command-name) localname)
-                (cond ((and (eq os-type 'linux)
-                            (not (file-remote-p default-directory)))
-                       ;; 以下の URL の対策を行う
-                       ;; http://d.hatena.ne.jp/mooz/20100915/p1
-                       ;; http://i-yt.info/?date=20090829#p01
-                       (let (process-connection-type)
-                         (start-process "os-open-command" nil os-open-command-name localname)))
-                      (t
-                       ;; リモートでもコマンドを実行できるように、start-process ではなく shell-command系を使う
-                       (shell-command-to-string (concat os-open-command-name " "
-                                                        (shell-quote-argument localname) " &")))))
-            (message "利用できるコマンドがありません。")))
-      (message "オープンできるファイルではありません。"))))
-
-;; dired で W 押下時に、カーソル位置のファイルを OS で直接起動する
-(define-key dired-mode-map (kbd "W")
-  (lambda ()
-    (interactive)
-    (let ((filename (dired-get-filename nil t)))
-      (recentf-push filename) ; recentf に追加する
-      (os-open-command filename))))
-
-;; dired で E 押下時に、開いているディレクトリを OS で直接開く
-(define-key dired-mode-map (kbd "E")
-  (lambda ()
-    (interactive)
-    (os-open-command (dired-current-directory))))
-
-;; OS で起動したいファイルの拡張子一覧
-(setq os-open-file-suffixes '("doc" "docx"
-                              "xls" "xlsx"
-                              "ppt" "pptx"
-                              "mdb" "mdbx"
-                              "vsd" "vdx" "vsdx"
-                              "mpp"
-                              "pdf"
-                              "bmp" "jpg" "png" "gif"
-                              "odt" "ott"
-                              "odg" "otg"
-                              "odp" "otp"
-                              "ods" "ots"
-                              "odf"
-                              "exe"
-                              ))
-
-;; OS で直接開きたいファイルかどうかを判定する
-(defun os-open-file-p (filename)
-  (when (file-regular-p filename)
-    (let ((ext (file-name-extension filename)))
-      (when (and ext
-                 (member (downcase ext) os-open-file-suffixes))
-        t))))
-
-;; dired でファイルを f で開く際に、os-open-file-suffixes リストに指定してあるサフィックスのファイルは OS で直接起動する
-(advice-add 'find-file
-            :around (lambda (orig-fun &rest args)
-                      (let* ((file-name (nth 0 args))
-                             (symlink-name (file-symlink-p file-name))
-                             (target-name (if symlink-name
-                                              symlink-name
-                                            file-name)))
-                        (cond ((os-open-file-p target-name)
-                               (let ((filename (expand-file-name file-name)))
-                                 (recentf-push filename) ; recentf に追加する
-                                 (os-open-command filename)))
-                              (t
-                               (apply orig-fun args))))))
-
-(when window-system
-  (add-hook 'kill-emacs-query-functions
-            (function
-             (lambda ()
-               (y-or-n-p "Really quit emacs? ")
-               ))))
+;;         ;; helm で候補のアクションを表示する際に IME を OFF にする
+;;         (advice-add 'helm-select-action
+;;                     :before (lambda (&rest args)
+;;                               (deactivate-input-method)))
+;;         )))
 
 ;;
 ;; サーバー起動
