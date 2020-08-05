@@ -1297,7 +1297,7 @@
 ;; editorconfig.el
 ;;----------------------------------------------------------------------------------------------------
 (when (require 'editorconfig nil t)
-  (editorconfig-mode 1)
+  (editorconfig-mode t)
   )
 
 ;;
