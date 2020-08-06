@@ -829,6 +829,8 @@
 
 ;; Tramp設定
 (require 'tramp)
+(setq shell-file-name "/bin/sh")
+(setq explicit-shell-file-name "/bin/sh")
 ;; (setq tramp-copy-size-limit nil)
 ;; (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
 ;;(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
