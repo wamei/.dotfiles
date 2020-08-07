@@ -334,17 +334,6 @@
   (counsel-yank-pop-separator "\n-------\n")
   (counsel-ag-base-command "ag -u --vimgrep %s")
   :config
-  ;; (defun small-recentf ()
-  ;;   (cl-subseq recentf-list 0 20))
-
-  ;; (ivy-set-sources
-  ;;  'ivy-switch-buffer
-  ;;  '((small-recentf)
-  ;;    (original-source)))
-  ;; (use-package ivy-hydra
-  ;;   :ensure t
-  ;;   :config
-  ;;   (setq ivy-read-action-function #'ivy-hydra-read-action))
   (use-package ivy-prescient
     :ensure t
     :config
@@ -676,15 +665,6 @@
   (elscreen-display-screen-number nil)
   (elscreen-display-tab 24)
   :config
-  ;; (defun my-esbl-buffer-name-filter (buffer-names)
-  ;;   (let ((buffer-names-to-keep (mapcar #'buffer-name
-  ;;                                       esbl-separate-buffer-list)))
-  ;;     (seq-filter (lambda (elt)
-  ;;                   (member elt buffer-names-to-keep))
-  ;;                 buffer-names)))
-
-  ;; (advice-add 'helm-buffer-list
-  ;;             :filter-return #'my-esbl-buffer-name-filter)
   (elscreen-start))
 (use-package elscreen-multi-term
   :ensure t
