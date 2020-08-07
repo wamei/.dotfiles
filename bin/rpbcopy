@@ -4,6 +4,8 @@
 
 if [[ $SESSION_TYPE == "remote" ]]; then
   cat | nc -q 0 127.0.0.1 2224
-else
+elif type "pbcopy" > /dev/null 2>&1; then
   cat | pbcopy
+elif type "xsel" > /dev/null 2>&1; then
+  cat | xsel --clipboard --input
 fi

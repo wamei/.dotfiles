@@ -30,6 +30,12 @@ $ chmod 755 /usr/local/share/zsh/site-functions
 $ chmod 755 /usr/local/share/zsh
 ```
 
+## xsel (pbcopyの代替)
+```
+# Ubuntu
+$ sudo apt-get install xsel
+```
+
 ## tmux
 ```
 # Mac
@@ -59,6 +65,9 @@ $ brew cask install emacs
 # Ubuntu
 $ sudo apt-get install emacs
 ```
+
+#### Language Server Protocol
+https://emacs-lsp.github.io/lsp-mode/page/languages/
 
 ## The Silver Searcher
 ```
