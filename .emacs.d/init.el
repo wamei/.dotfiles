@@ -31,6 +31,8 @@
   :config
   (exec-path-from-shell-initialize))
 
+(use-package el-x :ensure t)
+
 ;;
 ;; 基本設定
 ;;----------------------------------------------------------------------------------------------------
@@ -264,7 +266,7 @@
   :config
   (load-theme 'doom-molokai t)
   (doom-themes-visual-bell-config)
-  (doom-themes-neotree-config)
+  ;;(doom-themes-neotree-config)
   (doom-themes-org-config))
 
 (use-package doom-modeline
@@ -370,7 +372,12 @@
     (ivy-rich-mode)))
 
 (use-package projectile
-  :ensure t)
+  :ensure t
+  :config
+  (defun do-not-use-file-truename-in-projectile-project-root (old-fn &rest args)
+    (dflet ((file-truename (d) d))
+      (apply old-fn args)))
+  (advice-add 'projectile-project-root :around 'do-not-use-file-truename-in-projectile-project-root))
 
 (use-package git-gutter
   :ensure t
@@ -515,6 +522,7 @@
   :commands
   (neotree-show neotree-hide neotree-dir neotree-find)
   :custom
+  (neo-theme (if (display-graphic-p) 'icons 'arrow))
   (neo-smart-open t)
   (neo-autorefresh t)
   (neo-show-hidden-files t)
@@ -526,8 +534,14 @@
                             (display-buffer-in-side-window buffer `((side . ,window-pos)
                                                                     (window-parameters . ((no-other-window . t)
                                                                                           (no-delete-other-windows . t)))))))))
+  :preface
+  (defun wamei/neotree-show ()
+    (interactive)
+    (if (eq major-mode 'neotree-mode)
+        (neotree-hide)
+      (neotree-show)))
   :bind
-  ("<f9>" . neotree-show))
+  ("<f9>" . wamei/neotree-show))
 
 (use-package ls-lisp
   :custom
@@ -754,6 +768,12 @@
   (require 'docker-tramp-compat)
   (set-variable 'docker-tramp-use-names t))
 
+(use-package popwin
+  :ensure t
+  :config
+  (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
+  (popwin-mode 1))
+
 ;;
 ;; mac用設定
 ;;----------------------------------------------------------------------------------------------------
@@ -827,7 +847,7 @@
     (lsp-ui-doc-include-signature t)
     (lsp-ui-doc-position 'top) ;; top, bottom, or at-point
     (lsp-ui-doc-max-width 150)
-    (lsp-ui-doc-max-height 30)
+    (lsp-ui-doc-max-height 50)
     (lsp-ui-doc-use-childframe t)
     (lsp-ui-doc-use-webkit t)
     ;; lsp-ui-sideline
@@ -835,8 +855,8 @@
     (lsp-ui-sideline-ignore-duplicate t)
     (lsp-ui-sideline-show-symbol t)
     (lsp-ui-sideline-show-hover t)
-    (lsp-ui-sideline-show-diagnostics nil)
-    (lsp-ui-sideline-show-code-actions nil)
+    ;;(lsp-ui-sideline-show-diagnostics nil)
+    ;;(lsp-ui-sideline-show-code-actions nil)
     ;; lsp-ui-imenu
     (lsp-ui-imenu-enable t)
     (lsp-ui-imenu-kind-position 'top)
@@ -868,6 +888,16 @@
   :commands lsp-ivy-workspace-symbol)
 (use-package lsp-treemacs
   :ensure t
-  :commands lsp-treemacs-errors-list)
+  :commands lsp-treemacs-errors-list
+  :config
+  (lsp-treemacs-sync-mode 1))
 (use-package lsp-docker
   :ensure t)
+
+(use-package rbenv
+  :ensure t
+  :custom
+  (rbenv-installation-dir "~/.rbenv")
+  (rbenv-show-active-ruby-in-modeline nil)
+  :hook
+  (after-init . global-rbenv-mode))
