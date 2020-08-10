@@ -240,6 +240,10 @@
 
 (use-package all-the-icons
   :ensure t)
+(use-package all-the-icons-dired
+  :ensure t
+  :hook
+  (dired-mode . all-the-icons-dired-mode))
 
 (use-package dashboard
   :ensure t
@@ -281,7 +285,7 @@
   :ensure t
   :hook
   ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode) . hide-mode-line-mode)
-  ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode) . (lambda() (display-line-numbers-mode 0))))
+  ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode treemacs-mode term-mode) . (lambda() (display-line-numbers-mode 0))))
 
 (use-package whitespace
   :config
@@ -347,7 +351,17 @@
          ("M-s p" . counsel-projectile-switch-project)))
 (use-package all-the-icons-ivy-rich
   :ensure t
+  :custom
+  (inhibit-compacting-font-caches t)
   :config
+  (setq all-the-icons-ivy-rich-display-transformers-list
+   (append all-the-icons-ivy-rich-display-transformers-list
+           '(counsel-locate
+             (:columns
+              ((all-the-icons-ivy-rich-file-icon)
+               (ivy-rich-candidate (:width 0.8))
+               (ivy-rich-file-last-modified-time (:face font-lock-comment-face)))
+              :delimiter "\t"))))
   (all-the-icons-ivy-rich-mode)
   (use-package ivy-rich
     :ensure t
@@ -502,29 +516,18 @@
   (neotree-show neotree-hide neotree-dir neotree-find)
   :custom
   (neo-smart-open t)
+  (neo-autorefresh t)
   (neo-show-hidden-files t)
+  (neo-window-width 30)
+  (neo-hide-cursor t)
   (projectile-switch-project-action 'neotree-projectile-action)
+  (neo-display-action '((lambda(buffer _alist) 
+                          (let ((window-pos (if (eq neo-window-position 'left) 'left 'right)))
+                            (display-buffer-in-side-window buffer `((side . ,window-pos)
+                                                                    (window-parameters . ((no-other-window . t)
+                                                                                          (no-delete-other-windows . t)))))))))
   :bind
-  ("<f9>" . neotree-projectile-toggle)
-  :preface
-  (defun neotree-projectile-toggle ()
-    (interactive)
-    (let ((project-dir
-           (ignore-errors
-         ;;; Pick one: projectile or find-file-in-project
-             (projectile-project-root)
-             ))
-          (file-name (buffer-file-name))
-          (neo-smart-open t))
-      (if (and (fboundp 'neo-global--window-exists-p)
-               (neo-global--window-exists-p))
-          (neotree-hide)
-        (progn
-          (neotree-show)
-          (if project-dir
-              (neotree-dir project-dir))
-          (if file-name
-              (neotree-find file-name)))))))
+  ("<f9>" . neotree-show))
 
 (use-package ls-lisp
   :custom
@@ -660,12 +663,44 @@
          ("C-q 9" . (lambda() (interactive) (elscreen-goto 9))))
   :custom
   (elscreen-prefix-key (kbd "C-q C-w"))
-  ;;(elscreen-tab-display-kill-screen nil)
-  ;;(elscreen-tab-display-control nil)
-  (elscreen-display-screen-number nil)
-  (elscreen-display-tab 24)
+  (elscreen-default-buffer-name "*dashboard*")
   :config
   (elscreen-start))
+(use-package elscreen-tab
+  :ensure t
+  :after elscreen
+  :config
+  (defun elscreen-tab--update-buffer:after ()
+    (with-current-buffer (elscreen-tab--dedicated-tab-buffer-name)
+      (setq cursor-type nil)))
+  (advice-add 'elscreen-tab--update-buffer :after 'elscreen-tab--update-buffer:after)
+  (defun elscreen-tab--elscreen-goto:around (func &rest r)
+    (when (s-equals? (buffer-name (current-buffer)) elscreen-tab--dedicated-tab-buffer-name)
+      (other-window 1))
+    (apply func r))
+  (advice-add 'elscreen-goto :around 'elscreen-tab--elscreen-goto:around)
+  (defun elscreen-tab--create-tab-unit:override (screen-id)
+    (let* ((nickname-or-buf-names (assoc-default screen-id (elscreen-get-screen-to-name-alist)))
+           (nickname-or-1st-buffer
+            (elscreen-tab--avoid-undesirable-name (split-string nickname-or-buf-names ":")))
+           (tab-name
+            (elscreen-truncate-screen-name nickname-or-1st-buffer (elscreen-tab-width) t))
+           (tab-id (number-to-string screen-id))
+           tab-title
+           tab-unit)
+      (setq tab-title (format "[%s] %s" tab-id tab-name))
+      (setq tab-title (if (eq (elscreen-get-current-screen) screen-id)
+                          (propertize tab-title 'face 'elscreen-tab-current-screen-face)
+                        (propertize tab-title 'face 'elscreen-tab-other-screen-face)))
+      (setq tab-unit (elscreen-tab--propertize-click-to-jump tab-title screen-id))
+      tab-unit))
+  (advice-add 'elscreen-tab--create-tab-unit :override 'elscreen-tab--create-tab-unit:override)
+  (setq elscreen-tab--tab-unit-separator
+    #s(hash-table size 4
+                  test eq
+                  data (right "\n" top " " left "\n" bottom " ")))
+  (elscreen-tab-set-position 'top)
+  (elscreen-tab-mode))
 (use-package elscreen-multi-term
   :ensure t
   :after elscreen
@@ -770,8 +805,14 @@
 ;;----------------------------------------------------------------------------------------------------
 (use-package flycheck-posframe
   :ensure t
+  :if (not (equal window-system nil))
   :after flycheck
-  :config (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
+  :custom-face
+  (flycheck-posframe-border-face ((t (:foreground "#444444"))))
+  :custom
+  (flycheck-posframe-border-width 1)
+  :config
+  (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
 (use-package lsp-mode
   :ensure t
   :commands (lsp lsp-deferred)
@@ -812,14 +853,14 @@
           (lsp-ui-doc-mode -1)
           (lsp-ui-doc--hide-frame))
          (lsp-ui-doc-mode 1)))
-    :bind
-    (:map lsp-mode-map
-          ("C-c C-r" . lsp-ui-peek-find-references)
-          ("C-c C-j" . lsp-ui-peek-find-definitions)
-          ("C-c i"   . lsp-ui-peek-find-implementation)
-          ("C-c m"   . lsp-ui-imenu)
-          ("C-c s"   . lsp-ui-sideline-mode)
-          ("C-c d"   . ladicle/toggle-lsp-ui-doc))
+    :bind (("<f10>"   . lsp-ui-imenu)
+           :map lsp-mode-map
+           ("C-c C-r" . lsp-ui-peek-find-references)
+           ("C-c C-j" . lsp-ui-peek-find-definitions)
+           ("C-c i"   . lsp-ui-peek-find-implementation)
+           ("C-c m"   . lsp-ui-imenu)
+           ("C-c s"   . lsp-ui-sideline-mode)
+           ("C-c d"   . ladicle/toggle-lsp-ui-doc))
     :hook
     (lsp-mode . lsp-ui-mode)))
 (use-package lsp-ivy
