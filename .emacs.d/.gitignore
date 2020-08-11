@@ -1,6 +1,7 @@
 /tutorial/
 /transient/
-/straight/
+/straight/*
+!/straight/versions/
 /.cache/
 /auto-save-list/
 /speed-type/
