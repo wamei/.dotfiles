@@ -2,7 +2,6 @@
 export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
 export PAGER='less -R'
-export PATH=$HOME/bin:$PATH
 
 # Emacs
 if [ "$EMACS" ]; then
@@ -248,16 +247,6 @@ if [[ `uname -a` =~ Linux && `uname -a` =~ microsoft ]]; then
     source ~/.keychain/`hostname`-sh
 
 fi
-
-# rbenv
-[[ -d ${HOME}/.rbenv ]] && \
-  export PATH=${HOME}/.rbenv/bin:${PATH} && \
-  eval "$(rbenv init -)"
-
-# nodenv
-[[ -d ${HOME}/.nodenv ]] && \
-  export PATH=${HOME}/.nodenv/bin:${PATH} && \
-  eval "$(nodenv init -)"
 
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local

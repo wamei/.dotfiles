@@ -531,7 +531,7 @@
   (ls-lisp-use-insert-directory-program nil)
   (ls-lisp-ignore-case t)
   (ls-lisp-dirs-first t)
-  (dired-listing-switches "-aFvl")
+  (dired-listing-switches "-av")
   :config
   (when (> emacs-major-version 25.1) (setq ls-lisp-UCA-like-collation nil)))
 
@@ -805,12 +805,15 @@
   :hook
   (after-init . global-rbenv-mode))
 
-(use-package powershell)
+(use-package powershell
+  :mode (("\\.ps[dm]?1\\'" . powershell-mode)))
 
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (powershell-mode . lsp-deferred))
+  :custom
+  (lsp-pwsh-exe (or (executable-find "pwsh") (executable-find "powershell") (executable-find "powershell.exe")))
   :config
   (use-package lsp-ui
     :custom
