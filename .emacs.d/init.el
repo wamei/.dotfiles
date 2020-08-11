@@ -823,6 +823,14 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
+(use-package rbenv
+  :ensure t
+  :custom
+  (rbenv-installation-dir "~/.rbenv")
+  (rbenv-show-active-ruby-in-modeline nil)
+  :hook
+  (after-init . global-rbenv-mode))
+
 (use-package flycheck-posframe
   :ensure t
   :if (not (equal window-system nil))
@@ -893,11 +901,3 @@
   (lsp-treemacs-sync-mode 1))
 (use-package lsp-docker
   :ensure t)
-
-(use-package rbenv
-  :ensure t
-  :custom
-  (rbenv-installation-dir "~/.rbenv")
-  (rbenv-show-active-ruby-in-modeline nil)
-  :hook
-  (after-init . global-rbenv-mode))
