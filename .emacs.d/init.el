@@ -531,7 +531,7 @@
   (ls-lisp-use-insert-directory-program nil)
   (ls-lisp-ignore-case t)
   (ls-lisp-dirs-first t)
-  (dired-listing-switches "-aFvl --group-directories-first")
+  (dired-listing-switches "-aFvl")
   :config
   (when (> emacs-major-version 25.1) (setq ls-lisp-UCA-like-collation nil)))
 
