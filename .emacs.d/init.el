@@ -812,8 +812,6 @@
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (powershell-mode . lsp-deferred))
-  :custom
-  (lsp-pwsh-exe (or (executable-find "pwsh") (executable-find "powershell") (executable-find "powershell.exe")))
   :config
   (use-package lsp-ui
     :custom
