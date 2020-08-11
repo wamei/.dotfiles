@@ -788,26 +788,24 @@
 ;; WSL用設定
 ;;----------------------------------------------------------------------------------------------------
 (when is-wsl
+  ;; (custom-set-variables '(tramp-chunksize 1024))
+  ;; (setq-default find-file-visit-truename t)
   (use-package browse-url
     :config
     (setq browse-url-browser-function 'browse-url-generic)
     (setq browse-url-generic-program "wslstart"))
-
   (use-package mozc
     :if (not (equal window-system nil))
     :ensure t
     :bind (("M-`" . toggle-input-method))
     :custom
     (mozc-leim-title "かな")
-    (default-input-method "japanese-mozc"))
-  (use-package mozc-cand-posframe
-    :if (not (equal window-system nil))
-    :ensure t
-    :after mozc
-    :custom
-    ;; (custom-set-variables '(tramp-chunksize 1024))
-    ;; (setq-default find-file-visit-truename t)
-    (mozc-candidate-style 'posframe)))
+    (default-input-method "japanese-mozc")
+    :config
+    (use-package mozc-cand-posframe
+      :ensure t
+      :custom
+      (mozc-candidate-style 'posframe))))
 
 ;;
 ;; サーバー起動
