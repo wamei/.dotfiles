@@ -1,5 +1,7 @@
 /tutorial/
 /transient/
+/straight/
+/.cache/
 /auto-save-list/
 /speed-type/
 /elpa/cl-lib-0.5/

@@ -1,41 +1,58 @@
 ;; -*- Mode: Emacs-Lisp ; Coding: utf-8 -*-
 ;;
-;; package.el
+;; package
 ;;----------------------------------------------------------------------------------------------------
-(require 'package)
-(add-to-list 'package-archives '("melpa" . "http://melpa.org/packages/"))
-(package-initialize)
+;; (require 'package)
+;; (add-to-list 'package-archives '("melpa" . "http://melpa.org/packages/"))
+;; (package-initialize)
 
-(unless package-archive-contents
-  (package-refresh-contents))
+;; (unless package-archive-contents
+;;     (package-refresh-contents))
 
-(when (not (package-installed-p 'use-package))
-  (package-install 'use-package))
-(setq use-package-enable-imenu-support t)
-(require 'use-package)
+;; (when (not (package-installed-p 'use-package))
+;;     (package-install 'use-package))
+;; (setq use-package-enable-imenu-support t)
+;; (require 'use-package)
+;; (setq use-package-always-ensure t)
+
+(defvar bootstrap-version)
+(let ((bootstrap-file
+      (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+     (bootstrap-version 5))
+ (unless (file-exists-p bootstrap-file)
+   (with-current-buffer
+       (url-retrieve-synchronously
+        "https://raw.githubusercontent.com/raxod502/straight.el/develop/install.el"
+        'silent 'inhibit-cookies)
+     (goto-char (point-max))
+     (eval-print-last-sexp)))
+ (load bootstrap-file nil 'nomessage))
+
+(straight-use-package 'use-package)
+(setq straight-use-package-by-default t)
+
+(use-package el-x)
+(use-package s)
 
 ;; Avoid to write `package-selected-packages` in init.el
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-exists-p custom-file)
   (load custom-file))
 
-(use-package s :ensure t)
+;;
+;; 基本設定
+;;----------------------------------------------------------------------------------------------------
+
+;; WSL判定関数
 (defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
   (and (s-starts-with? "Linux" name)
        (s-matches? "microsoft" name))))
 
 ;; load environment value
 (use-package exec-path-from-shell
-  :ensure t
   :if (memq window-system '(mac ns x))
   :config
   (exec-path-from-shell-initialize))
-
-(use-package el-x :ensure t)
-
-;;
-;; 基本設定
-;;----------------------------------------------------------------------------------------------------
 
 ;; 単語操作周りを変更する
 (global-set-key (kbd "M-b") 'backward-to-word)
@@ -67,6 +84,9 @@
 (recentf-mode 1)
 (setq recentf-max-menu-items 100)
 (setq recentf-max-saved-items 1000)
+
+;; タブをスペースに
+(setq indent-tabs-mode nil)
 
 ;; symbolic link のファイル名のまま開く
 (setq find-file-visit-truename nil)
@@ -185,6 +205,7 @@
 ;;   )
 
 (use-package tramp
+  :straight nil
   :config
   (setq shell-file-name "/bin/sh")
   (setq explicit-shell-file-name "/bin/sh")
@@ -208,17 +229,14 @@
   )
 
 (use-package expand-region
-  :ensure t
   :bind (("C-q C-q" . er/expand-region)
          ("C-q C-z" . er/contract-region)))
 
 (use-package mwim
-  :ensure t
   :bind (("C-a" . mwim-beginning-of-line-or-code)
          ("C-e" . mwim-end-of-line-or-code)))
 
 (use-package undo-tree
-  :ensure t
   :bind (("C--" . undo-tree-undo)
          ("C-?" . undo-tree-redo)
          ("M--" . undo-tree-redo))
@@ -226,13 +244,11 @@
   (after-init . global-undo-tree-mode))
 
 (use-package visual-regexp-steroids
-  :ensure t
   :bind (("C-r" . vr/replace)
          ("C-q C-r" . vr/query-replace)
          ("C-q C-m" . vr/mc-mark)))
 
 (use-package string-inflection
-  :ensure t
   :bind (("C-q C-i C-a" . string-inflection-all-cycle)
          ("C-q C-i C-l" . string-inflection-underscore)
          ("C-q C-i C-c" . string-inflection-lower-camelcase)
@@ -240,15 +256,12 @@
          ("C-q C-i C-u" . string-inflection-upcase)
          ("C-q C-i C-k" . string-inflection-kebab-case)))
 
-(use-package all-the-icons
-  :ensure t)
+(use-package all-the-icons)
 (use-package all-the-icons-dired
-  :ensure t
   :hook
   (dired-mode . all-the-icons-dired-mode))
 
 (use-package dashboard
-  :ensure t
   :custom
   (dashboard-items '((recents  . 20)
                      (bookmarks . 10)
@@ -262,7 +275,6 @@
   (dashboard-setup-startup-hook))
 
 (use-package doom-themes
-  :ensure t
   :config
   (load-theme 'doom-molokai t)
   (doom-themes-visual-bell-config)
@@ -270,7 +282,6 @@
   (doom-themes-org-config))
 
 (use-package doom-modeline
-  :ensure t
   :custom
   (doom-modeline-major-mode-icon nil)
   (doom-modeline-minor-modes nil)
@@ -284,7 +295,6 @@
                               '(misc-info persp-name lsp github debug minor-modes input-method major-mode process vcs checker)))
 
 (use-package hide-mode-line
-  :ensure t
   :hook
   ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode) . hide-mode-line-mode)
   ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode treemacs-mode term-mode) . (lambda() (display-line-numbers-mode 0))))
@@ -312,7 +322,6 @@
   (after-init . global-whitespace-mode))
 
 (use-package eldoc
-  :ensure t
   :config
   (defun ad:eldoc-message (f &optional string)
     (unless (active-minibuffer-window)
@@ -320,7 +329,6 @@
   (advice-add 'eldoc-message :around #'ad:eldoc-message))
 
 (use-package counsel
-  :ensure t
   :bind (("M-x" . counsel-M-x)
          ("M-y" . counsel-yank-pop)
          ("C-x p" . ivy-resume)
@@ -341,18 +349,15 @@
   (counsel-ag-base-command "ag -u --vimgrep %s")
   :config
   (use-package ivy-prescient
-    :ensure t
     :config
     (ivy-prescient-mode 1))
   :hook
   (after-init . ivy-mode))
 (use-package counsel-projectile
-  :ensure t
   :bind (("M-s g" . counsel-projectile-ag)
          ("M-s f" . counsel-projectile-find-file)
          ("M-s p" . counsel-projectile-switch-project)))
 (use-package all-the-icons-ivy-rich
-  :ensure t
   :custom
   (inhibit-compacting-font-caches t)
   :config
@@ -366,13 +371,11 @@
               :delimiter "\t"))))
   (all-the-icons-ivy-rich-mode)
   (use-package ivy-rich
-    :ensure t
     :config
     (setcdr (assq t ivy-format-functions-alist) #'ivy-format-function-line)
     (ivy-rich-mode)))
 
 (use-package projectile
-  :ensure t
   :config
   (defun do-not-use-file-truename-in-projectile-project-root (old-fn &rest args)
     (dflet ((file-truename (d) d))
@@ -380,7 +383,6 @@
   (advice-add 'projectile-project-root :around 'do-not-use-file-truename-in-projectile-project-root))
 
 (use-package git-gutter
-  :ensure t
   :custom
   (git-gutter:modified-sign " ")
   (git-gutter:added-sign    " ")
@@ -393,16 +395,13 @@
   (after-init . global-git-gutter-mode))
 
 (use-package editorconfig
-  :ensure t
   :hook
   (after-init . editorconfig-mode))
 
 (use-package company-box
-  :ensure t
   :hook
   (company-mode . company-box-mode))
 (use-package company
-  :ensure t
   :bind (:map company-mode-map
          ("M-/" . company-complete)
          ;;("<tab>" . company-indent-or-complete-common)
@@ -424,17 +423,14 @@
   (company-selection-wrap-around t)
   :config
   (use-package company-prescient
-    :ensure t
     :config
     (company-prescient-mode 1))
   :hook
   (after-init . global-company-mode))
 
-(use-package phi-search
-  :ensure t)
+(use-package phi-search)
 
 (use-package multiple-cursors
-  :ensure t
   :bind (("C-q C-l" . mc/edit-lines)
          ("C-q C-a" . mc/mark-all-like-this)
          ("C-q C-d" . mc/mark-all-like-this-in-defun)
@@ -516,7 +512,6 @@
   )
 
 (use-package neotree
-  :ensure t
   :after
   projectile
   :commands
@@ -544,6 +539,7 @@
   ("<f9>" . wamei/neotree-show))
 
 (use-package ls-lisp
+  :straight nil
   :custom
   (ls-lisp-use-insert-directory-program nil)
   (ls-lisp-ignore-case t)
@@ -553,6 +549,7 @@
   (when (> emacs-major-version 25.1) (setq ls-lisp-UCA-like-collation nil)))
 
 (use-package dired
+  :straight nil
   :bind (("C-x C-j" . dired-toggle-current-or-project-directory)
          :map dired-mode-map
          ("C-c C-s" . dired-toggle-sudo)
@@ -585,24 +582,20 @@
                (dired-jump)))
             ))))
 (use-package dired-toggle-sudo
-  :ensure t
   :after dired
   :bind (:map dired-mode-map
          ("C-c C-s" . dired-toggle-sudo)))
 (use-package dired-rainbow
-  :ensure t
   :after dired
   :config
   (dired-rainbow-define dotfiles "#aaaaaa" "\\..*")
   (dired-rainbow-define-chmod executable-unix "Green" "-.*x.*"))
 (use-package async
-  :ensure t
   :config
   (eval-after-load "dired-aux" '(require 'dired-async))
   )
 
 (use-package multi-term
-  :ensure t
   :preface
   (defun term-send-forward-char ()
     (interactive)
@@ -656,7 +649,6 @@
                  )))
 
 (use-package elscreen
-  :ensure t
   :bind (("C-q n" . elscreen-next)
          ("C-q p" . elscreen-previous)
          ("C-<tab>" . elscreen-next)
@@ -681,7 +673,6 @@
   :config
   (elscreen-start))
 (use-package elscreen-tab
-  :ensure t
   :after elscreen
   :config
   (defun elscreen-tab--update-buffer:after ()
@@ -716,17 +707,14 @@
   (elscreen-tab-set-position 'top)
   (elscreen-tab-mode))
 (use-package elscreen-multi-term
-  :ensure t
   :after elscreen
   :bind (("C-z" . emt-pop-multi-term)))
 (use-package elscreen-separate-buffer-list
-  :ensure t
   :after elscreen
   :config
   (elscreen-separate-buffer-list-mode))
 
 (use-package magit
-  :ensure t
   :after (git-gutter elscreen)
   :bind (("C-x g" . magit-status)
          :map magit-status-mode-map
@@ -750,29 +738,33 @@
   (magit-mode . (lambda () (company-mode -1))))
 
 (use-package rainbow-mode
-  :ensure t
   :hook
   (after-change-major-mode . rainbow-mode))
 
 (use-package docker
-  :ensure t
   :bind ("C-c d" . docker))
 (use-package dockerfile-mode
-  :ensure t
   :mode (("Dockerfile\\'" . dockerfile-mode)))
-(use-package docker-compose-mode
-  :ensure t)
+(use-package docker-compose-mode)
 (use-package docker-tramp
-  :ensure t
   :config
   (require 'docker-tramp-compat)
   (set-variable 'docker-tramp-use-names t))
 
 (use-package popwin
-  :ensure t
   :config
   (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
   (popwin-mode 1))
+
+(use-package flycheck-posframe
+  :if (not (equal window-system nil))
+  :after flycheck
+  :custom-face
+  (flycheck-posframe-border-face ((t (:foreground "#444444"))))
+  :custom
+  (flycheck-posframe-border-width 1)
+  :config
+  (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
 
 ;;
 ;; mac用設定
@@ -796,14 +788,12 @@
     (setq browse-url-generic-program "wslstart"))
   (use-package mozc
     :if (not (equal window-system nil))
-    :ensure t
     :bind (("M-`" . toggle-input-method))
     :custom
     (mozc-leim-title "かな")
     (default-input-method "japanese-mozc")
     :config
     (use-package mozc-cand-posframe
-      :ensure t
       :custom
       (mozc-candidate-style 'posframe))))
 
@@ -822,30 +812,21 @@
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
 (use-package rbenv
-  :ensure t
   :custom
   (rbenv-installation-dir "~/.rbenv")
   (rbenv-show-active-ruby-in-modeline nil)
   :hook
   (after-init . global-rbenv-mode))
 
-(use-package flycheck-posframe
-  :ensure t
-  :if (not (equal window-system nil))
-  :after flycheck
-  :custom-face
-  (flycheck-posframe-border-face ((t (:foreground "#444444"))))
-  :custom
-  (flycheck-posframe-border-width 1)
-  :config
-  (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
+(use-package powershell)
+
 (use-package lsp-mode
-  :ensure t
   :commands (lsp lsp-deferred)
-  :hook (ruby-mode . lsp-deferred)
+  :hook ((ruby-mode . lsp-deferred)
+         (powershell-mode . lsp-deferred))
   :config
+  (use-package lsp-docker)
   (use-package lsp-ui
-    :ensure t
     :custom
     ;; lsp-ui-doc
     (lsp-ui-doc-enable t)
@@ -890,12 +871,8 @@
     :hook
     (lsp-mode . lsp-ui-mode)))
 (use-package lsp-ivy
-  :ensure t
   :commands lsp-ivy-workspace-symbol)
 (use-package lsp-treemacs
-  :ensure t
   :commands lsp-treemacs-errors-list
   :config
   (lsp-treemacs-sync-mode 1))
-(use-package lsp-docker
-  :ensure t)
