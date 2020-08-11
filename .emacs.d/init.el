@@ -531,7 +531,7 @@
   (ls-lisp-use-insert-directory-program nil)
   (ls-lisp-ignore-case t)
   (ls-lisp-dirs-first t)
-  (dired-listing-switches "-alG")
+  (dired-listing-switches "-aFvl --group-directories-first")
   :config
   (when (> emacs-major-version 25.1) (setq ls-lisp-UCA-like-collation nil)))
 
@@ -812,7 +812,6 @@
   :hook ((ruby-mode . lsp-deferred)
          (powershell-mode . lsp-deferred))
   :config
-  (use-package lsp-docker)
   (use-package lsp-ui
     :custom
     ;; lsp-ui-doc
@@ -863,3 +862,5 @@
   :commands lsp-treemacs-errors-list
   :config
   (lsp-treemacs-sync-mode 1))
+(use-package dap-mode)
+(use-package lsp-docker)
