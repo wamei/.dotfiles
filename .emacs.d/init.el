@@ -112,7 +112,10 @@
 (scroll-bar-mode 0)
 
 ;; 透明度を設定する
-(set-frame-parameter nil 'alpha 85)
+;;(set-frame-parameter nil 'alpha 85)
+
+;; 現在行をハイライト
+(global-hl-line-mode)
 
 ;; 選択範囲に色をつける
 (transient-mark-mode t)
@@ -266,10 +269,12 @@
   (dashboard-setup-startup-hook))
 
 (use-package doom-themes
+  :custom
+  (doom-themes-neotree-file-icons t)
   :config
   (load-theme 'doom-molokai t)
   (doom-themes-visual-bell-config)
-  ;;(doom-themes-neotree-config)
+  (doom-themes-neotree-config)
   (doom-themes-org-config))
 
 (use-package doom-modeline
@@ -307,12 +312,12 @@
   :hook
   (after-init . global-whitespace-mode))
 
-(use-package eldoc
-  :config
-  (defun ad:eldoc-message (f &optional string)
-    (unless (active-minibuffer-window)
-      (funcall f string)))
-  (advice-add 'eldoc-message :around #'ad:eldoc-message))
+;; (use-package eldoc
+;;   :config
+;;   (defun ad:eldoc-message (f &optional string)
+;;     (unless (active-minibuffer-window)
+;;       (funcall f string)))
+;;   (advice-add 'eldoc-message :around #'ad:eldoc-message))
 
 (use-package counsel
   :bind (("M-x" . counsel-M-x)
@@ -322,7 +327,6 @@
          ("C-x C-f" . counsel-find-file)
          ("M-s a" . counsel-ag)
          ("M-s s" . swiper)
-         ("M-s r" . counsel-recentf)
          ("M-s l" . counsel-locate))
   :custom
   (ivy-wrap t)
@@ -512,14 +516,12 @@
   :commands
   (neotree-show neotree-hide neotree-dir neotree-find)
   :custom
-  (neo-theme (if (display-graphic-p) 'icons 'arrow))
+  (neo-theme 'icons)
   (neo-smart-open t)
-  (neo-autorefresh t)
   (neo-show-hidden-files t)
   (neo-window-width 30)
-  (neo-hide-cursor t)
   (projectile-switch-project-action 'neotree-projectile-action)
-  (neo-display-action '((lambda(buffer _alist) 
+  (neo-display-action '((lambda(buffer _alist)
                           (let ((window-pos (if (eq neo-window-position 'left) 'left 'right)))
                             (display-buffer-in-side-window buffer `((side . ,window-pos)
                                                                     (window-parameters . ((no-other-window . t)
@@ -530,8 +532,12 @@
     (if (eq major-mode 'neotree-mode)
         (neotree-hide)
       (neotree-show)))
+  (defun wamei/neotree-mode-hook ()
+    (setq cursor-type nil))
   :bind
-  ("<f9>" . wamei/neotree-show))
+  ("<f9>" . wamei/neotree-show)
+  :hook
+  (neotree-mode . wamei/neotree-mode-hook))
 
 (use-package ls-lisp
   :straight nil
@@ -733,6 +739,22 @@
   (magit-mode . (lambda () (company-mode -1))))
 
 (use-package rainbow-mode
+  :config
+  (use-package ov)
+  (defun wamei/rainbow-colorize-match:override (color &optional match)
+    (let ((match (or match 0)))
+      (ov-clear (match-beginning match) (match-end match) 'ovrainbow t)
+      (ov
+       (match-beginning match) (match-end match)
+       'face `((:foreground ,(if (> 0.5 (rainbow-x-color-luminance color))
+                                 "white" "black"))
+               (:background ,color))
+       'ovrainbow t
+       'priority 5000)))
+  (advice-add 'rainbow-colorize-match :override 'wamei/rainbow-colorize-match:override)
+  (defun wamei/rainbow-turn-off:after (&rest r)
+    (ov-clear (point-min) (point-max) 'ovrainbow t))
+  (advice-add 'rainbow-turn-off :after 'wamei/rainbow-turn-off:after)
   :hook
   (after-change-major-mode . rainbow-mode))
 
@@ -822,46 +844,14 @@
   :config
   (use-package lsp-ui
     :custom
-    ;; lsp-ui-doc
-    (lsp-ui-doc-enable t)
     (lsp-ui-doc-header t)
     (lsp-ui-doc-include-signature t)
-    (lsp-ui-doc-position 'top) ;; top, bottom, or at-point
-    (lsp-ui-doc-max-width 150)
-    (lsp-ui-doc-max-height 50)
-    (lsp-ui-doc-use-childframe t)
-    (lsp-ui-doc-use-webkit t)
-    ;; lsp-ui-sideline
-    (lsp-ui-sideline-enable t)
-    (lsp-ui-sideline-ignore-duplicate t)
-    (lsp-ui-sideline-show-symbol t)
-    (lsp-ui-sideline-show-hover t)
-    ;;(lsp-ui-sideline-show-diagnostics nil)
-    ;;(lsp-ui-sideline-show-code-actions nil)
-    ;; lsp-ui-imenu
-    (lsp-ui-imenu-enable t)
-    (lsp-ui-imenu-kind-position 'top)
-    ;; lsp-ui-peek
-    (lsp-ui-peek-enable t)
-    (lsp-ui-peek-peek-height 20)
-    (lsp-ui-peek-list-width 50)
-    (lsp-ui-peek-fontify 'on-demand) ;; never, on-demand, or always
-    :preface
-    (defun ladicle/toggle-lsp-ui-doc ()
-      (interactive)
-      (if lsp-ui-doc-mode
-        (progn
-          (lsp-ui-doc-mode -1)
-          (lsp-ui-doc--hide-frame))
-         (lsp-ui-doc-mode 1)))
+    (lsp-ui-doc-position 'top)
     :bind (("<f10>"   . lsp-ui-imenu)
            :map lsp-mode-map
-           ("C-c C-r" . lsp-ui-peek-find-references)
-           ("C-c C-j" . lsp-ui-peek-find-definitions)
-           ("C-c i"   . lsp-ui-peek-find-implementation)
-           ("C-c m"   . lsp-ui-imenu)
-           ("C-c s"   . lsp-ui-sideline-mode)
-           ("C-c d"   . ladicle/toggle-lsp-ui-doc))
+           ("M-s r" . lsp-ui-peek-find-references)
+           ("M-s d" . lsp-ui-peek-find-definitions)
+           ("M-s i" . lsp-ui-peek-find-implementation))
     :hook
     (lsp-mode . lsp-ui-mode)))
 (use-package lsp-ivy
