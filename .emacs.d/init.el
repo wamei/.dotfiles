@@ -347,6 +347,15 @@
 (use-package all-the-icons-ivy-rich
   :custom
   (inhibit-compacting-font-caches t)
+  :preface
+  (defun wamei/ivy-format-function (cands)
+    (ivy--format-function-generic
+     (lambda (str)
+       (ivy--add-face (concat (all-the-icons-octicon "arrow-right") " " str "\n") 'ivy-current-match))
+     (lambda (str)
+       (concat "  " str "\n"))
+     cands
+     ""))
   :config
   (setq all-the-icons-ivy-rich-display-transformers-list
    (append all-the-icons-ivy-rich-display-transformers-list
@@ -359,8 +368,8 @@
   (all-the-icons-ivy-rich-mode)
   (use-package ivy-rich
     :config
-    (setcdr (assq t ivy-format-functions-alist) #'ivy-format-function-line)
-    (ivy-rich-mode)))
+    (ivy-rich-mode)
+    (setcdr (assq t ivy-format-functions-alist) #'wamei/ivy-format-function)))
 
 (use-package projectile
   :config
@@ -753,6 +762,17 @@
   :config
   (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
 
+(use-package mozc
+  :if (not (equal window-system nil))
+  :bind (("M-`" . toggle-input-method))
+  :custom
+  (mozc-leim-title "かな")
+  (default-input-method "japanese-mozc")
+  :config
+  (use-package mozc-cand-posframe
+    :custom
+    (mozc-candidate-style 'posframe)))
+
 ;;
 ;; mac用設定
 ;;----------------------------------------------------------------------------------------------------
@@ -772,17 +792,7 @@
   (use-package browse-url
     :config
     (setq browse-url-browser-function 'browse-url-generic)
-    (setq browse-url-generic-program "wslstart"))
-  (use-package mozc
-    :if (not (equal window-system nil))
-    :bind (("M-`" . toggle-input-method))
-    :custom
-    (mozc-leim-title "かな")
-    (default-input-method "japanese-mozc")
-    :config
-    (use-package mozc-cand-posframe
-      :custom
-      (mozc-candidate-style 'posframe))))
+    (setq browse-url-generic-program "wslstart")))
 
 ;;
 ;; サーバー起動

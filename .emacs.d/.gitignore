@@ -36,4 +36,5 @@ archives/
 .mc-lists.el
 .session
 .lsp-session-v1
+.emacs.desktop*
 *.elc
