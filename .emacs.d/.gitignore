@@ -37,4 +37,5 @@ archives/
 .session
 .lsp-session-v1
 .emacs.desktop*
+.dap-breakpoints
 *.elc

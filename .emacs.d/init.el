@@ -91,6 +91,10 @@
 (save-place-mode 1)
 (setq save-place-file (concat user-emacs-directory "places"))
 
+;; 状態復元をONにする
+;;(desktop-save-mode 1)
+;;(setq desktop-files-not-to-save "")
+
 ;; history保存
 (savehist-mode 1)
 (push 'kill-ring savehist-additional-variables)
@@ -270,16 +274,11 @@
 
 (use-package doom-modeline
   :custom
-  (doom-modeline-major-mode-icon nil)
-  (doom-modeline-minor-modes nil)
+  (inhibit-compacting-font-caches t)
   :hook
   (after-init . doom-modeline-mode)
   :config
-  (line-number-mode 0)
-  (column-number-mode 0)
-  (doom-modeline-def-modeline 'main
-                              '(bar matches buffer-info remote-host buffer-position parrot selection-info)
-                              '(misc-info persp-name lsp github debug minor-modes input-method major-mode process vcs checker)))
+  (column-number-mode 1))
 
 (use-package hide-mode-line
   :hook
@@ -756,9 +755,7 @@
   :if (not (equal window-system nil))
   :after flycheck
   :custom-face
-  (flycheck-posframe-border-face ((t (:foreground "#444444"))))
-  :custom
-  (flycheck-posframe-border-width 1)
+  (flycheck-posframe-background-face ((t (:background "#444"))))
   :config
   (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
 
