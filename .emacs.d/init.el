@@ -783,12 +783,44 @@
 
 (use-package mozc
   :if (not (equal window-system nil))
-  :bind (("M-`" . toggle-input-method))
+  :bind (("M-`" . toggle-input-method)
+         ("<C-f1>" . disable-input-method)
+         ("<C-f2>" . enable-input-method))
+  :preface
+  (defun enable-input-method (&optional arg interactive)
+    (interactive "P\np")
+    (if (not current-input-method)
+        (toggle-input-method arg interactive)))
+  (defun disable-input-method (&optional arg interactive)
+    (interactive "P\np")
+    (if current-input-method
+        (toggle-input-method arg interactive)))
   :custom
   (mozc-leim-title "かな")
   (default-input-method "japanese-mozc")
   :config
+  (defun wamei/toggle-input-method:after (&optional arg interactive)
+    (when (posframe-workable-p)
+      (setq posframe-mouse-banish nil)
+      (let ((string (if current-input-method
+                        "あ"
+                      "A"))
+            (border (if current-input-method
+                        "black"
+                      "blue")))
+        (posframe-show " *wamei-input-method*"
+                       :string string
+                       :background-color "white"
+                       :foreground-color "black"
+                       :right-fringe 2
+                       :left-fringe 2
+                       :internal-border-width 1
+                       :internal-border-color border
+                       :timeout 1
+                       :poshandler 'posframe-poshandler-point-bottom-left-corner))))
+  (advice-add 'toggle-input-method :after 'wamei/toggle-input-method:after)
   (use-package mozc-cand-posframe
+    :if (not (equal window-system nil))
     :custom
     (mozc-candidate-style 'posframe)))
 
