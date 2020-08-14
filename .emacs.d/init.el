@@ -892,6 +892,7 @@
   :custom
   (lsp-enable-snippet nil)
   :config
+  (setq ruby-insert-encoding-magic-comment nil)
   (lsp-register-client
    (make-lsp-client
     :new-connection (lsp-tramp-connection "solargraph stdio")
