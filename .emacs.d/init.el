@@ -400,6 +400,9 @@
 (use-package company-box
   :hook
   (company-mode . company-box-mode))
+(use-package company-statistics
+  :hook
+  (after-init . company-statistics-mode))
 (use-package company
   :bind (:map company-mode-map
          ("M-/" . company-complete)
@@ -413,13 +416,26 @@
          ("<tab>" . company-complete-common-or-cycle)
          ("M-d" . company-show-doc-buffer))
   :custom
-  ;;(company-transformers (company-sort-by-statistics company-sort-by-backend-importance))
+  (company-transformers '(company-sort-by-statistics company-sort-by-backend-importance))
   (company-minimum-prefix-length 1)
   (company-tooltip-minimum-width 40)
   (company-tooltip-align-annotations t)
   (company-dabbrev-downcase nil)
+  (company-dabbrev-char-regexp "\\(\\sw\\|\\s_\\|_\\|-\\)")
   (company-idle-delay 0)
   (company-selection-wrap-around t)
+  (company-backends '((company-capf :with company-dabbrev)
+                      ;;company-bbdb
+                      ;;company-eclim
+                      company-semantic
+                      ;;company-clang
+                      ;;company-xcode
+                      ;;company-cmake
+                      company-files
+                      (company-dabbrev-code company-gtags
+                                            company-etags company-keywords)
+                      ;;company-oddmuse
+                      ))
   :config
   (use-package company-prescient
     :config
