@@ -201,11 +201,11 @@
 (use-package tramp
   :straight nil
   :config
-  (setq shell-file-name "/bin/sh")
-  (setq explicit-shell-file-name "/bin/sh")
+  (setq shell-file-name "/bin/bash")
+  (setq explicit-shell-file-name "/bin/bash")
+  (add-to-list 'tramp-remote-path 'tramp-own-remote-path)
   ;; (setq tramp-copy-size-limit nil)
   ;; (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
-  ;;(add-to-list 'tramp-remote-path 'tramp-own-remote-path)
   ;;(add-to-list 'tramp-remote-process-environment "HISTFILE=/dev/null")
   ;;(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
   ;; (unless (eq system-type 'cygwin)
@@ -889,7 +889,22 @@
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (powershell-mode . lsp-deferred))
+  :custom
+  (lsp-enable-snippet nil)
   :config
+  (lsp-register-client
+   (make-lsp-client
+    :new-connection (lsp-tramp-connection "solargraph stdio")
+    :major-modes '(ruby-mode enh-ruby-mode)
+    :multi-root t
+    :library-folders-fn (lambda (_workspace) lsp-solargraph-library-directories)
+    :server-id 'ruby-ls-remote
+    :remote? t
+    :initialized-fn (lambda (workspace)
+                      (with-lsp-workspace workspace
+                        (lsp--set-configuration
+                         (lsp-configuration-section "solargraph"))))
+    ))
   (use-package lsp-ui
     :custom
     (lsp-ui-doc-header t)
@@ -909,4 +924,3 @@
   :config
   (lsp-treemacs-sync-mode 1))
 (use-package dap-mode)
-(use-package lsp-docker)
