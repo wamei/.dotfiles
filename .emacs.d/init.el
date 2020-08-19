@@ -335,6 +335,7 @@
   (ivy-height 20)
   (ivy-count-format "(%d/%d) ")
   (ivy-more-chars-alist '((t . 1)))
+  (ivy-use-selectable-prompt t)
   (counsel-yank-pop-separator "\n-------\n")
   (counsel-ag-base-command "ag -u --vimgrep %s")
   :config
@@ -794,8 +795,8 @@
   :after flycheck
   :custom-face
   (flycheck-posframe-background-face ((t (:background "#444"))))
-  :config
-  (add-hook 'flycheck-mode-hook #'flycheck-posframe-mode))
+  :hook
+  (flycheck-mode . flycheck-posframe-mode))
 
 (use-package mozc
   :if (not (equal window-system nil))
@@ -875,6 +876,16 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
+(setq js-indent-level 2)
+(use-package typescript-mode)
+
+(use-package web-mode
+  :mode (("\\.tsx\\'" . web-mode))
+  :hook
+  (web-mode . (lambda ()
+                (when (string-equal "tsx" (file-name-extension buffer-file-name))
+                  (lsp)))))
+
 (use-package rbenv
   :custom
   (rbenv-installation-dir "~/.rbenv")
@@ -888,6 +899,7 @@
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
+         (typescript-mode . lsp-deferred)
          (powershell-mode . lsp-deferred))
   :custom
   (lsp-enable-snippet nil)

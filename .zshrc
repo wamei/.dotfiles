@@ -28,7 +28,7 @@ case ${OSTYPE} in
         ;;
     #Linux用の設定
     linux*)
-        alias ls='ls --color=auto --group-directories-first'
+        alias ls='ls --color=auto --group-directories-first -v'
         ;;
 esac
 
