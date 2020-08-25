@@ -339,8 +339,10 @@
   (counsel-yank-pop-separator "\n-------\n")
   (counsel-ag-base-command "ag -u --vimgrep %s")
   :config
+  (push '(counsel-locate . nil) ivy-sort-functions-alist)
   (use-package ivy-prescient
     :config
+    (prescient-persist-mode 1)
     (ivy-prescient-mode 1))
   :hook
   (after-init . ivy-mode))
@@ -790,13 +792,16 @@
   (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
   (popwin-mode 1))
 
-(use-package flycheck-posframe
-  :if (not (equal window-system nil))
-  :after flycheck
-  :custom-face
-  (flycheck-posframe-background-face ((t (:background "#444"))))
-  :hook
-  (flycheck-mode . flycheck-posframe-mode))
+(use-package flycheck
+  :config
+  (flycheck-add-mode 'javascript-eslint 'web-mode))
+;; (use-package flycheck-posframe
+;;   :if (not (equal window-system nil))
+;;   :after flycheck
+;;   :custom-face
+;;   (flycheck-posframe-background-face ((t (:background "#444"))))
+;;   :hook
+;;   (flycheck-mode . flycheck-posframe-mode))
 
 (use-package mozc
   :if (not (equal window-system nil))
@@ -878,6 +883,12 @@
 ;;----------------------------------------------------------------------------------------------------
 (setq js-indent-level 2)
 (use-package typescript-mode)
+(use-package add-node-modules-path
+  :hook
+  (js-mode . add-node-modules-path)
+  (js2-mode . add-node-modules-path)
+  (web-mode . add-node-modules-path)
+  (typescript-mode . add-node-modules-path))
 
 (use-package web-mode
   :mode (("\\.tsx\\'" . web-mode))
@@ -900,6 +911,7 @@
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (typescript-mode . lsp-deferred)
+         (json-mode . lsp-deferred)
          (powershell-mode . lsp-deferred))
   :custom
   (lsp-enable-snippet nil)
@@ -932,8 +944,4 @@
     (lsp-mode . lsp-ui-mode)))
 (use-package lsp-ivy
   :commands lsp-ivy-workspace-symbol)
-(use-package lsp-treemacs
-  :commands lsp-treemacs-errors-list
-  :config
-  (lsp-treemacs-sync-mode 1))
 (use-package dap-mode)
