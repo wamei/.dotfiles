@@ -378,6 +378,8 @@
     (setcdr (assq t ivy-format-functions-alist) #'wamei/ivy-format-function)))
 
 (use-package projectile
+  :custom
+  (projectile-completion-system 'ivy)
   :config
   (defun do-not-use-file-truename-in-projectile-project-root (old-fn &rest args)
     (dflet ((file-truename (d) d))
@@ -897,6 +899,11 @@
                 (when (string-equal "tsx" (file-name-extension buffer-file-name))
                   (lsp)))))
 
+(use-package projectile-rails
+  :bind (:map projectile-rails-mode-map
+         ("C-c r" . projectile-rails-command-map))
+  :hook
+  (after-init . projectile-rails-global-mode))
 (use-package rbenv
   :custom
   (rbenv-installation-dir "~/.rbenv")
@@ -912,7 +919,10 @@
   :hook ((ruby-mode . lsp-deferred)
          (typescript-mode . lsp-deferred)
          (json-mode . lsp-deferred)
-         (powershell-mode . lsp-deferred))
+         (powershell-mode . lsp-deferred)
+         (lsp-completion-mode . (lambda ()
+                                  (when (eq (car company-backends) 'company-capf)
+                                    (setq company-backends (delq 'company-capf company-backends))))))
   :custom
   (lsp-enable-snippet nil)
   :config
