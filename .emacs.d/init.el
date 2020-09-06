@@ -112,7 +112,7 @@
 (scroll-bar-mode 0)
 
 ;; 透明度を設定する
-;;(set-frame-parameter nil 'alpha 85)
+(set-frame-parameter nil 'alpha 87)
 
 ;; 現在行をハイライト
 (global-hl-line-mode)
@@ -134,7 +134,7 @@
 (setq display-time-interval 1)
 
 ;; フォント関係
-(defvar font-size 100)
+(defvar font-size 120)
 (defvar font-family "HackGen")
 (set-face-attribute 'default nil :family font-family :height font-size)
 (set-face-attribute 'variable-pitch nil :family font-family :height font-size)
