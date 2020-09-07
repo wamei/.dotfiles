@@ -429,7 +429,7 @@
   (company-dabbrev-char-regexp "\\(\\sw\\|\\s_\\|_\\|-\\)")
   (company-idle-delay 0)
   (company-selection-wrap-around t)
-  (company-backends '((company-capf :with company-dabbrev)
+  (company-backends '((company-capf :with company-dabbrev :with company-yasnippet)
                       ;;company-bbdb
                       ;;company-eclim
                       company-semantic
@@ -883,6 +883,10 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
+(use-package yasnippet
+  :hook
+  (after-init . yas-global-mode))
+
 (setq js-indent-level 2)
 (use-package typescript-mode)
 (use-package add-node-modules-path
