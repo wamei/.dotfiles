@@ -134,7 +134,7 @@
 (setq display-time-interval 1)
 
 ;; フォント関係
-(defvar font-size 140)
+(defvar font-size 120)
 (defvar font-family "HackGen")
 (set-face-attribute 'default nil :family font-family :height font-size)
 (set-face-attribute 'variable-pitch nil :family font-family :height font-size)
