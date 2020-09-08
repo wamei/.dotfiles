@@ -325,18 +325,18 @@
          ("C-x p" . ivy-resume)
          ("C-x b" . ivy-switch-buffer)
          ("C-x C-f" . counsel-find-file)
-         ("M-s a" . wamei/counsel-git-grep)
+         ("M-s a" . wamei/counsel-grep)
          ("M-s s" . swiper)
          ("M-s l" . counsel-locate))
   :preface
-  (defun wamei/counsel-git-grep()
+  (defun wamei/counsel-grep()
     (interactive)
     (cond ((not (s-equals? "" (shell-command-to-string "which rg")))
            (counsel-rg))
           ((not (s-equals? "" (shell-command-to-string "which ag")))
            (counsel-ag))
           (t
-           (counsel-git-grep))))
+           (counsel-grep))))
   :custom
   (ivy-wrap t)
   (ivy-virtual-abbreviate 'full)
@@ -356,9 +356,18 @@
   :hook
   (after-init . ivy-mode))
 (use-package counsel-projectile
-  :bind (("M-s g" . counsel-projectile-ag)
+  :bind (("M-s g" . wamei/counsel-projectile-grep)
          ("M-s f" . counsel-projectile-find-file)
          ("M-s p" . counsel-projectile-switch-project)))
+  :preface
+  (defun wamei/counsel-projectile-grep()
+    (interactive)
+    (cond ((not (s-equals? "" (shell-command-to-string "which rg")))
+           (counsel-projectile-rg))
+          ((not (s-equals? "" (shell-command-to-string "which ag")))
+           (counsel-projectile-ag))
+          (t
+           (counsel-projectile-grep))))
 (use-package all-the-icons-ivy-rich
   :custom
   (inhibit-compacting-font-caches t)
