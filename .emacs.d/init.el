@@ -429,7 +429,7 @@
   (company-dabbrev-char-regexp "\\(\\sw\\|\\s_\\|_\\|-\\)")
   (company-idle-delay 0)
   (company-selection-wrap-around t)
-  (company-backends '((company-capf :with company-dabbrev :with company-yasnippet)
+  (company-backends '((company-capf :with company-yasnippet :with company-dabbrev)
                       ;;company-bbdb
                       ;;company-eclim
                       company-semantic
