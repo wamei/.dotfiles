@@ -141,7 +141,7 @@
 (set-face-attribute 'fixed-pitch nil :family font-family :height font-size)
 (set-face-attribute 'mode-line nil :family font-family :height font-size)
 (set-face-attribute 'mode-line-inactive nil :family font-family :height font-size)
-(set-face-attribute 'tooltip nil :family font-family :height 90)
+(set-face-attribute 'tooltip nil :family font-family :height font-size)
 
 (global-font-lock-mode t)
 
