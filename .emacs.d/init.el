@@ -325,9 +325,18 @@
          ("C-x p" . ivy-resume)
          ("C-x b" . ivy-switch-buffer)
          ("C-x C-f" . counsel-find-file)
-         ("M-s a" . counsel-ag)
+         ("M-s a" . wamei/counsel-git-grep)
          ("M-s s" . swiper)
          ("M-s l" . counsel-locate))
+  :preface
+  (defun wamei/counsel-git-grep()
+    (interactive)
+    (cond ((not (s-equals? "" (shell-command-to-string "which rg")))
+           (counsel-rg))
+          ((not (s-equals? "" (shell-command-to-string "which ag")))
+           (counsel-ag))
+          (t
+           (counsel-git-grep))))
   :custom
   (ivy-wrap t)
   (ivy-virtual-abbreviate 'full)
