@@ -24,7 +24,7 @@ alias sudo='sudo '
 case ${OSTYPE} in
     # Mac用の設定
     darwin*)
-        alias ls='ls -G'
+        alias ls='gls --color=auto --group-directories-first -v'
         alias updatedb='sudo /usr/libexec/locate.updatedb'
         ;;
     #Linux用の設定

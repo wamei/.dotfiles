@@ -8,6 +8,8 @@ $ ./init.sh
 $ ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 $ brew update
 
+$ brew install coreutils
+
 $ brew cask install google-chrome
 $ brew cask install google-japanese-ime
 $ brew cask install karabiner-elements
