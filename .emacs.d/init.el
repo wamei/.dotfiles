@@ -18,6 +18,16 @@
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 
+(use-package docker
+  :bind ("C-c d" . docker))
+(use-package dockerfile-mode
+  :mode (("Dockerfile\\'" . dockerfile-mode)))
+(use-package docker-compose-mode)
+(use-package docker-tramp
+  :config
+  (require 'docker-tramp-compat)
+  (set-variable 'docker-tramp-use-names t))
+
 (use-package el-x)
 (use-package s)
 
@@ -161,7 +171,6 @@
 ;;
 ;; パッケージ設定
 ;;----------------------------------------------------------------------------------------------------
-
 
 ;; (defhydra hydra-error (global-map "M-g")
 ;;   "goto-error"
@@ -796,16 +805,6 @@
   (advice-add 'rainbow-turn-off :after 'wamei/rainbow-turn-off:after)
   :hook
   (after-change-major-mode . rainbow-mode))
-
-(use-package docker
-  :bind ("C-c d" . docker))
-(use-package dockerfile-mode
-  :mode (("Dockerfile\\'" . dockerfile-mode)))
-(use-package docker-compose-mode)
-(use-package docker-tramp
-  :config
-  (require 'docker-tramp-compat)
-  (set-variable 'docker-tramp-use-names t))
 
 (use-package popwin
   :config
