@@ -25,6 +25,7 @@ case ${OSTYPE} in
     # Mac用の設定
     darwin*)
         alias ls='ls -G'
+        alias updatedb='sudo /usr/libexec/locate.updatedb'
         ;;
     #Linux用の設定
     linux*)

@@ -7,6 +7,17 @@ $ ./init.sh
 ```
 $ ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 $ brew update
+
+$ brew cask install google-chrome
+$ brew cask install google-japanese-ime
+$ brew cask install karabiner-elements
+$ brew cask install 1password
+$ brew cask install slack
+$ brew cask install discord
+
+$ brew tap homebrew/cask-fonts
+$ brew cask install font-hackgen
+$ brew cask install font-hackgen-nerd
 ```
 
 ## apt (Ubuntu)
@@ -36,34 +47,23 @@ $ chmod 755 /usr/local/share/zsh
 $ sudo apt-get install xsel
 ```
 
-## tmux
-```
-# Mac
-$ brew install tmux
-
-# Ubuntu
-# aptからだと少し古い
-$ sudo apt-get install tmux
-
-# sourceからbuild
-$ sudo apt install git automake bison build-essential pkg-config libevent-dev libncurses5-dev
-$ cd /usr/local/src/
-$ git clone https://github.com/tmux/tmux
-$ cd ./tmux/
-$ ./autogen.sh
-$ ./configure --prefix=/usr/local
-$ make
-$ sudo make install
-```
-
 ## Emacs
 ```
 # Mac
-$ brew install emacs
 $ brew cask install emacs
 
 # Ubuntu
 $ sudo apt-get install emacs
+```
+
+## Docker
+```
+# Mac
+$ brew install docker
+$ brew cask install docker
+
+# Ubuntu
+$ sudo apt-get install docker-ce docker-compose
 ```
 
 #### Language Server Protocol
@@ -76,6 +76,15 @@ $ brew install ag
 
 # Ubuntu
 $ sudo apt-get install silversearcher-ag
+```
+
+## ripgrep
+```
+# Mac
+$ brew install rg
+
+# Ubuntu
+$ sudo apt-get install ripgrep
 ```
 
 ## nodenv
