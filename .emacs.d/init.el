@@ -84,6 +84,7 @@
 
 ;; タブをスペースに
 (setq indent-tabs-mode nil)
+(setq-default tab-width 4)
 
 ;; symbolic link のファイル名のまま開く
 (setq find-file-visit-truename nil)
@@ -384,9 +385,9 @@
   (defun wamei/ivy-format-function (cands)
     (ivy--format-function-generic
      (lambda (str)
-       (ivy--add-face (concat (all-the-icons-octicon "arrow-right") " " str "\n") 'ivy-current-match))
+       (ivy--add-face (concat (all-the-icons-octicon "arrow-right" :height 0.9 :v-adjust 0.0) " " str "\n") 'ivy-current-match))
      (lambda (str)
-       (concat "  " str "\n"))
+       (concat "\t\t" str "\n"))
      cands
      ""))
   :config
