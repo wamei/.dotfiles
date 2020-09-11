@@ -961,8 +961,10 @@
                                     (setq company-backends (delq 'company-capf company-backends))))))
   :custom
   (lsp-enable-snippet nil)
+  (gc-cons-threshold 12800000)
+  (read-process-output-max (* 1024 1024))
+  (ruby-insert-encoding-magic-comment nil)
   :config
-  (setq ruby-insert-encoding-magic-comment nil)
   (lsp-register-client
    (make-lsp-client
     :new-connection (lsp-tramp-connection "solargraph stdio")
@@ -986,6 +988,30 @@
            ("M-s r" . lsp-ui-peek-find-references)
            ("M-s d" . lsp-ui-peek-find-definitions)
            ("M-s i" . lsp-ui-peek-find-implementation))
+    :config
+    (defun lsp-ui-peek--peek-display (src1 src2)
+      (-let* ((win-width (frame-width))
+              (lsp-ui-peek-list-width (/ (frame-width) 2))
+              (string (-some--> (-zip-fill "" src1 src2)
+                        (--map (lsp-ui-peek--adjust win-width it) it)
+                        (-map-indexed 'lsp-ui-peek--make-line it)
+                        (-concat it (lsp-ui-peek--make-footer))))
+              )
+        (setq lsp-ui-peek--buffer (get-buffer-create " *lsp-peek--buffer*"))
+        (posframe-show lsp-ui-peek--buffer
+                       :string (mapconcat 'identity string "")
+                       :min-width (frame-width)
+                       :poshandler #'posframe-poshandler-frame-center)))
+
+    (defun lsp-ui-peek--peek-destroy ()
+      (when (bufferp lsp-ui-peek--buffer)
+        (posframe-delete lsp-ui-peek--buffer))
+      (setq lsp-ui-peek--buffer nil
+            lsp-ui-peek--last-xref nil)
+      (set-window-start (get-buffer-window) lsp-ui-peek--win-start))
+
+    (advice-add #'lsp-ui-peek--peek-new :override #'lsp-ui-peek--peek-display)
+    (advice-add #'lsp-ui-peek--peek-hide :override #'lsp-ui-peek--peek-destroy)
     :hook
     (lsp-mode . lsp-ui-mode)))
 (use-package lsp-ivy
