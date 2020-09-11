@@ -402,6 +402,20 @@
   (all-the-icons-ivy-rich-mode)
   (use-package ivy-rich
     :config
+    (defvar ivy-rich--ivy-switch-buffer-cache
+      (make-hash-table :test 'equal))
+
+    (define-advice ivy-rich--ivy-switch-buffer-transformer
+        (:around (old-fn x) cache)
+      (let ((ret (gethash x ivy-rich--ivy-switch-buffer-cache)))
+        (unless ret
+          (setq ret (funcall old-fn x))
+          (puthash x ret ivy-rich--ivy-switch-buffer-cache))
+        ret))
+
+    (define-advice +ivy/switch-buffer
+        (:before (&rest _) ivy-rich-reset-cache)
+      (clrhash ivy-rich--ivy-switch-buffer-cache))
     (ivy-rich-mode)
     (setcdr (assq t ivy-format-functions-alist) #'wamei/ivy-format-function)))
 
