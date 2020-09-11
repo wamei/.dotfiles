@@ -312,13 +312,13 @@
           (space-mark   ?\xF20 [?\xF24] [?_])
           (tab-mark ?\t [?\u00BB ?\t] [?\\ ?\t])
           (space-mark   ?　    [?口]    [?＿])
-          (newline-mark ?\n    [?\x21B5 ?\n] [?$ ?\n])
+          ;;(newline-mark ?\n    [?\x21B5 ?\n] [?$ ?\n])
           ))
   (setq whitespace-global-modes '(not dired-mode tar-mode))
   :custom-face
   (whitespace-space ((t (:foreground "pink4"))))
   (whitespace-tab ((t (:foreground "gray40" :strike-through t))))
-  (whitespace-newline ((t (:foreground "darkcyan" :height 0.8))))
+  ;;(whitespace-newline ((t (:foreground "darkcyan" :height 0.8))))
   :hook
   (after-init . global-whitespace-mode))
 
