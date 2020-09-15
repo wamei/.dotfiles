@@ -10,6 +10,7 @@ $ brew update
 
 $ brew install coreutils
 
+$ brew cask install hiddenbar
 $ brew cask install google-chrome
 $ brew cask install google-japanese-ime
 $ brew cask install karabiner-elements
@@ -20,6 +21,8 @@ $ brew cask install discord
 $ brew tap homebrew/cask-fonts
 $ brew cask install font-hackgen
 $ brew cask install font-hackgen-nerd
+
+$ defaults write com.apple.finder AppleShowAllFiles True
 ```
 
 ## apt (Ubuntu)
