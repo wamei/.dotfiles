@@ -471,17 +471,11 @@
   (company-dabbrev-char-regexp "\\(\\sw\\|\\s_\\|_\\|-\\)")
   (company-idle-delay 0)
   (company-selection-wrap-around t)
-  (company-backends '((company-capf :with company-yasnippet :with company-dabbrev)
-                      ;;company-bbdb
-                      ;;company-eclim
+  (company-backends '(company-capf
+                      company-yasnippet
+                      company-dabbrev
                       company-semantic
-                      ;;company-clang
-                      ;;company-xcode
-                      ;;company-cmake
                       company-files
-                      (company-dabbrev-code company-gtags
-                                            company-etags company-keywords)
-                      ;;company-oddmuse
                       ))
   :config
   (use-package company-prescient
@@ -955,10 +949,7 @@
   :hook ((ruby-mode . lsp-deferred)
          (typescript-mode . lsp-deferred)
          (json-mode . lsp-deferred)
-         (powershell-mode . lsp-deferred)
-         (lsp-completion-mode . (lambda ()
-                                  (when (eq (car company-backends) 'company-capf)
-                                    (setq company-backends (delq 'company-capf company-backends))))))
+         (powershell-mode . lsp-deferred))
   :custom
   (lsp-enable-snippet nil)
   (gc-cons-threshold 12800000)
