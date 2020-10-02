@@ -241,9 +241,6 @@
          ("C-e" . mwim-end-of-line-or-code)))
 
 (use-package undo-tree
-  :bind (("C--" . undo-tree-undo)
-         ("C-?" . undo-tree-redo)
-         ("M--" . undo-tree-redo))
   :hook
   (after-init . global-undo-tree-mode))
 
