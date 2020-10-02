@@ -51,6 +51,11 @@
   :config
   (exec-path-from-shell-initialize))
 
+;; Emacsにフォーカスされたとき英数にする(Mac)
+(when (eq system-type 'darwin)
+  (add-hook 'focus-in-hook (lambda()
+                             (shell-command "osascript -e 'tell application \"System Events\" to key code 102'"))))
+
 ;; 単語操作周りを変更する
 (global-set-key (kbd "M-b") 'backward-to-word)
 (global-set-key (kbd "M-f") 'forward-to-word)
