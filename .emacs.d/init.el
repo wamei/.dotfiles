@@ -975,7 +975,16 @@
            :map lsp-mode-map
            ("M-s r" . lsp-ui-peek-find-references)
            ("M-s d" . lsp-ui-peek-find-definitions)
-           ("M-s i" . lsp-ui-peek-find-implementation))
+           ("M-s i" . lsp-ui-peek-find-implementation)
+           ("M-s d" . wamei/toggle-lsp-ui-doc))
+    :preface
+    (defun wamei/toggle-lsp-ui-doc ()
+      (interactive)
+      (if lsp-ui-doc-mode
+        (progn
+          (lsp-ui-doc-mode -1)
+          (lsp-ui-doc--hide-frame))
+         (lsp-ui-doc-mode 1)))
     :config
     (defun lsp-ui-peek--peek-display (src1 src2)
       (-let* ((win-width (frame-width))
