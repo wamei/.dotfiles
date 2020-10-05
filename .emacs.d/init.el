@@ -54,7 +54,8 @@
 ;; Emacsにフォーカスされたとき英数にする(Mac)
 (when (eq system-type 'darwin)
   (add-hook 'focus-in-hook (lambda()
-                             (shell-command "osascript -e 'tell application \"System Events\" to key code 102'"))))
+                             (let ((inhibit-message t))
+                               (shell-command "osascript -e 'tell application \"System Events\" to key code 102'")))))
 
 ;; 単語操作周りを変更する
 (global-set-key (kbd "M-b") 'backward-to-word)
