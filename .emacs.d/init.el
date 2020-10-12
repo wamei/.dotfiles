@@ -89,7 +89,7 @@
 (setq recentf-max-saved-items 1000)
 
 ;; タブをスペースに
-(setq indent-tabs-mode nil)
+(setq-default indent-tabs-mode nil)
 (setq-default tab-width 4)
 
 ;; symbolic link のファイル名のまま開く
