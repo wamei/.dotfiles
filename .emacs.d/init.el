@@ -51,12 +51,6 @@
   :config
   (exec-path-from-shell-initialize))
 
-;; Emacsにフォーカスされたとき英数にする(Mac)
-(when (eq system-type 'darwin)
-  (add-hook 'focus-in-hook (lambda()
-                             (let ((inhibit-message t))
-                               (shell-command "osascript -e 'tell application \"System Events\" to key code 102'")))))
-
 ;; 単語操作周りを変更する
 (global-set-key (kbd "M-b") 'backward-to-word)
 (global-set-key (kbd "M-f") 'forward-to-word)
@@ -219,22 +213,6 @@
   (setq shell-file-name "/bin/bash")
   (setq explicit-shell-file-name "/bin/bash")
   (add-to-list 'tramp-remote-path 'tramp-own-remote-path)
-  ;; (setq tramp-copy-size-limit nil)
-  ;; (setq tramp-shell-prompt-pattern "^.*[#$%>] *")
-  ;;(add-to-list 'tramp-remote-process-environment "HISTFILE=/dev/null")
-  ;;(eval-after-load 'tramp '(setenv "SHELL" "/bin/bash"))
-  ;; (unless (eq system-type 'cygwin)
-  ;;   (setenv "TMPDIR" "/tmp"))
-  ;; (customize-set-variable
-  ;;  'tramp-password-prompt-regexp
-  ;;   (concat
-  ;;    "^.*"
-  ;;    (regexp-opt
-  ;;     '("passphrase" "Passphrase"
-  ;;       "password" "Password"
-  ;;       "Your OTP")
-  ;;     t)
-  ;;    ".*:\0? *"))
   )
 
 (use-package expand-region
@@ -884,6 +862,12 @@
   (setq option-modifier (quote meta))
   (setq ns-option-modifier (quote meta))
   (setq mac-option-modifier (quote meta))
+
+  ;; Emacsにフォーカスされたとき英数にする
+  (when (eq system-type 'darwin)
+    (add-hook 'focus-in-hook (lambda()
+                               (let ((inhibit-message t))
+                                 (shell-command "osascript -e 'tell application \"System Events\" to key code 102'")))))
   )
 
 ;;
@@ -960,7 +944,7 @@
   :config
   (lsp-register-client
    (make-lsp-client
-    :new-connection (lsp-tramp-connection "solargraph stdio")
+    :new-connection (lsp-tramp-connection '("solargraph" "stdio"))
     :major-modes '(ruby-mode enh-ruby-mode)
     :multi-root t
     :library-folders-fn (lambda (_workspace) lsp-solargraph-library-directories)
@@ -975,11 +959,10 @@
     :custom
     (lsp-ui-doc-header t)
     (lsp-ui-doc-include-signature t)
-    (lsp-ui-doc-position 'at-point)
-    (lsp-ui-doc-max-width 150)
-    (lsp-ui-doc-max-height 30)
+    (lsp-ui-doc-max-width 300)
+    (lsp-ui-doc-max-height 50)
     (lsp-ui-doc-use-childframe t)
-    (lsp-ui-doc-use-webkit t)
+    (lsp-ui-doc-use-webkit nil)
     :bind (("<f10>"   . lsp-ui-imenu)
            :map lsp-mode-map
            ("M-s r" . lsp-ui-peek-find-references)
