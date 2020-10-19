@@ -963,12 +963,14 @@
     (lsp-ui-doc-max-height 50)
     (lsp-ui-doc-use-childframe t)
     (lsp-ui-doc-use-webkit nil)
-    :bind (("<f10>"   . lsp-ui-imenu)
-           :map lsp-mode-map
+    :bind (:map lsp-mode-map
            ("M-s r" . lsp-ui-peek-find-references)
            ("M-s d" . lsp-ui-peek-find-definitions)
            ("M-s i" . lsp-ui-peek-find-implementation)
-           ("M-s d" . wamei/toggle-lsp-ui-doc))
+           ("C-q r" . lsp-rename)
+           ("C-q a" . lsp-execute-code-action)
+           ("C-q i" . lsp-ui-imenu)
+           ("C-q d" . wamei/toggle-lsp-ui-doc))
     :preface
     (defun wamei/toggle-lsp-ui-doc ()
       (interactive)
