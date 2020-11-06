@@ -4,6 +4,7 @@
 !/straight/versions/
 /.cache/
 /auto-save-list/
+/desktops/
 /speed-type/
 /elpa/cl-lib-0.5/
 /eshell/
@@ -38,5 +39,7 @@ archives/
 .session
 .lsp-session-v1
 .emacs.desktop*
+.elscreen-around-desktop
+.emacs-buffers
 .dap-breakpoints
 *.elc

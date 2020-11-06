@@ -94,8 +94,11 @@
 
 ;; バックアップファイルを作らない
 (setq make-backup-files nil)
-;; オートセーブファイルを作らない
-(setq auto-save-default nil)
+;; オートセーブファイルを作る
+(setq auto-save-default t)
+(setq auto-save-file-name-transforms '((".*" "/tmp/" t)))
+(setq auto-save-timeout 10)
+(setq auto-save-interval 100)
 
 ;; 折り返ししない
 (setq truncate-lines t)
@@ -104,10 +107,6 @@
 ;; ファイルを閉じたとき、次に開くときはその場所(point)から開く
 (save-place-mode 1)
 (setq save-place-file (concat user-emacs-directory "places"))
-
-;; 状態復元をONにする
-;;(desktop-save-mode 1)
-;;(setq desktop-files-not-to-save "")
 
 ;; history保存
 (savehist-mode 1)
@@ -125,7 +124,10 @@
 (menu-bar-mode 0)
 (scroll-bar-mode 0)
 
-;; 透明度を設定する
+;; フレームサイズ・透明度を設定する
+(add-hook 'after-make-frame-functions
+          (lambda (frame)
+            (set-frame-parameter frame 'alpha 87)))
 (set-frame-parameter nil 'alpha 87)
 
 ;; 現在行をハイライト
@@ -134,9 +136,6 @@
 ;; 選択範囲に色をつける
 (transient-mark-mode t)
 
-;; フレームサイズ
-(toggle-frame-maximized)
-
 ;; 行番号を表示する
 (global-display-line-numbers-mode)
 
@@ -144,7 +143,7 @@
 (setq display-time-interval 1)
 
 ;; フォント関係
-(defvar font-size 120)
+(defvar font-size 140)
 (defvar font-family "HackGen")
 (set-face-attribute 'default nil :family font-family :height font-size)
 (set-face-attribute 'variable-pitch nil :family font-family :height font-size)
@@ -254,6 +253,8 @@
                      (registers . 5)))
   (dashboard-set-heading-icons t)
   (dashboard-set-file-icons t)
+  (dashboard-startup-banner 'logo)
+  ;;(initial-buffer-choice (lambda () (get-buffer "*dashboard*")))
   :config
   (set-face-attribute 'dashboard-heading nil :foreground "orange")
   (dashboard-setup-startup-hook))
@@ -691,7 +692,7 @@
          ("C-q p" . elscreen-previous)
          ("C-<tab>" . elscreen-next)
          ("C-S-<iso-lefttab>" . elscreen-previous)
-         ("C-q c" . elscreen-create)
+         ("C-q c" . elscreen-renumber-create)
          ("C-q k" . elscreen-kill)
          ("C-q ," . elscreen-screen-nickname)
          ("C-q s" . elscreen-swap)
@@ -710,6 +711,26 @@
   (elscreen-default-buffer-name "*dashboard*")
   :config
   (elscreen-start))
+(use-package elscreen-multi-term
+  :after elscreen
+  :bind (("C-z" . emt-pop-multi-term)))
+(use-package elscreen-separate-buffer-list
+  :after elscreen
+  :config
+  (elscreen-separate-buffer-list-mode)
+  (use-package elscreen-around-desktop
+    :straight (elscreen-around-desktop :type git :host github :repo "momomo5717/elscreen-around-desktop")
+    :config
+    (use-package desktop+
+      :config
+      (desktop-save-mode 1)
+      (elscreen-around-desktop-mode 1)
+      (auto-save-mode 1))))
+(use-package elscreen-outof-limit-mode
+  :straight (elscreen-outof-limit-mode :type git :host github :repo "momomo5717/elscreen-outof-limit-mode")
+  :after elscreen
+  :config
+  (elscreen-outof-limit-mode t))
 (use-package elscreen-tab
   :after elscreen
   :config
@@ -739,18 +760,11 @@
       tab-unit))
   (advice-add 'elscreen-tab--create-tab-unit :override 'elscreen-tab--create-tab-unit:override)
   (setq elscreen-tab--tab-unit-separator
-    #s(hash-table size 4
-                  test eq
-                  data (right "\n" top " " left "\n" bottom " ")))
+        #s(hash-table size 4
+                      test eq
+                      data (right "\n" top " " left "\n" bottom " ")))
   (elscreen-tab-set-position 'top)
   (elscreen-tab-mode))
-(use-package elscreen-multi-term
-  :after elscreen
-  :bind (("C-z" . emt-pop-multi-term)))
-(use-package elscreen-separate-buffer-list
-  :after elscreen
-  :config
-  (elscreen-separate-buffer-list-mode))
 
 (use-package magit
   :after (git-gutter elscreen)
