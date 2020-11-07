@@ -244,21 +244,6 @@
   :hook
   (dired-mode . all-the-icons-dired-mode))
 
-(use-package dashboard
-  :custom
-  (dashboard-items '((recents  . 20)
-                     (bookmarks . 10)
-                     (projects . 10)
-                     (agenda . 5)
-                     (registers . 5)))
-  (dashboard-set-heading-icons t)
-  (dashboard-set-file-icons t)
-  (dashboard-startup-banner 'logo)
-  ;;(initial-buffer-choice (lambda () (get-buffer "*dashboard*")))
-  :config
-  (set-face-attribute 'dashboard-heading nil :foreground "orange")
-  (dashboard-setup-startup-hook))
-
 (use-package doom-themes
   :custom
   (doom-themes-neotree-file-icons t)
@@ -708,7 +693,7 @@
          ("C-q 9" . (lambda() (interactive) (elscreen-goto 9))))
   :custom
   (elscreen-prefix-key (kbd "C-q C-w"))
-  (elscreen-default-buffer-name "*dashboard*")
+  (elscreen-default-buffer-name "*scratch*")
   :config
   (elscreen-start))
 (use-package elscreen-multi-term
@@ -725,7 +710,21 @@
       :config
       (desktop-save-mode 1)
       (elscreen-around-desktop-mode 1)
-      (auto-save-mode 1))))
+      (auto-save-mode 1)
+      ;; (use-package dashboard
+      ;;   :custom
+      ;;   (dashboard-items '((recents  . 20)
+      ;;                      (bookmarks . 10)
+      ;;                      (projects . 10)
+      ;;                      (agenda . 5)
+      ;;                      (registers . 5)))
+      ;;   (dashboard-set-heading-icons t)
+      ;;   (dashboard-set-file-icons t)
+      ;;   (dashboard-startup-banner 'logo)
+      ;;   :config
+      ;;   (set-face-attribute 'dashboard-heading nil :foreground "orange")
+      ;;   (dashboard-setup-startup-hook))
+      )))
 (use-package elscreen-outof-limit-mode
   :straight (elscreen-outof-limit-mode :type git :host github :repo "momomo5717/elscreen-outof-limit-mode")
   :after elscreen
