@@ -239,7 +239,9 @@
          ("C-q C-i C-u" . string-inflection-upcase)
          ("C-q C-i C-k" . string-inflection-kebab-case)))
 
-(use-package all-the-icons)
+(use-package all-the-icons
+  :straight (all-the-icons :type git :host github :repo "domtronn/all-the-icons.el"
+                           :fork (:host github :repo "eval-on-point/all-the-icons.el")))
 (use-package all-the-icons-dired
   :hook
   (dired-mode . all-the-icons-dired-mode))
@@ -368,9 +370,10 @@
   (defun wamei/ivy-format-function (cands)
     (ivy--format-function-generic
      (lambda (str)
-       (ivy--add-face (concat (all-the-icons-octicon "arrow-right" :height 0.9 :v-adjust 0.0) " " str "\n") 'ivy-current-match))
+       ;;(all-the-icons-octicon "arrow-right" :height 0.9 :v-adjust 0.0)
+       (ivy--add-face (concat "➡" str "\n") 'ivy-current-match))
      (lambda (str)
-       (concat "\t\t" str "\n"))
+       (concat "  " str "\n"))
      cands
      ""))
   :config
