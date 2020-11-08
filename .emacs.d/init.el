@@ -244,6 +244,21 @@
   :hook
   (dired-mode . all-the-icons-dired-mode))
 
+(use-package dashboard
+  :custom
+  (dashboard-items '((recents  . 20)
+                     (bookmarks . 10)
+                     ;;(projects . 10)
+                     ;;(agenda . 5)
+                     ;;(registers . 5)
+                     ))
+  (dashboard-set-heading-icons t)
+  (dashboard-set-file-icons t)
+  (dashboard-startup-banner 'logo)
+  :config
+  (set-face-attribute 'dashboard-heading nil :foreground "orange")
+  (dashboard-setup-startup-hook))
+
 (use-package doom-themes
   :custom
   (doom-themes-neotree-file-icons t)
@@ -323,7 +338,9 @@
   (ivy-use-selectable-prompt t)
   (counsel-yank-pop-separator "\n-------\n")
   (counsel-ag-base-command "ag -u --vimgrep %s")
+  (enable-recursive-minibuffers t)
   :config
+  (minibuffer-depth-indicate-mode t)
   (push '(counsel-locate . nil) ivy-sort-functions-alist)
   (use-package ivy-prescient
     :config
@@ -693,7 +710,7 @@
          ("C-q 9" . (lambda() (interactive) (elscreen-goto 9))))
   :custom
   (elscreen-prefix-key (kbd "C-q C-w"))
-  (elscreen-default-buffer-name "*scratch*")
+  (elscreen-default-buffer-name "*dashboard*")
   :config
   (elscreen-start))
 (use-package elscreen-multi-term
@@ -701,30 +718,19 @@
   :bind (("C-z" . emt-pop-multi-term)))
 (use-package elscreen-separate-buffer-list
   :after elscreen
+  :custom
+  (esbl-separate-buffer-list-default '("*scratch*" "*Messages*" "*dashboard*"))
   :config
   (elscreen-separate-buffer-list-mode)
   (use-package elscreen-around-desktop
     :straight (elscreen-around-desktop :type git :host github :repo "momomo5717/elscreen-around-desktop")
     :config
+    (require 'elscreen-separate-buffer-list-around-desktop)
     (use-package desktop+
       :config
       (desktop-save-mode 1)
       (elscreen-around-desktop-mode 1)
-      (auto-save-mode 1)
-      ;; (use-package dashboard
-      ;;   :custom
-      ;;   (dashboard-items '((recents  . 20)
-      ;;                      (bookmarks . 10)
-      ;;                      (projects . 10)
-      ;;                      (agenda . 5)
-      ;;                      (registers . 5)))
-      ;;   (dashboard-set-heading-icons t)
-      ;;   (dashboard-set-file-icons t)
-      ;;   (dashboard-startup-banner 'logo)
-      ;;   :config
-      ;;   (set-face-attribute 'dashboard-heading nil :foreground "orange")
-      ;;   (dashboard-setup-startup-hook))
-      )))
+      (auto-save-mode 1))))
 (use-package elscreen-outof-limit-mode
   :straight (elscreen-outof-limit-mode :type git :host github :repo "momomo5717/elscreen-outof-limit-mode")
   :after elscreen
