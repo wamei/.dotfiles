@@ -1,7 +1,4 @@
 ;; -*- Mode: Emacs-Lisp ; Coding: utf-8 -*-
-;;
-;; package
-;;----------------------------------------------------------------------------------------------------
 (defvar bootstrap-version)
 (let ((bootstrap-file
       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
@@ -18,16 +15,6 @@
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 
-(use-package docker
-  :bind ("C-c d" . docker))
-(use-package dockerfile-mode
-  :mode (("Dockerfile\\'" . dockerfile-mode)))
-(use-package docker-compose-mode)
-(use-package docker-tramp
-  :config
-  (require 'docker-tramp-compat)
-  (set-variable 'docker-tramp-use-names t))
-
 (use-package el-x)
 (use-package s)
 
@@ -35,10 +22,6 @@
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-exists-p custom-file)
   (load custom-file))
-
-;;
-;; 基本設定
-;;----------------------------------------------------------------------------------------------------
 
 ;; WSL判定関数
 (defvar is-wsl (let ((name (s-chomp (shell-command-to-string "uname -a"))))
@@ -167,44 +150,15 @@
           (isearch-repeat-forward)))
     ad-do-it))
 
-;;
-;; パッケージ設定
-;;----------------------------------------------------------------------------------------------------
-
-;; (defhydra hydra-error (global-map "M-g")
-;;   "goto-error"
-;;   ("n" flycheck-next-error "next")
-;;   ("p" flycheck-previous-error "previous")
-;;   ("l" flycheck-list-errors "list")
-;;   ("q" nil "quit")
-;;   )
-;; (defhydra hydra-git-gutter (global-map "M-g")
-;;   "git-gutter"
-;;   ("j" git-gutter:next-hunk "next hunk")
-;;   ("C-n" git-gutter:next-hunk)
-;;   ("k" git-gutter:previous-hunk "previous hunk")
-;;   ("C-p" git-gutter:previous-hunk)
-;;   ("d" git-gutter:popup-hunk "show diff")
-;;   ("r" git-gutter:revert-hunk "revert hunk")
-;;   ("q" nil "quit")
-;;   )
-
-;; (defhydra hydra-resize (global-map "C-x")
-;;   "resize"
-;;   ("{" shrink-window-horizontally "shrink-horizontally")
-;;   ("}" enlarge-window-horizontally "enlarge-horizontally")
-;;   ("^" enlarge-window "enlarge")
-;;   ("q" nil "quit")
-;;   )
-
-;; (defhydra hydra-rotate (global-map "C-c l")
-;;   "rotate"
-;;   ("l" rotate-layout "layout")
-;;   ("w" rotate-window "window")
-;;   ("h" rotate:even-horizontal "horizontal")
-;;   ("v" rotate:even-vertical "vertical")
-;;   ("q" nil "quit")
-;;   )
+(use-package docker
+  :bind ("C-c d" . docker))
+(use-package dockerfile-mode
+  :mode (("Dockerfile\\'" . dockerfile-mode)))
+(use-package docker-compose-mode)
+(use-package docker-tramp
+  :config
+  (require 'docker-tramp-compat)
+  (set-variable 'docker-tramp-use-names t))
 
 (use-package tramp
   :straight nil
@@ -876,26 +830,26 @@
     :custom
     (mozc-candidate-style 'posframe)))
 
-;;
-;; mac用設定
-;;----------------------------------------------------------------------------------------------------
-(when (eq system-type 'darwin)
+(use-package mac-settings
+  :no-require t
+  :straight nil
+  :if (eq system-type 'darwin)
+  :config
   ;; optionをmetaキーに
   (setq option-modifier (quote meta))
   (setq ns-option-modifier (quote meta))
   (setq mac-option-modifier (quote meta))
 
   ;; Emacsにフォーカスされたとき英数にする
-  (when (eq system-type 'darwin)
-    (add-hook 'focus-in-hook (lambda()
-                               (let ((inhibit-message t))
-                                 (shell-command "osascript -e 'tell application \"System Events\" to key code 102'")))))
-  )
+  (add-hook 'focus-in-hook (lambda()
+                             (let ((inhibit-message t))
+                               (shell-command "osascript -e 'tell application \"System Events\" to key code 102'")))))
 
-;;
-;; WSL用設定
-;;----------------------------------------------------------------------------------------------------
-(when is-wsl
+(use-package wsl-settings
+  :no-require t
+  :straight nil
+  :if is-wsl
+  :config
   ;; (custom-set-variables '(tramp-chunksize 1024))
   ;; (setq-default find-file-visit-truename t)
   (use-package browse-url
@@ -903,9 +857,6 @@
     (setq browse-url-browser-function 'browse-url-generic)
     (setq browse-url-generic-program "wslstart")))
 
-;;
-;; サーバー起動
-;;----------------------------------------------------------------------------------------------------
 (use-package server
   :config
   (unless (server-running-p)
