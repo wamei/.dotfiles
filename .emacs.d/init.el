@@ -15,6 +15,16 @@
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 
+(use-package docker
+  :bind ("C-c d" . docker))
+(use-package dockerfile-mode
+  :mode (("Dockerfile\\'" . dockerfile-mode)))
+(use-package docker-compose-mode)
+(use-package docker-tramp
+  :config
+  (require 'docker-tramp-compat)
+  (set-variable 'docker-tramp-use-names t))
+
 (use-package el-x)
 (use-package s)
 
@@ -150,16 +160,6 @@
           (isearch-repeat-forward)))
     ad-do-it))
 
-(use-package docker
-  :bind ("C-c d" . docker))
-(use-package dockerfile-mode
-  :mode (("Dockerfile\\'" . dockerfile-mode)))
-(use-package docker-compose-mode)
-(use-package docker-tramp
-  :config
-  (require 'docker-tramp-compat)
-  (set-variable 'docker-tramp-use-names t))
-
 (use-package tramp
   :straight nil
   :config
@@ -230,6 +230,9 @@
   :hook
   (after-init . doom-modeline-mode)
   :config
+  (doom-modeline-def-modeline 'dashboard
+    '(bar workspace-name window-number buffer-default-directory-simple)
+    '(misc-info battery irc mu4e gnus github debug minor-modes input-method major-mode process))
   (column-number-mode 1))
 
 (use-package hide-mode-line
@@ -594,7 +597,13 @@
   )
 
 (use-package multi-term
+  :bind (("C-z" . multi-term-pop))
   :preface
+  (defun multi-term-pop ()
+    (interactive)
+    (multi-term-dedicated-toggle)
+    (when (multi-term-dedicated-exist-p)
+      (multi-term-dedicated-select)))
   (defun term-send-forward-char ()
     (interactive)
     (term-send-raw-string "\C-f"))
@@ -640,96 +649,84 @@
                  (define-key term-raw-map (kbd "M-<backspace>") 'term-send-backward-kill-word)
                  (define-key term-raw-map (kbd "M-DEL") 'term-send-backward-kill-word)
                  (define-key term-raw-map (kbd "M-h") 'term-send-backward-kill-word)
-                 (define-key term-raw-map (kbd "C-z") 'emt-pop-multi-term)
+                 (define-key term-raw-map (kbd "C-z") 'multi-term-pop)
                  (define-key term-raw-map (kbd "TAB") 'term-send-tab)
                  (define-key term-raw-map (kbd "C-c C-j") 'term-line-mode)
                  (define-key term-raw-map (kbd "C-c C-k") 'term-char-mode)
                  )))
 
-(use-package elscreen
-  :bind (("C-q n" . elscreen-next)
-         ("C-q p" . elscreen-previous)
-         ("C-<tab>" . elscreen-next)
-         ("C-S-<iso-lefttab>" . elscreen-previous)
-         ("C-q c" . elscreen-renumber-create)
-         ("C-q k" . elscreen-kill)
-         ("C-q ," . elscreen-screen-nickname)
-         ("C-q s" . elscreen-swap)
-         ("C-q 0" . (lambda() (interactive) (elscreen-goto 0)))
-         ("C-q 1" . (lambda() (interactive) (elscreen-goto 1)))
-         ("C-q 2" . (lambda() (interactive) (elscreen-goto 2)))
-         ("C-q 3" . (lambda() (interactive) (elscreen-goto 3)))
-         ("C-q 4" . (lambda() (interactive) (elscreen-goto 4)))
-         ("C-q 5" . (lambda() (interactive) (elscreen-goto 5)))
-         ("C-q 6" . (lambda() (interactive) (elscreen-goto 6)))
-         ("C-q 7" . (lambda() (interactive) (elscreen-goto 7)))
-         ("C-q 8" . (lambda() (interactive) (elscreen-goto 8)))
-         ("C-q 9" . (lambda() (interactive) (elscreen-goto 9))))
+(use-package desktop
+  :straight nil
+  :config
+  (desktop-save-mode 1)
+  (auto-save-mode 1))
+
+(use-package tab-bar-mode
+  :no-require
+  :straight nil
+  :bind (("C-q n" . tab-bar-switch-to-next-tab)
+         ("C-q p" . tab-bar-switch-to-prev-tab)
+         ("C-<tab>" . tab-bar-switch-to-next-tab)
+         ("C-S-<iso-lefttab>" . tab-bar-switch-to-prev-tab)
+         ("C-q c" . tab-bar-new-tab)
+         ("C-q k" . tab-bar-close-tab)
+         ("C-q ," . tab-bar-rename-tab)
+         ("C-q s" . tab-bar-move-tab)
+         )
+  :preface
+  (defun tab-bar-update-tab (&rest args)
+    (let* ((buffer-name " *tab-bar-tabs*")
+           (buffer (get-buffer-create buffer-name)))
+      (with-current-buffer buffer
+        (setq cursor-type nil
+              show-trailing-whitespace nil
+              buffer-read-only nil)
+        (erase-buffer)
+        (insert
+         (mapconcat
+          #'(lambda (tab)
+              (let* ((index (tab-bar--tab-index tab))
+                     (name (concat
+                            " "
+                            (number-to-string (+ 1 index))
+                            "."
+                            (cdr (assoc 'name (cdr tab)))
+                            " ")))
+                (if (eq (tab-bar--current-tab-index) index)
+                    name
+                  (propertize name 'face '(:foreground "#888" :background "#252525")))))
+          (tab-bar-tabs)
+          ""))
+        (insert (propertize (s-repeat 1000 " ") 'face '(:background "#252525")))
+        (setq buffer-read-only t))
+      (cl-defun tab-bar-mode--stingy-height (window)
+        "Set WINDOW height as small as possible."
+        (unless window (cl-return-from elscreen-tab--stingy-height
+                         "Invalid argument: window must not be nil"))
+        (with-selected-window window
+          (let* ((expected-height 1)
+                 (delta (- expected-height (window-body-height)))
+                 (delta-allowed (window-resizable window delta nil window)))
+            (with-demoted-errors "Unable to minimize %s"
+              (window-resize window delta-allowed nil t)
+              (window-preserve-size window nil t)
+              (setq window-size-fixed t)
+              ))))
+      (setq win (display-buffer-in-side-window buffer `((side . top) (window-height . 1)
+                                                        (window-parameters . ((no-other-window . t)
+                                                                              (no-delete-other-windows . t)
+                                                                              (delete-window . ignore))))))
+      (tab-bar-mode--stingy-height win)))
   :custom
-  (elscreen-prefix-key (kbd "C-q C-w"))
-  (elscreen-default-buffer-name "*dashboard*")
-  :config
-  (elscreen-start))
-(use-package elscreen-multi-term
-  :after elscreen
-  :bind (("C-z" . emt-pop-multi-term)))
-(use-package elscreen-separate-buffer-list
-  :after elscreen
-  :custom
-  (esbl-separate-buffer-list-default '("*scratch*" "*Messages*" "*dashboard*"))
-  :config
-  (elscreen-separate-buffer-list-mode)
-  (use-package elscreen-around-desktop
-    :straight (elscreen-around-desktop :type git :host github :repo "momomo5717/elscreen-around-desktop")
-    :config
-    (require 'elscreen-separate-buffer-list-around-desktop)
-    (use-package desktop+
-      :config
-      (desktop-save-mode 1)
-      (elscreen-around-desktop-mode 1)
-      (auto-save-mode 1))))
-(use-package elscreen-outof-limit-mode
-  :straight (elscreen-outof-limit-mode :type git :host github :repo "momomo5717/elscreen-outof-limit-mode")
-  :after elscreen
-  :config
-  (elscreen-outof-limit-mode t))
-(use-package elscreen-tab
-  :after elscreen
-  :config
-  (defun elscreen-tab--update-buffer:after ()
-    (with-current-buffer (elscreen-tab--dedicated-tab-buffer-name)
-      (setq cursor-type nil)))
-  (advice-add 'elscreen-tab--update-buffer :after 'elscreen-tab--update-buffer:after)
-  (defun elscreen-tab--elscreen-goto:around (func &rest r)
-    (when (s-equals? (buffer-name (current-buffer)) elscreen-tab--dedicated-tab-buffer-name)
-      (other-window 1))
-    (apply func r))
-  (advice-add 'elscreen-goto :around 'elscreen-tab--elscreen-goto:around)
-  (defun elscreen-tab--create-tab-unit:override (screen-id)
-    (let* ((nickname-or-buf-names (assoc-default screen-id (elscreen-get-screen-to-name-alist)))
-           (nickname-or-1st-buffer
-            (elscreen-tab--avoid-undesirable-name (split-string nickname-or-buf-names ":")))
-           (tab-name
-            (elscreen-truncate-screen-name nickname-or-1st-buffer (elscreen-tab-width) t))
-           (tab-id (number-to-string screen-id))
-           tab-title
-           tab-unit)
-      (setq tab-title (format "[%s] %s" tab-id tab-name))
-      (setq tab-title (if (eq (elscreen-get-current-screen) screen-id)
-                          (propertize tab-title 'face 'elscreen-tab-current-screen-face)
-                        (propertize tab-title 'face 'elscreen-tab-other-screen-face)))
-      (setq tab-unit (elscreen-tab--propertize-click-to-jump tab-title screen-id))
-      tab-unit))
-  (advice-add 'elscreen-tab--create-tab-unit :override 'elscreen-tab--create-tab-unit:override)
-  (setq elscreen-tab--tab-unit-separator
-        #s(hash-table size 4
-                      test eq
-                      data (right "\n" top " " left "\n" bottom " ")))
-  (elscreen-tab-set-position 'top)
-  (elscreen-tab-mode))
+  (tab-bar-new-tab-choice "*dashboard*")
+  :hook
+  (after-init . (lambda ()
+                  (tab-bar-mode)
+                  (add-hook 'post-command-hook 'tab-bar-update-tab)
+                  (tab-bar-update-tab))))
 
 (use-package magit
-  :after (git-gutter elscreen)
+  :after (git-gutter)
   :bind (("C-x g" . magit-status)
          :map magit-status-mode-map
          ("q" . my/magit-quit-session))
@@ -737,17 +734,16 @@
   (defun my/magit-quit-session ()
     (interactive)
     (kill-buffer)
-    (jump-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
+    (jump-to-register (intern (concat "magit-fullscreen-" (number-to-string (tab-bar--current-tab-index)))))
     (git-gutter:update-all-windows))
+  (defun my/magit-status (orig-fun &rest args)
+    (window-configuration-to-register (intern (concat "magit-fullscreen-" (number-to-string (tab-bar--current-tab-index)))))
+    (apply orig-fun args)
+    (delete-other-windows))
   :custom
-  ;; (magit-last-seen-setup-instructions "1.4.0")
-  ;; (magit-diff-refine-hunk 'all)
   (magit-diff-auto-show nil)
   :config
-  (defadvice magit-status (around magit-fullscreen activate)
-    (window-configuration-to-register (intern (concat "magit-fullscreen-" (number-to-string (elscreen-get-current-screen)))))
-    ad-do-it
-    (delete-other-windows))
+  (advice-add 'magit-status :around 'my/magit-status)
   :hook
   (magit-mode . (lambda () (company-mode -1))))
 
@@ -861,7 +857,6 @@
   :config
   (unless (server-running-p)
     (server-start)
-    (require 'elscreen-server)
     (setq with-editor-emacsclient-executable nil)
     ))
 
