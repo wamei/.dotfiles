@@ -40,7 +40,8 @@
                 "^com\\.parallels\\.desktop$",
                 "^com\\.parallels\\.vm$",
                 "^com\\.parallels\\.desktop\\.console$",
-                "^com\\.parallels\\.winapp\\."
+                "^com\\.parallels\\.winapp\\.",
+                "^com\\.microsoft\\.rdc\\.macos$"
               ]
             }
           ]
@@ -81,7 +82,8 @@
                 "^com\\.parallels\\.desktop$",
                 "^com\\.parallels\\.vm$",
                 "^com\\.parallels\\.desktop\\.console$",
-                "^com\\.parallels\\.winapp\\."
+                "^com\\.parallels\\.winapp\\.",
+                "^com\\.microsoft\\.rdc\\.macos$"
               ]
             }
           ]
