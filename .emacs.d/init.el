@@ -674,6 +674,15 @@
          ("C-q s" . tab-bar-move-tab)
          )
   :preface
+  (defun tab-bar-mode--create-keymap (index)
+    (let ((keymap (make-sparse-keymap)))
+      (define-key keymap (kbd "<mouse-1>")
+        (lambda (_)
+          (interactive "e")
+          (select-window (get-mru-window 0))
+          (tab-bar-select-tab (+ 1 index))
+          (select-window (get-mru-window 0))))
+      keymap))
   (defun tab-bar-update-tab (&rest args)
     (let* ((buffer-name " *tab-bar-tabs*")
            (buffer (get-buffer-create buffer-name)))
@@ -686,18 +695,21 @@
          (mapconcat
           #'(lambda (tab)
               (let* ((index (tab-bar--tab-index tab))
+                     (tab-width 15)
                      (name (concat
-                            " "
+                            " ["
                             (number-to-string (+ 1 index))
-                            "."
-                            (cdr (assoc 'name (cdr tab)))
+                            "] "
+                            (s-pad-right tab-width " " (s-left tab-width (cdr (assoc 'name (cdr tab)))))
                             " ")))
-                (if (eq (tab-bar--current-tab-index) index)
-                    name
-                  (propertize name 'face '(:foreground "#888" :background "#252525")))))
+                (propertize
+                 (if (eq (tab-bar--current-tab-index) index)
+                     name
+                   (propertize name 'face '(:foreground "#888" :background "#2d2e2e")))
+                 'local-map (tab-bar-mode--create-keymap index))))
           (tab-bar-tabs)
           ""))
-        (insert (propertize (s-repeat 1000 " ") 'face '(:background "#252525")))
+        (insert (propertize (s-repeat 20 " ") 'face '(:background "#2d2e2e")))
         (setq buffer-read-only t))
       (cl-defun tab-bar-mode--stingy-height (window)
         "Set WINDOW height as small as possible."
@@ -719,6 +731,7 @@
       (tab-bar-mode--stingy-height win)))
   :custom
   (tab-bar-new-tab-choice "*dashboard*")
+  (tab-bar-update-tab)
   :hook
   (after-init . (lambda ()
                   (tab-bar-mode)
