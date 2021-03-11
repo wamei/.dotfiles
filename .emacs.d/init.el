@@ -195,6 +195,8 @@
 
 (use-package all-the-icons)
 (use-package all-the-icons-dired
+  :custom
+  (all-the-icons-dired-monochrome nil)
   :hook
   (dired-mode . all-the-icons-dired-mode))
 
@@ -296,6 +298,7 @@
   (counsel-yank-pop-separator "\n   -------\n")
   (enable-recursive-minibuffers t)
   :config
+  (setq counsel-rg-base-command (cons "rg" (cons "--hidden" (nthcdr 1 counsel-rg-base-command))))
   (minibuffer-depth-indicate-mode t)
   (push '(counsel-locate . nil) ivy-sort-functions-alist)
   (advice-add
@@ -328,9 +331,20 @@
   (use-package ivy-prescient
     :config
     (prescient-persist-mode 1)
-    (ivy-prescient-mode 1))
+    (ivy-prescient-mode 1)
+    (setf (alist-get 'counsel-rg ivy-re-builders-alist) #'ivy--regex-plus))
   :hook
   (after-init . ivy-mode))
+
+(use-package projectile
+  :custom
+  (projectile-completion-system 'ivy)
+  :config
+  (defun do-not-use-file-truename-in-projectile-project-root (old-fn &rest args)
+    (dflet ((file-truename (d) d))
+      (apply old-fn args)))
+  (advice-add 'projectile-project-root :around 'do-not-use-file-truename-in-projectile-project-root))
+
 (use-package counsel-projectile
   :bind (("M-s g" . wamei/counsel-projectile-grep)
          ("M-s f" . counsel-projectile-find-file)
@@ -351,7 +365,6 @@
   (defun wamei/ivy-format-function (cands)
     (ivy--format-function-generic
      (lambda (str)
-       ;;(all-the-icons-octicon "arrow-right" :height 0.9 :v-adjust 0.0)
        (ivy--add-face (concat "➡" str "\n") 'ivy-current-match))
      (lambda (str)
        (concat "  " str "\n"))
@@ -385,15 +398,6 @@
       (clrhash ivy-rich--ivy-switch-buffer-cache))
     (ivy-rich-mode)
     (setcdr (assq t ivy-format-functions-alist) #'wamei/ivy-format-function)))
-
-(use-package projectile
-  :custom
-  (projectile-completion-system 'ivy)
-  :config
-  (defun do-not-use-file-truename-in-projectile-project-root (old-fn &rest args)
-    (dflet ((file-truename (d) d))
-      (apply old-fn args)))
-  (advice-add 'projectile-project-root :around 'do-not-use-file-truename-in-projectile-project-root))
 
 (use-package git-gutter
   :custom
