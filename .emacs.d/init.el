@@ -876,6 +876,21 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
+(use-package graphql-mode
+  :mode (("\\.prisma\\'" . graphql-mode))
+  :hook
+  (graphql-mode . (lambda ()
+                    (when (string-equal "prisma" (file-name-extension buffer-file-name))
+                      (setq-local graphql-keywords (append '("datasource" "generator" "model" "enum") graphql-keywords))
+                      (setq-local graphql-definition-regex
+                                  (concat "\\(" (regexp-opt '("datasource" "generator" "model" "enum"
+                                                              "type" "input" "interface" "fragment" "query"
+                                                              "mutation" "subscription" "enum" "extend"
+                                                              "scalar" "union")) "\\)"
+                                                              "[[:space:]]+\\(\\_<.+?\\_>\\)"))
+                      (setq-local comment-start "//")
+                      (setq-local comment-start-skip "//+[\t ]*")))))
+
 (use-package yasnippet
   :hook
   (after-init . yas-global-mode))
@@ -889,8 +904,14 @@
   (web-mode . add-node-modules-path)
   (typescript-mode . add-node-modules-path))
 
+(use-package js2-mode
+  :mode (("\\.js\\'" . js2-mode)))
+
 (use-package web-mode
   :mode (("\\.tsx\\'" . web-mode))
+  :custom
+  (web-mode-enable-auto-quoting nil)
+  (web-mode-enable-auto-indentation nil)
   :hook
   (web-mode . (lambda ()
                 (when (string-equal "tsx" (file-name-extension buffer-file-name))
@@ -911,12 +932,18 @@
 (use-package powershell
   :mode (("\\.ps[dm]?1\\'" . powershell-mode)))
 
+(use-package php-mode
+  :mode (("\\.php\\'" . php-mode)))
+
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (typescript-mode . lsp-deferred)
+         (js-mode . lsp-deferred)
+         (js2-mode . lsp-deferred)
          (json-mode . lsp-deferred)
-         (powershell-mode . lsp-deferred))
+         (powershell-mode . lsp-deferred)
+         (php-mode . lsp-deferred))
   :custom
   (lsp-enable-snippet nil)
   (gc-cons-threshold 12800000)
