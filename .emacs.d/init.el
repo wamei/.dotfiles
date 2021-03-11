@@ -293,12 +293,38 @@
   (ivy-count-format "(%d/%d) ")
   (ivy-more-chars-alist '((t . 1)))
   (ivy-use-selectable-prompt t)
-  (counsel-yank-pop-separator "\n-------\n")
-  (counsel-ag-base-command "ag -u --vimgrep %s")
+  (counsel-yank-pop-separator "\n   -------\n")
   (enable-recursive-minibuffers t)
   :config
   (minibuffer-depth-indicate-mode t)
   (push '(counsel-locate . nil) ivy-sort-functions-alist)
+  (advice-add
+   'counsel--yank-pop-format-function
+   :override
+   (lambda (cand-pairs)
+     (ivy--format-function-generic
+      (lambda (str)
+        (ivy--add-face
+         (concat
+          "➡"
+          (s-chop-prefix
+           "  "
+           (mapconcat
+            (lambda (s)
+              (concat "   " s))
+            (split-string
+             (counsel--yank-pop-truncate str) "\n" t)
+            "\n")))
+         'ivy-current-match))
+      (lambda (str)
+        (mapconcat
+         (lambda (s)
+           (concat "   " s))
+         (split-string
+          (counsel--yank-pop-truncate str) "\n" t)
+         "\n"))
+      cand-pairs
+      counsel-yank-pop-separator)))
   (use-package ivy-prescient
     :config
     (prescient-persist-mode 1)
@@ -618,6 +644,8 @@
     (interactive)
     (term-send-raw-string "\C-i"))
   :custom
+  (multi-term-dedicated-window-height 50)
+  (multi-term-dedicated-max-window-height 100)
   (multi-term-scroll-show-maximum-output t)
   :config
   (setenv "TERMINFO" "~/.terminfo")
