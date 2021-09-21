@@ -11,7 +11,6 @@ $ brew tap homebrew/cask-versions
 
 $ brew install coreutils
 
-$ brew install --cask hiddenbar
 $ brew install --cask google-chrome
 $ brew install --cask google-chrome-canary
 $ brew install --cask google-japanese-ime
@@ -19,6 +18,8 @@ $ brew install --cask karabiner-elements
 $ brew install --cask 1password
 $ brew install --cask slack
 $ brew install --cask discord
+$ brew install --cask chatwork
+$ brew install --cask microsoft-teams
 
 $ brew tap homebrew/cask-fonts
 $ brew install --cask font-hackgen
