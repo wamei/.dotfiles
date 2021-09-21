@@ -7,6 +7,7 @@ $ ./init.sh
 ```
 $ ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 $ brew update
+$ brew tap homebrew/cask-versions
 
 $ brew install coreutils
 
