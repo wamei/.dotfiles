@@ -264,3 +264,5 @@ fi
 
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
+
+export PATH=/usr/local/bin/:$PATH

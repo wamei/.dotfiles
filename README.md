@@ -10,18 +10,18 @@ $ brew update
 
 $ brew install coreutils
 
-$ brew install hiddenbar --cask
-$ brew install google-chrome --cask
-$ brew install google-chrome-canary --cask
-$ brew install google-japanese-ime --cask
-$ brew install karabiner-elements --cask
-$ brew install 1password --cask
-$ brew install slack --cask
-$ brew install discord --cask
+$ brew install --cask hiddenbar
+$ brew install --cask google-chrome
+$ brew install --cask google-chrome-canary
+$ brew install --cask google-japanese-ime
+$ brew install --cask karabiner-elements
+$ brew install --cask 1password
+$ brew install --cask slack
+$ brew install --cask discord
 
 $ brew tap homebrew/cask-fonts
-$ brew install font-hackgen --cask
-$ brew install font-hackgen-nerd --cask
+$ brew install --cask font-hackgen
+$ brew install --cask font-hackgen-nerd
 
 $ defaults write com.apple.finder AppleShowAllFiles True
 ```
@@ -56,7 +56,7 @@ $ sudo apt-get install xsel
 ## Emacs
 ```
 # Mac
-$ brew install emacs --cask
+$ brew install --cask emacs
 
 # Ubuntu
 $ sudo apt-get install emacs
@@ -65,8 +65,7 @@ $ sudo apt-get install emacs
 ## Docker
 ```
 # Mac
-$ brew install docker
-$ brew install docker --cask
+$ brew install --cask docker
 
 # Ubuntu
 $ sudo apt-get install docker-ce docker-compose
