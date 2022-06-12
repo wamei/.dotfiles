@@ -11,19 +11,27 @@ $ brew tap homebrew/cask-versions
 
 $ brew install coreutils
 
-$ brew install --cask google-chrome
-$ brew install --cask google-chrome-canary
+$ brew tap homebrew/cask-fonts
+$ brew install --cask font-hackgen
+$ brew install --cask font-hackgen-nerd
+
 $ brew install --cask google-japanese-ime
 $ brew install --cask karabiner-elements
 $ brew install --cask 1password
+
+$ brew install --cask google-chrome
+$ brew install --cask google-chrome-canary
+
 $ brew install --cask slack
 $ brew install --cask discord
 $ brew install --cask chatwork
 $ brew install --cask microsoft-teams
 
-$ brew tap homebrew/cask-fonts
-$ brew install --cask font-hackgen
-$ brew install --cask font-hackgen-nerd
+$ brew install --cask postman
+$ brew install --cask mysqlworkbench
+
+$ brew install android-sdk
+$ brew install --cask android-studio
 
 $ defaults write com.apple.finder AppleShowAllFiles True
 ```

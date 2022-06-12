@@ -177,6 +177,8 @@
          ("C-e" . mwim-end-of-line-or-code)))
 
 (use-package undo-tree
+  :custom
+  (undo-tree-history-directory-alist '(("." . "~/.emacs.d/undo")))
   :hook
   (after-init . global-undo-tree-mode))
 
@@ -227,6 +229,7 @@
 (use-package doom-modeline
   :custom
   (inhibit-compacting-font-caches t)
+  (doom-modeline-vcs-max-length 30)
   :hook
   (after-init . doom-modeline-mode)
   :config

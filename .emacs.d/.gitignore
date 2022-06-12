@@ -11,6 +11,8 @@
 /elpa/
 /url/
 /var/
+/undo/
+/lsp-cache/
 /backups/
 /company-statistics-cache.el
 /elisp/multi-tramp-settings.el
