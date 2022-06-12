@@ -28,6 +28,8 @@
 (use-package el-x)
 (use-package s)
 
+(setq native-comp-async-report-warnings-errors 'nil)
+
 ;; Avoid to write `package-selected-packages` in init.el
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-exists-p custom-file)
@@ -706,70 +708,10 @@
          ("C-q ," . tab-bar-rename-tab)
          ("C-q s" . tab-bar-move-tab)
          )
-  :preface
-  (defun tab-bar-mode--create-keymap (index)
-    (let ((keymap (make-sparse-keymap)))
-      (define-key keymap (kbd "<mouse-1>")
-        (lambda (_)
-          (interactive "e")
-          (select-window (get-mru-window 0))
-          (tab-bar-select-tab (+ 1 index))
-          (select-window (get-mru-window 0))))
-      keymap))
-  (defun tab-bar-update-tab (&rest args)
-    (let* ((buffer-name " *tab-bar-tabs*")
-           (buffer (get-buffer-create buffer-name)))
-      (with-current-buffer buffer
-        (setq cursor-type nil
-              show-trailing-whitespace nil
-              buffer-read-only nil)
-        (erase-buffer)
-        (insert
-         (mapconcat
-          #'(lambda (tab)
-              (let* ((index (tab-bar--tab-index tab))
-                     (tab-width 15)
-                     (name (concat
-                            " ["
-                            (number-to-string (+ 1 index))
-                            "] "
-                            (s-pad-right tab-width " " (s-left tab-width (cdr (assoc 'name (cdr tab)))))
-                            " ")))
-                (propertize
-                 (if (eq (tab-bar--current-tab-index) index)
-                     name
-                   (propertize name 'face '(:foreground "#888" :background "#2d2e2e")))
-                 'local-map (tab-bar-mode--create-keymap index))))
-          (tab-bar-tabs)
-          ""))
-        (insert (propertize (s-repeat 20 " ") 'face '(:background "#2d2e2e")))
-        (setq buffer-read-only t))
-      (cl-defun tab-bar-mode--stingy-height (window)
-        "Set WINDOW height as small as possible."
-        (unless window (cl-return-from elscreen-tab--stingy-height
-                         "Invalid argument: window must not be nil"))
-        (with-selected-window window
-          (let* ((expected-height 1)
-                 (delta (- expected-height (window-body-height)))
-                 (delta-allowed (window-resizable window delta nil window)))
-            (with-demoted-errors "Unable to minimize %s"
-              (window-resize window delta-allowed nil t)
-              (window-preserve-size window nil t)
-              (setq window-size-fixed t)
-              ))))
-      (setq win (display-buffer-in-side-window buffer `((side . top) (window-height . 1)
-                                                        (window-parameters . ((no-other-window . t)
-                                                                              (no-delete-other-windows . t)
-                                                                              (delete-window . ignore))))))
-      (tab-bar-mode--stingy-height win)))
   :custom
   (tab-bar-new-tab-choice "*dashboard*")
-  (tab-bar-update-tab)
   :hook
-  (after-init . (lambda ()
-                  (tab-bar-mode)
-                  (add-hook 'post-command-hook 'tab-bar-update-tab)
-                  (tab-bar-update-tab))))
+  (after-init . tab-bar-mode))
 
 (use-package magit
   :after (git-gutter)
