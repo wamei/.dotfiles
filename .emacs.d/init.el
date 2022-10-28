@@ -350,6 +350,11 @@
       (apply old-fn args)))
   (advice-add 'projectile-project-root :around 'do-not-use-file-truename-in-projectile-project-root))
 
+(use-package wgrep
+  :custom
+  (wgrep-change-readonly-file t)
+  (wgrep-enable-key "e"))
+
 (use-package counsel-projectile
   :bind (("M-s g" . wamei/counsel-projectile-grep)
          ("M-s f" . counsel-projectile-find-file)
@@ -851,20 +856,9 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
-(use-package graphql-mode
-  :mode (("\\.prisma\\'" . graphql-mode))
-  :hook
-  (graphql-mode . (lambda ()
-                    (when (string-equal "prisma" (file-name-extension buffer-file-name))
-                      (setq-local graphql-keywords (append '("datasource" "generator" "model" "enum") graphql-keywords))
-                      (setq-local graphql-definition-regex
-                                  (concat "\\(" (regexp-opt '("datasource" "generator" "model" "enum"
-                                                              "type" "input" "interface" "fragment" "query"
-                                                              "mutation" "subscription" "enum" "extend"
-                                                              "scalar" "union")) "\\)"
-                                                              "[[:space:]]+\\(\\_<.+?\\_>\\)"))
-                      (setq-local comment-start "//")
-                      (setq-local comment-start-skip "//+[\t ]*")))))
+(use-package prisma-mode
+  :straight (prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode")
+  :mode (("\\.prisma\\'" . prisma-mode)))
 
 (use-package yasnippet
   :hook
@@ -914,11 +908,11 @@
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (typescript-mode . lsp-deferred)
-         (js-mode . lsp-deferred)
          (js2-mode . lsp-deferred)
          (json-mode . lsp-deferred)
          (powershell-mode . lsp-deferred)
-         (php-mode . lsp-deferred))
+         (php-mode . lsp-deferred)
+         (prisma-mode . lsp-deferred))
   :custom
   (lsp-enable-snippet nil)
   (gc-cons-threshold 12800000)
