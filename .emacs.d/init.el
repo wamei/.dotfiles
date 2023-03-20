@@ -219,15 +219,6 @@
   (set-face-attribute 'dashboard-heading nil :foreground "orange")
   (dashboard-setup-startup-hook))
 
-(use-package doom-themes
-  :custom
-  (doom-themes-neotree-file-icons t)
-  :config
-  (load-theme 'doom-molokai t)
-  (doom-themes-visual-bell-config)
-  (doom-themes-neotree-config)
-  (doom-themes-org-config))
-
 (use-package doom-modeline
   :custom
   (inhibit-compacting-font-caches t)
@@ -235,10 +226,15 @@
   :hook
   (after-init . doom-modeline-mode)
   :config
-  (doom-modeline-def-modeline 'dashboard
-    '(bar workspace-name window-number buffer-default-directory-simple)
-    '(misc-info battery irc mu4e gnus github debug minor-modes input-method major-mode process))
   (column-number-mode 1))
+
+(use-package modus-themes
+  :custom
+  (modus-themes-italic-constructs t)
+  (modus-themes-custom-auto-reload t)
+  (modus-themes-disable-other-themes t)
+  :config
+  (modus-themes-load-theme 'modus-vivendi-tinted))
 
 (use-package hide-mode-line
   :hook
@@ -695,12 +691,6 @@
                  (define-key term-raw-map (kbd "C-c C-k") 'term-char-mode)
                  )))
 
-(use-package desktop
-  :straight nil
-  :config
-  (desktop-save-mode 1)
-  (auto-save-mode 1))
-
 (use-package tab-bar-mode
   :no-require
   :straight nil
@@ -856,6 +846,18 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
+(use-package copilot
+  :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
+  :ensure t
+  :config
+  (add-hook 'prog-mode-hook 'copilot-mode)
+  (with-eval-after-load 'company
+  ;; disable inline previews
+    (delq 'company-preview-if-just-one-frontend company-frontends))
+  (define-key copilot-completion-map (kbd "<tab>") 'copilot-accept-completion)
+  (define-key copilot-completion-map (kbd "TAB") 'copilot-accept-completion)
+  )
+
 (use-package prisma-mode
   :straight (prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode")
   :mode (("\\.prisma\\'" . prisma-mode)))
@@ -877,13 +879,21 @@
   :mode (("\\.js\\'" . js2-mode)))
 
 (use-package web-mode
-  :mode (("\\.tsx\\'" . web-mode))
+  :mode (("\\.tsx\\'" . web-mode)
+         ("\\.vue\\'" . web-mode))
   :custom
+  (web-mode-script-padding 0)
+  (web-mode-style-padding 0)
   (web-mode-enable-auto-quoting nil)
   (web-mode-enable-auto-indentation nil)
+  (web-mode-engines-alist
+   '(("php"    . "\\.phtml\\'")
+     ("blade"  . "\\.blade\\.")))
   :hook
   (web-mode . (lambda ()
                 (when (string-equal "tsx" (file-name-extension buffer-file-name))
+                  (lsp))
+                (when (string-equal "vue" (file-name-extension buffer-file-name))
                   (lsp)))))
 
 (use-package projectile-rails
@@ -908,6 +918,7 @@
   :commands (lsp lsp-deferred)
   :hook ((ruby-mode . lsp-deferred)
          (typescript-mode . lsp-deferred)
+         (js-mode . lsp-deferred)
          (js2-mode . lsp-deferred)
          (json-mode . lsp-deferred)
          (powershell-mode . lsp-deferred)
