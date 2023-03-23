@@ -1,4 +1,6 @@
 ;; -*- Mode: Emacs-Lisp ; Coding: utf-8 -*-
+(setq straight-repository-branch "develop")
+(setq straight-use-package-by-default t)
 (defvar bootstrap-version)
 (let ((bootstrap-file
       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
@@ -13,17 +15,12 @@
  (load bootstrap-file nil 'nomessage))
 
 (straight-use-package 'use-package)
-(setq straight-use-package-by-default t)
 
 (use-package docker
   :bind ("C-c d" . docker))
 (use-package dockerfile-mode
   :mode (("Dockerfile\\'" . dockerfile-mode)))
 (use-package docker-compose-mode)
-(use-package docker-tramp
-  :config
-  (require 'docker-tramp-compat)
-  (set-variable 'docker-tramp-use-names t))
 
 (use-package el-x)
 (use-package s)
@@ -226,7 +223,10 @@
   :hook
   (after-init . doom-modeline-mode)
   :config
-  (column-number-mode 1))
+  (column-number-mode 1)
+  (defun toggle-show-minor-mode ()
+    (interactive)
+    (setq doom-modeline-minor-modes (not doom-modeline-minor-modes))))
 
 (use-package modus-themes
   :custom
@@ -421,46 +421,6 @@
   :hook
   (after-init . editorconfig-mode))
 
-(use-package company-box
-  :hook
-  (company-mode . company-box-mode))
-(use-package company-statistics
-  :hook
-  (after-init . company-statistics-mode))
-(use-package company
-  :bind (:map company-mode-map
-         ("M-/" . company-complete)
-         ;;("<tab>" . company-indent-or-complete-common)
-         :map company-active-map
-         ("M-n" . nil)
-         ("M-p" . nil)
-         ("C-n" . company-select-next)
-         ("C-p" . company-select-previous)
-         ("C-h" . nil)
-         ("<tab>" . company-complete-common-or-cycle)
-         ("M-d" . company-show-doc-buffer))
-  :custom
-  (company-transformers '(company-sort-by-statistics company-sort-by-backend-importance))
-  (company-minimum-prefix-length 1)
-  (company-tooltip-minimum-width 40)
-  (company-tooltip-align-annotations t)
-  (company-dabbrev-downcase nil)
-  (company-dabbrev-char-regexp "\\(\\sw\\|\\s_\\|_\\|-\\)")
-  (company-idle-delay 0)
-  (company-selection-wrap-around t)
-  (company-backends '(company-capf
-                      company-yasnippet
-                      company-dabbrev
-                      company-semantic
-                      company-files
-                      ))
-  :config
-  (use-package company-prescient
-    :config
-    (company-prescient-mode 1))
-  :hook
-  (after-init . global-company-mode))
-
 (use-package phi-search)
 
 (use-package multiple-cursors
@@ -569,7 +529,7 @@
   (defun wamei/neotree-mode-hook ()
     (setq cursor-type nil))
   :bind
-  ("<f9>" . wamei/neotree-show)
+  ("M-s t" . wamei/neotree-show)
   :hook
   (neotree-mode . wamei/neotree-mode-hook))
 
@@ -726,9 +686,7 @@
   :custom
   (magit-diff-auto-show nil)
   :config
-  (advice-add 'magit-status :around 'my/magit-status)
-  :hook
-  (magit-mode . (lambda () (company-mode -1))))
+  (advice-add 'magit-status :around 'my/magit-status))
 
 (use-package rainbow-mode
   :config
@@ -758,56 +716,6 @@
 (use-package flycheck
   :config
   (flycheck-add-mode 'javascript-eslint 'web-mode))
-;; (use-package flycheck-posframe
-;;   :if (not (equal window-system nil))
-;;   :after flycheck
-;;   :custom-face
-;;   (flycheck-posframe-background-face ((t (:background "#444"))))
-;;   :hook
-;;   (flycheck-mode . flycheck-posframe-mode))
-
-(use-package mozc
-  :if (not (equal window-system nil))
-  :bind (("M-`" . toggle-input-method)
-         ("<C-f1>" . disable-input-method)
-         ("<C-f2>" . enable-input-method))
-  :preface
-  (defun enable-input-method (&optional arg interactive)
-    (interactive "P\np")
-    (if (not current-input-method)
-        (toggle-input-method arg interactive)))
-  (defun disable-input-method (&optional arg interactive)
-    (interactive "P\np")
-    (if current-input-method
-        (toggle-input-method arg interactive)))
-  :custom
-  (mozc-leim-title "かな")
-  (default-input-method "japanese-mozc")
-  :config
-  (defun wamei/toggle-input-method:after (&optional arg interactive)
-    (when (posframe-workable-p)
-      (setq posframe-mouse-banish nil)
-      (let ((string (if current-input-method
-                        "あ"
-                      "A"))
-            (border (if current-input-method
-                        "black"
-                      "blue")))
-        (posframe-show " *wamei-input-method*"
-                       :string string
-                       :background-color "white"
-                       :foreground-color "black"
-                       :right-fringe 2
-                       :left-fringe 2
-                       :internal-border-width 1
-                       :internal-border-color border
-                       :timeout 1
-                       :poshandler 'posframe-poshandler-point-bottom-left-corner))))
-  (advice-add 'toggle-input-method :after 'wamei/toggle-input-method:after)
-  (use-package mozc-cand-posframe
-    :if (not (equal window-system nil))
-    :custom
-    (mozc-candidate-style 'posframe)))
 
 (use-package mac-settings
   :no-require t
@@ -851,9 +759,6 @@
   :ensure t
   :config
   (add-hook 'prog-mode-hook 'copilot-mode)
-  (with-eval-after-load 'company
-  ;; disable inline previews
-    (delq 'company-preview-if-just-one-frontend company-frontends))
   (define-key copilot-completion-map (kbd "<tab>") 'copilot-accept-completion)
   (define-key copilot-completion-map (kbd "TAB") 'copilot-accept-completion)
   )
@@ -861,10 +766,6 @@
 (use-package prisma-mode
   :straight (prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode")
   :mode (("\\.prisma\\'" . prisma-mode)))
-
-(use-package yasnippet
-  :hook
-  (after-init . yas-global-mode))
 
 (setq js-indent-level 2)
 (use-package typescript-mode)
