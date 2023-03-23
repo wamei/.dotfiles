@@ -146,6 +146,15 @@
 
 (global-font-lock-mode t)
 
+;; trampモードの設定
+(use-package tramp
+  :straight nil
+  :config
+  (setq shell-file-name "/bin/bash")
+  (setq explicit-shell-file-name "/bin/bash")
+  (add-to-list 'tramp-remote-path 'tramp-own-remote-path)
+  )
+
 ;; 選択範囲をisearch
 (defadvice isearch-mode (around isearch-mode-default-string (forward &optional regexp op-fun recursive-edit word-p) activate)
   (if (and transient-mark-mode mark-active (not (eq (mark) (point))))
@@ -159,33 +168,24 @@
           (isearch-repeat-forward)))
     ad-do-it))
 
-(use-package tramp
-  :straight nil
-  :config
-  (setq shell-file-name "/bin/bash")
-  (setq explicit-shell-file-name "/bin/bash")
-  (add-to-list 'tramp-remote-path 'tramp-own-remote-path)
-  )
-
+;; 選択範囲を拡張する
 (use-package expand-region
   :bind (("C-q C-q" . er/expand-region)
          ("C-q C-z" . er/contract-region)))
 
+;; 行頭行末移動をいい感じにする
 (use-package mwim
   :bind (("C-a" . mwim-beginning-of-line-or-code)
          ("C-e" . mwim-end-of-line-or-code)))
 
+;; undoを強化する
 (use-package undo-tree
   :custom
   (undo-tree-history-directory-alist '(("." . "~/.emacs.d/undo")))
   :hook
   (after-init . global-undo-tree-mode))
 
-(use-package visual-regexp-steroids
-  :bind (("C-r" . vr/replace)
-         ("C-q C-r" . vr/query-replace)
-         ("C-q C-m" . vr/mc-mark)))
-
+;; キャメルケース変換系
 (use-package string-inflection
   :bind (("C-q C-i C-a" . string-inflection-all-cycle)
          ("C-q C-i C-l" . string-inflection-underscore)
@@ -194,6 +194,7 @@
          ("C-q C-i C-u" . string-inflection-upcase)
          ("C-q C-i C-k" . string-inflection-kebab-case)))
 
+;; アイコンを表示する
 (use-package all-the-icons)
 (use-package all-the-icons-dired
   :custom
@@ -201,6 +202,7 @@
   :hook
   (dired-mode . all-the-icons-dired-mode))
 
+;; 起動画面をダッシュボードにする
 (use-package dashboard
   :custom
   (dashboard-items '((recents  . 20)
@@ -216,6 +218,7 @@
   (set-face-attribute 'dashboard-heading nil :foreground "orange")
   (dashboard-setup-startup-hook))
 
+;; モードラインを変更する
 (use-package doom-modeline
   :custom
   (inhibit-compacting-font-caches t)
@@ -228,6 +231,7 @@
     (interactive)
     (setq doom-modeline-minor-modes (not doom-modeline-minor-modes))))
 
+;; テーマを変更する
 (use-package modus-themes
   :custom
   (modus-themes-italic-constructs t)
@@ -236,11 +240,13 @@
   :config
   (modus-themes-load-theme 'modus-vivendi-tinted))
 
+;; モードラインを隠す
 (use-package hide-mode-line
   :hook
-  ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode) . hide-mode-line-mode)
-  ((neotree-mode imenu-list-minor-mode minimap-mode lsp-ui-imenu-mode treemacs-mode term-mode) . (lambda() (display-line-numbers-mode 0))))
+  ((neotree-mode imenu-list-minor-mode minimap-mode) . hide-mode-line-mode)
+  ((neotree-mode imenu-list-minor-mode minimap-mode treemacs-mode term-mode) . (lambda() (display-line-numbers-mode 0))))
 
+;; 不要なスペースを可視化する
 (use-package whitespace
   :config
   (setq whitespace-style '(face tabs spaces newline trailing space-before-tab space-after-tab space-mark tab-mark newline-mark))
@@ -263,12 +269,6 @@
   :hook
   (after-init . global-whitespace-mode))
 
-;; (use-package eldoc
-;;   :config
-;;   (defun ad:eldoc-message (f &optional string)
-;;     (unless (active-minibuffer-window)
-;;       (funcall f string)))
-;;   (advice-add 'eldoc-message :around #'ad:eldoc-message))
 
 (use-package counsel
   :bind (("M-x" . counsel-M-x)
@@ -405,6 +405,7 @@
     (ivy-rich-mode)
     (setcdr (assq t ivy-format-functions-alist) #'wamei/ivy-format-function)))
 
+;; フリンジにgitの差分を表示する
 (use-package git-gutter
   :custom
   (git-gutter:modified-sign " ")
@@ -417,6 +418,7 @@
   :hook
   (after-init . global-git-gutter-mode))
 
+;; editorconfigを適用する
 (use-package editorconfig
   :hook
   (after-init . editorconfig-mode))
@@ -504,6 +506,7 @@
                  (throw 'end-flag t)))))))
   )
 
+;; ファイルツリーを表示する
 (use-package neotree
   :after
   projectile
@@ -533,6 +536,7 @@
   :hook
   (neotree-mode . wamei/neotree-mode-hook))
 
+;; lsを置き換える
 (use-package ls-lisp
   :straight nil
   :custom
@@ -590,6 +594,7 @@
   (eval-after-load "dired-aux" '(require 'dired-async))
   )
 
+;; 復数のターミナルを使えるようにする
 (use-package multi-term
   :bind (("C-z" . multi-term-pop))
   :preface
@@ -651,6 +656,7 @@
                  (define-key term-raw-map (kbd "C-c C-k") 'term-char-mode)
                  )))
 
+;; タブの設定
 (use-package tab-bar-mode
   :no-require
   :straight nil
@@ -668,6 +674,7 @@
   :hook
   (after-init . tab-bar-mode))
 
+;; magitの設定
 (use-package magit
   :after (git-gutter)
   :bind (("C-x g" . magit-status)
@@ -688,6 +695,7 @@
   :config
   (advice-add 'magit-status :around 'my/magit-status))
 
+;; カラーコードに色を付ける
 (use-package rainbow-mode
   :config
   (use-package ov)
@@ -708,15 +716,11 @@
   :hook
   (after-change-major-mode . rainbow-mode))
 
-(use-package popwin
-  :config
-  (push '("\\*screen terminal<.*?>\\*" :regexp t :position bottom :height 0.5 :stick t) popwin:special-display-config)
-  (popwin-mode 1))
-
 (use-package flycheck
   :config
   (flycheck-add-mode 'javascript-eslint 'web-mode))
 
+;; OS別の設定
 (use-package mac-settings
   :no-require t
   :straight nil
@@ -814,86 +818,3 @@
 
 (use-package php-mode
   :mode (("\\.php\\'" . php-mode)))
-
-(use-package lsp-mode
-  :commands (lsp lsp-deferred)
-  :hook ((ruby-mode . lsp-deferred)
-         (typescript-mode . lsp-deferred)
-         (js-mode . lsp-deferred)
-         (js2-mode . lsp-deferred)
-         (json-mode . lsp-deferred)
-         (powershell-mode . lsp-deferred)
-         (php-mode . lsp-deferred)
-         (prisma-mode . lsp-deferred))
-  :custom
-  (lsp-enable-snippet nil)
-  (gc-cons-threshold 12800000)
-  (read-process-output-max (* 1024 1024))
-  (ruby-insert-encoding-magic-comment nil)
-  :config
-  (lsp-register-client
-   (make-lsp-client
-    :new-connection (lsp-tramp-connection '("solargraph" "stdio"))
-    :major-modes '(ruby-mode enh-ruby-mode)
-    :multi-root t
-    :library-folders-fn (lambda (_workspace) lsp-solargraph-library-directories)
-    :server-id 'ruby-ls-remote
-    :remote? t
-    :initialized-fn (lambda (workspace)
-                      (with-lsp-workspace workspace
-                        (lsp--set-configuration
-                         (lsp-configuration-section "solargraph"))))
-    ))
-  (use-package lsp-ui
-    :custom
-    (lsp-ui-doc-header t)
-    (lsp-ui-doc-include-signature t)
-    (lsp-ui-doc-max-width 300)
-    (lsp-ui-doc-max-height 50)
-    (lsp-ui-doc-use-childframe t)
-    (lsp-ui-doc-use-webkit nil)
-    :bind (:map lsp-mode-map
-           ("M-s r" . lsp-ui-peek-find-references)
-           ("M-s d" . lsp-ui-peek-find-definitions)
-           ("M-s i" . lsp-ui-peek-find-implementation)
-           ("C-q r" . lsp-rename)
-           ("C-q a" . lsp-execute-code-action)
-           ("C-q i" . lsp-ui-imenu)
-           ("C-q d" . wamei/toggle-lsp-ui-doc))
-    :preface
-    (defun wamei/toggle-lsp-ui-doc ()
-      (interactive)
-      (if lsp-ui-doc-mode
-        (progn
-          (lsp-ui-doc-mode -1)
-          (lsp-ui-doc--hide-frame))
-         (lsp-ui-doc-mode 1)))
-    :config
-    (defun lsp-ui-peek--peek-display (src1 src2)
-      (-let* ((win-width (frame-width))
-              (lsp-ui-peek-list-width (/ (frame-width) 2))
-              (string (-some--> (-zip-fill "" src1 src2)
-                        (--map (lsp-ui-peek--adjust win-width it) it)
-                        (-map-indexed 'lsp-ui-peek--make-line it)
-                        (-concat it (lsp-ui-peek--make-footer))))
-              )
-        (setq lsp-ui-peek--buffer (get-buffer-create " *lsp-peek--buffer*"))
-        (posframe-show lsp-ui-peek--buffer
-                       :string (mapconcat 'identity string "")
-                       :min-width (frame-width)
-                       :poshandler #'posframe-poshandler-frame-center)))
-
-    (defun lsp-ui-peek--peek-destroy ()
-      (when (bufferp lsp-ui-peek--buffer)
-        (posframe-delete lsp-ui-peek--buffer))
-      (setq lsp-ui-peek--buffer nil
-            lsp-ui-peek--last-xref nil)
-      (set-window-start (get-buffer-window) lsp-ui-peek--win-start))
-
-    (advice-add #'lsp-ui-peek--peek-new :override #'lsp-ui-peek--peek-display)
-    (advice-add #'lsp-ui-peek--peek-hide :override #'lsp-ui-peek--peek-destroy)
-    :hook
-    (lsp-mode . lsp-ui-mode)))
-(use-package lsp-ivy
-  :commands lsp-ivy-workspace-symbol)
-(use-package dap-mode)
