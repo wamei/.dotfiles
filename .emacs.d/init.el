@@ -769,6 +769,7 @@
   (corfu-auto t)
   (corfu-auto-delay 0)
   (corfu-auto-prefix 1)
+  (corfu-preview-current nil)
   (corfu-quit-no-match 'separator)
   :bind
   ("M-/" . completion-at-point)
@@ -809,13 +810,15 @@
 ;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
-;; (use-package copilot
-;;   :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
-;;   :config
-;;   (add-hook 'prog-mode-hook 'copilot-mode)
-;;   (define-key copilot-completion-map (kbd "<tab>") 'copilot-accept-completion)
-;;   (define-key copilot-completion-map (kbd "TAB") 'copilot-accept-completion)
-;;   )
+(use-package copilot
+  :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
+  :bind
+  ("C-M-/" . copilot-complete)
+  (:map copilot-completion-map
+        ("<tab>" . copilot-accept-completion)
+        ("TAB" . copilot-accept-completion))
+  :init
+  (global-copilot-mode))
 
 (use-package prisma-mode
   :straight (prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode")
