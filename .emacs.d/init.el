@@ -201,6 +201,11 @@
   (all-the-icons-dired-monochrome nil)
   :hook
   (dired-mode . all-the-icons-dired-mode))
+(use-package all-the-icons-completion
+  :after (marginalia all-the-icons)
+  :hook (marginalia-mode . all-the-icons-completion-marginalia-setup)
+  :init
+  (all-the-icons-completion-mode))
 
 ;; 起動画面をダッシュボードにする
 (use-package dashboard
@@ -269,141 +274,171 @@
   :hook
   (after-init . global-whitespace-mode))
 
-
-(use-package counsel
-  :bind (("M-x" . counsel-M-x)
-         ("M-y" . counsel-yank-pop)
-         ("C-x p" . ivy-resume)
-         ("C-x b" . ivy-switch-buffer)
-         ("C-x C-f" . counsel-find-file)
-         ("M-s a" . wamei/counsel-grep)
-         ("M-s s" . swiper)
-         ("M-s l" . counsel-locate))
-  :preface
-  (defun wamei/counsel-grep()
-    (interactive)
-    (cond ((not (s-equals? "" (shell-command-to-string "which rg")))
-           (counsel-rg))
-          ((not (s-equals? "" (shell-command-to-string "which ag")))
-           (counsel-ag))
-          (t
-           (counsel-grep))))
-  :custom
-  (ivy-wrap t)
-  (ivy-virtual-abbreviate 'full)
-  (ivy-use-virtual-buffers t)
-  (ivy-height 20)
-  (ivy-count-format "(%d/%d) ")
-  (ivy-more-chars-alist '((t . 1)))
-  (ivy-use-selectable-prompt t)
-  (counsel-yank-pop-separator "\n   -------\n")
-  (enable-recursive-minibuffers t)
-  :config
-  (setq counsel-rg-base-command (cons "rg" (cons "--hidden" (nthcdr 1 counsel-rg-base-command))))
-  (minibuffer-depth-indicate-mode t)
-  (push '(counsel-locate . nil) ivy-sort-functions-alist)
-  (advice-add
-   'counsel--yank-pop-format-function
-   :override
-   (lambda (cand-pairs)
-     (ivy--format-function-generic
-      (lambda (str)
-        (ivy--add-face
-         (concat
-          "➡"
-          (s-chop-prefix
-           "  "
-           (mapconcat
-            (lambda (s)
-              (concat "   " s))
-            (split-string
-             (counsel--yank-pop-truncate str) "\n" t)
-            "\n")))
-         'ivy-current-match))
-      (lambda (str)
-        (mapconcat
-         (lambda (s)
-           (concat "   " s))
-         (split-string
-          (counsel--yank-pop-truncate str) "\n" t)
-         "\n"))
-      cand-pairs
-      counsel-yank-pop-separator)))
-  (use-package ivy-prescient
-    :config
-    (prescient-persist-mode 1)
-    (ivy-prescient-mode 1)
-    (setf (alist-get 'counsel-rg ivy-re-builders-alist) #'ivy--regex-plus))
-  :hook
-  (after-init . ivy-mode))
-
-(use-package projectile
-  :custom
-  (projectile-completion-system 'ivy)
-  :config
-  (defun do-not-use-file-truename-in-projectile-project-root (old-fn &rest args)
-    (dflet ((file-truename (d) d))
-      (apply old-fn args)))
-  (advice-add 'projectile-project-root :around 'do-not-use-file-truename-in-projectile-project-root))
-
+;; grepで編集
 (use-package wgrep
   :custom
   (wgrep-change-readonly-file t)
   (wgrep-enable-key "e"))
 
-(use-package counsel-projectile
-  :bind (("M-s g" . wamei/counsel-projectile-grep)
-         ("M-s f" . counsel-projectile-find-file)
-         ("M-s p" . counsel-projectile-switch-project)))
-  :preface
-  (defun wamei/counsel-projectile-grep()
-    (interactive)
-    (cond ((not (s-equals? "" (shell-command-to-string "which rg")))
-           (counsel-projectile-rg))
-          ((not (s-equals? "" (shell-command-to-string "which ag")))
-           (counsel-projectile-ag))
-          (t
-           (counsel-projectile-grep))))
-(use-package all-the-icons-ivy-rich
+;; minibuffer補完
+(use-package vertico
+  :straight (vertico :type git
+                     :host github
+                     :repo "minad/vertico"
+                     :files (:defaults "extensions/*"))
   :custom
-  (inhibit-compacting-font-caches t)
-  :preface
-  (defun wamei/ivy-format-function (cands)
-    (ivy--format-function-generic
-     (lambda (str)
-       (ivy--add-face (concat "➡" str "\n") 'ivy-current-match))
-     (lambda (str)
-       (concat "  " str "\n"))
-     cands
-     ""))
+  (vertico-count 20)
+  (vertico-cycle t)
+  (vertico-resize t)
+  (enable-recursive-minibuffers t)
+  :init
+  (vertico-mode))
+
+(use-package vertico-mouse
+  :straight nil
+  :after vertico
+  :init
+  (vertico-mouse-mode))
+
+(use-package marginalia
+  :bind (("M-A" . marginalia-cycle)
+         :map minibuffer-local-map
+         ("M-A" . marginalia-cycle))
+  :init
+  (marginalia-mode))
+
+(use-package consult
+  ;; Replace bindings. Lazily loaded due by `use-package'.
+  :bind (;; C-c bindings (mode-specific-map)
+         ("C-c M-x" . consult-mode-command)
+         ("C-c h" . consult-history)
+         ("C-c k" . consult-kmacro)
+         ("C-c m" . consult-man)
+         ("C-c i" . consult-info)
+         ([remap Info-search] . consult-info)
+         ;; C-x bindings (ctl-x-map)
+         ("C-x M-:" . consult-complex-command)     ;; orig. repeat-complex-command
+         ("C-x b" . consult-buffer)                ;; orig. switch-to-buffer
+         ("C-x 4 b" . consult-buffer-other-window) ;; orig. switch-to-buffer-other-window
+         ("C-x 5 b" . consult-buffer-other-frame)  ;; orig. switch-to-buffer-other-frame
+         ("C-x r b" . consult-bookmark)            ;; orig. bookmark-jump
+         ("C-x p b" . consult-project-buffer)      ;; orig. project-switch-to-buffer
+         ;; Custom M-# bindings for fast register access
+         ("M-#" . consult-register-load)
+         ("M-'" . consult-register-store)          ;; orig. abbrev-prefix-mark (unrelated)
+         ("C-M-#" . consult-register)
+         ;; Other custom bindings
+         ("M-y" . consult-yank-from-kill-ring)     ;; orig. yank-pop
+         ;; M-g bindings (goto-map)
+         ("M-g e" . consult-compile-error)
+         ("M-g f" . consult-flymake)               ;; Alternative: consult-flycheck
+         ("M-g g" . consult-goto-line)             ;; orig. goto-line
+         ("M-g M-g" . consult-goto-line)           ;; orig. goto-line
+         ("M-g o" . consult-outline)               ;; Alternative: consult-org-heading
+         ("M-g m" . consult-mark)
+         ("M-g k" . consult-global-mark)
+         ("M-g i" . consult-imenu)
+         ("M-g I" . consult-imenu-multi)
+         ;; M-s bindings (search-map)
+         ("M-s f" . consult-find)
+         ("M-s l" . consult-locate)
+         ("M-s G" . consult-grep)
+         ("M-s g" . consult-git-grep)
+         ("M-s a" . consult-ripgrep)
+         ("M-s s" . consult-line)
+         ("M-s S" . consult-line-multi)
+         ("M-s k" . consult-keep-lines)
+         ("M-s u" . consult-focus-lines)
+         ;; Isearch integration
+         ("M-s e" . consult-isearch-history)
+         :map isearch-mode-map
+         ("M-e" . consult-isearch-history)         ;; orig. isearch-edit-string
+         ("M-s e" . consult-isearch-history)       ;; orig. isearch-edit-string
+         ("M-s l" . consult-line)                  ;; needed by consult-line to detect isearch
+         ("M-s L" . consult-line-multi)            ;; needed by consult-line to detect isearch
+         ;; Minibuffer history
+         :map minibuffer-local-map
+         ("M-s" . consult-history)                 ;; orig. next-matching-history-element
+         ("M-r" . consult-history))                ;; orig. previous-matching-history-element
+
+  ;; Enable automatic preview at point in the *Completions* buffer. This is
+  ;; relevant when you use the default completion UI.
+  :hook (completion-list-mode . consult-preview-at-point-mode)
+
+  ;; The :init configuration is always executed (Not lazy)
+  :init
+
+  ;; Optionally configure the register formatting. This improves the register
+  ;; preview for `consult-register', `consult-register-load',
+  ;; `consult-register-store' and the Emacs built-ins.
+  (setq register-preview-delay 0.5
+        register-preview-function #'consult-register-format)
+
+  ;; Optionally tweak the register preview window.
+  ;; This adds thin lines, sorting and hides the mode line of the window.
+  (advice-add #'register-preview :override #'consult-register-window)
+
+  ;; Use Consult to select xref locations with preview
+  (setq xref-show-xrefs-function #'consult-xref
+        xref-show-definitions-function #'consult-xref)
+
+  ;; Configure other variables and modes in the :config section,
+  ;; after lazily loading the package.
   :config
-  (setq all-the-icons-ivy-rich-display-transformers-list
-   (append all-the-icons-ivy-rich-display-transformers-list
-           '(counsel-locate
-             (:columns
-              ((all-the-icons-ivy-rich-file-icon)
-               (ivy-rich-candidate (:width 0.8))
-               (ivy-rich-file-last-modified-time (:face font-lock-comment-face)))
-              :delimiter "\t"))))
-  (all-the-icons-ivy-rich-mode)
-  (use-package ivy-rich
-    :config
-    (defvar ivy-rich--ivy-switch-buffer-cache
-      (make-hash-table :test 'equal))
 
-    (define-advice ivy-rich--ivy-switch-buffer-transformer
-        (:around (old-fn x) cache)
-      (let ((ret (gethash x ivy-rich--ivy-switch-buffer-cache)))
-        (unless ret
-          (setq ret (funcall old-fn x))
-          (puthash x ret ivy-rich--ivy-switch-buffer-cache))
-        ret))
+  ;; Optionally configure preview. The default value
+  ;; is 'any, such that any key triggers the preview.
+  ;; (setq consult-preview-key 'any)
+  ;; (setq consult-preview-key "M-.")
+  ;; (setq consult-preview-key '("S-<down>" "S-<up>"))
+  ;; For some commands and buffer sources it is useful to configure the
+  ;; :preview-key on a per-command basis using the `consult-customize' macro.
+  (consult-customize
+   consult-theme :preview-key '(:debounce 0.2 any)
+   consult-ripgrep consult-git-grep consult-grep
+   consult-bookmark consult-recent-file consult-xref
+   consult--source-bookmark consult--source-file-register
+   consult--source-recent-file consult--source-project-recent-file
+   ;; :preview-key "M-."
+   :preview-key '(:debounce 0.4 any))
+  )
 
-    (define-advice +ivy/switch-buffer
-        (:before (&rest _) ivy-rich-reset-cache)
-      (clrhash ivy-rich--ivy-switch-buffer-cache))
-    (ivy-rich-mode)
-    (setcdr (assq t ivy-format-functions-alist) #'wamei/ivy-format-function)))
+(use-package affe
+  :config
+  ;; Manual preview key for `affe-grep'
+  (consult-customize affe-grep :preview-key "M-."))
+
+(use-package embark
+  :ensure t
+
+  :bind
+  (("C-." . embark-act)         ;; pick some comfortable binding
+   ("C-;" . embark-dwim)        ;; good alternative: M-.
+   ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
+
+  :init
+
+  ;; Optionally replace the key help with a completing-read interface
+  (setq prefix-help-command #'embark-prefix-help-command)
+
+  ;; Show the Embark target at point via Eldoc.  You may adjust the Eldoc
+  ;; strategy, if you want to see the documentation from multiple providers.
+  (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
+  ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
+
+  :config
+
+  ;; Hide the mode line of the Embark live/completions buffers
+  (add-to-list 'display-buffer-alist
+               '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                 nil
+                 (window-parameters (mode-line-format . none)))))
+
+;; Consult users will also want the embark-consult package.
+(use-package embark-consult
+  :ensure t ; only need to install it, embark loads it after consult if found
+  :hook
+  (embark-collect-mode . consult-preview-at-point-mode))
 
 ;; フリンジにgitの差分を表示する
 (use-package git-gutter
@@ -423,8 +458,8 @@
   :hook
   (after-init . editorconfig-mode))
 
+;; 復数カーソルを扱う
 (use-package phi-search)
-
 (use-package multiple-cursors
   :bind (("C-q C-l" . mc/edit-lines)
          ("C-q C-a" . mc/mark-all-like-this)
@@ -459,7 +494,6 @@
     (mc/remove-fake-cursors)
     (let ((c)
           (fp (point)))
-      (mc/create-fake-cursor-at-point)
       (catch 'end-flag
         (while t
           (message "put-cursors: [spc]: put cursor, [C-g]: cancel, [RET]: done")
@@ -504,7 +538,7 @@
                  (goto-char fp)
                  (message "Quit")
                  (throw 'end-flag t)))))))
-  )
+   )
 
 ;; ファイルツリーを表示する
 (use-package neotree
@@ -543,7 +577,7 @@
   (ls-lisp-use-insert-directory-program nil)
   (ls-lisp-ignore-case t)
   (ls-lisp-dirs-first t)
-  (dired-listing-switches "-alv")
+  (dired-listing-switches "-alLv")
   :config
   (when (> emacs-major-version 25.1) (setq ls-lisp-UCA-like-collation nil)))
 
@@ -786,7 +820,7 @@
   :after corfu
   :custom ((completion-styles '(orderless))
            (completion-category-defaults nil)
-           (completion-category-overrides nil))
+           (completion-category-overrides '((file (styles partial-completion)))))
   :hook (corfu-mode . (lambda () (setq-local orderless-matching-styles '(orderless-flex)))))
 
 (use-package prescient
