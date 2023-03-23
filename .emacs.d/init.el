@@ -756,16 +756,66 @@
     ))
 
 ;;
+;; 補完設定
+;;----------------------------------------------------------------------------------------------------
+(use-package corfu
+  :straight (corfu :type git
+                   :host github
+                   :repo "minad/corfu"
+                   :branch "async"
+                   :files (:defaults "extensions/*"))
+  :custom
+  (corfu-cycle t)
+  (corfu-auto t)
+  (corfu-auto-delay 0)
+  (corfu-auto-prefix 1)
+  (corfu-quit-no-match 'separator)
+  :bind
+  ("M-/" . completion-at-point)
+  :init
+  (global-corfu-mode))
+
+(use-package corfu-popupinfo
+  :straight nil
+  :after corfu
+  :config
+  (corfu-popupinfo-mode +1))
+
+(use-package orderless
+  :after corfu
+  :custom ((completion-styles '(orderless))
+           (completion-category-defaults nil)
+           (completion-category-overrides nil))
+  :hook (corfu-mode . (lambda () (setq-local orderless-matching-styles '(orderless-flex)))))
+
+(use-package prescient
+  :config
+  (prescient-persist-mode +1))
+
+(use-package corfu-prescient
+  :after corfu
+  :init
+  (with-eval-after-load 'orderless
+    (setq corfu-prescient-enable-filtering nil
+          corfu-prescient-override-sorting t))
+  (corfu-prescient-mode +1))
+
+(use-package kind-icon
+  :after corfu
+  :custom (kind-icon-default-face 'corfu-default)
+  :config
+  (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
+
+;;
 ;; 言語設定
 ;;----------------------------------------------------------------------------------------------------
-(use-package copilot
-  :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
-  :ensure t
-  :config
-  (add-hook 'prog-mode-hook 'copilot-mode)
-  (define-key copilot-completion-map (kbd "<tab>") 'copilot-accept-completion)
-  (define-key copilot-completion-map (kbd "TAB") 'copilot-accept-completion)
-  )
+;; (use-package copilot
+;;   :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
+;;   :config
+;;   (add-hook 'prog-mode-hook 'copilot-mode)
+;;   (define-key copilot-completion-map (kbd "<tab>") 'copilot-accept-completion)
+;;   (define-key copilot-completion-map (kbd "TAB") 'copilot-accept-completion)
+;;   )
 
 (use-package prisma-mode
   :straight (prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode")
@@ -818,3 +868,51 @@
 
 (use-package php-mode
   :mode (("\\.php\\'" . php-mode)))
+
+;;
+;; LSP設定
+;;----------------------------------------------------------------------------------------------------
+(use-package markdown-mode)
+(use-package lsp-mode
+  :commands (lsp lsp-deferred)
+  :hook ((ruby-mode . lsp-deferred)
+         (typescript-mode . lsp-deferred)
+         (js-mode . lsp-deferred)
+         (js2-mode . lsp-deferred)
+         (json-mode . lsp-deferred)
+         (powershell-mode . lsp-deferred)
+         (php-mode . lsp-deferred)
+         (prisma-mode . lsp-deferred))
+  :custom
+  (lsp-enable-snippet nil)
+  (gc-cons-threshold 12800000)
+  (read-process-output-max (* 1024 1024))
+  :config
+  (use-package lsp-ui
+    :custom
+    (lsp-ui-doc-header t)
+    (lsp-ui-doc-max-width 300)
+    (lsp-ui-doc-max-height 80)
+    (lsp-ui-doc-use-childframe t)
+    (lsp-ui-doc-use-webkit nil)
+    (lsp-ui-peek-list-width 150)
+    :bind (:map lsp-mode-map
+           ("M-s r" . lsp-ui-peek-find-references)
+           ("M-s d" . lsp-ui-peek-find-definitions)
+           ("M-s i" . lsp-ui-peek-find-implementation)
+           ("C-q r" . lsp-rename)
+           ("C-q a" . lsp-execute-code-action)
+           ("C-q i" . lsp-ui-imenu)
+           ("C-q d" . wamei/toggle-lsp-ui-doc))
+    :preface
+    (defun wamei/toggle-lsp-ui-doc ()
+      (interactive)
+      (if lsp-ui-doc-mode
+        (progn
+          (lsp-ui-doc-mode -1)
+          (lsp-ui-doc--hide-frame))
+         (lsp-ui-doc-mode 1)))
+    :hook
+    (lsp-mode . lsp-ui-mode)
+    (lsp-mode . lsp-ui-doc-mode)))
+(use-package dap-mode)
