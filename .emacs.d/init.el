@@ -648,7 +648,8 @@
   :no-require
   :straight nil
   :after multi-term
-  :bind (("C-z" . wamei/multi-term-pop))
+  :bind
+  ("C-z" . wamei/multi-term-pop)
   :preface
   (defvar wamei/multi-term-buffer-name "TABMINAL")
   (defun wamei/get-multi-term-name (tab index)
@@ -678,18 +679,82 @@
               (kill-buffer buffer))
             (wamei/make-term term-name shell-name))
         (wamei/make-term term-name shell-name))))
-  (defun wamei/multi-term-pop ()
+  (defun wamei/s-match-multi-term-buffer-name (buffer-name &optional tab)
+    (s-matches?
+     (format "\\*%s<%s-[0-9]+>\\*" wamei/multi-term-buffer-name (or tab (+ 1 (tab-bar--current-tab-index))))
+     buffer-name))
+  (defun wamei/get-multi-term-buffer-list (&optional tab)
+    (seq-filter
+      '(lambda (buffer)
+         (wamei/s-match-multi-term-buffer-name (buffer-name buffer) tab))
+      (buffer-list)))
+  (defun wamei/get-multi-term-buffer-index (buffer)
+    (cadr
+     (mapcar
+      'string-to-number
+      (s-split "-" (s-chop-prefix (format "*%s<" wamei/multi-term-buffer-name) (s-chop-suffix ">*" (buffer-name buffer)))))))
+  (defun wamei/get-multi-term-indicies ()
+    (mapcar
+     'wamei/get-multi-term-buffer-index
+     (wamei/get-multi-term-buffer-list)))
+  (defun wamei/get-multi-term-max-index ()
+    (let ((indicies (wamei/get-multi-term-indicies)))
+      (if indicies (apply 'max indicies) 0)))
+  (defun wamei/get-multi-term-min-index ()
+    (let ((indicies (wamei/get-multi-term-indicies)))
+      (if indicies (apply 'min indicies) 0)))
+  (defun wamei/get-multi-term-current-index ()
+    (let ((indicies (wamei/get-multi-term-indicies)))
+      (if indicies (car indicies) 0)))
+  (defun wamei/get-multi-term-window ()
+    (let ((windows
+           (seq-filter
+            '(lambda (window)
+               (wamei/s-match-multi-term-buffer-name (buffer-name (window-buffer window))))
+            (window-list))))
+      (car windows)))
+  (defun wamei/multi-term-create ()
     (interactive)
-    (let* ((buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) 1))
-          (window (get-buffer-window buffer)))
+    (let* ((buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) (+ 1 (wamei/get-multi-term-max-index)))))
+      (wamei/multi-term-pop buffer)))
+  (defun wamei/multi-term-next ()
+    (interactive)
+    (let* ((indicies (wamei/get-multi-term-indicies))
+           (max-index (if indicies (apply 'max indicies) 1))
+           (min-index (if indicies (apply 'min indicies) 1))
+           (current-index (if indicies (car indicies) 1))
+           (target-index
+            (if (= max-index current-index)
+                min-index
+              (car (sort (seq-filter #'(lambda (index) (> index current-index)) (wamei/get-multi-term-indicies)) '<))))
+           (buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) target-index)))
+      (wamei/multi-term-pop buffer)))
+  (defun wamei/multi-term-prev ()
+    (interactive)
+    (let* ((indicies (wamei/get-multi-term-indicies))
+           (max-index (if indicies (apply 'max indicies) 1))
+           (min-index (if indicies (apply 'min indicies) 1))
+           (current-index (if indicies (car indicies) 1))
+           (target-index
+            (if (= min-index current-index)
+                max-index
+              (car (sort (seq-filter #'(lambda (index) (< index current-index)) (wamei/get-multi-term-indicies)) '>))))
+           (buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) target-index)))
+      (wamei/multi-term-pop buffer)))
+  (defun wamei/multi-term-pop (&optional _buffer)
+    (interactive)
+    (let* ((buffer (or _buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) (max 1 (wamei/get-multi-term-current-index)))))
+          (window (wamei/get-multi-term-window)))
       (if (not window)
           (progn
             (pop-to-buffer buffer)
-            (selected-window)
             (switch-to-buffer buffer))
         (if (eq window (selected-window))
-            (delete-window window)
-          (select-window window)))))
+            (if (eq buffer (current-buffer))
+                (delete-window window)
+              (switch-to-buffer buffer))
+          (select-window window)
+          (switch-to-buffer buffer)))))
   )
 (use-package multi-term
   :preface
@@ -741,6 +806,9 @@
                  (define-key term-raw-map (kbd "M-DEL") 'term-send-backward-kill-word)
                  (define-key term-raw-map (kbd "M-h") 'term-send-backward-kill-word)
                  (define-key term-raw-map (kbd "C-z") 'wamei/multi-term-pop)
+                 (define-key term-raw-map (kbd "C-c c") 'wamei/multi-term-create)
+                 (define-key term-raw-map (kbd "C-c C-n") 'wamei/multi-term-next)
+                 (define-key term-raw-map (kbd "C-c C-p") 'wamei/multi-term-prev)
                  (define-key term-raw-map (kbd "TAB") 'term-send-tab)
                  (define-key term-raw-map (kbd "C-c C-j") 'term-line-mode)
                  (define-key term-raw-map (kbd "C-c C-k") 'term-char-mode)
@@ -750,6 +818,51 @@
 (use-package tab-bar-mode
   :no-require
   :straight nil
+  :init
+  (defun wamei/tab-bar-new-tab-to:before (&optional tab-number)
+    (let ((last-index (length (tab-bar-tabs)))
+          (current-index (or tab-number (+ 1 (tab-bar--current-tab-index)))))
+      (when (not (= last-index current-index))
+        (mapcar
+         #'(lambda (index)
+             (mapcar #'(lambda (buffer)
+                        (with-current-buffer buffer (rename-buffer (s-replace (format "<%s" index) (format "<%s" (+ index 1)) (buffer-name)))))
+                     (wamei/get-multi-term-buffer-list index)))
+         (reverse (number-sequence (+ 1 current-index) last-index))))))
+  (advice-add #'tab-bar-new-tab-to :before #'wamei/tab-bar-new-tab-to:before)
+  (defun wamei/tab-bar-close-tab:before (&optional tab-number to-number)
+    (let ((last-index (length (tab-bar-tabs)))
+          (current-index (or tab-number (+ 1 (tab-bar--current-tab-index)))))
+      (mapcar #'(lambda (buffer)
+                  (let ((kill-buffer-query-functions nil))
+                    (kill-buffer buffer)))
+              (wamei/get-multi-term-buffer-list current-index))
+      (when (not (= last-index current-index))
+        (mapcar
+         #'(lambda (index)
+             (mapcar #'(lambda (buffer)
+                        (with-current-buffer buffer (rename-buffer (s-replace (format "<%s" index) (format "<%s" (- index 1)) (buffer-name)))))
+                     (wamei/get-multi-term-buffer-list index)))
+         (number-sequence (+ 1 current-index) last-index)))))
+  (advice-add #'tab-bar-close-tab :before #'wamei/tab-bar-close-tab:before)
+  (defun wamei/tab-bar-move-tab-to:before (to-number &optional from-number)
+    (let* ((tabs (funcall tab-bar-tabs-function))
+           (from-number (or from-number (1+ (tab-bar--current-tab-index tabs))))
+           (from-tab (nth (1- from-number) tabs))
+           (to-number (if to-number (prefix-numeric-value to-number) 1))
+           (to-number (if (< to-number 0) (+ (length tabs) (1+ to-number))
+                        to-number))
+           (to-index (max 0 (min (1- to-number) (1- (length tabs))))))
+      (mapcar #'(lambda (buffer)
+                  (with-current-buffer buffer (rename-buffer (s-replace (format "<%s" to-number) (format "<%s" 0) (buffer-name)))))
+              (wamei/get-multi-term-buffer-list to-number))
+      (mapcar #'(lambda (buffer)
+                  (with-current-buffer buffer (rename-buffer (s-replace (format "<%s" from-number) (format "<%s" to-number) (buffer-name)))))
+              (wamei/get-multi-term-buffer-list from-number))
+      (mapcar #'(lambda (buffer)
+                  (with-current-buffer buffer (rename-buffer (s-replace (format "<%s" 0) (format "<%s" from-number) (buffer-name)))))
+              (wamei/get-multi-term-buffer-list 0))))
+  (advice-add #'tab-bar-move-tab-to :before #'wamei/tab-bar-move-tab-to:before)
   :bind (("C-q n" . tab-bar-switch-to-next-tab)
          ("C-q p" . tab-bar-switch-to-prev-tab)
          ("C-q c" . tab-bar-new-tab)
@@ -761,6 +874,12 @@
   (tab-bar-tab-inactive ((t (:foreground "#aaaaaa"))))
   :custom
   (tab-bar-new-tab-choice "*dashboard*")
+  (tab-bar-tab-name-function
+   #'(lambda ()
+      (let ((project-name (with-current-buffer (window-buffer (minibuffer-selected-window)) (projectile-project-name))))
+        (if (s-equals? project-name "-")
+            (tab-bar-tab-name-current)
+          project-name))))
   :hook
   (after-init . tab-bar-mode))
 
