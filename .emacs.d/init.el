@@ -236,6 +236,8 @@
     (interactive)
     (setq doom-modeline-minor-modes (not doom-modeline-minor-modes))))
 
+(use-package minions)
+
 ;; テーマを変更する
 (use-package modus-themes
   :custom
@@ -291,13 +293,21 @@
   (vertico-cycle t)
   (vertico-resize t)
   (enable-recursive-minibuffers t)
-  :init
+  :config
+  ;; Use `consult-completion-in-region' if Vertico is enabled.
+  ;; Otherwise use the default `completion--in-region' function.
+  (setq completion-in-region-function
+        (lambda (&rest args)
+          (apply (if vertico-mode
+                     #'consult-completion-in-region
+                   #'completion--in-region)
+                 args)))
   (vertico-mode))
 
 (use-package vertico-mouse
   :straight nil
   :after vertico
-  :init
+  :config
   (vertico-mouse-mode))
 
 (use-package marginalia
@@ -628,15 +638,61 @@
   (eval-after-load "dired-aux" '(require 'dired-async))
   )
 
+(use-package popwin
+  :config
+  (push '(term-mode :position :bottom :height 30 :stick t) popwin:special-display-config)
+  (popwin-mode 1))
+
 ;; 復数のターミナルを使えるようにする
-(use-package multi-term
-  :bind (("C-z" . multi-term-pop))
+(use-package wamei-multi-term
+  :no-require
+  :straight nil
+  :after multi-term
+  :bind (("C-z" . wamei/multi-term-pop))
   :preface
-  (defun multi-term-pop ()
+  (defvar wamei/multi-term-buffer-name "TABMINAL")
+  (defun wamei/get-multi-term-name (tab index)
+    (format "%s<%s-%s>" wamei/multi-term-buffer-name tab index))
+  (defun wamei/get-multi-term-buffer-name (tab index)
+    (format "*%s*" (wamei/get-multi-term-name tab index)))
+  (defun wamei/make-term (term-name shell-name)
+    (let ((buffer
+           (if multi-term-program-switches
+               (make-term term-name shell-name nil multi-term-program-switches)
+             (make-term term-name shell-name))))
+      (with-current-buffer buffer
+        (multi-term-internal))
+      buffer))
+  (defun wamei/get-multi-term-buffer (tab index)
+    (let* ((term-name (wamei/get-multi-term-name tab index))
+           (buffer-name (wamei/get-multi-term-buffer-name tab index))
+           (buffer (get-buffer buffer-name))
+           (shell-name (or multi-term-program
+                           (getenv "SHELL")
+                           (getenv "ESHELL")
+                           "/bin/sh")))
+      (if buffer
+          (if (eq (buffer-local-value 'major-mode buffer) 'term-mode)
+              buffer
+            (let ((kill-buffer-query-functions nil))
+              (kill-buffer buffer))
+            (wamei/make-term term-name shell-name))
+        (wamei/make-term term-name shell-name))))
+  (defun wamei/multi-term-pop ()
     (interactive)
-    (multi-term-dedicated-toggle)
-    (when (multi-term-dedicated-exist-p)
-      (multi-term-dedicated-select)))
+    (let* ((buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) 1))
+          (window (get-buffer-window buffer)))
+      (if (not window)
+          (progn
+            (pop-to-buffer buffer)
+            (selected-window)
+            (switch-to-buffer buffer))
+        (if (eq window (selected-window))
+            (delete-window window)
+          (select-window window)))))
+  )
+(use-package multi-term
+  :preface
   (defun term-send-forward-char ()
     (interactive)
     (term-send-raw-string "\C-f"))
@@ -684,7 +740,7 @@
                  (define-key term-raw-map (kbd "M-<backspace>") 'term-send-backward-kill-word)
                  (define-key term-raw-map (kbd "M-DEL") 'term-send-backward-kill-word)
                  (define-key term-raw-map (kbd "M-h") 'term-send-backward-kill-word)
-                 (define-key term-raw-map (kbd "C-z") 'multi-term-pop)
+                 (define-key term-raw-map (kbd "C-z") 'wamei/multi-term-pop)
                  (define-key term-raw-map (kbd "TAB") 'term-send-tab)
                  (define-key term-raw-map (kbd "C-c C-j") 'term-line-mode)
                  (define-key term-raw-map (kbd "C-c C-k") 'term-char-mode)
@@ -851,8 +907,8 @@
   (:map copilot-completion-map
         ("<tab>" . copilot-accept-completion)
         ("TAB" . copilot-accept-completion))
-  :init
-  (global-copilot-mode))
+  :hook
+  (prog-mode . copilot-mode))
 
 (use-package prisma-mode
   :straight (prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode")
