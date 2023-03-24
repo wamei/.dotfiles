@@ -696,13 +696,13 @@
   :straight nil
   :bind (("C-q n" . tab-bar-switch-to-next-tab)
          ("C-q p" . tab-bar-switch-to-prev-tab)
-         ("C-<tab>" . tab-bar-switch-to-next-tab)
-         ("C-S-<iso-lefttab>" . tab-bar-switch-to-prev-tab)
          ("C-q c" . tab-bar-new-tab)
          ("C-q k" . tab-bar-close-tab)
          ("C-q ," . tab-bar-rename-tab)
          ("C-q s" . tab-bar-move-tab)
          )
+  :custom-face
+  (tab-bar-tab-inactive ((t (:foreground "#aaaaaa"))))
   :custom
   (tab-bar-new-tab-choice "*dashboard*")
   :hook
@@ -940,7 +940,8 @@
            ("C-q r" . lsp-rename)
            ("C-q a" . lsp-execute-code-action)
            ("C-q i" . lsp-ui-imenu)
-           ("C-q d" . wamei/toggle-lsp-ui-doc))
+           ("C-q d" . wamei/toggle-lsp-ui-doc)
+           ("C-q f" . lsp-format-buffer))
     :preface
     (defun wamei/toggle-lsp-ui-doc ()
       (interactive)
