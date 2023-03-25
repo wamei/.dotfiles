@@ -790,6 +790,17 @@
           (cd dir)))))
   :hook
   (term-mode . (lambda ()
+                 (setq-local
+                  tab-line-tabs-function
+                  '(lambda ()
+                     (sort (wamei/get-multi-term-buffer-list) '(lambda (a b) (string< (buffer-name a) (buffer-name b))))))
+                 (setq-local
+                  tab-line-close-tab-function
+                  '(lambda (tab)
+                     (let ((buffer (if (bufferp tab) tab (cdr (assq 'buffer tab))))
+                           (kill-buffer-query-functions nil))
+                       (kill-buffer buffer))))
+                 (tab-line-mode)
                  (define-key term-raw-map (kbd "C-q") nil)
                  (define-key term-raw-map (kbd "C-q C-q") 'er/expand-region)
                  (define-key term-raw-map (kbd "C-q C-z") 'er/contract-region)
@@ -872,6 +883,7 @@
          )
   :custom-face
   (tab-bar-tab-inactive ((t (:foreground "#aaaaaa"))))
+  (tab-line-tab-inactive ((t (:foreground "#aaaaaa"))))
   :custom
   (tab-bar-new-tab-choice "*dashboard*")
   (tab-bar-tab-name-function
