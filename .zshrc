@@ -220,48 +220,6 @@ function tmux-yank () {
 zle -N tmux-yank
 bindkey "^y" tmux-yank
 
-# WSL時のemacs設定
-if [[ `uname -a` =~ Linux && `uname -a` =~ microsoft ]]; then
-    if [ "$INSIDE_EMACS" ]; then
-        TERM=eterm-color
-    fi
-
-    if uname -v | grep -v -q 'Microsoft'; then
-        if ! service ssh status > /dev/null 2>&1; then
-            sudo service ssh start
-            # sudo でパスワード入力の不要設定をしていない場合は、上記の代わりに次のコマンドを使う
-            # wsl.exe -d "$WSL_DISTRO_NAME" -u root service ssh start
-        fi
-
-        if ! ss -lt4 | grep -q '127.0.0.1:6020'; then
-            setsid ssh.exe -p 10022 -f -N -R 6020:127.0.0.1:6000 $USER@localhost &
-        fi
-    fi
-
-    umask 022
-    if [ -z "$DISPLAY" ]; then
-        if uname -v | grep -q 'Microsoft'; then
-            export DISPLAY=:0
-        else
-            if ss -lt4 | grep -q '127.0.0.1:6020'; then
-                export DISPLAY=:20
-            else
-                # export DISPLAY=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf):0.0
-                export DISPLAY=$(ip route | awk '/^default/ {print $3; exit}'):0.0
-            fi
-        fi
-    fi
-
-    # export NO_AT_BRIDGE=1
-    export LIBGL_ALWAYS_INDIRECT=1
-    # export GIGACAGE_ENABLED=no
-
-    # 必要であれば、以下をアンコメント化する
-    keychain -q ~/.ssh/id_rsa
-    source ~/.keychain/`hostname`-sh
-
-fi
-
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
 
