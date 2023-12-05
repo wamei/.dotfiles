@@ -20,6 +20,7 @@ brew install --cask font-hackgen-nerd
 brew install --cask google-japanese-ime
 brew install --cask karabiner-elements
 brew install --cask 1password
+brew install --cask nordlayer
 
 brew install --cask google-chrome
 brew install --cask google-chrome-canary
@@ -30,10 +31,11 @@ brew install --cask chatwork
 brew install --cask microsoft-teams
 brew install --cask gather
 
+brew install --cask visual-studio-code
 brew install --cask postman
 brew install --cask mysqlworkbench
-
 brew install --cask orbstack
+
 brew install nodenv
 brew install rbenv
 brew install pyenv
