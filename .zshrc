@@ -240,3 +240,6 @@ esac
 [[ -d ${HOME}/.nodenv ]] && \
   export PATH=${HOME}/.nodenv/bin:${HOME}/.nodenv/shims:${PATH} && \
   eval "$(nodenv init - zsh)"
+
+# direnv
+eval "$(direnv hook zsh)"
