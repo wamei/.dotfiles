@@ -223,8 +223,6 @@ bindkey "^y" tmux-yank
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
 
-export PATH=/usr/local/bin/:$PATH
-
 # pnpm
 export PNPM_HOME="/Users/wamei/Library/pnpm"
 case ":$PATH:" in
@@ -232,3 +230,13 @@ case ":$PATH:" in
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
+
+# rbenv
+[[ -d ${HOME}/.rbenv ]] && \
+  export PATH=${HOME}/.rbenv/shims:${HOME}/.rbenv/bin:${PATH} && \
+  eval "$(rbenv init - zsh)"
+
+# nodenv
+[[ -d ${HOME}/.nodenv ]] && \
+  export PATH=${HOME}/.nodenv/bin:${HOME}/.nodenv/shims:${PATH} && \
+  eval "$(nodenv init - zsh)"

@@ -4,12 +4,4 @@ if [ -x /usr/libexec/path_helper ]; then
 fi
 export PATH=${HOME}/bin:${PATH}
 
-# rbenv
-[[ -d ${HOME}/.rbenv ]] && \
-  export PATH=${HOME}/.rbenv/shims:${HOME}/.rbenv/bin:${PATH} && \
-  eval "$(rbenv init -)"
-
-# nodenv
-[[ -d ${HOME}/.nodenv ]] && \
-  export PATH=${HOME}/.nodenv/bin:${HOME}/.nodenv/shims:${PATH} && \
-  eval "$(nodenv init -)"
+export PATH=/usr/local/bin/:$PATH
