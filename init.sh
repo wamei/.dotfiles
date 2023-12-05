@@ -7,6 +7,9 @@ ln -sf ~/.dotfiles/.zshrc ~/.zshrc
 #ln -sf ~/.dotfiles/.gitconfig ~/.gitconfig
 ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
 
+mkdir -p ~/.aws
+ln -sf ~/.dotfiles/.aws/update-mfa-profile ~/.aws/update-mfa-profile
+
 # copy bin
 mkdir -p ~/bin
 cp -f ~/.dotfiles/bin/rpbcopy ~/bin
