@@ -114,7 +114,7 @@ precmd () {
 }
 # prompt表示設定
 PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}
-)%{%k%f%b%}%K{white}%F{black} %D{%Y/%m/%d %H:%M} %k%f %F{magenta}%~%f%F{green}%1(v|%1v%2v]|)%f
+)%{%k%f%b%}%F{magenta}%~%f%F{green}%1(v|%1v%2v]|)%f
 %n@%m $ "
 
 PROMPT2='[%n]> '
@@ -266,3 +266,11 @@ fi
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
 
 export PATH=/usr/local/bin/:$PATH
+
+# pnpm
+export PNPM_HOME="/Users/wamei/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
