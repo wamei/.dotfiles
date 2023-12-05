@@ -638,10 +638,10 @@
   (eval-after-load "dired-aux" '(require 'dired-async))
   )
 
-(use-package popwin
+(use-package shackle
   :config
-  (push '(term-mode :position :bottom :height 30 :stick t) popwin:special-display-config)
-  (popwin-mode 1))
+  (setq shackle-rules '((term-mode :align 'below :popup t :size 0.5)))
+  (shackle-mode 1))
 
 ;; 復数のターミナルを使えるようにする
 (use-package wamei-multi-term
@@ -717,6 +717,8 @@
     (interactive)
     (let* ((buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) (+ 1 (wamei/get-multi-term-max-index)))))
       (wamei/multi-term-pop buffer)))
+  (defun wamei/multi-term-swap (&optional to-index from-index)
+    (interactive))
   (defun wamei/multi-term-next ()
     (interactive)
     (let* ((indicies (wamei/get-multi-term-indicies))
@@ -741,9 +743,9 @@
               (car (sort (seq-filter #'(lambda (index) (< index current-index)) (wamei/get-multi-term-indicies)) '>))))
            (buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) target-index)))
       (wamei/multi-term-pop buffer)))
-  (defun wamei/multi-term-pop (&optional _buffer)
+  (defun wamei/multi-term-pop (&optional buffer)
     (interactive)
-    (let* ((buffer (or _buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) (max 1 (wamei/get-multi-term-current-index)))))
+    (let* ((buffer (or buffer (wamei/get-multi-term-buffer (+ 1 (tab-bar--current-tab-index)) (max 1 (wamei/get-multi-term-current-index)))))
           (window (wamei/get-multi-term-window)))
       (if (not window)
           (progn
@@ -1136,7 +1138,31 @@
         (progn
           (lsp-ui-doc-mode -1)
           (lsp-ui-doc--hide-frame))
-         (lsp-ui-doc-mode 1)))
+        (lsp-ui-doc-mode 1)))
+    :config
+      (defun lsp-ui-peek--peek-display (src1 src2)
+        (-let* ((win-width (frame-width))
+                (lsp-ui-peek-list-width (/ (frame-width) 2))
+                (string (-some--> (-zip-fill "" src1 src2)
+                          (--map (lsp-ui-peek--adjust win-width it) it)
+                          (-map-indexed 'lsp-ui-peek--make-line it)
+                          (-concat it (lsp-ui-peek--make-footer))))
+                )
+          (setq lsp-ui-peek--buffer (get-buffer-create " *lsp-peek--buffer*"))
+          (posframe-show lsp-ui-peek--buffer
+                         :string (mapconcat 'identity string "")
+                         :min-width (frame-width)
+                         :poshandler #'posframe-poshandler-frame-center)))
+
+      (defun lsp-ui-peek--peek-destroy ()
+        (when (bufferp lsp-ui-peek--buffer)
+          (posframe-delete lsp-ui-peek--buffer))
+        (setq lsp-ui-peek--buffer nil
+              lsp-ui-peek--last-xref nil)
+        (set-window-start (get-buffer-window) lsp-ui-peek--win-start))
+
+      (advice-add #'lsp-ui-peek--peek-new :override #'lsp-ui-peek--peek-display)
+      (advice-add #'lsp-ui-peek--peek-hide :override #'lsp-ui-peek--peek-destroy)
     :hook
     (lsp-mode . lsp-ui-mode)
     (lsp-mode . lsp-ui-doc-mode)))
