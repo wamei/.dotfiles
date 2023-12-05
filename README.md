@@ -36,12 +36,12 @@ brew install --cask postman
 brew install --cask mysqlworkbench
 brew install --cask orbstack
 
+brew install awscli
+brew install copilot
+
 brew install nodenv
 brew install rbenv
 brew install pyenv
-
-brew install android-sdk
-brew install --cask android-studio
 
 defaults write com.apple.finder AppleShowAllFiles True
 ```
