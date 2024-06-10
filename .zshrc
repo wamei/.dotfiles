@@ -3,20 +3,6 @@ export LANG=en_US.UTF-8
 export TZ=Asia/Tokyo
 export PAGER='less -R'
 
-# Emacs
-if [ "$EMACS" ]; then
-    export EDITOR="emacsclient"
-    alias ec='emacsclient -n'
-else
-    export EDITOR="emacsclient -t"
-    alias ec='emacsclient -t'
-fi
-
-# emacsclientのdiredで開く
-function dired () {
-  ec -e "(dired \"${1:a}\")"
-}
-
 # sudo の後のコマンドでエイリアスを有効にする
 alias sudo='sudo '
 
@@ -43,29 +29,10 @@ colors
 # コマンドライン実行時に # 以降をコメントとして扱う
 setopt interactive_comments
 
-# 補完機能を有効にする
-autoload -Uz compinit
-compinit
-# 補完で小文字でも大文字にマッチさせる
-zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z} r:|[._-]=*'
-# 補完方法毎にグループ化する
-zstyle ':completion:*' format '%B%d%b'
-zstyle ':completion:*' group-name ''
-# 補完侯補をメニューから選択する
-zstyle ':completion:*:default' menu select=2
-# 補完候補に色を付ける
-zstyle ':completion:*:default' list-colors "${LS_COLORS}"
-# コマンドにsudoを付けても補完する
-zstyle ':completion:*:sudo:*' command-path /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin /usr/X11R6/bin
-# 補完リストが多いときに尋ねない
-LISTMAX=1000
-
 # ヒストリの補完
 autoload history-search-end
 zle -N history-beginning-search-backward-end history-search-end
 zle -N history-beginning-search-forward-end history-search-end
-bindkey "^P" history-beginning-search-backward-end
-bindkey "^N" history-beginning-search-forward-end
 # 高機能なワイルドカード展開を使用する
 setopt extended_glob
 # ^R でヒストリ検索をするときに * でワイルドカードを使用出来るようにする
@@ -79,7 +46,12 @@ setopt hist_ignore_all_dups
 # ヒストリファイルに保存するとき、すでに重複したコマンドがあったら古い方を削除する
 setopt hist_save_nodups
 # ヒストリに保存するときに余分なスペースを削除する
+setopt hist_ignore_space
 setopt hist_reduce_blanks
+# 履歴を他のシェルとリアルタイム共有する
+setopt share_history
+# 実行時に履歴をファイルにに追加していく
+setopt inc_append_history
 
 # 単語の区切り文字を指定する
 autoload -Uz select-word-style
@@ -92,30 +64,47 @@ setopt auto_pushd
 
 ## PROMPT内で変数展開・コマンド置換・算術演算を実行する。
 setopt prompt_subst
-## PROMPT内で「%」文字から始まる置換機能を有効にする。
-setopt prompt_percent
 # レポジトリ情報の表示
 autoload -Uz vcs_info
+zstyle ':vcs_info:*' max-exports 5
+zstyle ':vcs_info:*' enable git
 zstyle ':vcs_info:git:*' check-for-changes true
 zstyle ':vcs_info:git:*' stagedstr "!"
 zstyle ':vcs_info:git:*' unstagedstr "+"
-zstyle ':vcs_info:*' formats '[%s:%b%c%u'
-zstyle ':vcs_info:*' actionformats '[%s:%b%c%u|%a'
+zstyle ':vcs_info:*' formats '%s:(' '%b' ')' '%c%u'
+zstyle ':vcs_info:*' actionformats '%s:(' '%b' ')' '%c%u' '%a'
 precmd () {
     psvar=()
-    LANG=en_US.UTF-8 vcs_info
-    [[ -n "$vcs_info_msg_0_" ]] && psvar[1]="$vcs_info_msg_0_"
-    untracked=""
-    git_status=$(git status -s 2> /dev/null)
-    if echo "$git_status" | grep "^??" > /dev/null 2>&1; then
-        untracked="?"
+    vcs_info
+    if [[ -z ${vcs_info_msg_0_} ]]; then
+        psvar[1]=""
+        psvar[2]=""
+        psvar[3]=""
+        psvar[4]=""
+        psvar[5]=""
+    else
+        [[ -n "$vcs_info_msg_0_" ]] && psvar[1]=( "${vcs_info_msg_0_}" )
+        [[ -n "$vcs_info_msg_1_" ]] && psvar[2]=( "${vcs_info_msg_1_}" )
+        [[ -n "$vcs_info_msg_2_" ]] && psvar[3]=( "${vcs_info_msg_2_}" )
+        [[ -n "$vcs_info_msg_3_" ]] && psvar[4]=( "${vcs_info_msg_3_}" )
+        if command git status --porcelain 2> /dev/null \
+            | awk '{print $1}' \
+            | command grep -F '??' > /dev/null 2>&1 ; then
+
+            # unstagedに追加
+            psvar[4]+='?'
+        fi
+        [[ -n "$vcs_info_msg_4_" ]] && psvar[5]=( "${vcs_info_msg_4_}" )
     fi
-    [[ -n "$untracked" ]] && psvar[2]="$untracked"
 }
+
 # prompt表示設定
 PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}
-)%{%k%f%b%}%F{magenta}%~%f%F{green}%1(v|%1v%2v]|)%f
-%n@%m $ "
+)%{%k%f%b%}%F{magenta}%~%f %F{green}%1v%f%F{yellow}%2v%f%F{green}%3v%4v%f %F{red}%5v%f"
+if [[ $TERM_PROGRAM != "WarpTerminal" ]]; then
+PROMPT+="
+$ "
+fi
 
 PROMPT2='[%n]> '
 
@@ -139,89 +128,41 @@ function extract() {
 #圧縮ファイルを実行すると解凍するように
 alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 
-function tmux-set-buffer () {
-    [ ! -z "$TMUX" ] && tmux set-buffer $1
-}
-
-function tmux-get-buffer () {
-    [ ! -z "$TMUX" ] && tmux show-buffer
-}
-
-# コピペ関係
-function delete-region() {
-    zle kill-region
-    CUTBUFFER=$killring[1]
-    shift killring
-}
-zle -N delete-region
-
-function backward-delete-char-or-region() {
-    if [ $REGION_ACTIVE -eq 0 ]; then
-        zle backward-delete-char
-    else
-        zle delete-region
-    fi
-}
-zle -N backward-delete-char-or-region
-
-function delete-char-or-list-or-region() {
-    if [ $REGION_ACTIVE -eq 0 ]; then
-        zle delete-char-or-list
-    else
-        zle delete-region
-    fi
-}
-zle -N delete-char-or-list-or-region
-
-bindkey "^h" backward-delete-char-or-region
-bindkey "^d" delete-char-or-list-or-region
-
-function tmux-copy-region() {
-    zle copy-region-as-kill
-    REGION_ACTIVE=0
-    tmux-set-buffer $CUTBUFFER
-    which rpbcopy 1>/dev/null 2>&1 && echo -n $CUTBUFFER | rpbcopy
-}
-zle -N tmux-copy-region
-bindkey "^[w" tmux-copy-region
-
-function tmux-backward-kill-word-or-region() {
-    if [ $REGION_ACTIVE -eq 0 ]; then
-        zle backward-kill-word
-    else
-        zle kill-region
-    fi
-    tmux-set-buffer $CUTBUFFER
-    which rpbcopy 1>/dev/null 2>&1 && echo -n $CUTBUFFER | rpbcopy
-}
-zle -N tmux-backward-kill-word-or-region
-bindkey "^w" tmux-backward-kill-word-or-region
-
-function tmux-kill-line () {
-    zle kill-line
-    tmux-set-buffer $CUTBUFFER
-    which rpbcopy 1>/dev/null 2>&1 && echo -n $CUTBUFFER | rpbcopy
-}
-zle -N tmux-kill-line
-bindkey "^k" tmux-kill-line
-
-function tmux-kill-whole-line () {
-    zle kill-whole-line
-    tmux-set-buffer $CUTBUFFER
-    which rpbcopy 1>/dev/null 2>&1 && echo -n $CUTBUFFER | rpbcopy
-}
-zle -N tmux-kill-whole-line
-bindkey "^u" tmux-kill-whole-line
-
-function tmux-yank () {
-    [ ! -z "$TMUX" ] && CUTBUFFER=$(tmux-get-buffer)
-    zle yank
-}
-zle -N tmux-yank
-bindkey "^y" tmux-yank
-
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
+
+source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+source $(brew --prefix)/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
+
+bindkey              '^I' menu-select
+bindkey "$terminfo[kcbt]" menu-select
+bindkey -M menuselect              '^I'         menu-complete
+bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
+
+# 環境変数関係
+setopt no_global_rcs
+if [ -x /usr/libexec/path_helper ]; then
+    eval `/usr/libexec/path_helper -s`
+fi
+
+export PATH=${HOME}/bin::${PATH}
+export PATH=${HOME}/fvm/default/bin:${PATH}
+
+# rbenv
+[[ -d ${HOME}/.rbenv ]] && \
+case ":$PATH:" in
+  *".rbenv"*) ;;
+  *) eval "$(rbenv init - zsh)" ;;
+esac
+# rbenv end
+
+# nodenv
+[[ -d ${HOME}/.nodenv ]] && \
+case ":$PATH:" in
+  *".nodenv"*) ;;
+  *) eval "$(nodenv init - zsh)" ;;
+esac
+# nodenv end
 
 # pnpm
 export PNPM_HOME="/Users/wamei/Library/pnpm"
@@ -230,16 +171,6 @@ case ":$PATH:" in
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
-
-# rbenv
-[[ -d ${HOME}/.rbenv ]] && \
-  export PATH=${HOME}/.rbenv/shims:${HOME}/.rbenv/bin:${PATH} && \
-  eval "$(rbenv init - zsh)"
-
-# nodenv
-[[ -d ${HOME}/.nodenv ]] && \
-  export PATH=${HOME}/.nodenv/bin:${HOME}/.nodenv/shims:${PATH} && \
-  eval "$(nodenv init - zsh)"
 
 # direnv
 eval "$(direnv hook zsh)"

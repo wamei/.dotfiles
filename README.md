@@ -1,17 +1,20 @@
 ## Init
 
-```:console
+```sh
 ./init.sh
 ```
 
 ## Homebrew (Mac)
 
-```:console
+```sh
+defaults write com.apple.finder AppleShowAllFiles True
+
 ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 brew update
 brew tap homebrew/cask-versions
 
 brew install coreutils
+brew install zsh-completions
 
 brew tap homebrew/cask-fonts
 brew install --cask font-hackgen
@@ -35,6 +38,7 @@ brew install --cask visual-studio-code
 brew install --cask postman
 brew install --cask mysqlworkbench
 brew install --cask orbstack
+brew install --cask warp
 
 brew install awscli
 brew install copilot
@@ -42,13 +46,11 @@ brew install copilot
 brew install nodenv
 brew install rbenv
 brew install pyenv
-
-defaults write com.apple.finder AppleShowAllFiles True
 ```
 
 ## apt (Ubuntu)
 
-```:console
+```sh
 sudo apt-get update
 
 sudo apt-get install xsel
