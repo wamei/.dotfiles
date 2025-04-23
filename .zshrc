@@ -50,7 +50,7 @@ setopt hist_ignore_space
 setopt hist_reduce_blanks
 # 履歴を他のシェルとリアルタイム共有する
 setopt share_history
-# 実行時に履歴をファイルにに追加していく
+# 実行時に履歴をファイルに追加していく
 setopt inc_append_history
 
 # 単語の区切り文字を指定する
@@ -97,16 +97,37 @@ precmd () {
         [[ -n "$vcs_info_msg_4_" ]] && psvar[5]=( "${vcs_info_msg_4_}" )
     fi
 }
+show_env() {
+  if [[ -n "$(rbenv local 2>/dev/null)" ]]; then
+    echo -n " %F{009}rb:$(rbenv version-name)%f"
+  else
+    echo -n " rb:$(rbenv version-name)"
+  fi
+  if [[ -n "$VIRTUAL_ENV" && -n "$DIRENV_DIR" ]]; then
+    echo -n " %F{009}py:$(pyenv version-name)($(basename $VIRTUAL_ENV))%f"
+  elif [[ -n "$(pyenv local 2>/dev/null)" ]]; then
+    echo -n " %F{009}py:$(pyenv version-name)%f"
+  else
+    echo -n " py:$(pyenv version-name)"
+  fi
+  if [[ -n "$(nodenv local 2>/dev/null)" ]]; then
+    echo -n " %F{009}node:$(nodenv version-name)%f"
+  else
+    echo -n " node:$(nodenv version-name)"
+  fi
+}
 
 # prompt表示設定
 PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}
-)%{%k%f%b%}%F{magenta}%~%f %F{green}%1v%f%F{yellow}%2v%f%F{green}%3v%4v%f %F{red}%5v%f"
-if [[ $TERM_PROGRAM != "WarpTerminal" ]]; then
+)%{%k%f%b%}%F{magenta}%~%f"
+PROMPT+=" %F{green}%1v%f%F{yellow}%2v%f%F{green}%3v%4v%f %F{red}%5v%f"
+PROMPT+='$(show_env)'
 PROMPT+="
 $ "
-fi
 
 PROMPT2='[%n]> '
+
+export VIRTUAL_ENV_DISABLE_PROMPT=1
 
 # 圧縮ファイルの解凍
 function extract() {
@@ -174,3 +195,15 @@ esac
 
 # direnv
 eval "$(direnv hook zsh)"
+# direnv end
+
+# brew
+eval "$(/opt/homebrew/bin/brew shellenv)"
+export PATH="$HOME/.local/bin:$PATH"
+# brew end
+
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+# pyenv end
