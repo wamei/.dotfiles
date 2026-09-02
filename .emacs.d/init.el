@@ -1604,6 +1604,25 @@ isearch の lazy-highlight 相当を補う。"
           :package emacs
           ("C-r" . consult-history))))
 
+(leaf embark
+  :doc "ミニバッファ候補へのアクション。consult-git-grep 等の候補を
+embark-export で grep-mode バッファに書き出せる"
+  :ensure t
+  :bind (("C-." . embark-act)
+         (minibuffer-local-map
+          :package emacs
+          ("C-c C-e" . embark-export)     ; 候補全件を種類に応じたバッファ (grep-mode / dired 等) へ
+          ("C-c C-c" . embark-collect)))) ; 候補文字列をそのまま一覧バッファへ
+
+(leaf embark-consult
+  :doc "embark と consult の橋渡し。export 先を grep-mode にする等。
+export したバッファは Emacs 31 標準の grep-edit-mode (e で編集開始、
+C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入れない"
+  :ensure t
+  :after (embark consult)
+  :require t ; autoload 連携がないので :after だけでは読み込まれない
+  :hook (embark-collect-mode-hook . consult-preview-at-point-mode))
+
 (leaf markdown-mode
   :doc "Markdown"
   :ensure t
