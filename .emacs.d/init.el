@@ -983,6 +983,21 @@ treemacs--flatten-dirs は treemacs--find-project-for-path が nil を返して�
   :ensure t
   :after treemacs magit)
 
+(leaf claude-cli
+  :doc "claude -p でコミットメッセージ生成と単発 prompt"
+  :ensure nil
+  :preface
+  ;; 実体は claude-cli.el。init.el は ~/.emacs.d/init.el への symlink なので
+  ;; 実体の隣から読む (desktop-side-windows と同じ)。
+  (load (expand-file-name "claude-cli"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :config
+  ;; git-commit-mode-map は magit 同梱の git-commit が定義するので、その後に束縛する。
+  ;; wamei/claude-haiku / -sonnet / -opus は M-x から使う想定でキーは割り当てない。
+  (with-eval-after-load 'git-commit
+    (define-key git-commit-mode-map (kbd "C-c C-m") #'wamei/claude-commit-message)))
+
 (leaf treemacs-tab-bar
   :doc "treemacs をタブごとに分ける"
   :ensure t
