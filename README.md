@@ -29,8 +29,6 @@ brew install --cask google-chrome
 brew install --cask google-chrome-canary
 
 brew install --cask slack
-brew install --cask discord
-brew install --cask chatwork
 brew install --cask microsoft-teams
 brew install --cask gather
 
@@ -46,16 +44,4 @@ brew install copilot
 brew install nodenv
 brew install rbenv
 brew install pyenv
-```
-
-## apt (Ubuntu)
-
-```sh
-sudo apt-get update
-
-sudo apt-get install xsel
-sudo apt-get install docker-ce docker-compose
-
-git clone git://github.com/nodenv/nodenv.git ~/.nodenv
-git clone git://github.com/nodenv/node-build.git ~/.nodenv/plugins/node-build
 ```

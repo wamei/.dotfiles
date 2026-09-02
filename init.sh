@@ -10,6 +10,10 @@ ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
 mkdir -p ~/.aws
 ln -sf ~/.dotfiles/.aws/update-mfa-profile ~/.aws/update-mfa-profile
 
+mkdir -p ~/.emacs.d/
+ln -sf ~/.dotfiles/.emacs.d/init.el ~/.emacs.d/init.el
+ln -sf ~/.dotfiles/.emacs.d/early-init.el ~/.emacs.d/early-init.el
+
 # copy bin
 mkdir -p ~/bin
 cp -f ~/.dotfiles/bin/rpbcopy ~/bin

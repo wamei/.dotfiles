@@ -39,8 +39,8 @@ setopt extended_glob
 bindkey '^R' history-incremental-pattern-search-backward
 # ヒストリの設定
 HISTFILE=${HOME}/.zsh_history
-HISTSIZE=1000000
-SAVEHIST=1000000
+HISTSIZE=10000
+SAVEHIST=10000
 # 同じコマンドをヒストリに残さない
 setopt hist_ignore_all_dups
 # ヒストリファイルに保存するとき、すでに重複したコマンドがあったら古い方を削除する
@@ -155,10 +155,10 @@ alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source $(brew --prefix)/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 
-bindkey              '^I' menu-select
-bindkey "$terminfo[kcbt]" menu-select
-bindkey -M menuselect              '^I'         menu-complete
-bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
+# bindkey              '^I' menu-select
+# bindkey "$terminfo[kcbt]" menu-select
+# bindkey -M menuselect              '^I'         menu-complete
+# bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 # 環境変数関係
 setopt no_global_rcs
@@ -207,3 +207,16 @@ export PYENV_ROOT="$HOME/.pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 # pyenv end
+
+# Added by Antigravity
+export PATH="/Users/wamei/.antigravity/antigravity/bin:$PATH"
+export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+
+# 端末タイトルに直前に実行したコマンドを流す。
+# Emacs (vterm) の端末一覧がこのタイトルを拾って表示する。
+# 既存の precmd() を壊さないよう add-zsh-hook を使う。
+# precmd 側では戻さないので、コマンド終了後も最後のコマンド名が残る。
+autoload -Uz add-zsh-hook
+_wamei_set_terminal_title() { printf '\033]0;%s\007' "$1" }
+add-zsh-hook preexec _wamei_set_terminal_title
