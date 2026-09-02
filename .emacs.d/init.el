@@ -770,6 +770,14 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   (claude-code-ide-terminal-backend . 'vterm)
   ;; treemacs が左、端末パネルが下なので右に出す
   (claude-code-ide-window-side . 'right)
+  ;; 高さだけのリサイズを Claude に通知しない workaround (upstream #1422 対策) を切る。
+  ;; この filter は vterm--set-size で libvterm 側だけ新しい行数にした後 nil を返し、
+  ;; pty (Claude) への set-process-window-size を握りつぶす。echo area が複数行に
+  ;; 伸びるたびに libvterm と Claude の行数が食い違い、Claude 2.1 系のセル差分描画は
+  ;; 自分の画面モデルとの差分しか書かないため、/clear 後などに古い文字がまばらに残る。
+  ;; 現行の Claude は alt-screen 上でリサイズ時に ESC[2J 全再描画するので、
+  ;; 通知させた方が整合する (再描画の一瞬のちらつきは許容)。
+  (claude-code-ide-prevent-reflow-glitch . nil)
   :config
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :filter-return #'wamei/claude-code-ide--no-other-window)
