@@ -182,7 +182,25 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
     (set-face-attribute 'mode-line-inactive nil :family font-family :height font-size)
     (set-face-attribute 'tooltip nil :family font-family :height font-size)
     (set-fontset-font nil 'japanese-jisx0208
-                      (font-spec :family font-family :height font-size))))
+                      (font-spec :family font-family :height font-size))
+    ;; 記号ブロックの fallback を行高の合うフォントに固定する。
+    ;; HackGen が持たない記号 (claude のスピナー ✢✳✶✻ や ⚙ ⌃ など) は既定だと
+    ;; STIX Two Math / Arial Unicode MS に fallback し、ascent/descent が HackGen
+    ;; (20px = 16+4) より大きいためその行だけ 23〜28px に伸びる。vterm の TUI は
+    ;; 行高固定を前提にしているので、スピナーが回るたびに内容が押し下げられて
+    ;; window から溢れ、Emacs が 1 行スクロールして画面全体が上下に揺れる。
+    ;; Menlo は 17px にすると 20px = 16+4 で HackGen と一致し、これらの記号を
+    ;; 広く持つ。fontset に HackGen → Menlo の順で登録し、HackGen が持つ字形は
+    ;; そのまま使う (default fontset の指定は既定フォントより優先されるため、
+    ;; HackGen を先頭に明示しないと HackGen の ● や ─ まで置き換わる)。
+    (add-to-list 'face-font-rescale-alist '("Menlo" . 0.95))
+    (dolist (range '((#x2190 . #x21FF)    ; Arrows
+                     (#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
+                     (#x2600 . #x26FF)    ; Misc Symbols (⚙ ⚠ ...)
+                     (#x2700 . #x27BF)    ; Dingbats (✢ ✳ ✶ ✻ ...)
+                     (#x2900 . #x2BFF)))  ; Supplemental Arrows / Misc Symbols and Arrows
+      (set-fontset-font t range (font-spec :family font-family))
+      (set-fontset-font t range (font-spec :family "Menlo") nil 'append))))
 
 (leaf doom-themes
   :doc "テーマ"
@@ -257,6 +275,25 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   (defvar wamei/term-list-buffer-name "*terminals*"
     "端末一覧のバッファ名。display-buffer-alist で端末本体と別扱いにするため、
 `*term: ' で始まらない名前にする。")
+
+  (defconst wamei/term-glyph-substitutions
+    '((?⏺ . ?●)    ; claude の応答・ツール呼び出しの行頭
+      (?⏵ . ?▶)    ; claude の "⏵⏵ auto mode on"
+      (?⧉ . ?❐))   ; claude の "⧉ In file" (❐ は Menlo が持つ)
+    "端末バッファで表示だけ置き換える文字の alist (元の文字 . 表示する文字)。
+これらは手元のどのフォントでも行高が既定フォント (20px) に収まらず
+(STIX Two Math は descent 9px)、含む行だけ伸びて TUI の画面が上下に揺れる。
+バッファの内容は変えず display table で同形の記号を描く。")
+
+  (defun wamei/term--substitute-tall-glyphs ()
+    "`wamei/term-glyph-substitutions' を現在のバッファの display table に登録する。
+vterm-mode は `buffer-display-table' を自前で用意するので、その表に追記する。
+face を付けないので元の文字の色はそのまま引き継がれる。"
+    (when (display-graphic-p)
+      (let ((table (or buffer-display-table (make-display-table))))
+        (pcase-dolist (`(,from . ,to) wamei/term-glyph-substitutions)
+          (aset table from (vector (make-glyph-code to))))
+        (setq buffer-display-table table))))
 
   (defvar-local wamei/term--title nil
     "端末が最後に報告したタイトル。
@@ -607,6 +644,7 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
   ;; 一覧に「最後に実行したコマンド」を出すため、端末が報告するタイトルを拾う
   (advice-add 'vterm--set-title :before #'wamei/term--record-title)
 
+  (add-hook 'vterm-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'vterm-mode-hook
             (lambda ()
               (add-hook 'window-configuration-change-hook
