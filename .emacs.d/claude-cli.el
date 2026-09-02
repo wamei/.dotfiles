@@ -34,6 +34,14 @@
 (defvar wamei/claude-commit-message-model "haiku"
   "`wamei/claude-commit-message' が既定で使うモデル。")
 
+(defvar wamei/claude-commit-message-system-prompt
+  "You are a commit message generator. You receive recent commit messages and a \
+staged diff, and you reply with a single git commit message wrapped in <commit> and \
+</commit> tags, and nothing else: no greeting, no explanation, no code fences, \
+no analysis of what you are about to do. Match the language, tone and format of \
+the recent commit messages."
+  "コミットメッセージ生成で Claude Code 既定のシステムプロンプトを置き換える文。")
+
 (defvar wamei/claude-commit-message-log-count 10
   "スタイルの手本として prompt に含める直近コミットの件数。")
 
@@ -43,18 +51,23 @@ lock ファイル等の巨大な diff でコンテキストを溢れさせない
 
 ;;; プロセス
 
-(defun wamei/claude-cli--command (model)
+(defun wamei/claude-cli--command (model &optional system-prompt)
   "MODEL で単発生成する claude のコマンドライン。prompt は stdin で渡す。
+SYSTEM-PROMPT があれば Claude Code 既定のシステムプロンプトをそれで置き換える。
+既定のものはコーディングエージェント向けで、「I'll check the staged changes...」と
+作業を実況したり bash を書き出したりするため、単発生成には向かない。
 ツールは全て無効にし、セッションも残さない。
 MCP サーバーと user/project 設定 (プラグイン・hook) も読まない。これらの起動処理が
 haiku の応答そのものより長く (計測で 6-7 秒中の 4 秒程度) かかるため。
 --bare はさらに速いが keychain を読まず認証に失敗するので使わない。"
-  (list wamei/claude-cli-program "-p" "--model" model
-        "--output-format" "text"
-        "--tools" ""
-        "--no-session-persistence"
-        "--strict-mcp-config"
-        "--setting-sources" ""))
+  (append
+   (list wamei/claude-cli-program "-p" "--model" model
+         "--output-format" "text"
+         "--tools" ""
+         "--no-session-persistence"
+         "--strict-mcp-config"
+         "--setting-sources" "")
+   (when system-prompt (list "--system-prompt" system-prompt))))
 
 (defun wamei/claude-cli--environment ()
   "claude プロセスに渡す環境。`wamei/claude-cli-thinking-tokens' を反映する。"
@@ -63,8 +76,9 @@ haiku の応答そのものより長く (計測で 6-7 秒中の 4 秒程度) �
             process-environment)
     process-environment))
 
-(defun wamei/claude-cli-run (model input callback)
+(defun wamei/claude-cli-run (model input callback &optional system-prompt)
   "MODEL に INPUT を stdin で渡して非同期に実行し、成功したら CALLBACK を出力で呼ぶ。
+SYSTEM-PROMPT は `wamei/claude-cli--command' に渡す。
 失敗時は CALLBACK を呼ばず stderr を `message' で知らせる。プロセスを返す。"
   (let* ((process-environment (wamei/claude-cli--environment))
          (stdout (generate-new-buffer " *claude-cli*" t))
@@ -80,7 +94,7 @@ haiku の応答そのものより長く (計測で 6-7 秒中の 4 秒程度) �
            :name "claude-cli"
            :buffer stdout
            :stderr stderr-process
-           :command (wamei/claude-cli--command model)
+           :command (wamei/claude-cli--command model system-prompt)
            :connection-type 'pipe
            :noquery t
            :sentinel
@@ -178,11 +192,21 @@ INSERT が非 nil なら結果をポイント位置に挿入し、nil なら `wa
    "Match the language, tone and format of the recent commit messages in this "
    "repository: if they are Japanese, write Japanese; if they use a prefix "
    "convention, use it too.\n"
-   "Output only the commit message itself: one summary line under 72 characters, "
-   "then optionally a blank line and a short body. No code fences, no quotes, "
-   "no explanation.\n\n"
+   "Write one summary line under 72 characters, then optionally a blank line and "
+   "a short body. Wrap the whole message in <commit> and </commit> tags and output "
+   "nothing outside the tags: no code fences, no quotes, no explanation.\n\n"
    "## Recent commit messages\n\n" log "\n\n"
    "## Staged diff\n\n" (wamei/claude-commit-message--truncate-diff diff)))
+
+(defun wamei/claude-commit-message--extract (output)
+  "OUTPUT からコミットメッセージ本体を取り出す。
+<commit>...</commit> があればその中身、なければ全体。前置きの説明が混ざっても
+タグの外は捨てる。残ったコードフェンスと前後の空白は取り除く。"
+  (let* ((body (if (string-match "<commit>\\(\\(?:.\\|\n\\)*?\\)</commit>" output)
+                   (match-string 1 output)
+                 output))
+         (body (replace-regexp-in-string "\\`[ \t\n]*```[^\n]*\n\\|\n```[ \t\n]*\\'" "" body)))
+    (string-trim body)))
 
 (defun wamei/claude-commit-message--first-line-empty-p ()
   "現在のバッファの 1 行目が空白だけなら非 nil。2 行目以降は見ない。"
@@ -245,11 +269,13 @@ MODEL は省略時 `wamei/claude-commit-message-model'。C-u 付きで対話的�
         (message "claude (%s): generating commit message..." model)
         (wamei/claude-cli-run
          model (wamei/claude-commit-message--prompt diff log)
-         (lambda (text)
+         (lambda (output)
            (when (buffer-live-p buffer)
              (with-current-buffer buffer
-               (wamei/claude-commit-message--insert text comment-char))
-             (message "claude (%s): commit message inserted" model))))))))
+               (wamei/claude-commit-message--insert
+                (wamei/claude-commit-message--extract output) comment-char))
+             (message "claude (%s): commit message inserted" model)))
+         wamei/claude-commit-message-system-prompt)))))
 
 (provide 'claude-cli)
 ;;; claude-cli.el ends here

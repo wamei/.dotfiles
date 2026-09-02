@@ -44,7 +44,22 @@ claude の代わりに `wamei/claude-cli-program' へ設定して使う。"
                      "--strict-mcp-config"
                      "--setting-sources" "")))))
 
+(ert-deftest wamei/claude-cli-command-appends-system-prompt-when-given ()
+  (let ((wamei/claude-cli-program "claude"))
+    (should (equal (last (wamei/claude-cli--command "haiku" "be terse") 2)
+                   '("--system-prompt" "be terse")))
+    (should-not (member "--system-prompt" (wamei/claude-cli--command "haiku")))))
+
 ;;; 非同期実行
+
+(ert-deftest wamei/claude-cli-run-passes-system-prompt-to-process ()
+  (wamei/claude-cli-test--with-stub "printf '%s\\n' \"$@\""
+    (let* ((result nil)
+           (process (wamei/claude-cli-run "haiku" ""
+                                          (lambda (text) (setq result text))
+                                          "be terse")))
+      (wamei/claude-cli-test--wait process)
+      (should (string-match-p "^--system-prompt\nbe terse$" result)))))
 
 (ert-deftest wamei/claude-cli-run-disables-extended-thinking ()
   (wamei/claude-cli-test--with-stub "printf '%s' \"$MAX_THINKING_TOKENS\""
@@ -99,6 +114,20 @@ claude の代わりに `wamei/claude-cli-program' へ設定して使う。"
     (should (string-match-p "some answer" (buffer-string)))))
 
 ;;; コミットメッセージ
+
+(ert-deftest wamei/claude-commit-message-prompt-asks-for-commit-tags ()
+  (should (string-match-p "<commit>" (wamei/claude-commit-message--prompt "d" "l"))))
+
+(ert-deftest wamei/claude-commit-message-extract-takes-tagged-part-only ()
+  (should (equal (wamei/claude-commit-message--extract
+                  "I'll write a message.\n<commit>\nfix foo\n\nbody line\n</commit>\nDone.")
+                 "fix foo\n\nbody line")))
+
+(ert-deftest wamei/claude-commit-message-extract-falls-back-to-whole-output ()
+  (should (equal (wamei/claude-commit-message--extract "fix foo\n") "fix foo")))
+
+(ert-deftest wamei/claude-commit-message-extract-strips-code-fences ()
+  (should (equal (wamei/claude-commit-message--extract "```\nfix foo\n```") "fix foo")))
 
 (ert-deftest wamei/claude-commit-message-prompt-includes-diff-and-log ()
   (let ((prompt (wamei/claude-commit-message--prompt
