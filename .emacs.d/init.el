@@ -1117,6 +1117,15 @@ vterm のバッファは desktop に残らないので新しく作る。高さ�
                                  magit-diff-mode
                                  magit-revision-mode))
   :config
+  ;; ターミナル (emacs -nw) と Emacs.app ではウィンドウ構成やフォント周りが
+  ;; 違い、同じ desktop を共有すると互いのセッションを上書きしてしまう。
+  ;; GUI は既定の .emacs.desktop のまま、ターミナルだけ .emacs.desktop-nw に分ける。
+  ;; ロックも分けて、両方を同時に起こしても互いのロックを掴まないようにする。
+  ;; leaf の :custom は値に if 式を置けないので、ここで setq する。
+  ;; 読み込みは after-init-hook の desktop-read で行われるので、この時点の設定で間に合う。
+  (unless (display-graphic-p)
+    (setq desktop-base-file-name ".emacs.desktop-nw"
+          desktop-base-lock-name ".emacs.desktop-nw.lock"))
   ;; 端末パネルの高さの割合も次回に引き継ぐ
   (add-to-list 'desktop-globals-to-save 'wamei/term-height)
   ;; バッファ名で開き直し方を選ぶ。treemacs は " *Treemacs-Buffer-..." で始まる。
