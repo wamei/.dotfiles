@@ -684,6 +684,12 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
   ;; 依存 (websocket / web-server / transient) は導入時に自動で入る。
   :ensure nil
   :preface
+  ;; 複数セッションを 1 つの右パネルに差し替え、上部の tab-line で切り替える。
+  ;; 実体は claude-panel.el (init.el は symlink なので実体の隣から読む)。
+  (load (expand-file-name "claude-panel"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+
   (defun wamei/claude-code-ide--no-other-window (window)
     "claude のウィンドウを C-x o (other-window) の巡回対象から外す。
 パッケージは表示時に display-buffer-alist を let で丸ごと束縛するので、
@@ -720,14 +726,8 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
              wamei/claude--previous-window)
         (get-mru-window nil t t t)))
 
-  (defun wamei/claude--window ()
-    "claude を表示している window。選択中のものがあればそれを優先する。"
-    (let ((windows (seq-filter
-                    (lambda (window)
-                      (claude-code-ide--buffer-session (window-buffer window)))
-                    (window-list nil 'no-mini))))
-      (or (car (memq (selected-window) windows))
-          (car windows))))
+  (defalias 'wamei/claude--window #'wamei/claude-panel--window
+    "claude を表示している window。実体は claude-panel.el。")
 
   (defun wamei/claude-toggle (&optional arg)
     "claude-code-ide のパネルへ出入りする。
@@ -781,6 +781,8 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   :config
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :filter-return #'wamei/claude-code-ide--no-other-window)
+  ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
+  (wamei/claude-panel-enable)
   ;; xref や flymake などの Emacs 側の機能を Claude から使えるようにする
   (claude-code-ide-emacs-tools-setup))
 
