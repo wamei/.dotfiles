@@ -304,8 +304,8 @@ face を付けないので元の文字の色はそのまま引き継がれる。
 
   (defvar wamei/term--previous-buffer nil
     "パネルへ移動する直前に選択していたバッファ。
-window オブジェクトは desktop の自動保存が side window を畳んで
-開き直すたびに無効になるため、戻り先はバッファでも覚えておく。")
+パネルを閉じて開き直すなどで window オブジェクトは無効になりうるため、
+戻り先はバッファでも覚えておく。")
 
   (defvar wamei/term--last nil
     "最後に表示した端末バッファ。プロジェクトごとの復帰先として使う。")
@@ -588,8 +588,8 @@ dedicated のままだと set-window-buffer が失敗する。"
   (defun wamei/term--back-window ()
     "パネルから戻る先の window。
 
-記録した window が生きていればそれを使う。desktop の自動保存で side window
-が畳まれて開き直されると window オブジェクトは死ぬので、そのときは同じ
+記録した window が生きていればそれを使う。window が閉じられて開き直されて
+いると window オブジェクトは死ぬので、そのときは同じ
 バッファを表示している window を探す (claude-code-ide や treemacs の
 パネルから C-z で入った場合、これが無いと無関係な window に戻ってしまう)。
 どちらも無ければ直近の window。パネル自身は no-other-window なので
@@ -700,8 +700,8 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
 
   (defvar wamei/claude--previous-buffer nil
     "claude パネルへ移動する直前に選択していたバッファ。
-window オブジェクトは desktop の自動保存が side window を畳んで
-開き直すたびに無効になるため、戻り先はバッファでも覚えておく。")
+パネルを閉じて開き直すなどで window オブジェクトは無効になりうるため、
+戻り先はバッファでも覚えておく。")
 
   (defun wamei/claude--remember-previous ()
     "claude パネルへ移動する直前の window とバッファを覚える。"
@@ -1063,130 +1063,38 @@ treemacs--flatten-dirs は treemacs--find-project-for-path が nil を返して�
   :doc "セッション (バッファ・ウィンドウ・タブ) を復元する"
   :ensure nil
   :preface
-  (defun wamei/desktop--neutralize-side-window (window)
-    "WINDOW を side window でなくし、通常のバッファを表示させる。
+  ;; side window の扱いは desktop-side-windows.el に分けている。
+  ;; 保存時は live window に触らず、frameset のデータから side window を外して
+  ;; side / slot / 寸法だけ記録し、読み込み後にタブごとに開き直す。
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "desktop-side-windows"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
 
-side window だけで構成されたフレームは window--sides-check を通らず、
-復元時に window--sides-check-failed -> split-window が無限再帰して
-max-lisp-eval-depth で落ちる。削除できない (唯一の window である) 場合は
-属性を外して普通の window に戻すことで、保存される構成を正常にする。"
-    (set-window-parameter window 'window-side nil)
-    (set-window-parameter window 'window-slot nil)
-    (set-window-parameter window 'no-other-window nil)
-    (set-window-parameter window 'no-delete-other-windows nil)
-    (set-window-dedicated-p window nil)
-    (set-window-buffer window (get-scratch-buffer-create)))
+  (defvar wamei/desktop-claude-restore-command #'claude-code-ide-continue
+    "desktop 読み込み後に claude パネルを開き直すコマンド。nil なら開き直さない。
+プロセスは残らないので、既定ではそのディレクトリの直近の会話を続ける (-c)。")
 
-  (defconst wamei/desktop--side-order '(left right top bottom)
-    "side window を開き直す順序。
-window-sides-vertical が t のとき、下部の side window の寸法は左右の
-side window の有無で決まる。左右を先に作らないと幅が合わない。")
+  (defun wamei/desktop--restore-treemacs (spec)
+    "treemacs を開き直す。
+treemacs は自前の表示関数を通す必要があるので `treemacs-select-window' を使い、
+幅だけ記録 (SPEC の :size) に合わせる。"
+    (treemacs-select-window)
+    (wamei/desktop-side-resize (treemacs-get-local-window) (plist-get spec :size)))
 
-  (defun wamei/desktop--side-window-spec (window)
-    "WINDOW を開き直すのに必要な情報を集める。
-戻り値は (buffer side slot no-other-window no-delete-other-windows size)。
-SIZE は左右なら幅、上下なら高さ。"
-    (let ((side (window-parameter window 'window-side)))
-      (list (window-buffer window)
-            side
-            (or (window-parameter window 'window-slot) 0)
-            (window-parameter window 'no-other-window)
-            (window-parameter window 'no-delete-other-windows)
-            (if (memq side '(left right))
-                (window-total-width window)
-              (window-total-height window)))))
+  (defun wamei/desktop--restore-term (_spec)
+    "端末パネルを開き直す。
+vterm のバッファは desktop に残らないので新しく作る。高さは display-buffer-alist
+の wamei/term--set-height が wamei/term-height (desktop に保存) から決める。
+一覧 (*terminals*) は端末が 2 つ以上のときだけ自動で出るので復元しない。"
+    (wamei/term--show (or (wamei/term--current) (wamei/term--create 1)) t))
 
-  (defun wamei/desktop--side-window-spec< (a b)
-    "side 順、同じ side なら slot 順に A と B を比較する。
-slot 順に戻さないと幅の割り当てが崩れる (端末が slot 0、一覧が slot 1)。"
-    (let ((ia (or (seq-position wamei/desktop--side-order (nth 1 a)) 99))
-          (ib (or (seq-position wamei/desktop--side-order (nth 1 b)) 99)))
-      (if (= ia ib)
-          (< (nth 2 a) (nth 2 b))
-        (< ia ib))))
-
-  (defun wamei/desktop--restore-side-window (spec)
-    "SPEC (`wamei/desktop--side-window-spec' の戻り値) の side window を開き直す。"
-    (pcase-let ((`(,buffer ,side ,slot ,no-other ,no-delete ,size) spec))
-      (when (buffer-live-p buffer)
-        (if (seq-some (lambda (entry) (buffer-match-p (car entry) buffer))
-                      display-buffer-alist)
-            ;; 端末のように display-buffer-alist に登録済みのものは、そちらの
-            ;; 高さ・幅の関数を通さないと寸法が戻らない
-            (display-buffer buffer)
-          ;; claude-code-ide は表示時に display-buffer-alist を let で束縛するため、
-          ;; 外から display-buffer しても side window に戻らず配置が崩れる。
-          ;; 記録しておいた side / slot / 寸法で直接開き直す。寸法を渡さないと
-          ;; 保存のたびに既定幅へ戻ってしまう。
-          (display-buffer buffer
-                          `(display-buffer-in-side-window
-                            (side . ,side)
-                            (slot . ,slot)
-                            (dedicated . t)
-                            ,(if (memq side '(left right))
-                                 (cons 'window-width size)
-                               (cons 'window-height size))
-                            (window-parameters . ((no-other-window . ,no-other)
-                                                  (no-delete-other-windows . ,no-delete)))))))))
-
-  (defun wamei/desktop--side-windows ()
-    "現在のタブにある side window のリスト。"
-    (seq-filter (lambda (window) (window-parameter window 'window-side))
-                (window-list nil 'no-mini)))
-
-  (defun wamei/desktop-save-without-side-windows (fn &rest args)
-    "desktop 保存の間だけ side window を畳み、保存後に開き直す。
-
-treemacs や端末のバッファは desktop に復元されないが、window 構成は
-frameset として保存される。そのまま保存すると復元時に「存在しない
-バッファを指す side window」が残り、side window だけのタブでは
-window--sides-check-failed から split-window が無限再帰して落ちる。
-
-desktop-save-hook で閉じるだけだと、アイドル 10 秒ごとの自動保存でも
-閉じてしまうため、:around で保存の前後だけ畳んで元に戻す。復元側で
-掃除する方式は使えない。クラッシュは desktop 読み込み後ではなく、
-タブ切り替え時の window-state-put で起きるため間に合わない。"
-    (if (not (bound-and-true-p tab-bar-mode))
-        (apply fn args)
-      (let ((index (tab-bar--current-tab-index))
-            (selected (selected-window))
-            ;; side window は畳んで開き直すので window オブジェクトが死ぬ。
-            ;; 端末や treemacs、claude にフォーカスがあるまま保存されると
-            ;; 戻せずに無関係な window へ飛ぶため、バッファでも覚えておく。
-            (selected-buffer (current-buffer))
-            (restore nil))
-        (unwind-protect
-            (progn
-              (dotimes (i (length (funcall tab-bar-tabs-function)))
-                (tab-bar-select-tab (1+ i))
-                (let ((treemacs (and (fboundp 'treemacs-get-local-window)
-                                     (treemacs-get-local-window)))
-                      (others nil))
-                  (dolist (window (wamei/desktop--side-windows))
-                    (unless (eq window treemacs)
-                      (push (wamei/desktop--side-window-spec window) others)))
-                  (when (or treemacs others)
-                    (push (list i (and treemacs t) others) restore)
-                    (dolist (window (wamei/desktop--side-windows))
-                      (if (one-window-p t)
-                          (wamei/desktop--neutralize-side-window window)
-                        (delete-window window))))))
-              (tab-bar-select-tab (1+ index))
-              (apply fn args))
-          (pcase-dolist (`(,i ,had-treemacs ,buffers) restore)
-            (tab-bar-select-tab (1+ i))
-            ;; treemacs は自前の表示関数を通す必要があるので専用に開き直す
-            (when had-treemacs (ignore-errors (treemacs-select-window)))
-            ;; それ以外 (端末・claude-code-ide など) は記録した side / slot に戻す
-            (dolist (spec (sort (copy-sequence buffers)
-                                #'wamei/desktop--side-window-spec<))
-              (ignore-errors (wamei/desktop--restore-side-window spec))))
-          (tab-bar-select-tab (1+ index))
-          (cond ((window-live-p selected)
-                 (select-window selected))
-                ((and (buffer-live-p selected-buffer)
-                      (get-buffer-window selected-buffer))
-                 (select-window (get-buffer-window selected-buffer))))))))
+  (defun wamei/desktop--restore-claude (spec)
+    "claude パネルを `wamei/desktop-claude-restore-command' で開き直し、幅を SPEC に合わせる。"
+    (when wamei/desktop-claude-restore-command
+      (require 'claude-code-ide)
+      (funcall wamei/desktop-claude-restore-command)
+      (wamei/desktop-side-resize (wamei/claude--window) (plist-get spec :size))))
 
   :custom
   ;; 終了時に確認せず保存する
@@ -1209,7 +1117,15 @@ desktop-save-hook で閉じるだけだと、アイドル 10 秒ごとの自動�
                                  magit-diff-mode
                                  magit-revision-mode))
   :config
-  (advice-add 'desktop-save :around #'wamei/desktop-save-without-side-windows)
+  ;; 端末パネルの高さの割合も次回に引き継ぐ
+  (add-to-list 'desktop-globals-to-save 'wamei/term-height)
+  ;; バッファ名で開き直し方を選ぶ。treemacs は " *Treemacs-Buffer-..." で始まる。
+  (setq wamei/desktop-side-restorers
+        '(("\\` \\*Treemacs-" . wamei/desktop--restore-treemacs)
+          ("\\`\\*term: " . wamei/desktop--restore-term)
+          ("\\`\\*terminals\\*\\'" . ignore)
+          ("\\`\\*claude-code\\[" . wamei/desktop--restore-claude)))
+  (wamei/desktop-side-setup)
   :global-minor-mode desktop-save-mode)
 
 (leaf exec-path-from-shell
