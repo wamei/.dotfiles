@@ -491,13 +491,36 @@ vterm--set-title は vterm-buffer-name-string が nil だと何もしないた�
       ;; process-kill-buffer-query-function が確認を求めて止まる
       (let ((kill-buffer-query-functions nil))
         (kill-buffer buffer))
-      (when (eq buffer wamei/term--last) (setq wamei/term--last nil))
-      (if-let* ((next (wamei/term--current)))
-          (wamei/term--show next)
-        (wamei/term--close))
+      ;; パネルの差し替え (または最後の端末なら window の削除) は
+      ;; kill-buffer 側で済んでいる。ここでは残った端末へフォーカスを移す。
+      (when-let* ((next (wamei/term--current)))
+        (wamei/term--show next))
       (wamei/term--list-update)))
 
   ;;; パネル操作
+
+  (defun wamei/term--hand-over ()
+    "消えようとしている端末がパネルに出ていれば、別の端末に差し替える。
+
+kill-buffer-hook から呼ぶ。パネルは dedicated な side window なので、
+表示中のバッファが消えると kill-buffer が window ごと削除してしまう。
+削除前に同じプロジェクトの別端末へ差し替えておけばパネルは残る。
+他に端末が無ければ何もせず、従来どおりパネルは閉じる。"
+    (let* ((dying (current-buffer))
+           (window (wamei/term--window))
+           (others (remq dying (wamei/term--buffers))))
+      (when (eq dying wamei/term--last) (setq wamei/term--last nil))
+      (when (and window (eq (window-buffer window) dying) others)
+        ;; フォーカスは動かさない。端末内で exit した場合はパネルが
+        ;; 選択されたまま次の端末に切り替わる。
+        (wamei/term--show (or (car (memq wamei/term--last others)) (car others))
+                          t))))
+
+  (defun wamei/term--on-kill ()
+    "端末バッファが消えるときの後始末。シェル終了や kill-buffer から呼ばれる。"
+    (wamei/term--hand-over)
+    ;; 一覧はバッファが実際に消えた後に描き直す
+    (run-at-time 0 nil #'wamei/term--list-update))
 
   (defun wamei/term--show (buffer &optional no-select)
     "BUFFER をパネルに出す。NO-SELECT が非 nil ならフォーカスは移さない。
@@ -649,11 +672,8 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
             (lambda ()
               (add-hook 'window-configuration-change-hook
                         #'wamei/term--remember-height nil t)
-              ;; シェル終了などでバッファが消えたら一覧を追従させる
-              (add-hook 'kill-buffer-hook
-                        (lambda ()
-                          (run-at-time 0 nil #'wamei/term--list-update))
-                        nil t))))
+              ;; シェル終了などでバッファが消えたらパネルと一覧を追従させる
+              (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))))
 
 (leaf claude-code-ide
   :doc "Claude Code の IDE 連携"
