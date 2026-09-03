@@ -1878,6 +1878,10 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
           json-ts-mode-hook
           css-ts-mode-hook
           css-mode-hook) . wamei/biome-format-maybe-enable)
+        ;; 編集時のインデントを biome の実測値に合わせる。editorconfig が変数を
+        ;; 適用する直前に props を書き換えるので .editorconfig より biome が優先。
+        (editorconfig-hack-properties-functions
+         . wamei/biome-format-hack-editorconfig-properties)
   :config
   (wamei/biome-format-setup))
 
