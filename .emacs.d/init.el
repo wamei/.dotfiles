@@ -855,28 +855,11 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
          ("C-q k" . tab-close)
          ("C-q r" . tab-rename))
   :preface
-  (defun wamei/tab-bar-tab-name-project ()
-    "プロジェクト名をタブ名にする。プロジェクト外ではバッファ名を使う。
-
-既定の tab-bar-tab-name-current はカレントバッファ名を使うため、treemacs に
-フォーカスした状態だと \" *Treemacs-Buffer-Tab ...\" のような内部バッファ名が
-そのままタブ名になる。タブ = プロジェクトで運用しているのでプロジェクト名を優先する。
-
-treemacs のバッファは default-directory が ~/ のままで project-current が
-効かないため、side window (no-other-window 付き) を選択しているときは
-直近の通常 window のバッファを見る。treemacs の内部 API には依存しない。
-
-tab-bar-tabs 内でカレントタブ名の再計算に使われ、タブバーの再描画ごとに
-呼ばれる。project-current は 2 回目以降 0.004ms 程度なのでキャッシュは置かない。"
-    (let* ((window (if (window-parameter (selected-window) 'no-other-window)
-                       (or (get-mru-window nil nil t t) (selected-window))
-                     (selected-window)))
-           (buffer (if (window-live-p window) (window-buffer window) (current-buffer))))
-      (with-current-buffer buffer
-        (let ((project (project-current nil)))
-          (if project
-              (file-name-nondirectory (directory-file-name (project-root project)))
-            (buffer-name buffer))))))
+  ;; タブ名の決定と固定、treemacs 側のガードは project-tabs.el に分けている。
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "project-tabs"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
   :custom
   (tab-bar-tab-name-function . #'wamei/tab-bar-tab-name-project)
   (tab-bar-tab-hints . t)            ; タブ番号を表示する
@@ -895,6 +878,10 @@ tab-bar-tabs 内でカレントタブ名の再計算に使われ、タブバー�
   (define-key tab-bar-mode-map [(control tab)] nil)
   (define-key tab-bar-mode-map [(control shift tab)] nil)
   (define-key tab-bar-mode-map [(control shift iso-lefttab)] nil)
+  ;; タブにプロジェクトのバッファが初めて出た時点で名前を固定する。
+  ;; 固定しないとカレントバッファのプロジェクトが変わるたびにタブ名 = treemacs
+  ;; のスコープが動く (詳細は project-tabs.el の Commentary)。
+  (add-hook 'window-buffer-change-functions #'wamei/project-tabs--pin-name-soon)
   :global-minor-mode tab-bar-mode)
 
 (leaf treemacs
@@ -919,20 +906,6 @@ M-x treemacs-select-window を直接呼ぶ。"
           (delete-window window))
       (treemacs-select-window)))
 
-  (defun wamei/treemacs--flatten-dirs-guard (fn dirs)
-    "プロジェクトを特定できないときはディレクトリ平坦化をスキップする。
-
-treemacs--flatten-dirs は treemacs--find-project-for-path が nil を返しても
-そのまま treemacs-find-file-node に渡すため、treemacs-project->position が
-(wrong-type-argument arrayp nil) で落ちる。treemacs-follow-mode の
-アイドルタイマーから非同期に呼ばれた際、その時点の workspace に該当
-プロジェクトが見つからないと発生する。
-
-平坦化を飛ばしてもツリーは描画される (畳まれず素直な階層で出る) だけなので、
-落とすよりこちらを選ぶ。"
-    (when (and dirs
-               (treemacs--find-project-for-path (cadr (car dirs))))
-      (funcall fn dirs)))
   :custom
   ;; C-x o (other-window) の巡回対象から外す
   (treemacs-is-never-other-window . t)
@@ -947,7 +920,9 @@ treemacs--flatten-dirs は treemacs--find-project-for-path が nil を返して�
   (treemacs-follow-mode 1)
   ;; git の状態を色分けする。deferred は python3 を別プロセスで使う非同期版
   (treemacs-git-mode 'deferred)
-  (advice-add 'treemacs--flatten-dirs :around #'wamei/treemacs--flatten-dirs-guard))
+  ;; window に出ている treemacs バッファに root が描画されていないプロジェクトを
+  ;; 渡されたら探索を諦める (ガード本体と経緯は project-tabs.el)
+  (advice-add 'treemacs-find-file-node :around #'wamei/treemacs--find-file-node-guard))
 
 (leaf treemacs-nerd-icons
   :doc "treemacs のアイコンを nerd-icons に揃える"
