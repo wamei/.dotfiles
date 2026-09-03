@@ -268,6 +268,12 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
        "C-q" "C-z" "C-S-z" "<C-tab>" "<C-S-tab>"))
   (vterm-max-scrollback . 10000)
   :preface
+  ;; kill-ring 連携とホイール転送。実体は term-input.el (init.el は symlink なので
+  ;; 実体の隣から読む)。
+  (load (expand-file-name "term-input"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+
   (defvar wamei/term-height 0.3
     "端末ウィンドウの高さ (フレームに対する割合)。
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
@@ -670,6 +676,9 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
   ;; C-h は Backspace。init.el 先頭の keyboard-translate で DEL になるが、
   ;; その変換は端末 (kboard) ごとなので、届かない経路があっても効くよう直接束縛する。
   (define-key vterm-mode-map (kbd "C-h") #'vterm-send-backspace)
+  ;; C-k はそのまま端末へ送ると zsh の CUTBUFFER にしか残らないので、
+  ;; 送る前に point から行末までを kill-ring に入れる (term-input.el)。
+  (define-key vterm-mode-map (kbd "C-k") #'wamei/term-input-kill-line)
   ;; 貼り付けは vterm-yank を使う。yank はバッファに直接挿入するだけで
   ;; 端末プロセスには届かない。コピー (s-c) は通常のリージョン操作で効く。
   (define-key vterm-mode-map (kbd "s-v") #'vterm-yank)
@@ -792,6 +801,11 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   :config
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :filter-return #'wamei/claude-code-ide--no-other-window)
+  ;; Claude は tui fullscreen (alt-screen) で動くため libvterm の scrollback には
+  ;; 何も残らず、履歴は Claude 内蔵のスクロールで見るしかない。vterm はホイールを
+  ;; pty へ渡さないので、Claude のバッファでだけマウス報告として転送する (term-input.el)。
+  (advice-add 'claude-code-ide--configure-vterm-buffer
+              :after #'wamei/term-input-mouse-mode)
   ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
   ;; xref や flymake などの Emacs 側の機能を Claude から使えるようにする
@@ -1003,7 +1017,12 @@ M-x treemacs-select-window を直接呼ぶ。"
         nil t)
   ;; prog-mode 全体で有効化する。eglot が無いバッファでも動き、eglot 管理下なら
   ;; 補完候補の識別子名がプロンプトに加わる。
-  :hook (prog-mode-hook . wamei/claude-complete-mode))
+  :hook (prog-mode-hook . wamei/claude-complete-mode)
+  :config
+  ;; 既定の haiku は 2.3-3.2 秒だが、禁止しているコードフェンスを付けたり行頭の
+  ;; インデントを落としたりする。sonnet は +0.5 秒程度で指示に従う (2026-09-03 実測、
+  ;; opus は +1.2-1.5 秒)。
+  (setq wamei/claude-complete-model "sonnet"))
 
 (leaf treemacs-tab-bar
   :doc "treemacs をタブごとに分ける"

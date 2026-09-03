@@ -1,0 +1,165 @@
+;;; term-input-test.el --- tests for term-input -*- lexical-binding: t; -*-
+;;; Commentary:
+;; emacs -Q --batch -l term-input-test.el -f ert-run-tests-batch-and-exit
+;;; Code:
+
+(require 'ert)
+(require 'cl-lib)
+(load (expand-file-name "term-input.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
+
+;;; テスト用の vterm スタブ
+
+(defvar wamei/term-input-test--sent nil
+  "スタブが受け取った送信内容。(KEY SHIFT META CTRL) か文字列。")
+
+(defmacro wamei/term-input-test--with-vterm (&rest body)
+  "vterm の送信関数をスタブに差し替えて BODY を実行する。"
+  (declare (indent 0))
+  `(let ((wamei/term-input-test--sent nil)
+         (kill-ring nil)
+         (kill-ring-yank-pointer nil)
+         (last-command nil)
+         (this-command nil))
+     (cl-letf (((symbol-function 'vterm-send-key)
+                (lambda (key &optional shift meta ctrl _accept)
+                  (push (list key shift meta ctrl) wamei/term-input-test--sent)))
+               ((symbol-function 'vterm-send-string)
+                (lambda (string &optional _paste-p)
+                  (push string wamei/term-input-test--sent))))
+       ,@body)))
+
+(defun wamei/term-input-test--call-kill-line ()
+  "コマンドループを模して `wamei/term-input-kill-line' を 1 回呼ぶ。"
+  (setq this-command #'wamei/term-input-kill-line)
+  (call-interactively #'wamei/term-input-kill-line)
+  (setq last-command this-command))
+
+;;; kill-line
+
+(ert-deftest wamei/term-input-kill-line-saves-rest-of-line ()
+  "point から行末までを kill-ring に入れ、C-k を端末へ送る。"
+  (wamei/term-input-test--with-vterm
+    (with-temp-buffer
+      (insert "$ echo hello world\n")
+      (goto-char (point-min))
+      (search-forward "hello")
+      (backward-word)
+      (wamei/term-input-test--call-kill-line)
+      (should (equal (car kill-ring) "hello world"))
+      (should (equal wamei/term-input-test--sent '(("k" nil nil t)))))))
+
+(ert-deftest wamei/term-input-kill-line-appends-when-repeated ()
+  "連続して呼ぶと Emacs の kill-line と同じく 1 つの kill に連結する。"
+  (wamei/term-input-test--with-vterm
+    (with-temp-buffer
+      (insert "$ foo\n")
+      (goto-char (point-min))
+      (search-forward "foo")
+      (backward-word)
+      (wamei/term-input-test--call-kill-line)
+      ;; シェル側で行が消えた状態を模す
+      (delete-region (point) (line-end-position))
+      (insert "bar")
+      (backward-word)
+      (wamei/term-input-test--call-kill-line)
+      (should (equal kill-ring '("foobar"))))))
+
+(ert-deftest wamei/term-input-kill-line-at-eol-leaves-kill-ring ()
+  "行末では zsh の kill-line 同様に何も切り取らず、kill-ring も汚さない。"
+  (wamei/term-input-test--with-vterm
+    (with-temp-buffer
+      (insert "$ foo\n")
+      (goto-char (point-min))
+      (end-of-line)
+      (wamei/term-input-test--call-kill-line)
+      (should-not kill-ring)
+      (should (equal wamei/term-input-test--sent '(("k" nil nil t)))))))
+
+(ert-deftest wamei/term-input-kill-line-ignores-trailing-spaces ()
+  "vterm が画面幅まで埋める行末の空白は kill に含めない。"
+  (wamei/term-input-test--with-vterm
+    (with-temp-buffer
+      (insert "$ foo   \n")
+      (goto-char (point-min))
+      (search-forward "foo")
+      (backward-word)
+      (wamei/term-input-test--call-kill-line)
+      (should (equal (car kill-ring) "foo")))))
+
+;;; マウスホイールの SGR 列
+
+(ert-deftest wamei/term-input-sgr-wheel-up ()
+  "上方向ホイールはボタン 64、座標は 1 始まり。"
+  (should (equal (wamei/term-input--sgr-mouse 64 0 0) "\e[<64;1;1M")))
+
+(ert-deftest wamei/term-input-sgr-wheel-down-position ()
+  "下方向ホイールはボタン 65、列・行をそのまま載せる。"
+  (should (equal (wamei/term-input--sgr-mouse 65 9 4) "\e[<65;10;5M")))
+
+(ert-deftest wamei/term-input-wheel-button-from-event ()
+  "イベント種別から SGR のボタン番号を求める。double/triple 修飾は無視する。"
+  (should (= (wamei/term-input--wheel-button 'wheel-up) 64))
+  (should (= (wamei/term-input--wheel-button 'wheel-down) 65))
+  (should (= (wamei/term-input--wheel-button 'double-wheel-down) 65))
+  (should (= (wamei/term-input--wheel-button 'triple-wheel-up) 64))
+  ;; 端末フレームでは mouse-4 / mouse-5 として届く
+  (should (= (wamei/term-input--wheel-button 'mouse-4) 64))
+  (should (= (wamei/term-input--wheel-button 'mouse-5) 65)))
+
+(ert-deftest wamei/term-input-wheel-button-rejects-other-events ()
+  "ホイール以外のイベントは nil。"
+  (should-not (wamei/term-input--wheel-button 'mouse-1))
+  (should-not (wamei/term-input--wheel-button 'wheel-left)))
+
+;;; ホイール転送コマンド
+
+(defun wamei/term-input-test--wheel-event (type col row)
+  "TYPE のホイールイベントを (COL . ROW) の位置で組み立てる。"
+  (list type
+        (list (selected-window) (point) '(0 . 0) 0 nil (point)
+              (cons col row) nil (cons col row) '(1 . 1))))
+
+(ert-deftest wamei/term-input-forward-wheel-sends-sgr ()
+  "ホイールイベントをイベント位置の SGR 列として端末へ送る。"
+  (wamei/term-input-test--with-vterm
+    (with-temp-buffer
+      (wamei/term-input-forward-wheel
+       (wamei/term-input-test--wheel-event 'wheel-down 3 7))
+      (should (equal wamei/term-input-test--sent '("\e[<65;4;8M"))))))
+
+(ert-deftest wamei/term-input-forward-wheel-in-copy-mode-scrolls-emacs ()
+  "copy-mode 中は端末へ送らず Emacs の通常スクロールに任せる。"
+  (wamei/term-input-test--with-vterm
+    (let ((scrolled nil))
+      (cl-letf (((symbol-function 'mwheel-scroll)
+                 (lambda (event &optional _arg) (setq scrolled event))))
+        (with-temp-buffer
+          (setq-local vterm-copy-mode t)
+          (let ((event (wamei/term-input-test--wheel-event 'wheel-up 0 0)))
+            (wamei/term-input-forward-wheel event)
+            (should-not wamei/term-input-test--sent)
+            (should (eq scrolled event))))))))
+
+;;; minor mode
+
+(ert-deftest wamei/term-input-mouse-mode-binds-wheel-events ()
+  "mode を有効にするとホイール系イベントが転送コマンドに束縛される。"
+  (with-temp-buffer
+    (wamei/term-input-mouse-mode 1)
+    (dolist (key '([wheel-up] [wheel-down] [double-wheel-down] [triple-wheel-up]
+                   [mouse-4] [mouse-5]))
+      (should (eq (key-binding key) #'wamei/term-input-forward-wheel)))
+    (should (eq (lookup-key wamei/term-input-mouse-mode-map [remap mwheel-scroll])
+                #'wamei/term-input-forward-wheel))))
+
+(ert-deftest wamei/term-input-mouse-mode-off-restores-bindings ()
+  "mode を切ると束縛は元に戻る。"
+  (with-temp-buffer
+    (wamei/term-input-mouse-mode 1)
+    (wamei/term-input-mouse-mode -1)
+    (should-not (eq (key-binding [wheel-down]) #'wamei/term-input-forward-wheel))))
+
+(provide 'term-input-test)
+;;; term-input-test.el ends here
