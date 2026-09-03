@@ -85,6 +85,30 @@ claude の代わりに `wamei/claude-cli-program' へ設定して使う。"
       (wamei/claude-cli-test--wait process)
       (should (equal result "answer")))))
 
+(ert-deftest wamei/claude-cli-run-reports-failure-with-message ()
+  (wamei/claude-cli-test--with-stub "exit 3"
+    (let* ((messages nil)
+           (process (cl-letf (((symbol-function 'message)
+                               (lambda (fmt &rest args)
+                                 (when fmt (push (apply #'format fmt args) messages)))))
+                      (let ((process (wamei/claude-cli-run "haiku" "" #'ignore)))
+                        (wamei/claude-cli-test--wait process)
+                        process))))
+      (ignore process)
+      (should (cl-some (lambda (m) (string-match-p "failed" m)) messages)))))
+
+(ert-deftest wamei/claude-cli-run-stays-silent-when-cancelled ()
+  (wamei/claude-cli-test--with-stub "sleep 5"
+    (let ((messages nil))
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args)
+                   (when fmt (push (apply #'format fmt args) messages)))))
+        (let ((process (wamei/claude-cli-run "haiku" "" #'ignore)))
+          (process-put process 'wamei/claude-cli-cancelled t)
+          (delete-process process)
+          (wamei/claude-cli-test--wait process)))
+      (should-not messages))))
+
 (ert-deftest wamei/claude-cli-run-skips-callback-on-failure ()
   (wamei/claude-cli-test--with-stub "echo boom >&2; exit 1"
     (let* ((called nil)

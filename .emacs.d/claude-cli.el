@@ -79,7 +79,8 @@ haiku の応答そのものより長く (計測で 6-7 秒中の 4 秒程度) �
 (defun wamei/claude-cli-run (model input callback &optional system-prompt)
   "MODEL に INPUT を stdin で渡して非同期に実行し、成功したら CALLBACK を出力で呼ぶ。
 SYSTEM-PROMPT は `wamei/claude-cli--command' に渡す。
-失敗時は CALLBACK を呼ばず stderr を `message' で知らせる。プロセスを返す。"
+失敗時は CALLBACK を呼ばず stderr を `message' で知らせる。プロセスを返す。
+プロセスに `wamei/claude-cli-cancelled' プロパティが付いていれば失敗を知らせない。"
   (let* ((process-environment (wamei/claude-cli--environment))
          (stdout (generate-new-buffer " *claude-cli*" t))
          (stderr (generate-new-buffer " *claude-cli-stderr*" t))
@@ -109,12 +110,16 @@ SYSTEM-PROMPT は `wamei/claude-cli--command' に渡す。
                  (delete-process stderr-process)
                  (kill-buffer stdout)
                  (kill-buffer stderr)
-                 (if (and (eq (process-status proc) 'exit) (zerop status))
-                     (funcall callback (string-trim-right output "\n+"))
+                 (cond
+                  ((and (eq (process-status proc) 'exit) (zerop status))
+                   (funcall callback (string-trim-right output "\n+")))
+                  ;; 呼び出し側が意図的に止めたプロセス。失敗として知らせない。
+                  ((process-get proc 'wamei/claude-cli-cancelled) nil)
+                  (t
                    (message "claude (%s) failed: %s" model
                             (if (string-empty-p errors)
                                 (format "exit status %d" status)
-                              errors)))))))))
+                              errors))))))))))
     (process-send-string process input)
     (process-send-eof process)
     process))
