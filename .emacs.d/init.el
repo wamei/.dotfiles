@@ -1715,6 +1715,41 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
   ;; 素の .env と foo.env 形式も対象にする
   :mode ("\\.env\\'" "\\.env\\.[^/]*\\'"))
 
+(leaf prisma-ts-mode
+  :doc "Prisma スキーマ (tree-sitter)"
+  :ensure t
+  ;; .prisma → prisma-ts-mode の紐付けはパッケージの autoload が行うので :mode は不要。
+  ;; grammar は treesit ブロックの treesit-language-source-alist に登録してあり、
+  ;; wamei/treesit-install-missing-grammars で導入する。
+  :preface
+  (defun wamei/prisma-format-on-save ()
+    "eglot 管理下なら保存前に言語サーバでフォーマットする。
+サーバが落ちていても保存自体は止めない。"
+    (when (and (fboundp 'eglot-managed-p) (eglot-managed-p))
+      (condition-case err
+          (eglot-format-buffer)
+        (error (message "prisma format: %s" (error-message-string err))))))
+  (defun wamei/prisma-setup ()
+    "prisma-ts-mode のバッファ設定。保存時フォーマットと言語サーバ向け設定。"
+    ;; prisma format CLI はプロジェクトごとの導入とエンジン起動が必要で重いため、
+    ;; 言語サーバの textDocument/formatting を使う。
+    (add-hook 'before-save-hook #'wamei/prisma-format-on-save nil t)
+    ;; eglot は textDocument/formatting の tabSize に tab-width をそのまま渡す。
+    ;; Prisma の慣習 (prisma format) は 2 スペースなので、モードのインデント幅に揃える。
+    (setq-local tab-width prisma-ts-mode-indent-level))
+  :hook (prisma-ts-mode-hook . wamei/prisma-setup)
+  :config
+  ;; tree-sitter-prisma の現行 grammar に ";" トークンが無く、パッケージの
+  ;; delimiter 規則 ["," ";" ":"] がコンパイルできずに機能ごと無効化される
+  ;; (Warning treesit-font-lock-rules-mismatch)。";" を除いた規則に差し替える。
+  (setq prisma-ts-mode--font-lock-settings
+        (append (seq-remove (lambda (setting) (eq (nth 2 setting) 'delimiter))
+                            prisma-ts-mode--font-lock-settings)
+                (treesit-font-lock-rules
+                 :language 'prisma
+                 :feature 'delimiter
+                 '(["," ":"] @font-lock-delimiter-face)))))
+
 (leaf treesit
   :doc "tree-sitter"
   :ensure nil
@@ -1730,7 +1765,8 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
           (javascript . ("https://github.com/tree-sitter/tree-sitter-javascript"))
           (css        . ("https://github.com/tree-sitter/tree-sitter-css"))
           (html       . ("https://github.com/tree-sitter/tree-sitter-html"))
-          (json       . ("https://github.com/tree-sitter/tree-sitter-json"))))
+          (json       . ("https://github.com/tree-sitter/tree-sitter-json"))
+          (prisma     . ("https://github.com/victorhqc/tree-sitter-prisma"))))
 
   (defun wamei/treesit-install-missing-grammars ()
     "未導入の tree-sitter grammar をまとめて導入する。"
@@ -1800,8 +1836,24 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
           css-ts-mode-hook
           css-mode-hook
           html-ts-mode-hook
-          mhtml-mode-hook) . eglot-ensure)
+          mhtml-mode-hook
+          prisma-ts-mode-hook) . eglot-ensure)
   :config
+  ;; eglot 組み込みに Prisma のエントリは無い。@prisma/language-server は
+  ;; プロジェクトの依存に入らないのが普通なので bun add -g で入れ、PATH から解決する
+  ;; (~/.bun/bin は .zshrc で PATH に足し、exec-path-from-shell で引き継ぐ)。
+  (add-to-list 'eglot-server-programs
+               '(prisma-ts-mode . ("prisma-language-server" "--stdio")))
+  ;; @prisma/language-server は起動直後に workspace/configuration (section "prisma")
+  ;; を要求し、null が返ると settings.enableDiagnostics の参照でクラッシュする
+  ;; (31.12.2 で確認)。eglot はこの値を一時バッファ (major-mode 変数だけ設定、
+  ;; hook は走らない) で評価するため setq-local では届かず、server を見て
+  ;; 返す関数にする。.dir-locals.el の指定があればそちらが優先される。
+  (defun wamei/eglot-workspace-configuration (server)
+    "SERVER の管理するモードに応じた workspace configuration を返す。"
+    (when (memq 'prisma-ts-mode (eglot--major-modes server))
+      '(:prisma (:enableDiagnostics t))))
+  (setq-default eglot-workspace-configuration #'wamei/eglot-workspace-configuration)
   (advice-add 'eglot-completion-at-point :filter-return
               #'wamei/eglot-capf-doc-with-detail))
 

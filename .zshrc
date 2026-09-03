@@ -196,6 +196,14 @@ case ":$PATH:" in
 esac
 # pnpm end
 
+# bun (global bin)
+export BUN_INSTALL="$HOME/.bun"
+case ":$PATH:" in
+  *":$BUN_INSTALL/bin:"*) ;;
+  *) export PATH="$BUN_INSTALL/bin:$PATH" ;;
+esac
+# bun end
+
 # direnv
 eval "$(direnv hook zsh)"
 # direnv end
