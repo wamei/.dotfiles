@@ -321,6 +321,16 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
       (should-not wamei/claude-complete--process)
       (should-not wamei/claude-complete--request))))
 
+(ert-deftest wamei/claude-complete-request-does-not-show-while-completion-in-region ()
+  ;; 要求時は許されていても、応答までの間に corfu のポップアップが出たら表示しない
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-request)
+      (let ((process wamei/claude-complete--process))
+        (let ((completion-in-region-mode t))
+          (wamei/claude-complete-test--wait process)))
+      (should-not (wamei/claude-complete--visible-p)))))
+
 (ert-deftest wamei/claude-complete-request-is-blocked-in-read-only-buffer ()
   (wamei/claude-complete-test--with-stub "printf 'bar'"
     (wamei/claude-complete-test--with-buffer "foo|"
@@ -407,6 +417,17 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
         (wamei/claude-complete-test--wait wamei/claude-complete--process)
         (should (wamei/claude-complete--visible-p))))))
 
+(ert-deftest wamei/claude-complete-on-idle-skips-when-request-stamp-unchanged ()
+  ;; 提案を消しただけで tick も点も動いていない (C-g など) 場合、同じ内容を再要求しない
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-mode 1)
+      (let ((wamei/claude-complete-auto nil))
+        (cl-letf (((symbol-function 'window-buffer) (lambda (&rest _) (current-buffer))))
+          (setq wamei/claude-complete--request (wamei/claude-complete--stamp))
+          (wamei/claude-complete--on-idle (current-buffer))
+          (should-not wamei/claude-complete--process))))))
+
 (ert-deftest wamei/claude-complete-on-idle-skips-when-buffer-not-selected ()
   (wamei/claude-complete-test--with-stub "printf 'bar'"
     (wamei/claude-complete-test--with-buffer "foo|"
@@ -468,16 +489,24 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
   (should (equal (wamei/claude-complete--completion-labels [(:kind 3) (:label "x")])
                  '("x"))))
 
+(defvar wamei/claude-complete-test--eglot-calls nil
+  "fake eglot が呼ばれた順序 (新しいものが先頭)。")
+
 (defmacro wamei/claude-complete-test--with-fake-eglot (respond &rest body)
   "eglot が動いているように見せ、`jsonrpc-async-request' を RESPOND で置き換えて BODY を評価する。
-RESPOND は (lambda (server method params &rest keys)) で、keys から :success-fn 等を取り出して呼ぶ。"
+RESPOND は (lambda (server method params &rest keys)) で、keys から :success-fn 等を取り出して呼ぶ。
+`eglot--signal-textDocument/didChange' は `wamei/claude-complete-test--eglot-calls' に
+記録するだけのスタブに差し替える。"
   (declare (indent 1))
-  `(cl-letf (((symbol-function 'eglot-managed-p) (lambda () t))
-             ((symbol-function 'eglot-server-capable) (lambda (&rest _) t))
-             ((symbol-function 'eglot-current-server) (lambda () 'fake-server))
-             ((symbol-function 'eglot--TextDocumentPositionParams) (lambda () '(:fake t)))
-             ((symbol-function 'jsonrpc-async-request) ,respond))
-     ,@body))
+  `(let ((wamei/claude-complete-test--eglot-calls nil))
+     (cl-letf (((symbol-function 'eglot-managed-p) (lambda () t))
+               ((symbol-function 'eglot-server-capable) (lambda (&rest _) t))
+               ((symbol-function 'eglot-current-server) (lambda () 'fake-server))
+               ((symbol-function 'eglot--TextDocumentPositionParams) (lambda () '(:fake t)))
+               ((symbol-function 'eglot--signal-textDocument/didChange)
+                (lambda (&rest _) (push 'didChange wamei/claude-complete-test--eglot-calls)))
+               ((symbol-function 'jsonrpc-async-request) ,respond))
+       ,@body)))
 
 (ert-deftest wamei/claude-complete-eglot-identifiers-returns-nil-when-not-managed ()
   (cl-letf (((symbol-function 'eglot-managed-p) (lambda () nil)))
@@ -489,10 +518,14 @@ RESPOND は (lambda (server method params &rest keys)) で、keys から :succes
   (let ((calls nil) (seen nil))
     (wamei/claude-complete-test--with-fake-eglot
         (lambda (server method params &rest keys)
+          (push 'request wamei/claude-complete-test--eglot-calls)
           (setq seen (list server method params (plist-get keys :timeout)))
           (funcall (plist-get keys :success-fn) [(:label "clamp") (:label "Math")])
           '(1))
-      (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls))))
+      (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls)))
+      ;; 問い合わせの前に保留中の変更を eglot に流しておく
+      (should (equal (reverse wamei/claude-complete-test--eglot-calls)
+                     '(didChange request))))
     (should (equal calls '(("clamp" "Math"))))
     (should (equal seen (list 'fake-server :textDocument/completion '(:fake t)
                               wamei/claude-complete-eglot-timeout)))))

@@ -198,6 +198,11 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
   "現在の (buffer-chars-modified-tick . point)。"
   (cons (buffer-chars-modified-tick) (point)))
 
+(defun wamei/claude-complete--stamp-valid-p (stamp)
+  "STAMP が要求時点のものであり、かつ現在の (tick . point) とも一致すれば non-nil。"
+  (and (equal stamp wamei/claude-complete--request)
+       (equal stamp (wamei/claude-complete--stamp))))
+
 (defun wamei/claude-complete--cancel-timer ()
   "idle timer を止める。"
   (when wamei/claude-complete--timer
@@ -262,6 +267,7 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
 (declare-function eglot-server-capable "eglot")
 (declare-function eglot-current-server "eglot")
 (declare-function eglot--TextDocumentPositionParams "eglot")
+(declare-function eglot--signal-textDocument/didChange "eglot")
 (declare-function jsonrpc-async-request "jsonrpc")
 
 (defun wamei/claude-complete--completion-labels (result)
@@ -293,6 +299,10 @@ eglot が無い・非対応・エラー・タイムアウトのときは nil で
                   (funcall callback identifiers))))
       (if (null server)
           (finish nil)
+        ;; eglot 自身の要求は先に didChange を送る。jsonrpc-async-request を直接呼ぶと
+        ;; 送られず、直前の編集が反映されていない文書に問い合わせてしまう
+        (when (fboundp 'eglot--signal-textDocument/didChange)
+          (ignore-errors (eglot--signal-textDocument/didChange)))
         (condition-case nil
             (jsonrpc-async-request
              server :textDocument/completion (eglot--TextDocumentPositionParams)
@@ -325,8 +335,10 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
              (when (buffer-live-p buffer)
                (with-current-buffer buffer
                  (setq wamei/claude-complete--process nil)
-                 (when (and (equal stamp wamei/claude-complete--request)
-                            (equal stamp (wamei/claude-complete--stamp)))
+                 ;; 要求時は許されていても、待っている間に corfu のポップアップが
+                 ;; 出ていることがあるので表示直前にもう一度確かめる
+                 (when (and (wamei/claude-complete--stamp-valid-p stamp)
+                            (wamei/claude-complete--allowed-p))
                    (when-let* ((text (wamei/claude-complete--clean output context)))
                      (wamei/claude-complete--show text))))))
            wamei/claude-complete-system-prompt))))
@@ -342,8 +354,7 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
        (lambda (identifiers)
          (when (buffer-live-p buffer)
            (with-current-buffer buffer
-             (when (and (equal stamp wamei/claude-complete--request)
-                        (equal stamp (wamei/claude-complete--stamp)))
+             (when (wamei/claude-complete--stamp-valid-p stamp)
                (wamei/claude-complete--start stamp identifiers)))))))))
 
 (defun wamei/claude-complete ()
@@ -357,14 +368,19 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
 (defvar wamei/claude-complete-mode)
 
 (defun wamei/claude-complete--on-idle (buffer)
-  "idle timer から呼ばれる。BUFFER が選択ウィンドウのバッファで、表示中でも走行中でもなければ要求する。"
+  "idle timer から呼ばれる。BUFFER が選択ウィンドウのバッファで、表示中でも走行中でもなく、
+前回の要求から tick か点が動いていれば要求する。"
   (when (and (buffer-live-p buffer)
              (eq buffer (window-buffer (selected-window))))
     (with-current-buffer buffer
       (setq wamei/claude-complete--timer nil)
       (when (and wamei/claude-complete-mode
                  (not (wamei/claude-complete--visible-p))
-                 (not (process-live-p wamei/claude-complete--process)))
+                 (not (process-live-p wamei/claude-complete--process))
+                 ;; tick も点も変えないコマンド (C-g, C-l, 保存) は overlay を消すだけで
+                 ;; --request を残す。同じプロンプトの再要求で利用枠を 1 消費しない
+                 (not (equal wamei/claude-complete--request
+                             (wamei/claude-complete--stamp))))
         (wamei/claude-complete-request)))))
 
 (defun wamei/claude-complete--post-command ()
