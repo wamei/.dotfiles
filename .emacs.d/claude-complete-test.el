@@ -226,6 +226,98 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
       (wamei/claude-complete--pre-command))
     (should-not (wamei/claude-complete--visible-p))))
 
+;;; 要求
+
+(ert-deftest wamei/claude-complete-request-shows-cleaned-output ()
+  (wamei/claude-complete-test--with-stub "printf '```ts\\nreturn 1;\\n```'"
+    (wamei/claude-complete-test--with-buffer "function f() {\n  |\n}"
+      (wamei/claude-complete-request)
+      (should (process-live-p wamei/claude-complete--process))
+      (wamei/claude-complete-test--wait wamei/claude-complete--process)
+      (should (wamei/claude-complete--visible-p))
+      (should (equal (overlay-get wamei/claude-complete--overlay 'wamei/claude-complete-text)
+                     "return 1;"))
+      (should-not wamei/claude-complete--process))))
+
+(ert-deftest wamei/claude-complete-request-sends-prompt-and-system-prompt ()
+  ;; stub は引数と stdin をまとめて返す。応答は整形されてそのまま overlay に載る
+  (wamei/claude-complete-test--with-stub "printf '%s\\n' \"$@\"; cat"
+    (wamei/claude-complete-test--with-buffer "abc|def"
+      (wamei/claude-complete-request)
+      (wamei/claude-complete-test--wait wamei/claude-complete--process)
+      (let ((shown (overlay-get wamei/claude-complete--overlay 'wamei/claude-complete-text)))
+        (should (string-match-p "--model\nhaiku\n" shown))
+        (should (string-match-p (regexp-quote wamei/claude-complete-system-prompt) shown))
+        (should (string-match-p "abc<CURSOR>def" shown))))))
+
+(ert-deftest wamei/claude-complete-request-discards-stale-response ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-request)
+      (let ((process wamei/claude-complete--process))
+        ;; 応答を受け取る前にバッファを変える
+        (insert "x")
+        (wamei/claude-complete-test--wait process))
+      (should-not (wamei/claude-complete--visible-p))
+      (should (equal (buffer-string) "foox")))))
+
+(ert-deftest wamei/claude-complete-request-discards-response-after-point-moves ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "fo|o"
+      (wamei/claude-complete-request)
+      (let ((process wamei/claude-complete--process))
+        (forward-char 1)
+        (wamei/claude-complete-test--wait process))
+      (should-not (wamei/claude-complete--visible-p)))))
+
+(ert-deftest wamei/claude-complete-request-does-not-show-empty-output ()
+  (wamei/claude-complete-test--with-stub "printf '   '"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-request)
+      (wamei/claude-complete-test--wait wamei/claude-complete--process)
+      (should-not (wamei/claude-complete--visible-p)))))
+
+(ert-deftest wamei/claude-complete-request-cancels-previous-process-silently ()
+  (wamei/claude-complete-test--with-stub "sleep 5"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (let ((messages nil))
+        (cl-letf (((symbol-function 'message)
+                   (lambda (fmt &rest args)
+                     (when fmt (push (apply #'format fmt args) messages)))))
+          (wamei/claude-complete-request)
+          (let ((first wamei/claude-complete--process))
+            (wamei/claude-complete-request)
+            (should-not (eq first wamei/claude-complete--process))
+            (should-not (process-live-p first))
+            (wamei/claude-complete-test--wait first)
+            (wamei/claude-complete--cancel-process)
+            (accept-process-output nil 0.1)))
+        (should-not messages)))))
+
+(ert-deftest wamei/claude-complete-request-is-blocked-while-completion-in-region ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (let ((completion-in-region-mode t))
+        (wamei/claude-complete-request))
+      (should-not wamei/claude-complete--process)
+      (should-not wamei/claude-complete--request))))
+
+(ert-deftest wamei/claude-complete-request-is-blocked-in-read-only-buffer ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (setq buffer-read-only t)
+      (wamei/claude-complete-request)
+      (should-not wamei/claude-complete--process))))
+
+(ert-deftest wamei/claude-complete-command-is-interactive-and-requests ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (should (commandp #'wamei/claude-complete))
+      (call-interactively #'wamei/claude-complete)
+      (wamei/claude-complete-test--wait wamei/claude-complete--process)
+      (should (equal (overlay-get wamei/claude-complete--overlay 'wamei/claude-complete-text)
+                     "bar")))))
+
 ;;; minor mode
 
 (ert-deftest wamei/claude-complete-mode-binds-tab-only-while-visible ()

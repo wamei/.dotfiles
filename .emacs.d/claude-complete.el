@@ -204,6 +204,58 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
   "コマンド後の処理。Task 7 で idle timer の張り直しを実装する。"
   nil)
 
+;;; 要求
+
+(defun wamei/claude-complete--allowed-p ()
+  "いま補完を要求してよければ non-nil。
+corfu のポップアップ表示中 (`completion-in-region-mode')、読み取り専用、minibuffer では要求しない。"
+  (not (or completion-in-region-mode
+           buffer-read-only
+           (minibufferp))))
+
+(defun wamei/claude-complete--eglot-identifiers (callback)
+  "CALLBACK を識別子リストで 1 回呼ぶ。Task 8 で eglot の補完候補を返すようにする。"
+  (funcall callback nil))
+
+(defun wamei/claude-complete--start (stamp identifiers)
+  "現在バッファの文脈と IDENTIFIERS から claude を起動する。
+応答時に STAMP が `wamei/claude-complete--request' と現在位置の両方に一致すれば表示する。"
+  (let ((buffer (current-buffer))
+        (context (wamei/claude-complete--context)))
+    (setq wamei/claude-complete--process
+          (wamei/claude-cli-run
+           wamei/claude-complete-model
+           (wamei/claude-complete--prompt context identifiers)
+           (lambda (output)
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (setq wamei/claude-complete--process nil)
+                 (when (and (equal stamp wamei/claude-complete--request)
+                            (equal stamp (wamei/claude-complete--stamp)))
+                   (when-let* ((text (wamei/claude-complete--clean output context)))
+                     (wamei/claude-complete--show text))))))
+           wamei/claude-complete-system-prompt))))
+
+(defun wamei/claude-complete-request ()
+  "点の位置の補完を要求する。走行中の要求があれば置き換える。"
+  (when (wamei/claude-complete--allowed-p)
+    (wamei/claude-complete--cancel-process)
+    (let ((buffer (current-buffer))
+          (stamp (wamei/claude-complete--stamp)))
+      (setq wamei/claude-complete--request stamp)
+      (wamei/claude-complete--eglot-identifiers
+       (lambda (identifiers)
+         (when (buffer-live-p buffer)
+           (with-current-buffer buffer
+             (when (and (equal stamp wamei/claude-complete--request)
+                        (equal stamp (wamei/claude-complete--stamp)))
+               (wamei/claude-complete--start stamp identifiers)))))))))
+
+(defun wamei/claude-complete ()
+  "いまの位置の続きを claude に提案させる。"
+  (interactive)
+  (wamei/claude-complete-request))
+
 ;;; minor mode
 
 (declare-function wamei/claude-complete "claude-complete")
