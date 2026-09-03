@@ -260,6 +260,9 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   ;; C-q / C-z / C-S-z は端末へ送らず Emacs 側で処理する
   ;; (C-c C-x M-x 等は既定で除外済み)。この変数は :set で vterm-mode-map を
   ;; 作り直す defcustom なので、add-to-list ではなく customize 経由で設定する。
+  ;; C-c と C-h は端末へ送りたいが、ここから外すと vterm のキーマップ構築が
+  ;; C-c C-y 等の定義で "starts with non-prefix key" と落ちるので、残したまま
+  ;; :config で上書きする。
   (vterm-keymap-exceptions
    . '("C-c" "C-x" "C-u" "C-g" "C-h" "C-l" "M-x" "M-o" "C-y" "M-y"
        "C-q" "C-z" "C-S-z" "<C-tab>" "<C-S-tab>"))
@@ -659,6 +662,14 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
                  (window-parameters . ((no-other-window . t)
                                        (no-delete-other-windows . t)))))
   :config
+  ;; C-c は単発で SIGINT を送る。vterm は C-c C-t (copy-mode) などを定義して
+  ;; C-c を prefix にしているため、prefix ごと置き換える。C-c 配下 (C-c C-t /
+  ;; C-c C-l / C-c C-n / C-c C-p / C-c C-r とグローバルの C-c 系) は端末バッファ
+  ;; 内で使えなくなる。copy-mode は M-x vterm-copy-mode で。
+  (define-key vterm-mode-map (kbd "C-c") #'vterm--self-insert)
+  ;; C-h は Backspace。init.el 先頭の keyboard-translate で DEL になるが、
+  ;; その変換は端末 (kboard) ごとなので、届かない経路があっても効くよう直接束縛する。
+  (define-key vterm-mode-map (kbd "C-h") #'vterm-send-backspace)
   ;; 貼り付けは vterm-yank を使う。yank はバッファに直接挿入するだけで
   ;; 端末プロセスには届かない。コピー (s-c) は通常のリージョン操作で効く。
   (define-key vterm-mode-map (kbd "s-v") #'vterm-yank)
@@ -1622,6 +1633,13 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
   :custom ((markdown-fontify-code-blocks-natively . t)
            (markdown-header-scaling . t)
            (markdown-display-remote-images . t)))
+
+(leaf dotenv-mode
+  :doc ".env 系ファイル (KEY=VALUE / ${VAR} 展開 / export / コメントを着色)"
+  :ensure t
+  ;; パッケージ標準の autoload は .env.* しか拾わないため、
+  ;; 素の .env と foo.env 形式も対象にする
+  :mode ("\\.env\\'" "\\.env\\.[^/]*\\'"))
 
 (leaf treesit
   :doc "tree-sitter"
