@@ -67,8 +67,13 @@ claude-cli.el ─ wamei/claude-cli-run（非同期 claude -p 実行）
   出力整形。順に:
   1. 先頭と末尾のコードフェンス（```lang ... ```）を剥がす
   2. 出力先頭が「カーソルのある行の点より手前の部分」と重なっていれば、その分を落とす
-     （モデルが行全体を返してくる癖への対処）
-  3. 出力末尾が `:suffix` の先頭と重なっていれば、その分を落とす
+     （モデルが行全体を返してくる癖への対処）。行頭が空白だけの場合も、その空白を
+     出力が繰り返していれば落とす（インデントの二重化を防ぐ）
+  3. 出力末尾が `:suffix` の先頭行と重なっていれば、その分を落とす。
+     ただし落とす部分に、残るテキストでまだ閉じられていない開き括弧を閉じる
+     `)` `]` `}` が含まれる場合は、その長さでは落とさず次に短い重なりを試す。
+     どれも落とせなければ出力をそのまま返す
+     （`foo(<CURSOR>)` に `compute(x)` が返ったとき、末尾の `)` は残す）
   4. 末尾の改行を 1 つに正規化し、空白だけなら nil を返す
 
 ### 状態層（buffer-local 変数）
@@ -97,8 +102,10 @@ claude-cli.el ─ wamei/claude-cli-run（非同期 claude -p 実行）
 - 確定 `wamei/claude-complete-accept`
   `after-string` の文字列を点に挿入し、overlay を消す。
 - 破棄 `wamei/claude-complete-dismiss`
-  overlay を消し、走行中プロセスがあればキャンセルする。
-  `pre-command-hook` から、実行されるコマンドが `wamei/claude-complete-accept` 以外なら呼ぶ。
+  `--teardown` に委ね、timer・走行中プロセス・overlay・`--request` をまとめて片付ける。
+  `pre-command-hook` は overlay を消すだけ（実行されるコマンドが
+  `wamei/claude-complete-accept` 以外のとき）。走行中プロセスのキャンセルは
+  `post-command-hook` で `--request` と現在の `(tick . point)` が食い違ったときに行う。
 - プロセスキャンセル `wamei/claude-complete--cancel`
   `(process-put proc 'wamei/claude-cli-cancelled t)` を付けてから `delete-process` する。
   claude-cli.el の sentinel はこのプロパティを見て message を出さない。
@@ -109,6 +116,9 @@ claude-cli.el ─ wamei/claude-cli-run（非同期 claude -p 実行）
    - 手動: `wamei/claude-complete` コマンド（`C-c C-.`、mode map）
    - 自動: `post-command-hook` で timer を張り直し、`wamei/claude-complete-idle-delay`（既定 1.0 秒）後に発火。
      `wamei/claude-complete-auto`（既定 t）が nil なら自動は張らない。
+     発火時、表示中・走行中・`--request` が現在の `(tick . point)` と等しいとき
+     （提案を消しただけで tick も点も動いていない）は要求しない。
+     手動トリガーはこの制約を受けず、同じ位置でも要求し直せる。
 2. ガード（どれかに当たれば何もしない）
    - `completion-in-region-mode` が非 nil（corfu のポップアップ表示中）
    - バッファが読み取り専用
@@ -116,7 +126,9 @@ claude-cli.el ─ wamei/claude-cli-run（非同期 claude -p 実行）
 3. 走行中プロセスがあればキャンセルし、`--request` に `(buffer-chars-modified-tick . point)` を保存
 4. `--eglot-identifiers` を非同期で取り、コールバックで `--context` と `--prompt` を作って
    `wamei/claude-cli-run` を `wamei/claude-complete-model`（既定 "haiku"）で起動
-5. 応答コールバックで `--request` と現在の `(tick . point)` を照合。違えば捨てる
+5. 応答コールバックで `--request` と現在の `(tick . point)` を照合。違えば捨てる。
+   一致していても、待機中に corfu のポップアップが出るなどして 2. のガード
+   （`--allowed-p`）が偽になっていれば表示しない
 6. `--clean` して nil でなければ `--show`
 
 ## エラー処理

@@ -1729,13 +1729,16 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
   :if (display-graphic-p)
   :preface
   (defun wamei/eldoc-box-inhibit-during-completion (fn &rest args)
-    "corfu の補完ポップアップ表示中は eldoc-box の自動表示を止める。
+    "補完ポップアップやゴーストテキストの表示中は eldoc-box の自動表示を止める。
 
 どちらも point 位置に child frame を出すため重なって読めなくなる。
 eldoc-box--inhibit-childframe は 0.5 秒のアイドルタイマーで勝手に解除される
 ため使わず、表示経路そのものを塞ぐ。C-c d (eldoc-box-help-at-point) は
-この関数を通らないので手動表示は従来どおり効く。"
-    (unless (bound-and-true-p completion-in-region-mode)
+この関数を通らないので手動表示は従来どおり効く。
+claude-complete のゴーストテキストも point の直後に描かれるため、同じ理由で塞ぐ。"
+    (unless (or (bound-and-true-p completion-in-region-mode)
+                (and (fboundp 'wamei/claude-complete--visible-p)
+                     (wamei/claude-complete--visible-p)))
       (apply fn args)))
 
   (defun wamei/eldoc-box-quit-on-completion ()
