@@ -97,5 +97,31 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
       (should (equal (plist-get context :prefix) "6789"))
       (should (equal (plist-get context :suffix) "abc")))))
 
+;;; プロンプト
+
+(ert-deftest wamei/claude-complete-prompt-wraps-file-and-marks-cursor ()
+  (let ((prompt (wamei/claude-complete--prompt
+                 '(:prefix "abc" :suffix "def" :path "src/a.ts" :language "typescript")
+                 nil)))
+    (should (equal prompt
+                   "<file path=\"src/a.ts\" language=\"typescript\">\nabc<CURSOR>def\n</file>\n"))))
+
+(ert-deftest wamei/claude-complete-prompt-lists-identifiers-when-given ()
+  (let ((prompt (wamei/claude-complete--prompt
+                 '(:prefix "" :suffix "" :path "a.ts" :language "typescript")
+                 '("clamp" "Math"))))
+    (should (string-suffix-p "</file>\n<identifiers>\nclamp, Math\n</identifiers>\n" prompt))))
+
+(ert-deftest wamei/claude-complete-prompt-omits-identifiers-block-when-empty ()
+  (let ((prompt (wamei/claude-complete--prompt
+                 '(:prefix "" :suffix "" :path "a.ts" :language "typescript")
+                 nil)))
+    (should-not (string-match-p "<identifiers>" prompt))))
+
+(ert-deftest wamei/claude-complete-system-prompt-forbids-fences-and-mentions-cursor ()
+  (should (string-match-p "<CURSOR>" wamei/claude-complete-system-prompt))
+  (should (string-match-p "fence" wamei/claude-complete-system-prompt))
+  (should (string-match-p "<identifiers>" wamei/claude-complete-system-prompt)))
+
 (provide 'claude-complete-test)
 ;;; claude-complete-test.el ends here

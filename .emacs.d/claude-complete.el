@@ -64,5 +64,28 @@
         :path (wamei/claude-complete--path)
         :language (wamei/claude-complete--language)))
 
+;;; プロンプト
+
+(defvar wamei/claude-complete-system-prompt
+  "You are a code completion engine inside a text editor. You receive one file \
+with the cursor position marked as <CURSOR>, and optionally an <identifiers> list \
+of names that are valid at the cursor according to the language server. Reply with \
+exactly the code that should be inserted at <CURSOR> and nothing else: no code \
+fences, no explanation, no commentary, and do not repeat code that already appears \
+before or after the cursor. Continue the code in the same style and indentation. \
+Prefer names from <identifiers> over inventing new ones. Keep the completion short: \
+finish the current statement or block, typically one to five lines."
+  "補完で Claude Code 既定のシステムプロンプトを置き換える文。")
+
+(defun wamei/claude-complete--prompt (context identifiers)
+  "CONTEXT (`wamei/claude-complete--context' の plist) と IDENTIFIERS から stdin 本文を作る。
+IDENTIFIERS が nil なら <identifiers> ブロックを出さない。"
+  (concat (format "<file path=\"%s\" language=\"%s\">\n"
+                  (plist-get context :path) (plist-get context :language))
+          (plist-get context :prefix) "<CURSOR>" (plist-get context :suffix)
+          "\n</file>\n"
+          (when identifiers
+            (concat "<identifiers>\n" (string-join identifiers ", ") "\n</identifiers>\n"))))
+
 (provide 'claude-complete)
 ;;; claude-complete.el ends here
