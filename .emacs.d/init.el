@@ -975,6 +975,19 @@ M-x treemacs-select-window を直接呼ぶ。"
   (with-eval-after-load 'git-commit
     (define-key git-commit-mode-map (kbd "C-c C-m") #'wamei/claude-commit-message)))
 
+(leaf claude-complete
+  :doc "claude -p によるゴーストテキスト補完"
+  :ensure nil
+  :after claude-cli
+  :preface
+  ;; 実体は claude-complete.el。claude-cli と同じく init.el の実体の隣から読む。
+  (load (expand-file-name "claude-complete"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  ;; prog-mode 全体で有効化する。eglot が無いバッファでも動き、eglot 管理下なら
+  ;; 補完候補の識別子名がプロンプトに加わる。
+  :hook (prog-mode-hook . wamei/claude-complete-mode))
+
 (leaf treemacs-tab-bar
   :doc "treemacs をタブごとに分ける"
   :ensure t
