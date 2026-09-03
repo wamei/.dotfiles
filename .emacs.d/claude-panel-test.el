@@ -353,4 +353,23 @@
       (should (window-live-p window))
       (should (eq (window-buffer window) (claude-code-ide-mcp-session-buffer a))))))
 
+(ert-deftest wamei/claude-panel-cleanup-session-redraws-tab-line ()
+  "終了したセッションのバッファが消えても window は変わらないので、
+tab-line は明示的に描き直しを要求しないと古いタブが残る。
+kill-buffer は mode-line の更新フラグを立てない (Emacs の Fkill_buffer)。
+redisplay のフラグは Lisp から見えないため、要求の呼び出しを記録して確認する。"
+  (wamei/claude-panel-test--with-env
+    (let* ((a (wamei/claude-panel-test--session "/tmp/proj/"))
+           (b (wamei/claude-panel-test--session "/tmp/proj/" "b"))
+           (calls nil))
+      (dolist (session (list a b))
+        (claude-code-ide--display-buffer-in-side-window
+         (claude-code-ide-mcp-session-buffer session)))
+      ;; a は隠れている。隠れたセッションの終了でも一覧は描き直される
+      (cl-letf (((symbol-function 'force-mode-line-update)
+                 (lambda (&optional all) (push all calls))))
+        (claude-code-ide--cleanup-session a))
+      (should-not (buffer-live-p (claude-code-ide-mcp-session-buffer a)))
+      (should (memq t calls)))))
+
 ;;; claude-panel-test.el ends here

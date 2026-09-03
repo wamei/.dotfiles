@@ -18,7 +18,8 @@
 ;;   失敗するため `tab-line-select-tab-buffer' に advice で割り込む。C-tab /
 ;;   C-S-tab はバッファローカルなキーマップで端末パネルの巡回を上書きする。
 ;; - 終了: `claude-code-ide--cleanup-session' の前で、消えるセッションがパネルに
-;;   出ていれば同じプロジェクトの別セッションに差し替え、パネルを残す。
+;;   出ていれば同じプロジェクトの別セッションに差し替え、パネルを残す。後で
+;;   tab-line を描き直す (バッファが消えるだけでは redisplay が走らない)。
 
 ;;; Code:
 
@@ -213,6 +214,13 @@ switch-to-buffer が失敗するので、パッケージの表示処理に回す
   "`claude-code-ide--cleanup-session' の :before advice。"
   (wamei/claude-panel--hand-over session))
 
+(defun wamei/claude-panel--after-cleanup (&rest _)
+  "`claude-code-ide--cleanup-session' の :after advice。tab-line を描き直す。
+終了したセッションのバッファは消えるが、残ったセッションの window 自体は
+変わらないので redisplay が走らず古いタブが残る (kill-buffer は mode-line の
+更新フラグを立てない)。全 window の mode-line 更新を要求して描き直させる。"
+  (force-mode-line-update t))
+
 ;;; 有効化
 
 (defun wamei/claude-panel-enable ()
@@ -225,6 +233,8 @@ switch-to-buffer が失敗するので、パッケージの表示処理に回す
               :around #'wamei/claude-panel--select-tab-buffer)
   (advice-add 'claude-code-ide--cleanup-session
               :before #'wamei/claude-panel--before-cleanup)
+  (advice-add 'claude-code-ide--cleanup-session
+              :after #'wamei/claude-panel--after-cleanup)
   (with-eval-after-load 'vterm
     (advice-add 'vterm--set-title :before #'wamei/claude-panel--record-title))
   ;; 読み込み前から動いているセッションにも tab-line と巡回キーを付ける
