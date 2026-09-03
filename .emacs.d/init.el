@@ -1858,32 +1858,32 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
               #'wamei/eglot-capf-doc-with-detail))
 
 (leaf apheleia
-  :doc "保存時フォーマット。biome の設定があるプロジェクトだけ有効にする"
+  :doc "保存時フォーマット。biome か prettier の設定があるプロジェクトだけ有効にする"
   :ensure t
   :preface
-  ;; 設定ファイルの探索と apheleia への登録は biome-format.el (init.el は symlink
+  ;; 設定ファイルの探索と apheleia への登録は project-formatter.el (init.el は symlink
   ;; なので実体の隣から読む)。
-  (load (expand-file-name "biome-format"
+  (load (expand-file-name "project-formatter"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
   :custom
-  ;; TRAMP のバッファではリモート側で biome を走らせる (デフォルトは cancel で
+  ;; TRAMP のバッファではリモート側でフォーマッタを走らせる (デフォルトは cancel で
   ;; 何もしない)。リモート実行は apheleia の制約で同期になる。
   (apheleia-remote-algorithm . 'remote)
-  ;; biome が対応するモードだけ。global-mode は使わず他言語の挙動は変えない。
+  ;; biome / prettier が対応するモードだけ。global-mode は使わず他言語の挙動は変えない。
   :hook ((typescript-ts-mode-hook
           tsx-ts-mode-hook
           js-ts-mode-hook
           js-mode-hook
           json-ts-mode-hook
           css-ts-mode-hook
-          css-mode-hook) . wamei/biome-format-maybe-enable)
-        ;; 編集時のインデントを biome の実測値に合わせる。editorconfig が変数を
-        ;; 適用する直前に props を書き換えるので .editorconfig より biome が優先。
+          css-mode-hook) . wamei/project-formatter-maybe-enable)
+        ;; 編集時のインデントをフォーマッタの実測値に合わせる。editorconfig が変数を
+        ;; 適用する直前に props を書き換えるので .editorconfig よりフォーマッタが優先。
         (editorconfig-hack-properties-functions
-         . wamei/biome-format-hack-editorconfig-properties)
+         . wamei/project-formatter-hack-editorconfig-properties)
   :config
-  (wamei/biome-format-setup))
+  (wamei/project-formatter-setup))
 
 (leaf eldoc-box
   :doc "eldoc をカーソル位置に child frame で表示する"
