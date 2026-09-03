@@ -992,6 +992,19 @@ M-x treemacs-select-window を直接呼ぶ。"
   (with-eval-after-load 'git-commit
     (define-key git-commit-mode-map (kbd "C-c C-m") #'wamei/claude-commit-message)))
 
+(leaf claude-complete
+  :doc "claude -p によるゴーストテキスト補完"
+  :ensure nil
+  :after claude-cli
+  :preface
+  ;; 実体は claude-complete.el。claude-cli と同じく init.el の実体の隣から読む。
+  (load (expand-file-name "claude-complete"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  ;; prog-mode 全体で有効化する。eglot が無いバッファでも動き、eglot 管理下なら
+  ;; 補完候補の識別子名がプロンプトに加わる。
+  :hook (prog-mode-hook . wamei/claude-complete-mode))
+
 (leaf treemacs-tab-bar
   :doc "treemacs をタブごとに分ける"
   :ensure t
@@ -1758,13 +1771,16 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
   :if (display-graphic-p)
   :preface
   (defun wamei/eldoc-box-inhibit-during-completion (fn &rest args)
-    "corfu の補完ポップアップ表示中は eldoc-box の自動表示を止める。
+    "補完ポップアップやゴーストテキストの表示中は eldoc-box の自動表示を止める。
 
 どちらも point 位置に child frame を出すため重なって読めなくなる。
 eldoc-box--inhibit-childframe は 0.5 秒のアイドルタイマーで勝手に解除される
 ため使わず、表示経路そのものを塞ぐ。C-c d (eldoc-box-help-at-point) は
-この関数を通らないので手動表示は従来どおり効く。"
-    (unless (bound-and-true-p completion-in-region-mode)
+この関数を通らないので手動表示は従来どおり効く。
+claude-complete のゴーストテキストも point の直後に描かれるため、同じ理由で塞ぐ。"
+    (unless (or (bound-and-true-p completion-in-region-mode)
+                (and (fboundp 'wamei/claude-complete--visible-p)
+                     (wamei/claude-complete--visible-p)))
       (apply fn args)))
 
   (defun wamei/eldoc-box-quit-on-completion ()
