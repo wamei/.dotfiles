@@ -844,7 +844,13 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
         (project-switch-project root))))
   :bind (("C-x C-f" . project-find-file)
          ("C-x C-p" . project-switch-project)
-         ([remap project-switch-project] . wamei/project-switch-project-in-tab)))
+         ([remap project-switch-project] . wamei/project-switch-project-in-tab))
+  :config
+  ;; 未訪問・ignore 済みファイルを project-find-file と consult-project-buffer の
+  ;; 候補に足す。init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "project-extra-files"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t))
 
 (leaf tab-bar
   :doc "プロジェクトごとのタブ"
@@ -1528,19 +1534,16 @@ isearch の lazy-highlight 相当を補う。"
       (consult-line)))
   :config
   (advice-add 'consult-line :around #'wamei/consult-line-highlight-all)
-  ;; 既定の "Project File" ソースは recentf 由来で、未訪問のファイルは出ない。
-  ;; project-files (git の untracked 込み) を候補源にするソースを足す。
-  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
-  (load (expand-file-name "consult-project-files"
-                          (file-name-directory (file-truename user-init-file)))
-        nil t)
 
   :custom ((consult-async-min-input . 1)
-           ;; C-x p b: バッファ → recentf → 未訪問のプロジェクトファイル → 既知ルート
+           ;; C-x p b: バッファ → recentf → 未訪問のプロジェクトファイル →
+           ;; ignore 済みファイル → 既知ルート。既定の "Project File" は recentf 由来で
+           ;; 未訪問のものが出ないため、project-extra-files.el のソースで補う (project leaf)。
            (consult-project-buffer-sources
             . '(consult-source-project-buffer
                 consult-source-project-recent-file
                 wamei/consult-source-project-files
+                wamei/consult-source-project-ignored-files
                 consult-source-project-root))  ; 既定 3 だと「日本」のような 2 文字語で検索が走らない
            ;; 既定の "locate --ignore-case" は GNU locate 前提で、macOS の BSD locate は
            ;; 長オプションを受け付けない。-d でユーザー専用 DB を指定する
