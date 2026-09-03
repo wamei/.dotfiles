@@ -87,5 +87,47 @@ IDENTIFIERS が nil なら <identifiers> ブロックを出さない。"
           (when identifiers
             (concat "<identifiers>\n" (string-join identifiers ", ") "\n</identifiers>\n"))))
 
+;;; 出力整形
+
+(defun wamei/claude-complete--strip-fences (text)
+  "TEXT の先頭行と末尾行がコードフェンスなら両方を落とす。"
+  (let ((lines (split-string (string-trim-right text) "\n")))
+    (if (and (>= (length lines) 2)
+             (string-prefix-p "```" (string-trim (car lines)))
+             (string-prefix-p "```" (string-trim (car (last lines)))))
+        (string-join (butlast (cdr lines)) "\n")
+      text)))
+
+(defun wamei/claude-complete--strip-line-head (text prefix)
+  "PREFIX の最終行 (点のある行の点より手前) を TEXT が繰り返していれば落とす。
+行頭が空白だけでも、その空白を TEXT が繰り返していれば落とす (インデントの二重化を防ぐ)。
+空白付きで一致しなければ、空白を除いた行頭でも試す。"
+  (let* ((head (car (last (split-string prefix "\n"))))
+         (bare (string-trim-left head)))
+    (cond
+     ((string-empty-p head) text)
+     ((string-prefix-p head text) (substring text (length head)))
+     ((and (not (string-empty-p bare)) (string-prefix-p bare text))
+      (substring text (length bare)))
+     (t text))))
+
+(defun wamei/claude-complete--strip-suffix-overlap (text suffix)
+  "SUFFIX の先頭行 (先行する改行を含む) と TEXT の末尾が重なっていれば、重なりを落とす。"
+  (let* ((head (if (string-match "\\`\n*[^\n]*" suffix) (match-string 0 suffix) ""))
+         (max (min (length text) (length head))))
+    (cl-loop for k from max downto 1
+             when (string= (substring text (- (length text) k)) (substring head 0 k))
+             return (substring text 0 (- (length text) k))
+             finally return text)))
+
+(defun wamei/claude-complete--clean (text context)
+  "モデルの出力 TEXT を挿入可能な形に整える。空になれば nil。
+CONTEXT は `wamei/claude-complete--context' の plist。"
+  (let* ((text (wamei/claude-complete--strip-fences text))
+         (text (wamei/claude-complete--strip-line-head text (plist-get context :prefix)))
+         (text (wamei/claude-complete--strip-suffix-overlap text (plist-get context :suffix)))
+         (text (string-trim-right text)))
+    (unless (string-empty-p text) text)))
+
 (provide 'claude-complete)
 ;;; claude-complete.el ends here

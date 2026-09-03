@@ -123,5 +123,56 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
   (should (string-match-p "fence" wamei/claude-complete-system-prompt))
   (should (string-match-p "<identifiers>" wamei/claude-complete-system-prompt)))
 
+;;; 出力整形
+
+(defun wamei/claude-complete-test--clean (text prefix suffix)
+  (wamei/claude-complete--clean text (list :prefix prefix :suffix suffix
+                                           :path "a.ts" :language "typescript")))
+
+(ert-deftest wamei/claude-complete-clean-strips-code-fences ()
+  (should (equal (wamei/claude-complete-test--clean "```ts\nreturn 1;\n```" "" "")
+                 "return 1;"))
+  (should (equal (wamei/claude-complete-test--clean "```\nreturn 1;\nfoo();\n```\n" "" "")
+                 "return 1;\nfoo();")))
+
+(ert-deftest wamei/claude-complete-clean-keeps-text-without-fences ()
+  (should (equal (wamei/claude-complete-test--clean "return 1;" "" "") "return 1;")))
+
+(ert-deftest wamei/claude-complete-clean-drops-repeated-line-head ()
+  ;; 点の手前が「  return 」で、モデルが行全体を返してきた場合
+  (should (equal (wamei/claude-complete-test--clean "  return Math.max(a, b);"
+                                                    "function f() {\n  return " "\n}")
+                 "Math.max(a, b);"))
+  ;; インデント無しで行を繰り返した場合
+  (should (equal (wamei/claude-complete-test--clean "return Math.max(a, b);"
+                                                    "function f() {\n  return " "\n}")
+                 "Math.max(a, b);")))
+
+(ert-deftest wamei/claude-complete-clean-keeps-output-when-line-head-is-blank ()
+  (should (equal (wamei/claude-complete-test--clean "  return 1;" "function f() {\n  " "\n}")
+                 "return 1;"))
+  (should (equal (wamei/claude-complete-test--clean "return 1;" "function f() {\n" "\n}")
+                 "return 1;")))
+
+(ert-deftest wamei/claude-complete-clean-drops-overlap-with-suffix ()
+  ;; foo(<CURSOR>) で「a, b)」が返った場合、末尾の ) は既にある
+  (should (equal (wamei/claude-complete-test--clean "a, b)" "foo(" ")") "a, b"))
+  ;; 閉じ括弧の行が既にある場合
+  (should (equal (wamei/claude-complete-test--clean "return x;\n}" "{\n  " "\n}")
+                 "return x;")))
+
+(ert-deftest wamei/claude-complete-clean-ignores-suffix-beyond-first-line ()
+  (should (equal (wamei/claude-complete-test--clean "return x;" "{\n  " "\n}\nreturn x;")
+                 "return x;")))
+
+(ert-deftest wamei/claude-complete-clean-trims-trailing-whitespace ()
+  (should (equal (wamei/claude-complete-test--clean "return 1;  \n\n" "" "") "return 1;")))
+
+(ert-deftest wamei/claude-complete-clean-returns-nil-when-empty ()
+  (should-not (wamei/claude-complete-test--clean "" "" ""))
+  (should-not (wamei/claude-complete-test--clean "   \n" "" ""))
+  (should-not (wamei/claude-complete-test--clean "```\n```" "" ""))
+  (should-not (wamei/claude-complete-test--clean ")" "foo(" ")")))
+
 (provide 'claude-complete-test)
 ;;; claude-complete-test.el ends here
