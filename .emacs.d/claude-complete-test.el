@@ -424,6 +424,100 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
         (wamei/claude-complete--on-idle (current-buffer))
         (should-not wamei/claude-complete--process)))))
 
+;;; eglot 文脈
+
+(require 'eglot)
+
+(ert-deftest wamei/claude-complete-completion-labels-reads-item-array ()
+  (should (equal (wamei/claude-complete--completion-labels
+                  [(:label "clamp" :kind 3) (:label "Math" :kind 6)])
+                 '("clamp" "Math"))))
+
+(ert-deftest wamei/claude-complete-completion-labels-reads-completion-list ()
+  (should (equal (wamei/claude-complete--completion-labels
+                  '(:isIncomplete :json-false :items [(:label "a") (:label "b")]))
+                 '("a" "b"))))
+
+(ert-deftest wamei/claude-complete-completion-labels-dedupes-and-limits ()
+  (let ((wamei/claude-complete-max-identifiers 2))
+    (should (equal (wamei/claude-complete--completion-labels
+                    [(:label "a") (:label "a") (:label "b") (:label "c")])
+                   '("a" "b")))))
+
+(ert-deftest wamei/claude-complete-completion-labels-handles-nil-and-missing-label ()
+  (should-not (wamei/claude-complete--completion-labels nil))
+  (should (equal (wamei/claude-complete--completion-labels [(:kind 3) (:label "x")])
+                 '("x"))))
+
+(defmacro wamei/claude-complete-test--with-fake-eglot (respond &rest body)
+  "eglot が動いているように見せ、`jsonrpc-async-request' を RESPOND で置き換えて BODY を評価する。
+RESPOND は (lambda (server method params &rest keys)) で、keys から :success-fn 等を取り出して呼ぶ。"
+  (declare (indent 1))
+  `(cl-letf (((symbol-function 'eglot-managed-p) (lambda () t))
+             ((symbol-function 'eglot-server-capable) (lambda (&rest _) t))
+             ((symbol-function 'eglot-current-server) (lambda () 'fake-server))
+             ((symbol-function 'eglot--TextDocumentPositionParams) (lambda () '(:fake t)))
+             ((symbol-function 'jsonrpc-async-request) ,respond))
+     ,@body))
+
+(ert-deftest wamei/claude-complete-eglot-identifiers-returns-nil-when-not-managed ()
+  (cl-letf (((symbol-function 'eglot-managed-p) (lambda () nil)))
+    (let ((calls nil))
+      (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls)))
+      (should (equal calls '(nil))))))
+
+(ert-deftest wamei/claude-complete-eglot-identifiers-returns-labels-on-success ()
+  (let ((calls nil) (seen nil))
+    (wamei/claude-complete-test--with-fake-eglot
+        (lambda (server method params &rest keys)
+          (setq seen (list server method params (plist-get keys :timeout)))
+          (funcall (plist-get keys :success-fn) [(:label "clamp") (:label "Math")])
+          '(1))
+      (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls))))
+    (should (equal calls '(("clamp" "Math"))))
+    (should (equal seen (list 'fake-server :textDocument/completion '(:fake t)
+                              wamei/claude-complete-eglot-timeout)))))
+
+(ert-deftest wamei/claude-complete-eglot-identifiers-returns-nil-on-error-or-timeout ()
+  (dolist (key '(:error-fn :timeout-fn))
+    (let ((calls nil))
+      (wamei/claude-complete-test--with-fake-eglot
+          (lambda (_server _method _params &rest keys)
+            (funcall (plist-get keys key) (list :code -1 :message "boom"))
+            '(1))
+        (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls))))
+      (should (equal calls '(nil))))))
+
+(ert-deftest wamei/claude-complete-eglot-identifiers-calls-back-once-even-if-both-fire ()
+  (let ((calls nil))
+    (wamei/claude-complete-test--with-fake-eglot
+        (lambda (_server _method _params &rest keys)
+          (funcall (plist-get keys :timeout-fn))
+          (funcall (plist-get keys :success-fn) [(:label "late")])
+          '(1))
+      (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls))))
+    (should (equal calls '(nil)))))
+
+(ert-deftest wamei/claude-complete-eglot-identifiers-returns-nil-when-request-signals ()
+  (let ((calls nil))
+    (wamei/claude-complete-test--with-fake-eglot
+        (lambda (&rest _) (signal 'error '("no server")))
+      (wamei/claude-complete--eglot-identifiers (lambda (ids) (push ids calls))))
+    (should (equal calls '(nil)))))
+
+(ert-deftest wamei/claude-complete-request-puts-eglot-labels-into-prompt ()
+  (wamei/claude-complete-test--with-stub "cat"
+    (wamei/claude-complete-test--with-buffer "abc|"
+      (wamei/claude-complete-test--with-fake-eglot
+          (lambda (_server _method _params &rest keys)
+            (funcall (plist-get keys :success-fn) [(:label "clamp") (:label "Math")])
+            '(1))
+        (wamei/claude-complete-request))
+      (wamei/claude-complete-test--wait wamei/claude-complete--process)
+      (should (string-match-p "<identifiers>\nclamp, Math\n</identifiers>"
+                              (overlay-get wamei/claude-complete--overlay
+                                           'wamei/claude-complete-text))))))
+
 ;;; minor mode
 
 (ert-deftest wamei/claude-complete-mode-binds-tab-only-while-visible ()

@@ -38,6 +38,12 @@
 (defvar wamei/claude-complete-suffix-chars 1000
   "プロンプトに含める点より後ろの文字数。")
 
+(defvar wamei/claude-complete-max-identifiers 50
+  "eglot の補完候補からプロンプトに載せる識別子名の上限。")
+
+(defvar wamei/claude-complete-eglot-timeout 0.3
+  "eglot に補完候補を求めるときのタイムアウト秒。超えたら識別子なしで進む。")
+
 ;;; 文脈抽出
 
 (defun wamei/claude-complete--language ()
@@ -200,6 +206,53 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
   (unless (eq this-command 'wamei/claude-complete-accept)
     (wamei/claude-complete--delete-overlay)))
 
+;;; eglot 文脈
+
+(declare-function eglot-managed-p "eglot")
+(declare-function eglot-server-capable "eglot")
+(declare-function eglot-current-server "eglot")
+(declare-function eglot--TextDocumentPositionParams "eglot")
+(declare-function jsonrpc-async-request "jsonrpc")
+
+(defun wamei/claude-complete--completion-labels (result)
+  "LSP の textDocument/completion の RESULT から :label を集める。重複を除き上限で切る。"
+  (let* ((items (if (and (listp result) (plist-member result :items))
+                    (plist-get result :items)
+                  result))
+         (items (if (vectorp items) items (vconcat items)))
+         (labels (cl-loop for item across items
+                          for label = (plist-get item :label)
+                          when (stringp label) collect label)))
+    (seq-take (delete-dups labels) wamei/claude-complete-max-identifiers)))
+
+(defun wamei/claude-complete--eglot-server ()
+  "eglot が補完に応えられる状態なら server、そうでなければ nil。"
+  (and (fboundp 'eglot-managed-p)
+       (eglot-managed-p)
+       (eglot-server-capable :completionProvider)
+       (eglot-current-server)))
+
+(defun wamei/claude-complete--eglot-identifiers (callback)
+  "eglot に点の位置の補完候補を求め、識別子名のリストで CALLBACK を 1 回呼ぶ。
+eglot が無い・非対応・エラー・タイムアウトのときは nil で呼ぶ。"
+  (let ((server (wamei/claude-complete--eglot-server))
+        (done nil))
+    (cl-flet ((finish (identifiers)
+                (unless done
+                  (setq done t)
+                  (funcall callback identifiers))))
+      (if (null server)
+          (finish nil)
+        (condition-case nil
+            (jsonrpc-async-request
+             server :textDocument/completion (eglot--TextDocumentPositionParams)
+             :success-fn (lambda (result)
+                           (finish (wamei/claude-complete--completion-labels result)))
+             :error-fn (lambda (&rest _) (finish nil))
+             :timeout-fn (lambda (&rest _) (finish nil))
+             :timeout wamei/claude-complete-eglot-timeout)
+          (error (finish nil)))))))
+
 ;;; 要求
 
 (defun wamei/claude-complete--allowed-p ()
@@ -208,10 +261,6 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
   (not (or completion-in-region-mode
            buffer-read-only
            (minibufferp))))
-
-(defun wamei/claude-complete--eglot-identifiers (callback)
-  "CALLBACK を識別子リストで 1 回呼ぶ。Task 8 で eglot の補完候補を返すようにする。"
-  (funcall callback nil))
 
 (defun wamei/claude-complete--start (stamp identifiers)
   "現在バッファの文脈と IDENTIFIERS から claude を起動する。
