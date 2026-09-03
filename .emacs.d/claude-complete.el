@@ -193,10 +193,7 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
 (defun wamei/claude-complete-dismiss ()
   "ゴーストテキストと進行中の要求を捨てる。"
   (interactive)
-  (wamei/claude-complete--cancel-timer)
-  (wamei/claude-complete--cancel-process)
-  (wamei/claude-complete--delete-overlay)
-  (setq wamei/claude-complete--request nil))
+  (wamei/claude-complete--teardown))
 
 (defun wamei/claude-complete--pre-command ()
   "accept 以外のコマンドが走る前にゴーストテキストを消す。"
