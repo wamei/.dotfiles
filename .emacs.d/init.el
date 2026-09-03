@@ -1087,6 +1087,11 @@ M-x treemacs-select-window を直接呼ぶ。"
   (load (expand-file-name "desktop-side-windows"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  ;; 端末 (vterm) の数・作業ディレクトリ・タイトル・直前の出力は term-restore.el
+  ;; が desktop のグローバル変数として保存し、読み込み後に端末を作り直す。
+  (load (expand-file-name "term-restore"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
 
   (defvar wamei/desktop-claude-restore-command #'claude-code-ide-continue
     "desktop 読み込み後に claude パネルを開き直すコマンド。nil なら開き直さない。
@@ -1104,12 +1109,18 @@ treemacs は自前の表示関数を通す必要があるので `treemacs-select
       (treemacs-select-window))
     (wamei/desktop-side-resize (treemacs-get-local-window) (plist-get spec :size)))
 
-  (defun wamei/desktop--restore-term (_spec)
+  (defun wamei/desktop--restore-term (spec)
     "端末パネルを開き直す。
-vterm のバッファは desktop に残らないので新しく作る。高さは display-buffer-alist
-の wamei/term--set-height が wamei/term-height (desktop に保存) から決める。
-一覧 (*terminals*) は端末が 2 つ以上のときだけ自動で出るので復元しない。"
-    (wamei/term--show (or (wamei/term--current) (wamei/term--create 1)) t))
+端末バッファは term-restore (desktop-after-read-hook の先頭) が記録どおりに
+作り直しているので、パネルに出ていたもの (SPEC の :buffer) をそのまま出す。
+記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
+高さは display-buffer-alist の wamei/term--set-height が wamei/term-height
+(desktop に保存) から決める。一覧 (*terminals*) は端末が 2 つ以上のときだけ
+自動で出るので復元しない。"
+    (wamei/term--show (or (get-buffer (plist-get spec :buffer))
+                          (wamei/term--current)
+                          (wamei/term--create 1))
+                      t))
 
   (defun wamei/desktop--restore-claude (spec)
     "claude パネルを `wamei/desktop-claude-restore-command' で開き直し、幅を SPEC に合わせる。
@@ -1161,6 +1172,7 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
           ("\\`\\*terminals\\*\\'" . ignore)
           ("\\`\\*claude-code\\[" . wamei/desktop--restore-claude)))
   (wamei/desktop-side-setup)
+  (wamei/term-restore-setup)
   :global-minor-mode desktop-save-mode)
 
 (leaf exec-path-from-shell
