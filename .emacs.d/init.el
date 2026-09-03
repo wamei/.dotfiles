@@ -1528,8 +1528,20 @@ isearch の lazy-highlight 相当を補う。"
       (consult-line)))
   :config
   (advice-add 'consult-line :around #'wamei/consult-line-highlight-all)
+  ;; 既定の "Project File" ソースは recentf 由来で、未訪問のファイルは出ない。
+  ;; project-files (git の untracked 込み) を候補源にするソースを足す。
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "consult-project-files"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
 
-  :custom ((consult-async-min-input . 1)  ; 既定 3 だと「日本」のような 2 文字語で検索が走らない
+  :custom ((consult-async-min-input . 1)
+           ;; C-x p b: バッファ → recentf → 未訪問のプロジェクトファイル → 既知ルート
+           (consult-project-buffer-sources
+            . '(consult-source-project-buffer
+                consult-source-project-recent-file
+                wamei/consult-source-project-files
+                consult-source-project-root))  ; 既定 3 だと「日本」のような 2 文字語で検索が走らない
            ;; 既定の "locate --ignore-case" は GNU locate 前提で、macOS の BSD locate は
            ;; 長オプションを受け付けない。-d でユーザー専用 DB を指定する
            ;; (作成は M-x wamei/locate-update-database)。
