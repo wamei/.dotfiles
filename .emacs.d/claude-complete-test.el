@@ -318,6 +318,112 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
       (should (equal (overlay-get wamei/claude-complete--overlay 'wamei/claude-complete-text)
                      "bar")))))
 
+;;; idle 自動トリガー
+
+(ert-deftest wamei/claude-complete-post-command-arms-idle-timer ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (let ((wamei/claude-complete-idle-delay 100))
+      (unwind-protect
+          (progn
+            (wamei/claude-complete--post-command)
+            (should (timerp wamei/claude-complete--timer))
+            (should (eq (timer--function wamei/claude-complete--timer)
+                        #'wamei/claude-complete--on-idle))
+            (should (equal (timer--args wamei/claude-complete--timer)
+                           (list (current-buffer))))
+            (should (memq wamei/claude-complete--timer timer-idle-list)))
+        (wamei/claude-complete--cancel-timer)))))
+
+(ert-deftest wamei/claude-complete-post-command-replaces-existing-timer ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (let ((wamei/claude-complete-idle-delay 100))
+      (unwind-protect
+          (progn
+            (wamei/claude-complete--post-command)
+            (let ((first wamei/claude-complete--timer))
+              (wamei/claude-complete--post-command)
+              (should-not (eq first wamei/claude-complete--timer))
+              (should-not (memq first timer-idle-list))))
+        (wamei/claude-complete--cancel-timer)))))
+
+(ert-deftest wamei/claude-complete-post-command-does-not-arm-timer-when-auto-off ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (let ((wamei/claude-complete-auto nil))
+      (wamei/claude-complete--post-command)
+      (should-not wamei/claude-complete--timer))))
+
+(ert-deftest wamei/claude-complete-post-command-cancels-process-after-edit ()
+  (wamei/claude-complete-test--with-stub "sleep 5"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (let ((wamei/claude-complete-auto nil))
+        (wamei/claude-complete-request)
+        (let ((process wamei/claude-complete--process))
+          (insert "x")
+          (wamei/claude-complete--post-command)
+          (should-not (process-live-p process))
+          (should-not wamei/claude-complete--process)
+          (should-not wamei/claude-complete--request)
+          (wamei/claude-complete-test--wait process))))))
+
+(ert-deftest wamei/claude-complete-post-command-keeps-process-when-unchanged ()
+  (wamei/claude-complete-test--with-stub "sleep 5"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (let ((wamei/claude-complete-auto nil))
+        (wamei/claude-complete-request)
+        (let ((process wamei/claude-complete--process))
+          (wamei/claude-complete--post-command)
+          (should (process-live-p process))
+          (should (eq process wamei/claude-complete--process))
+          (wamei/claude-complete--cancel-process)
+          (wamei/claude-complete-test--wait process))))))
+
+(ert-deftest wamei/claude-complete-on-idle-requests-in-current-buffer ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-mode 1)
+      (let ((wamei/claude-complete-auto nil))
+        (cl-letf (((symbol-function 'window-buffer) (lambda (&rest _) (current-buffer))))
+          (wamei/claude-complete--on-idle (current-buffer)))
+        (should wamei/claude-complete--process)
+        (wamei/claude-complete-test--wait wamei/claude-complete--process)
+        (should (wamei/claude-complete--visible-p))))))
+
+(ert-deftest wamei/claude-complete-on-idle-skips-when-buffer-not-selected ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-mode 1)
+      (let ((other (generate-new-buffer " *other*")))
+        (unwind-protect
+            (cl-letf (((symbol-function 'window-buffer) (lambda (&rest _) other)))
+              (wamei/claude-complete--on-idle (current-buffer))
+              (should-not wamei/claude-complete--process))
+          (kill-buffer other))))))
+
+(ert-deftest wamei/claude-complete-on-idle-skips-while-visible-or-running ()
+  (wamei/claude-complete-test--with-stub "sleep 5"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (wamei/claude-complete-mode 1)
+      (cl-letf (((symbol-function 'window-buffer) (lambda (&rest _) (current-buffer))))
+        ;; 表示中は要求しない
+        (wamei/claude-complete--show "bar")
+        (wamei/claude-complete--on-idle (current-buffer))
+        (should-not wamei/claude-complete--process)
+        (wamei/claude-complete--delete-overlay)
+        ;; 走行中は要求しない
+        (wamei/claude-complete-request)
+        (let ((process wamei/claude-complete--process))
+          (wamei/claude-complete--on-idle (current-buffer))
+          (should (eq process wamei/claude-complete--process))
+          (wamei/claude-complete--cancel-process)
+          (wamei/claude-complete-test--wait process))))))
+
+(ert-deftest wamei/claude-complete-on-idle-skips-when-mode-off ()
+  (wamei/claude-complete-test--with-stub "printf 'bar'"
+    (wamei/claude-complete-test--with-buffer "foo|"
+      (cl-letf (((symbol-function 'window-buffer) (lambda (&rest _) (current-buffer))))
+        (wamei/claude-complete--on-idle (current-buffer))
+        (should-not wamei/claude-complete--process)))))
+
 ;;; minor mode
 
 (ert-deftest wamei/claude-complete-mode-binds-tab-only-while-visible ()

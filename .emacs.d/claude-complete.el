@@ -200,10 +200,6 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
   (unless (eq this-command 'wamei/claude-complete-accept)
     (wamei/claude-complete--delete-overlay)))
 
-(defun wamei/claude-complete--post-command ()
-  "コマンド後の処理。Task 7 で idle timer の張り直しを実装する。"
-  nil)
-
 ;;; 要求
 
 (defun wamei/claude-complete--allowed-p ()
@@ -255,6 +251,31 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
   "いまの位置の続きを claude に提案させる。"
   (interactive)
   (wamei/claude-complete-request))
+
+;;; idle 自動トリガー
+
+(defun wamei/claude-complete--on-idle (buffer)
+  "idle timer から呼ばれる。BUFFER が選択ウィンドウのバッファで、表示中でも走行中でもなければ要求する。"
+  (when (and (buffer-live-p buffer)
+             (eq buffer (window-buffer (selected-window))))
+    (with-current-buffer buffer
+      (setq wamei/claude-complete--timer nil)
+      (when (and wamei/claude-complete-mode
+                 (not (wamei/claude-complete--visible-p))
+                 (not (process-live-p wamei/claude-complete--process)))
+        (wamei/claude-complete-request)))))
+
+(defun wamei/claude-complete--post-command ()
+  "要求時点からバッファか点が動いていれば走行中の要求を捨て、idle timer を張り直す。"
+  (when (and wamei/claude-complete--request
+             (not (equal wamei/claude-complete--request (wamei/claude-complete--stamp))))
+    (wamei/claude-complete--cancel-process)
+    (setq wamei/claude-complete--request nil))
+  (wamei/claude-complete--cancel-timer)
+  (when wamei/claude-complete-auto
+    (setq wamei/claude-complete--timer
+          (run-with-idle-timer wamei/claude-complete-idle-delay nil
+                               #'wamei/claude-complete--on-idle (current-buffer)))))
 
 ;;; minor mode
 
