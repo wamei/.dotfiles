@@ -138,6 +138,23 @@ hc [treemacs 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 9
         (should (eq (plist-get claude :side) 'right))
         (should (= (plist-get claude :size) 68))))))
 
+(ert-deftest wamei/dsw-spec-records-directory-of-live-buffer ()
+  "spec には保存時のバッファの default-directory を :directory として残す。
+復元時に選択 window のバッファが揃っていなくても、restorer が正しいディレクトリ
+(プロジェクト) で開き直せるようにする。バッファが無ければ nil。"
+  (let ((buffer (generate-new-buffer "*claude-code[dsw-dir]*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buffer
+            (setq default-directory "/tmp/dsw-project/"))
+          (let ((spec (wamei/desktop-side--spec
+                       (wamei/dsw-test--leaf (buffer-name buffer) 68 40 :side 'right :slot 1))))
+            (should (equal (plist-get spec :directory) "/tmp/dsw-project/"))))
+      (kill-buffer buffer)))
+  (let ((spec (wamei/desktop-side--spec
+               (wamei/dsw-test--leaf "*dsw-no-such-buffer*" 68 40 :side 'right :slot 1))))
+    (should (null (plist-get spec :directory)))))
+
 (ert-deftest wamei/dsw-strip-state-rescales-remaining-siblings ()
   "兄弟が 2 つ以上残るときは、残った分で寸法を比例配分し last を付け直す。"
   (let* ((state (wamei/dsw-test--state

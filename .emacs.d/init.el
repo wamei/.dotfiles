@@ -1107,10 +1107,15 @@ vterm のバッファは desktop に残らないので新しく作る。高さ�
     (wamei/term--show (or (wamei/term--current) (wamei/term--create 1)) t))
 
   (defun wamei/desktop--restore-claude (spec)
-    "claude パネルを `wamei/desktop-claude-restore-command' で開き直し、幅を SPEC に合わせる。"
+    "claude パネルを `wamei/desktop-claude-restore-command' で開き直し、幅を SPEC に合わせる。
+プロジェクトは SPEC の :directory (保存時の claude バッファの作業ディレクトリ) から
+決める。復元時点ではタブの本文バッファがまだ遅延復元されておらず、選択 window に
+前のタブのバッファが残っていることがあり、そこから project-current を引くと
+別タブと同じプロジェクトのセッションを開いてしまう。"
     (when wamei/desktop-claude-restore-command
       (require 'claude-code-ide)
-      (funcall wamei/desktop-claude-restore-command)
+      (let ((default-directory (or (plist-get spec :directory) default-directory)))
+        (funcall wamei/desktop-claude-restore-command))
       (wamei/desktop-side-resize (wamei/claude--window) (plist-get spec :size))))
 
   :custom

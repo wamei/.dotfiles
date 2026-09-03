@@ -39,7 +39,8 @@
   "前回保存した side window の記録。
 形は ((FRAMESET-ID (TAB-INDEX SPEC...) ...) ...)。FRAMESET-ID はフレームの
 frameset--id パラメータ、TAB-INDEX は 0 始まりのタブ位置。SPEC は plist で
-:buffer (名前) :side :slot :size (左右なら幅、上下なら高さ) :dedicated を持つ。
+:buffer (名前) :directory (保存時のバッファの default-directory、無ければ nil)
+:side :slot :size (左右なら幅、上下なら高さ) :dedicated を持つ。
 `desktop-globals-to-save' 経由で desktop ファイルに書かれる。")
 
 (defvar wamei/desktop-side-restorers nil
@@ -87,11 +88,18 @@ side window の有無で決まる。左右を先に作らないと幅が合わ�
   (cdr (assq 'window-side (wamei/desktop-side--parameters node))))
 
 (defun wamei/desktop-side--spec (node)
-  "side window の leaf NODE から復元用の spec を作る。"
+  "side window の leaf NODE から復元用の spec を作る。
+保存時点でバッファが生きていれば、その default-directory を :directory に残す。
+復元は desktop-after-read-hook で走るが、遅延復元 (desktop-restore-eager) の
+バッファはまだ無く、タブの選択 window には前のタブのバッファが残ったままになる。
+そこから project を推定すると別プロジェクトの side window を開いてしまうので、
+restorer は :directory を使ってプロジェクトを決める。"
   (let* ((side (wamei/desktop-side--side node))
          (buffer (cdr (assq 'buffer (cdr node))))
-         (name (car buffer)))
+         (name (car buffer))
+         (live (get-buffer name)))
     (list :buffer (if (bufferp name) (buffer-name name) name)
+          :directory (and live (buffer-local-value 'default-directory live))
           :side side
           :slot (or (cdr (assq 'window-slot (wamei/desktop-side--parameters node))) 0)
           :size (wamei/desktop-side--attr
