@@ -161,6 +161,22 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
   (should (equal (wamei/claude-complete-test--clean "return x;\n}" "{\n  " "\n}")
                  "return x;")))
 
+(ert-deftest wamei/claude-complete-clean-keeps-closer-the-completion-opens ()
+  ;; foo(<CURSOR>) で「compute(x)」が返った場合、末尾の ) は compute( を閉じている
+  (should (equal (wamei/claude-complete-test--clean "compute(x)" "foo(" ")")
+                 "compute(x)"))
+  ;; 補完が開いた { を閉じる } は残す
+  (should (equal (wamei/claude-complete-test--clean "if (a) {\n  b();\n}" "{\n  " "\n}")
+                 "if (a) {\n  b();\n}")))
+
+(ert-deftest wamei/claude-complete-clean-drops-closer-already-balanced ()
+  ;; 補完内で [ は閉じているので、余分な ] は suffix と重なるぶんとして落とす
+  (should (equal (wamei/claude-complete-test--clean "[1, 2]]" "x = [" "]") "[1, 2]")))
+
+(ert-deftest wamei/claude-complete-clean-strips-leading-newlines ()
+  (should (equal (wamei/claude-complete-test--clean "\nreturn 1;" "" "") "return 1;"))
+  (should (equal (wamei/claude-complete-test--clean "\n\n  return 1;" "" "") "  return 1;")))
+
 (ert-deftest wamei/claude-complete-clean-ignores-suffix-beyond-first-line ()
   (should (equal (wamei/claude-complete-test--clean "return x;" "{\n  " "\n}\nreturn x;")
                  "return x;")))
@@ -184,7 +200,10 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
       (should (= (overlay-start overlay) (point)))
       (should (= (overlay-end overlay) (point)))
       (should (equal (overlay-get overlay 'after-string) "a, b"))
-      (should (eq (get-text-property 0 'face (overlay-get overlay 'after-string)) 'shadow)))
+      (should (eq (get-text-property 0 'face (overlay-get overlay 'after-string)) 'shadow))
+      ;; cursor プロパティが無いとカーソルが after-string の末尾に描かれる
+      (should (get-text-property 0 'cursor (overlay-get overlay 'after-string)))
+      (should (windowp (overlay-get overlay 'window))))
     ;; バッファ本文は変わらない
     (should (equal (buffer-string) "foo()"))))
 

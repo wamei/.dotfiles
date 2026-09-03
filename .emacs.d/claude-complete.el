@@ -121,19 +121,60 @@ IDENTIFIERS が nil なら <identifiers> ブロックを出さない。"
       (substring text (length bare)))
      (t text))))
 
+(defconst wamei/claude-complete--bracket-pairs
+  '((?\) . ?\() (?\] . ?\[) (?\} . ?\{))
+  "閉じ括弧から対応する開き括弧への対応表。")
+
+(defun wamei/claude-complete--unclosed-openers (text)
+  "TEXT 内で閉じられていない開き括弧の文字リスト。開いた順に並ぶ。
+文字列やコメントは考慮しない近似。"
+  (let ((stack nil))
+    (dolist (char (string-to-list text))
+      (if (memq char '(?\( ?\[ ?\{))
+          (push char stack)
+        (when-let* ((opener (cdr (assq char wamei/claude-complete--bracket-pairs))))
+          (when (eq (car stack) opener)
+            (pop stack)))))
+    (nreverse stack)))
+
+(defun wamei/claude-complete--closes-outer-bracket-p (tail openers)
+  "TAIL が OPENERS のいずれかを閉じるなら non-nil。
+OPENERS は TAIL を落とした後に残るテキストで、まだ閉じられていない開き括弧のリスト。"
+  (let ((stack (reverse openers))
+        (outer (length openers)))
+    (catch 'closes
+      (dolist (char (string-to-list tail))
+        (if (memq char '(?\( ?\[ ?\{))
+            (push char stack)
+          (when-let* ((opener (cdr (assq char wamei/claude-complete--bracket-pairs))))
+            (when (eq (car stack) opener)
+              ;; スタックの底 outer 個は残るテキスト側の未閉じ括弧
+              (when (<= (length stack) outer) (throw 'closes t))
+              (pop stack)))))
+      nil)))
+
 (defun wamei/claude-complete--strip-suffix-overlap (text suffix)
-  "SUFFIX の先頭行 (先行する改行を含む) と TEXT の末尾が重なっていれば、重なりを落とす。"
+  "SUFFIX の先頭行 (先行する改行を含む) と TEXT の末尾が重なっていれば、重なりを落とす。
+ただし補完自身が必要とする閉じ括弧は残す。落とす部分に、残るテキストでまだ
+閉じられていない開き括弧を閉じる括弧が含まれていれば、その長さでは落とさず
+次に短い重なりを試す。どれも落とせなければ TEXT をそのまま返す。"
   (let* ((head (if (string-match "\\`\n*[^\n]*" suffix) (match-string 0 suffix) ""))
          (max (min (length text) (length head))))
     (cl-loop for k from max downto 1
-             when (string= (substring text (- (length text) k)) (substring head 0 k))
-             return (substring text 0 (- (length text) k))
+             for rest = (substring text 0 (- (length text) k))
+             for tail = (substring text (- (length text) k))
+             when (and (string= tail (substring head 0 k))
+                       (not (wamei/claude-complete--closes-outer-bracket-p
+                             tail (wamei/claude-complete--unclosed-openers rest))))
+             return rest
              finally return text)))
 
 (defun wamei/claude-complete--clean (text context)
   "モデルの出力 TEXT を挿入可能な形に整える。空になれば nil。
 CONTEXT は `wamei/claude-complete--context' の plist。"
   (let* ((text (wamei/claude-complete--strip-fences text))
+         ;; フェンス除去後に残る先頭の空行を落とす (インデントは保つ)
+         (text (string-trim-left text "\n+"))
          (text (wamei/claude-complete--strip-line-head text (plist-get context :prefix)))
          (text (wamei/claude-complete--strip-suffix-overlap text (plist-get context :suffix)))
          (text (string-trim-right text)))
@@ -187,8 +228,13 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
 (defun wamei/claude-complete--show (text)
   "TEXT を点の直後にゴーストテキストとして表示する。"
   (wamei/claude-complete--delete-overlay)
-  (let ((overlay (make-overlay (point) (point) nil t t)))
-    (overlay-put overlay 'after-string (propertize text 'face 'shadow))
+  (let ((overlay (make-overlay (point) (point) nil t t))
+        (str (propertize text 'face 'shadow)))
+    ;; cursor プロパティが無いと点のカーソルが after-string の末尾に描かれる
+    (add-text-properties 0 1 '(cursor 1) str)
+    (overlay-put overlay 'after-string str)
+    ;; 選択ウィンドウ限定にして、同じバッファを映す他のウィンドウには出さない
+    (overlay-put overlay 'window (selected-window))
     (overlay-put overlay 'wamei/claude-complete-text text)
     (setq wamei/claude-complete--overlay overlay)))
 
@@ -334,8 +380,6 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
                                #'wamei/claude-complete--on-idle (current-buffer)))))
 
 ;;; minor mode
-
-(declare-function wamei/claude-complete "claude-complete")
 
 (defun wamei/claude-complete--tab-filter (command)
   "ゴーストテキスト表示中だけ COMMAND を返す。他は既定の TAB に任せる。"
