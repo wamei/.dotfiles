@@ -1022,7 +1022,28 @@ M-x treemacs-select-window を直接呼ぶ。"
   ;; 既定の haiku は 2.3-3.2 秒だが、禁止しているコードフェンスを付けたり行頭の
   ;; インデントを落としたりする。sonnet は +0.5 秒程度で指示に従う (2026-09-03 実測、
   ;; opus は +1.2-1.5 秒)。
-  (setq wamei/claude-complete-model "sonnet"))
+  (setq wamei/claude-complete-model "sonnet")
+  ;; 自動のゴーストテキストは copilot に任せ、claude は C-c C-. の手動要求だけにする。
+  ;; claude -p は 1 回 3 秒前後かかり、Copilot の 0.3-1 秒に比べて体感が重かった。
+  (setq wamei/claude-complete-auto nil))
+
+(leaf copilot
+  :doc "GitHub Copilot のゴーストテキスト補完"
+  :ensure t
+  ;; 初回のみ M-x copilot-install-server (npm 経由、node 22+) と
+  ;; M-x copilot-login (ブラウザでデバイスコード入力) が必要。
+  :hook (prog-mode-hook . copilot-mode)
+  :custom
+  (copilot-idle-delay . 0.3)
+  ;; モードごとの indent offset 変数が見つからないときの警告を止める。
+  (copilot-indent-offset-warning-disable . t)
+  :config
+  ;; キーは既定の copilot-completion-map をそのまま使う: TAB で確定、C-TAB で単語ごと、
+  ;; M-n / M-p で候補切替。このマップは補完表示中だけ効くので、非表示時の TAB は
+  ;; 従来どおりインデントや corfu に落ちる。
+  ;; corfu のポップアップ中はゴーストテキストを出さない (二重表示と TAB の取り合いを避ける)。
+  (add-to-list 'copilot-disable-predicates
+               (lambda () (bound-and-true-p completion-in-region-mode))))
 
 (leaf treemacs-tab-bar
   :doc "treemacs をタブごとに分ける"
@@ -1796,10 +1817,12 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
 eldoc-box--inhibit-childframe は 0.5 秒のアイドルタイマーで勝手に解除される
 ため使わず、表示経路そのものを塞ぐ。C-c d (eldoc-box-help-at-point) は
 この関数を通らないので手動表示は従来どおり効く。
-claude-complete のゴーストテキストも point の直後に描かれるため、同じ理由で塞ぐ。"
+claude-complete と copilot のゴーストテキストも point の直後に描かれるため、同じ理由で塞ぐ。"
     (unless (or (bound-and-true-p completion-in-region-mode)
                 (and (fboundp 'wamei/claude-complete--visible-p)
-                     (wamei/claude-complete--visible-p)))
+                     (wamei/claude-complete--visible-p))
+                (and (fboundp 'copilot--overlay-visible)
+                     (copilot--overlay-visible)))
       (apply fn args)))
 
   (defun wamei/eldoc-box-quit-on-completion ()
