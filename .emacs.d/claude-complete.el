@@ -129,5 +129,122 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
          (text (string-trim-right text)))
     (unless (string-empty-p text) text)))
 
+;;; 状態
+
+(defvar-local wamei/claude-complete--overlay nil
+  "表示中のゴーストテキスト overlay。")
+
+(defvar-local wamei/claude-complete--process nil
+  "走行中の claude プロセス。")
+
+(defvar-local wamei/claude-complete--timer nil
+  "自動要求の idle timer。")
+
+(defvar-local wamei/claude-complete--request nil
+  "要求時点の (tick . point)。応答が返ったとき同じでなければ捨てる。")
+
+(defun wamei/claude-complete--stamp ()
+  "現在の (buffer-chars-modified-tick . point)。"
+  (cons (buffer-chars-modified-tick) (point)))
+
+(defun wamei/claude-complete--cancel-timer ()
+  "idle timer を止める。"
+  (when wamei/claude-complete--timer
+    (cancel-timer wamei/claude-complete--timer)
+    (setq wamei/claude-complete--timer nil)))
+
+(defun wamei/claude-complete--cancel-process ()
+  "走行中の claude プロセスを静かに止める。"
+  (when-let* ((process wamei/claude-complete--process))
+    (when (process-live-p process)
+      (process-put process 'wamei/claude-cli-cancelled t)
+      (delete-process process))
+    (setq wamei/claude-complete--process nil)))
+
+;;; 表示
+
+(defun wamei/claude-complete--visible-p ()
+  "ゴーストテキストが表示中なら non-nil。"
+  (and wamei/claude-complete--overlay
+       (overlay-buffer wamei/claude-complete--overlay)))
+
+(defun wamei/claude-complete--delete-overlay ()
+  "ゴーストテキストを消す。"
+  (when wamei/claude-complete--overlay
+    (delete-overlay wamei/claude-complete--overlay)
+    (setq wamei/claude-complete--overlay nil)))
+
+(defun wamei/claude-complete--show (text)
+  "TEXT を点の直後にゴーストテキストとして表示する。"
+  (wamei/claude-complete--delete-overlay)
+  (let ((overlay (make-overlay (point) (point) nil t t)))
+    (overlay-put overlay 'after-string (propertize text 'face 'shadow))
+    (overlay-put overlay 'wamei/claude-complete-text text)
+    (setq wamei/claude-complete--overlay overlay)))
+
+(defun wamei/claude-complete-accept ()
+  "表示中のゴーストテキストを挿入する。"
+  (interactive)
+  (when (wamei/claude-complete--visible-p)
+    (let ((text (overlay-get wamei/claude-complete--overlay 'wamei/claude-complete-text)))
+      (wamei/claude-complete--delete-overlay)
+      (insert text))))
+
+(defun wamei/claude-complete-dismiss ()
+  "ゴーストテキストと進行中の要求を捨てる。"
+  (interactive)
+  (wamei/claude-complete--cancel-timer)
+  (wamei/claude-complete--cancel-process)
+  (wamei/claude-complete--delete-overlay)
+  (setq wamei/claude-complete--request nil))
+
+(defun wamei/claude-complete--pre-command ()
+  "accept 以外のコマンドが走る前にゴーストテキストを消す。"
+  (unless (eq this-command 'wamei/claude-complete-accept)
+    (wamei/claude-complete--delete-overlay)))
+
+(defun wamei/claude-complete--post-command ()
+  "コマンド後の処理。Task 7 で idle timer の張り直しを実装する。"
+  nil)
+
+;;; minor mode
+
+(declare-function wamei/claude-complete "claude-complete")
+
+(defun wamei/claude-complete--tab-filter (command)
+  "ゴーストテキスト表示中だけ COMMAND を返す。他は既定の TAB に任せる。"
+  (and (wamei/claude-complete--visible-p) command))
+
+(defvar wamei/claude-complete-mode-map
+  (let ((map (make-sparse-keymap))
+        (accept '(menu-item "" wamei/claude-complete-accept
+                            :filter wamei/claude-complete--tab-filter)))
+    (define-key map (kbd "C-c C-.") #'wamei/claude-complete)
+    (define-key map (kbd "TAB") accept)
+    (define-key map (kbd "<tab>") accept)
+    map)
+  "`wamei/claude-complete-mode' のキーマップ。")
+
+(defun wamei/claude-complete--teardown ()
+  "timer・プロセス・overlay をすべて片付ける。"
+  (wamei/claude-complete--cancel-timer)
+  (wamei/claude-complete--cancel-process)
+  (wamei/claude-complete--delete-overlay)
+  (setq wamei/claude-complete--request nil))
+
+(define-minor-mode wamei/claude-complete-mode
+  "claude によるゴーストテキスト補完。"
+  :lighter " Claude"
+  :keymap wamei/claude-complete-mode-map
+  (if wamei/claude-complete-mode
+      (progn
+        (add-hook 'pre-command-hook #'wamei/claude-complete--pre-command nil t)
+        (add-hook 'post-command-hook #'wamei/claude-complete--post-command nil t)
+        (add-hook 'kill-buffer-hook #'wamei/claude-complete--teardown nil t))
+    (remove-hook 'pre-command-hook #'wamei/claude-complete--pre-command t)
+    (remove-hook 'post-command-hook #'wamei/claude-complete--post-command t)
+    (remove-hook 'kill-buffer-hook #'wamei/claude-complete--teardown t)
+    (wamei/claude-complete--teardown)))
+
 (provide 'claude-complete)
 ;;; claude-complete.el ends here

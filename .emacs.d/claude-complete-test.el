@@ -174,5 +174,96 @@ TEXT 中の `|' を取り除いてその位置に点を置く。`|' が無けれ
   (should-not (wamei/claude-complete-test--clean "```\n```" "" ""))
   (should-not (wamei/claude-complete-test--clean ")" "foo(" ")")))
 
+;;; 表示・確定・破棄
+
+(ert-deftest wamei/claude-complete-show-places-shadow-overlay-at-point ()
+  (wamei/claude-complete-test--with-buffer "foo(|)"
+    (wamei/claude-complete--show "a, b")
+    (should (wamei/claude-complete--visible-p))
+    (let ((overlay wamei/claude-complete--overlay))
+      (should (= (overlay-start overlay) (point)))
+      (should (= (overlay-end overlay) (point)))
+      (should (equal (overlay-get overlay 'after-string) "a, b"))
+      (should (eq (get-text-property 0 'face (overlay-get overlay 'after-string)) 'shadow)))
+    ;; バッファ本文は変わらない
+    (should (equal (buffer-string) "foo()"))))
+
+(ert-deftest wamei/claude-complete-show-replaces-previous-overlay ()
+  (wamei/claude-complete-test--with-buffer "x|"
+    (wamei/claude-complete--show "one")
+    (let ((first wamei/claude-complete--overlay))
+      (wamei/claude-complete--show "two")
+      (should-not (overlay-buffer first))
+      (should (equal (overlay-get wamei/claude-complete--overlay 'after-string) "two")))))
+
+(ert-deftest wamei/claude-complete-accept-inserts-text-and-removes-overlay ()
+  (wamei/claude-complete-test--with-buffer "foo(|)"
+    (wamei/claude-complete--show "a, b")
+    (wamei/claude-complete-accept)
+    (should (equal (buffer-string) "foo(a, b)"))
+    (should (= (point) 9))
+    (should-not (wamei/claude-complete--visible-p))))
+
+(ert-deftest wamei/claude-complete-accept-does-nothing-without-overlay ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete-accept)
+    (should (equal (buffer-string) "foo"))))
+
+(ert-deftest wamei/claude-complete-dismiss-removes-overlay ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete--show "bar")
+    (wamei/claude-complete-dismiss)
+    (should-not (wamei/claude-complete--visible-p))
+    (should (equal (buffer-string) "foo"))))
+
+(ert-deftest wamei/claude-complete-pre-command-dismisses-unless-accept ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete--show "bar")
+    (let ((this-command 'wamei/claude-complete-accept))
+      (wamei/claude-complete--pre-command))
+    (should (wamei/claude-complete--visible-p))
+    (let ((this-command 'self-insert-command))
+      (wamei/claude-complete--pre-command))
+    (should-not (wamei/claude-complete--visible-p))))
+
+;;; minor mode
+
+(ert-deftest wamei/claude-complete-mode-binds-tab-only-while-visible ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete-mode 1)
+    (should-not (eq (key-binding (kbd "TAB")) 'wamei/claude-complete-accept))
+    (wamei/claude-complete--show "bar")
+    (should (eq (key-binding (kbd "TAB")) 'wamei/claude-complete-accept))
+    (should (eq (key-binding (kbd "<tab>")) 'wamei/claude-complete-accept))
+    (wamei/claude-complete--delete-overlay)
+    (should-not (eq (key-binding (kbd "TAB")) 'wamei/claude-complete-accept))))
+
+(ert-deftest wamei/claude-complete-mode-binds-manual-trigger ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete-mode 1)
+    (should (eq (key-binding (kbd "C-c C-.")) 'wamei/claude-complete))))
+
+(ert-deftest wamei/claude-complete-mode-installs-and-removes-hooks ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete-mode 1)
+    (should (memq #'wamei/claude-complete--pre-command pre-command-hook))
+    (should (memq #'wamei/claude-complete--post-command post-command-hook))
+    (should (memq #'wamei/claude-complete--teardown kill-buffer-hook))
+    (wamei/claude-complete-mode -1)
+    (should-not (memq #'wamei/claude-complete--pre-command pre-command-hook))
+    (should-not (memq #'wamei/claude-complete--post-command post-command-hook))
+    (should-not (memq #'wamei/claude-complete--teardown kill-buffer-hook))))
+
+(ert-deftest wamei/claude-complete-mode-off-clears-overlay-timer-and-request ()
+  (wamei/claude-complete-test--with-buffer "foo|"
+    (wamei/claude-complete-mode 1)
+    (wamei/claude-complete--show "bar")
+    (setq wamei/claude-complete--timer (run-with-idle-timer 100 nil #'ignore))
+    (setq wamei/claude-complete--request (cons 1 1))
+    (wamei/claude-complete-mode -1)
+    (should-not (wamei/claude-complete--visible-p))
+    (should-not wamei/claude-complete--timer)
+    (should-not wamei/claude-complete--request)))
+
 (provide 'claude-complete-test)
 ;;; claude-complete-test.el ends here
