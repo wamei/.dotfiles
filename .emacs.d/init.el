@@ -1805,6 +1805,30 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
   (advice-add 'eglot-completion-at-point :filter-return
               #'wamei/eglot-capf-doc-with-detail))
 
+(leaf apheleia
+  :doc "保存時フォーマット。biome の設定があるプロジェクトだけ有効にする"
+  :ensure t
+  :preface
+  ;; 設定ファイルの探索と apheleia への登録は biome-format.el (init.el は symlink
+  ;; なので実体の隣から読む)。
+  (load (expand-file-name "biome-format"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :custom
+  ;; TRAMP のバッファではリモート側で biome を走らせる (デフォルトは cancel で
+  ;; 何もしない)。リモート実行は apheleia の制約で同期になる。
+  (apheleia-remote-algorithm . 'remote)
+  ;; biome が対応するモードだけ。global-mode は使わず他言語の挙動は変えない。
+  :hook ((typescript-ts-mode-hook
+          tsx-ts-mode-hook
+          js-ts-mode-hook
+          js-mode-hook
+          json-ts-mode-hook
+          css-ts-mode-hook
+          css-mode-hook) . wamei/biome-format-maybe-enable)
+  :config
+  (wamei/biome-format-setup))
+
 (leaf eldoc-box
   :doc "eldoc をカーソル位置に child frame で表示する"
   :ensure t
