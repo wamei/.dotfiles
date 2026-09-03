@@ -16,9 +16,13 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'project)
+;; batch-byte-compile 時は load-file-name も buffer-file-name も nil になるため byte-compile-current-file を併用する
 (require 'claude-cli
          (expand-file-name "claude-cli"
-                           (file-name-directory (or load-file-name buffer-file-name))))
+                           (file-name-directory
+                            (or load-file-name
+                                (bound-and-true-p byte-compile-current-file)
+                                buffer-file-name))))
 
 ;;; 設定
 
@@ -302,6 +306,9 @@ corfu のポップアップ表示中 (`completion-in-region-mode')、読み取�
   (wamei/claude-complete-request))
 
 ;;; idle 自動トリガー
+
+;; `wamei/claude-complete-mode' は下の `;;; minor mode' 節の define-minor-mode で定義されるため前方宣言する
+(defvar wamei/claude-complete-mode)
 
 (defun wamei/claude-complete--on-idle (buffer)
   "idle timer から呼ばれる。BUFFER が選択ウィンドウのバッファで、表示中でも走行中でもなければ要求する。"
