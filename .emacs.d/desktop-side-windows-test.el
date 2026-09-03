@@ -299,6 +299,31 @@ hc [treemacs 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 9
         (ignore-errors (delete-window window))))
     (delete-other-windows)))
 
+(ert-deftest wamei/dsw-directory-picks-first-in-restore-order ()
+  "タブのディレクトリは、開き直す順 (左→右→上→下) で最初に :directory を持つ spec のもの。"
+  (should (equal (wamei/desktop-side-directory
+                  '((:buffer "*term: a*" :side bottom :slot 0 :directory "/tmp/term/")
+                    (:buffer "*claude-code[a]*" :side right :slot 0 :directory "/tmp/claude/")
+                    (:buffer " *Treemacs-Buffer-Tab a" :side left :slot 0)))
+                 "/tmp/claude/"))
+  (should (null (wamei/desktop-side-directory
+                 '((:buffer " *Treemacs-Buffer-Tab a" :side left :slot 0))))))
+
+(ert-deftest wamei/dsw-restore-specs-binds-directory-for-restorer ()
+  "restorer は spec の :directory を default-directory として呼ばれる。
+:directory が無い spec では呼び出し側の default-directory のまま。"
+  (let* ((seen nil)
+         (default-directory "/tmp/dsw-caller/")
+         (wamei/desktop-side-restorers
+          (list (cons "\\`\\*dsw-" (lambda (spec)
+                                    (push (cons (plist-get spec :buffer) default-directory)
+                                          seen))))))
+    (wamei/desktop-side-restore-specs
+     '((:buffer "*dsw-with*" :side right :slot 0 :directory "/tmp/dsw-project/")
+       (:buffer "*dsw-without*" :side bottom :slot 0)))
+    (should (equal (assoc "*dsw-with*" seen) '("*dsw-with*" . "/tmp/dsw-project/")))
+    (should (equal (assoc "*dsw-without*" seen) '("*dsw-without*" . "/tmp/dsw-caller/")))))
+
 (ert-deftest wamei/dsw-round-trip-restores-without-side-windows ()
   "実際の side window 構成を取り、外した状態を window-state-put しても落ちない。
 side window のバッファが消えている (再起動後) 状況を再現する。"

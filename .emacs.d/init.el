@@ -1095,8 +1095,13 @@ M-x treemacs-select-window を直接呼ぶ。"
   (defun wamei/desktop--restore-treemacs (spec)
     "treemacs を開き直す。
 treemacs は自前の表示関数を通す必要があるので `treemacs-select-window' を使い、
-幅だけ記録 (SPEC の :size) に合わせる。"
-    (treemacs-select-window)
+幅だけ記録 (SPEC の :size) に合わせる。
+初期化時の follow (treemacs--init) は current-buffer のファイルを辿るが、復元中は
+選択 window に前のタブのバッファが残っていることがあるので、ファイルを持たない
+一時バッファから呼ぶ。default-directory は SPEC の :directory
+(desktop-side-windows が束縛) を引き継ぐので、project の推定はそちらで行われる。"
+    (with-temp-buffer
+      (treemacs-select-window))
     (wamei/desktop-side-resize (treemacs-get-local-window) (plist-get spec :size)))
 
   (defun wamei/desktop--restore-term (_spec)
@@ -1108,14 +1113,13 @@ vterm のバッファは desktop に残らないので新しく作る。高さ�
 
   (defun wamei/desktop--restore-claude (spec)
     "claude パネルを `wamei/desktop-claude-restore-command' で開き直し、幅を SPEC に合わせる。
-プロジェクトは SPEC の :directory (保存時の claude バッファの作業ディレクトリ) から
-決める。復元時点ではタブの本文バッファがまだ遅延復元されておらず、選択 window に
-前のタブのバッファが残っていることがあり、そこから project-current を引くと
-別タブと同じプロジェクトのセッションを開いてしまう。"
+プロジェクトは default-directory から決まる (claude-code-ide--get-working-directory)。
+desktop-side-windows が SPEC の :directory (保存時の claude バッファの作業
+ディレクトリ) を束縛して呼ぶので、選択 window に前のタブのバッファが残っていても
+別タブと同じプロジェクトのセッションにはならない。"
     (when wamei/desktop-claude-restore-command
       (require 'claude-code-ide)
-      (let ((default-directory (or (plist-get spec :directory) default-directory)))
-        (funcall wamei/desktop-claude-restore-command))
+      (funcall wamei/desktop-claude-restore-command)
       (wamei/desktop-side-resize (wamei/claude--window) (plist-get spec :size))))
 
   :custom

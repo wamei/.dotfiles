@@ -20,6 +20,12 @@
 ;; バッファの種類ごとの開き直し方 (treemacs は treemacs-select-window など) は
 ;; `wamei/desktop-side-restorers' に登録する。登録が無いものは、同名のバッファ
 ;; が復元されていれば記録どおりの side window に表示する。
+;;
+;; 復元が走る時点では遅延復元 (desktop-restore-eager) のバッファがまだ無く、
+;; タブを選んでも選択 window には前のタブのバッファが残る。そこから project を
+;; 推定すると別タブと同じプロジェクトの side window を開いてしまうので、spec に
+;; 保存時のバッファの default-directory (:directory) を残し、タブ選択と restorer
+;; の呼び出しはそれを default-directory にして行う。
 
 ;;; Code:
 
@@ -377,12 +383,24 @@ treemacs のように幅を固定しているバッファでも効くよう wind
           (let ((window-size-fixed nil))
             (ignore-errors (window-resize window delta horizontal t))))))))
 
+(defun wamei/desktop-side-directory (specs)
+  "SPECS が属するディレクトリ。開き直す順で最初に :directory を持つ spec のもの。無ければ nil。
+タブを選ぶときの `default-directory' に使う。復元時点ではタブの本文バッファが
+遅延復元でまだ無く、選択 window に前のタブのバッファが残っている。タブ選択に
+反応してプロジェクトを推定するもの (treemacs の Tabs スコープは workspace が無い
+タブでは current-buffer から project を決める) が、そのバッファに引かれないようにする。"
+  (seq-some (lambda (spec) (plist-get spec :directory))
+            (wamei/desktop-side-sort-specs specs)))
+
 (defun wamei/desktop-side-restore-specs (specs)
-  "現在のタブに SPECS の side window を開き直す。選択 window は変えない。"
+  "現在のタブに SPECS の side window を開き直す。選択 window は変えない。
+restorer は spec の :directory (保存時のバッファの `default-directory') を
+`default-directory' に束縛して呼ぶ。:directory が無ければそのまま。"
   (let ((selected (selected-window)))
     (dolist (spec (wamei/desktop-side-sort-specs specs))
       (condition-case err
-          (funcall (wamei/desktop-side-restorer-for spec) spec)
+          (let ((default-directory (or (plist-get spec :directory) default-directory)))
+            (funcall (wamei/desktop-side-restorer-for spec) spec))
         (error (message "desktop-side: %s を開き直せません: %s"
                         (plist-get spec :buffer) (error-message-string err)))))
     (when (window-live-p selected)
@@ -403,8 +421,13 @@ treemacs のように幅を固定しているバッファでも効くよう wind
             (unwind-protect
                 (pcase-dolist (`(,index . ,specs) by-tab)
                   (when (< index count)
-                    (tab-bar-select-tab (1+ index))
-                    (wamei/desktop-side-restore-specs specs)))
+                    ;; タブ選択に反応する処理 (treemacs の workspace 作成など) が
+                    ;; 前のタブのバッファからプロジェクトを推定しないよう、
+                    ;; 選ぶ前からタブのディレクトリにしておく
+                    (let ((default-directory (or (wamei/desktop-side-directory specs)
+                                                 default-directory)))
+                      (tab-bar-select-tab (1+ index))
+                      (wamei/desktop-side-restore-specs specs))))
               (tab-bar-select-tab (1+ current)))))))))
 
 ;;; desktop への組み込み
