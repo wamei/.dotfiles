@@ -239,13 +239,11 @@ add-zsh-hook preexec _wamei_set_terminal_title
 # 末尾のプロンプト行をこのプロパティで見分けて落とす。vterm の外では何も出さない。
 if [[ $INSIDE_EMACS == *vterm* ]]; then
   _wamei_vterm_prompt_mark() { printf '\033]51;A%s@%s:%s\033\\' "$USER" "$HOST" "$PWD" }
-  # 復元された端末では前回の出力の末尾が WAMEI_TERM_RESTORE のファイルに入っている。
-  # 最初のプロンプトの前に灰色 (bright black) で出し、子プロセスに引き継がないよう
-  # unset する。faint (SGR 2) は libvterm が解釈しないので色で区別する。
+  # 復元された端末では前回の出力の末尾が WAMEI_TERM_RESTORE のファイルに入っている
+  # (色は term-restore.el が SGR エスケープにして書いてある)。最初のプロンプトの前に
+  # そのまま出し、子プロセスに引き継がないよう unset する。
   if [[ -n $WAMEI_TERM_RESTORE && -r $WAMEI_TERM_RESTORE ]]; then
-    printf '\033[90m'
     cat -- "$WAMEI_TERM_RESTORE"
-    printf '\033[0m'
   fi
   unset WAMEI_TERM_RESTORE
 else

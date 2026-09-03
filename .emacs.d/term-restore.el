@@ -11,7 +11,8 @@
 ;; スクロールバックは desktop ファイルを太らせないよう別ファイル
 ;; (`wamei/term-restore-directory' 配下) に置き、内容が変わったときだけ書く。
 ;; 復元時はそのパスを環境変数 WAMEI_TERM_RESTORE に載せてシェルを起こし、
-;; .zshrc が起動時に cat する。色は face として残るだけなので失われる。
+;; .zshrc が起動時に cat する。色は vterm が付けた face を SGR エスケープに
+;; 写して書いておき、cat したときに端末が解釈する。
 
 ;;; Code:
 
@@ -50,7 +51,8 @@
 
 (defun wamei/term-restore--tail (text lines)
   "TEXT の末尾 LINES 行を返す。各行の行末の空白と、末尾の空行は落とす。
-vterm は画面の下端まで空行で埋めるので、そのままだと空行ばかりになる。"
+vterm は画面の下端まで空行で埋めるので、そのままだと空行ばかりになる。
+テキストプロパティ (色) は保つ。"
   (let ((kept (seq-drop-while
                #'string-empty-p
                (nreverse (mapcar (lambda (line)
@@ -60,6 +62,67 @@ vterm は画面の下端まで空行で埋めるので、そのままだと空�
     (if kept
         (concat (string-join kept "\n") "\n")
       "")))
+
+;;; 色 → SGR
+
+(defun wamei/term-restore--rgb (color)
+  "色名 COLOR を (R G B) (各 0-255) にする。解決できなければ nil。
+vterm は色を #rrggbb で付けるので自前で読む。`color-name-to-rgb' は
+batch (端末なし) で tty の近似色に丸めるので当てにしない。"
+  (cond
+   ((not (stringp color)) nil)
+   ((string-match "\\`#\\([[:xdigit:]]+\\)\\'" color)
+    (let* ((hex (match-string 1 color))
+           (width (/ (length hex) 3)))
+      (when (and (> width 0) (= (* width 3) (length hex)))
+        ;; 桁が多ければ上位 2 桁だけ使い (#rrrrggggbbbb → #rrggbb)、
+        ;; 1 桁 (#rgb) は 17 倍して 0-255 に広げる
+        (mapcar (lambda (i)
+                  (let ((n (string-to-number
+                            (substring hex (* i width) (+ (* i width) (min width 2)))
+                            16)))
+                    (if (= width 1) (* n 17) n)))
+                '(0 1 2)))))
+   (t (when-let* ((values (color-values color)))
+        (mapcar (lambda (v) (/ v 256)) values)))))
+
+(defun wamei/term-restore--sgr-params (face)
+  "vterm の `font-lock-face' plist FACE を SGR の引数 (文字列のリスト) にする。
+属性、前景色、背景色の順。vterm はデフォルト色のセルにも `default' face の
+前景・背景を明示的に付けるので、それと同じ色は出さない (復元先のテーマに任せる)。"
+  (let ((params nil))
+    (when (eq (plist-get face :weight) 'bold) (push "1" params))
+    (when (eq (plist-get face :slant) 'italic) (push "3" params))
+    (when (plist-get face :underline) (push "4" params))
+    (when (plist-get face :inverse-video) (push "7" params))
+    (when (plist-get face :strike-through) (push "9" params))
+    (pcase-dolist (`(,key ,code ,default)
+                   `((:foreground "38" ,(face-foreground 'default nil t))
+                     (:background "48" ,(face-background 'default nil t))))
+      (when-let* ((rgb (wamei/term-restore--rgb (plist-get face key))))
+        (unless (equal rgb (wamei/term-restore--rgb default))
+          (push (format "%s;2;%d;%d;%d" code (nth 0 rgb) (nth 1 rgb) (nth 2 rgb))
+                params))))
+    (nreverse params)))
+
+(defun wamei/term-restore--ansi (text)
+  "TEXT の `font-lock-face' (vterm が色ごとに付ける plist) を SGR エスケープにして
+プロパティなしの文字列で返す。face が同じ区間ごとに開始のエスケープを置き、
+区間の終わりで \\e[0m に戻す。"
+  (let ((pos 0)
+        (parts nil))
+    (while (< pos (length text))
+      (let* ((next (or (next-single-property-change pos 'font-lock-face text)
+                       (length text)))
+             (chunk (substring-no-properties text pos next))
+             (params (wamei/term-restore--sgr-params
+                      (get-text-property pos 'font-lock-face text))))
+        (push (if params
+                  (concat "\e[" (string-join params ";") "m" chunk "\e[0m")
+                chunk)
+              parts)
+        (setq pos next)))
+    (apply #'concat (nreverse parts))))
 
 (defun wamei/term-restore--write-scrollback (file text)
   "TEXT を FILE に書く。既に同じ内容なら書かない。書いたら非 nil。"
@@ -90,7 +153,8 @@ vterm は画面の下端まで空行で埋めるので、そのままだと空�
 (defun wamei/term-restore--content ()
   "現在のバッファの内容を、末尾のプロンプト行と空行を除いて返す。
 末尾から空行を飛ばし、プロンプトの行が続く限り遡って切る。最後の行が
-プロンプトでなければ (コマンド実行中) 何も落とさない。"
+プロンプトでなければ (コマンド実行中) 何も落とさない。
+色 (font-lock-face) は残し、書き出すときに `wamei/term-restore--ansi' で SGR にする。"
   (save-excursion
     (goto-char (point-max))
     (skip-chars-backward " \t\n")
@@ -101,7 +165,7 @@ vterm は画面の下端まで空行で埋めるので、そのままだと空�
     (let ((end (if (wamei/term-restore--prompt-line-p)
                    (point)
                  (line-beginning-position 2))))
-      (buffer-substring-no-properties (point-min) end))))
+      (buffer-substring (point-min) end))))
 
 (defun wamei/term-restore--scrollback-file (project index)
   "PROJECT の INDEX 番目の端末のスクロールバックを置くファイル。
@@ -130,8 +194,9 @@ vterm は画面の下端まで空行で埋めるので、そのままだと空�
     (with-current-buffer buffer
       (wamei/term-restore--write-scrollback
        file
-       (wamei/term-restore--tail (wamei/term-restore--content)
-                                 wamei/term-restore-scrollback-lines))
+       (wamei/term-restore--ansi
+        (wamei/term-restore--tail (wamei/term-restore--content)
+                                  wamei/term-restore-scrollback-lines)))
       (list :project project
             :index index
             :directory default-directory

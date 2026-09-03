@@ -54,6 +54,67 @@
                          "y\n")))
       (delete-file file))))
 
+;;; 色の変換
+
+(defun wamei/term-restore-test--colored (text &rest face)
+  "TEXT に vterm が付けるのと同じ `font-lock-face' plist FACE を付けて返す。"
+  (propertize text 'font-lock-face face))
+
+(ert-deftest wamei/term-restore-ansi-passes-plain-text-through ()
+  "face の無い文字列はそのまま。"
+  (should (equal (wamei/term-restore--ansi "a\nb\n") "a\nb\n")))
+
+(ert-deftest wamei/term-restore-ansi-emits-truecolor-foreground ()
+  "前景色は 24bit の SGR にして、run の後でリセットする。"
+  (should (equal (wamei/term-restore--ansi
+                  (concat "x " (wamei/term-restore-test--colored "err" :foreground "#ff8000") "\n"))
+                 "x \e[38;2;255;128;0merr\e[0m\n")))
+
+(ert-deftest wamei/term-restore-ansi-emits-attributes-and-background ()
+  "太字・斜体・下線・反転・取り消し線と背景色を SGR に写す。"
+  (should (equal (wamei/term-restore--ansi
+                  (wamei/term-restore-test--colored
+                   "t" :background "#000080" :weight 'bold :underline t
+                   :slant 'italic :inverse-video t :strike-through t :extend t))
+                 "\e[1;3;4;7;9;48;2;0;0;128mt\e[0m")))
+
+(ert-deftest wamei/term-restore-ansi-splits-runs-by-face ()
+  "face が変わるごとに別の SGR を出す。"
+  (should (equal (wamei/term-restore--ansi
+                  (concat (wamei/term-restore-test--colored "a" :foreground "#ff0000")
+                          (wamei/term-restore-test--colored "b" :foreground "#00ff00")
+                          "c"))
+                 "\e[38;2;255;0;0ma\e[0m\e[38;2;0;255;0mb\e[0mc")))
+
+(ert-deftest wamei/term-restore-ansi-accepts-other-hex-widths ()
+  "#rrrrggggbbbb は上位バイトで、#rgb は 0-255 に広げて扱う。"
+  (should (equal (wamei/term-restore--ansi
+                  (wamei/term-restore-test--colored "a" :foreground "#ffff80000000"))
+                 "\e[38;2;255;128;0ma\e[0m"))
+  (should (equal (wamei/term-restore--ansi
+                  (wamei/term-restore-test--colored "a" :foreground "#f80"))
+                 "\e[38;2;255;136;0ma\e[0m")))
+
+(ert-deftest wamei/term-restore-ansi-omits-default-colors ()
+  "vterm はデフォルト色のセルにもテーマの前景・背景を付けるので、`default' face と
+同じ色は出さない (テーマを変えても古い色が残らない)。"
+  (cl-letf (((symbol-function 'face-foreground)
+             (lambda (face &rest _) (when (eq face 'default) "#767679")))
+            ((symbol-function 'face-background)
+             (lambda (face &rest _) (when (eq face 'default) "#1c1e1f"))))
+    (should (equal (wamei/term-restore--ansi
+                    (concat (wamei/term-restore-test--colored
+                             "plain" :foreground "#767679" :background "#1c1e1f" :extend t)
+                            (wamei/term-restore-test--colored
+                             "red" :foreground "#ff0000" :background "#1c1e1f" :extend t)))
+                   "plain\e[38;2;255;0;0mred\e[0m"))))
+
+(ert-deftest wamei/term-restore-ansi-ignores-unresolvable-face ()
+  "解決できない色しか無い face は何も出さない。"
+  (should (equal (wamei/term-restore--ansi
+                  (wamei/term-restore-test--colored "a" :foreground "nosuchcolor" :extend t))
+                 "a")))
+
 ;;; プロンプト行の除外
 
 (defun wamei/term-restore-test--insert-marked (text)
@@ -93,6 +154,13 @@ vterm はプロンプト本文ではなく、OSC 51;A を受けた位置の 1 �
   (with-temp-buffer
     (insert "a\nb\n")
     (should (equal (wamei/term-restore--content) "a\nb\n"))))
+
+(ert-deftest wamei/term-restore-content-keeps-faces ()
+  "色 (font-lock-face) は残す。復元時に SGR へ写すため。"
+  (with-temp-buffer
+    (insert (wamei/term-restore-test--colored "a" :foreground "#ff0000") "\n")
+    (should (equal (get-text-property 0 'font-lock-face (wamei/term-restore--content))
+                   '(:foreground "#ff0000")))))
 
 ;;; 保存
 
@@ -148,6 +216,17 @@ vterm はプロンプト本文ではなく、OSC 51;A を受けた位置の 1 �
       (should (string-prefix-p wamei/term-restore-directory file))
       (should (equal (with-temp-buffer (insert-file-contents file) (buffer-string))
                      "b\nc\n")))))
+
+(ert-deftest wamei/term-restore-save-writes-colors-as-sgr ()
+  "色は SGR エスケープに写して書く。行末の空白はその前に落とす。"
+  (wamei/term-restore-test--with-terminals
+      `(("*term: foo*" ,(concat (wamei/term-restore-test--colored "ok" :foreground "#00ff00")
+                                "   \n")
+         nil))
+    (wamei/term-restore-save)
+    (let ((file (plist-get (car wamei/term-restore-saved) :scrollback)))
+      (should (equal (with-temp-buffer (insert-file-contents file) (buffer-string))
+                     "\e[38;2;0;255;0mok\e[0m\n")))))
 
 (ert-deftest wamei/term-restore-save-prunes-stale-files ()
   "記録に含まれないスクロールバックのファイルは消す。"
