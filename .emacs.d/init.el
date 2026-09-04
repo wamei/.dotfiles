@@ -2037,7 +2037,16 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
                    (html-mode       html-ts-mode html)))
     (pcase-let ((`(,from ,to ,lang) entry))
       (when (treesit-ready-p lang t)
-        (add-to-list 'major-mode-remap-alist (cons from to))))))
+        (add-to-list 'major-mode-remap-alist (cons from to)))))
+
+  ;; markdown-mode は ```typescript のようなフェンスを ts 系モードで色付けする際、そのモードが
+  ;; major-mode-remap-alist か auto-mode-alist に直接載っていることを条件にする。.ts / .tsx は
+  ;; typescript-ts-mode-maybe 経由なのでどちらにも載らず、eglot のホバー (TS の型表示) だけ
+  ;; 色が付かなかった。typescript-mode / tsx-mode は未導入なので remap としては何も起こさない。
+  (when (treesit-ready-p 'typescript t)
+    (add-to-list 'major-mode-remap-alist '(typescript-mode . typescript-ts-mode)))
+  (when (treesit-ready-p 'tsx t)
+    (add-to-list 'major-mode-remap-alist '(tsx-mode . tsx-ts-mode))))
 
 (leaf eglot
   :doc "LSP クライアント (Emacs 組み込み)"
