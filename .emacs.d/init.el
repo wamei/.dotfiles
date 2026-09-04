@@ -1923,8 +1923,43 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
 (leaf eldoc-box
   :doc "eldoc をカーソル位置に child frame で表示する"
   :ensure t
-  :if (display-graphic-p)
+  ;; Emacs 31 は tty でも child frame を作れる (`tty-child-frames' は端末初期化時に
+  ;; provide されるので init.el の時点で判定できる)。
+  :if (or (display-graphic-p) (featurep 'tty-child-frames))
   :preface
+  (defvar wamei/eldoc-box-at-point-gap '(2 . 1)
+    "eldoc-box の child frame をカーソルから離す距離 (桁 . 行)。")
+
+  (defun wamei/eldoc-box-at-point-position (width height)
+    "カーソルから `wamei/eldoc-box-at-point-gap' だけ離れた child frame の位置を返す。
+WIDTH と HEIGHT は child frame のピクセルサイズ (tty では桁・行)。
+本家の `eldoc-box--default-at-point-position-function' はカーソルの直下・同じ桁に
+出すので近すぎて読みにくい。下に収まらなければ上、どちらも無理なら下端に寄せる。"
+    (let* ((pos (eldoc-box--point-position-relative-to-native-frame))
+           (gap-x (* (frame-char-width) (car wamei/eldoc-box-at-point-gap)))
+           (gap-y (* (frame-char-height) (cdr wamei/eldoc-box-at-point-gap)))
+           (below (+ (cdr pos) (frame-char-height) gap-y))
+           (above (- (cdr pos) gap-y height)))
+      (cons (max 0 (min (+ (car pos) gap-x) (- (frame-inner-width) width)))
+            (cond ((<= (+ below height) (frame-inner-height)) below)
+                  ((>= above 0) above)
+                  (t (max 0 (- (frame-inner-height) height)))))))
+
+  (defun wamei/eldoc-box-tty-update-childframe-geometry (frame window)
+    "tty 版 `eldoc-box--update-childframe-geometry'。FRAME は child frame、WINDOW はその窓。
+本家は child frame を親フレームより 32px 小さく clip するが、tty ではピクセル単位が
+1 文字なので 32 行/桁も削られ、小さい端末では高さが負になって 1 行に潰れる。
+余白を上下左右 1 文字にして親フレーム内に収める。"
+    (let* ((parent (frame-parent frame))
+           (max-width (- (frame-width parent) 2))
+           (max-height (- (frame-height parent) 2))
+           (size (window-text-pixel-size window nil nil max-width max-height t))
+           (width (min (1+ (car size)) max-width))
+           (height (min (cdr size) max-height))
+           (pos (funcall eldoc-box-position-function width height)))
+      (set-frame-size frame width height t)
+      (set-frame-position frame (car pos) (cdr pos))))
+
   (defun wamei/eldoc-box-inhibit-during-completion (fn &rest args)
     "補完ポップアップやゴーストテキストの表示中は eldoc-box の自動表示を止める。
 
@@ -1952,6 +1987,11 @@ claude-complete と copilot のゴーストテキストも point の直後に描
   :bind ("C-c d" . eldoc-box-help-at-point)
   :config
   (add-to-list 'eldoc-box-frame-parameters '(alpha . 90))
+  ;; defvar なので :custom ではなく setq。C-c d と hover-at-point-mode の両方が読む。
+  (setq eldoc-box-at-point-position-function #'wamei/eldoc-box-at-point-position)
+  (unless (display-graphic-p)
+    (advice-add 'eldoc-box--update-childframe-geometry :override
+                #'wamei/eldoc-box-tty-update-childframe-geometry))
   (advice-add 'eldoc-box--eldoc-display-function :around
               #'wamei/eldoc-box-inhibit-during-completion)
   (add-hook 'completion-in-region-mode-hook #'wamei/eldoc-box-quit-on-completion))
