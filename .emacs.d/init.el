@@ -2048,6 +2048,11 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
   (when (treesit-ready-p 'tsx t)
     (add-to-list 'major-mode-remap-alist '(tsx-mode . tsx-ts-mode))))
 
+;; Emacs 31 標準の auto-mode-alist は .js / .jsm / .jsx しか javascript-mode に振らず、
+;; .mjs / .cjs は fundamental-mode になる。javascript-mode に登録しておけば上の
+;; major-mode-remap-alist 経由で js-ts-mode に寄る。
+(add-to-list 'auto-mode-alist '("\\.[cm]js\\'" . javascript-mode))
+
 (leaf eglot
   :doc "LSP クライアント (Emacs 組み込み)"
   :ensure nil
