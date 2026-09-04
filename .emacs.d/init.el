@@ -118,6 +118,26 @@
   (ns-command-modifier  . 'super)
   (mac-command-modifier . 'super))
 
+(leaf tty-display
+  :doc "ターミナル(-nw)での表示記号"
+  ;; 端末には fringe がないので、右端を超えた行は display table の truncation
+  ;; 文字で示される。既定の `$' は本文と紛れるため `▸' を shadow face で薄く描く。
+  ;; 端の 1 桁に収める必要があるので East Asian Width が N の文字を選ぶ (`…' `→' は
+  ;; A で日本語端末では 2 桁になりうる)。
+  ;; 水平スクロール時は左端にも描かれ、Emacs 31 は鏡像に置き換える。Unicode の
+  ;; mirroring 属性で鏡像化する分岐 (`›'→`‹' など) は glyph code の face 番号を
+  ;; 実体化済み face ID と取り違えて別の色になる (xdisp.c の IT_TRUNCATION 処理)。
+  ;; `special-mirror-table' 経由の分岐は face を正しく解決するので、mirroring 属性を
+  ;; 持たない `▸' を選び、鏡像 `◂' をこの表に登録する。
+  :if (not (display-graphic-p))
+  :config
+  (unless standard-display-table
+    (setq standard-display-table (make-display-table)))
+  (set-display-table-slot standard-display-table 'truncation
+                          (make-glyph-code ?▸ 'shadow))
+  (when (boundp 'special-mirror-table)
+    (aset special-mirror-table ?▸ ?◂)))
+
 (leaf tty-clipboard
   :doc "ターミナル(-nw)でのクリップボード連携"
   ;; GUI の Emacs は NSPasteboard を直接扱うのでこの設定は不要。
