@@ -304,9 +304,12 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   :ensure t
   :bind (("C-z" . wamei/term-toggle)
          ("C-S-z" . wamei/term-new)
+         ("C-q t c" . wamei/term-new)
          ;; グローバルに置くことで tab-bar-mode の再有効化に上書きされない
          ("<C-tab>" . wamei/term-next)
+         ("C-q t n" . wamei/term-next)
          ("<C-S-tab>" . wamei/term-previous)
+         ("C-q t p" . wamei/term-previous)
          ;; 端末によっては Shift-Tab が iso-lefttab として報告される
          ("<C-S-iso-lefttab>" . wamei/term-previous))
   :custom
