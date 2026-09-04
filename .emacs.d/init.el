@@ -314,7 +314,8 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
 
   (defvar wamei/term-list-width 36
-    "端末一覧ウィンドウの幅 (文字数)。")
+    "端末一覧ウィンドウの幅 (文字数)。
+手動でリサイズすると更新され、次に開くときも同じ幅になる。")
 
   (defvar wamei/term-list-buffer-name "*terminals*"
     "端末一覧のバッファ名。display-buffer-alist で端末本体と別扱いにするため、
@@ -381,6 +382,19 @@ display-buffer-alist の window-width は bottom の side window では
         (let ((ratio (/ (float (window-total-height window)) (frame-height))))
           (when (< 0.05 ratio 0.95)
             (setq wamei/term-height ratio))))))
+
+  (defun wamei/term--remember-list-width ()
+    "現在の一覧の幅を wamei/term-list-width に覚える。
+一覧は端末が 1 つになると閉じ、2 つに戻ると display-buffer で作り直されるので、
+window に付いた幅は残らない。変数に覚えておき wamei/term--set-list-width が
+作り直すたびに当てる。幅が変わったら一覧の切り詰め幅も追従させる。"
+    (when-let* ((window (get-buffer-window (current-buffer))))
+      (when (window-parameter window 'window-side)
+        (let ((width (window-total-width window)))
+          (when (and (< 8 width (* 0.8 (frame-width)))
+                     (/= width wamei/term-list-width))
+            (setq wamei/term-list-width width)
+            (wamei/term--list-refresh))))))
 
   ;;; 端末バッファの管理
 
@@ -469,6 +483,8 @@ display-buffer-alist の window-width は bottom の side window では
         (with-current-buffer (get-buffer-create wamei/term-list-buffer-name)
           (wamei/term-list-mode)
           (setq-local mode-line-format nil)
+          (add-hook 'window-configuration-change-hook
+                    #'wamei/term--remember-list-width nil t)
           (current-buffer))))
 
   (defun wamei/term--record-title (title)
@@ -1204,7 +1220,8 @@ treemacs は自前の表示関数を通す必要があるので `treemacs-select
 記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
 高さは display-buffer-alist の wamei/term--set-height が wamei/term-height
 (desktop に保存) から決める。一覧 (*terminals*) は端末が 2 つ以上のときだけ
-自動で出るので復元しない。"
+自動で出るので復元しない。幅は同様に wamei/term-list-width (desktop に保存) から
+wamei/term--set-list-width が決める。"
     (wamei/term--show (or (get-buffer (plist-get spec :buffer))
                           (wamei/term--current)
                           (wamei/term--create 1))
@@ -1251,8 +1268,9 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   (unless (display-graphic-p)
     (setq desktop-base-file-name ".emacs.desktop-nw"
           desktop-base-lock-name ".emacs.desktop-nw.lock"))
-  ;; 端末パネルの高さの割合も次回に引き継ぐ
+  ;; 端末パネルの高さの割合と一覧の幅も次回に引き継ぐ
   (add-to-list 'desktop-globals-to-save 'wamei/term-height)
+  (add-to-list 'desktop-globals-to-save 'wamei/term-list-width)
   ;; バッファ名で開き直し方を選ぶ。treemacs は " *Treemacs-Buffer-..." で始まる。
   (setq wamei/desktop-side-restorers
         '(("\\` \\*Treemacs-" . wamei/desktop--restore-treemacs)
