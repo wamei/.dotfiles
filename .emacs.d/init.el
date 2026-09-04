@@ -250,6 +250,24 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   ;; "Face inheritance results in inheritance cycle" が起き、major mode が
   ;; fundamental-mode に落ちる。user テーマ側で継承を張り替えて循環を断つ。
   (gnus-group-news-low-empty . '((t (:inherit gnus-group-mail-1 :weight normal))))
+  ;; flymake の診断は doom-themes だと細い wave の下線だけで目立たない (wave の太さは
+  ;; 変えられない)。doom-molokai が flycheck に付けているのと同じ流儀で背景を薄く
+  ;; 色付けする。tty は terminfo (xterm-256color / tmux-256color) に Smulx / Setulc が
+  ;; 無く、下線の色も wave も出せず白い直線になるので、下線は残しつつ背景色で種類を
+  ;; 示す (256 色の colour52 / colour94 / colour22)。supports で判定しているので、
+  ;; 色付き下線を出せる端末なら GUI と同じ見え方になる。
+  (flymake-error
+   . '((((supports :underline (:style wave)))
+        (:underline (:style wave :color "#e74c3c") :background "#3a2523"))
+       (t (:underline t :background "#5f0000"))))
+  (flymake-warning
+   . '((((supports :underline (:style wave)))
+        (:underline (:style wave :color "#fd971f") :background "#3e301f"))
+       (t (:underline t :background "#875f00"))))
+  (flymake-note
+   . '((((supports :underline (:style wave)))
+        (:underline (:style wave :color "#b6e63e") :background "#2e3623"))
+       (t (:underline t :background "#005f00"))))
   :config
   (load-theme 'doom-molokai t)
   (set-frame-parameter nil 'alpha 90))
