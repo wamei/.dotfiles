@@ -229,52 +229,75 @@ eldoc-box の child frame は作らず、表示・非表示は履歴に記録す
 (defvar eldoc-box-position-function nil)
 
 (defmacro wamei/eldoc-mouse-test--with-fake-eldoc-box (&rest body)
-  "eldoc-box の表示関数をバッファ書き込みだけのスタブにして BODY を実行する。
-BODY 中は `quits' に `eldoc-box-quit-frame' の呼び出し回数が束縛される。"
+  "eldoc-box の frame 生成・破棄をスタブにして BODY を実行する。
+`eldoc-box--display' は `eldoc-box--buffer' の名前を `displayed-in' に記録し、
+`eldoc-box--frame' が無ければ `fake-frame' というシンボルを frame の代わりに入れる。
+`eldoc-box-quit-frame' は呼び出し時の `eldoc-box--frame' を `quit-frames' に積む。"
   (declare (indent 0))
-  `(let ((quits 0))
-     (ignore quits)
+  `(let (displayed-in quit-frames
+         (wamei/eldoc-mouse--frame nil))
+     (ignore displayed-in quit-frames)
      (cl-letf (((symbol-function 'eldoc-box--display)
-                (lambda (str)
-                  (with-current-buffer (get-buffer-create eldoc-box--buffer)
-                    (erase-buffer)
-                    (insert str))))
+                (lambda (_str)
+                  (setq displayed-in eldoc-box--buffer)
+                  (unless eldoc-box--frame
+                    (setq eldoc-box--frame 'fake-frame))))
                ((symbol-function 'eldoc-box-quit-frame)
-                (lambda () (cl-incf quits)))
+                (lambda () (push eldoc-box--frame quit-frames)))
                ((symbol-function 'eldoc-box--point-position-relative-to-native-frame)
                 (lambda (&optional _pos _window) (cons 0 0))))
-       (unwind-protect (progn ,@body)
-         (when (get-buffer eldoc-box--buffer) (kill-buffer eldoc-box--buffer))))))
+       (with-temp-buffer
+         (set-window-buffer (selected-window) (current-buffer))
+         ,@body))))
 
-(ert-deftest wamei/eldoc-mouse-hide-box-closes-own-box ()
+(ert-deftest wamei/eldoc-mouse-show-box-uses-own-frame-and-buffer ()
   (wamei/eldoc-mouse-test--with-fake-eldoc-box
-    (with-temp-buffer
-      (set-window-buffer (selected-window) (current-buffer))
+    (wamei/eldoc-mouse--show-box "doc" (selected-window) 1)
+    ;; 専用バッファに描き、eldoc-box が作った frame を自分の変数に回収する
+    (should (equal displayed-in wamei/eldoc-mouse--buffer))
+    (should (eq wamei/eldoc-mouse--frame 'fake-frame))
+    ;; カーソル側の frame とバッファ名はそのまま
+    (should-not eldoc-box--frame)
+    (should (equal eldoc-box--buffer " *eldoc-box-test*"))))
+
+(ert-deftest wamei/eldoc-mouse-show-box-reuses-own-frame ()
+  (wamei/eldoc-mouse-test--with-fake-eldoc-box
+    (setq wamei/eldoc-mouse--frame 'existing-frame)
+    (wamei/eldoc-mouse--show-box "doc" (selected-window) 1)
+    (should (eq wamei/eldoc-mouse--frame 'existing-frame))))
+
+(ert-deftest wamei/eldoc-mouse-hide-box-quits-only-own-frame ()
+  (wamei/eldoc-mouse-test--with-fake-eldoc-box
+    (let ((eldoc-box--frame 'cursor-frame))
       (wamei/eldoc-mouse--show-box "doc" (selected-window) 1)
       (wamei/eldoc-mouse--hide-box)
-      (should (= quits 1)))))
+      (should (equal quit-frames '(fake-frame)))
+      (should (eq eldoc-box--frame 'cursor-frame)))))
 
-(ert-deftest wamei/eldoc-mouse-hide-box-leaves-box-redrawn-by-others ()
+(ert-deftest wamei/eldoc-mouse-hide-box-does-nothing-before-first-show ()
   (wamei/eldoc-mouse-test--with-fake-eldoc-box
-    (with-temp-buffer
-      (set-window-buffer (selected-window) (current-buffer))
-      (wamei/eldoc-mouse--show-box "doc" (selected-window) 1)
-      ;; カーソル位置の eldoc-box が同じバッファを書き換えた
-      (with-current-buffer eldoc-box--buffer (erase-buffer) (insert "cursor doc"))
-      (wamei/eldoc-mouse--hide-box)
-      (should (= quits 0)))))
+    (wamei/eldoc-mouse--hide-box)
+    (should-not quit-frames)))
+
+(ert-deftest wamei/eldoc-mouse-ignores-motion-inside-own-frame ()
+  (wamei/eldoc-mouse-test--with-buffer "foo bar"
+    (add-hook 'eldoc-documentation-functions (lambda (_cb) "doc") nil t)
+    (wamei/eldoc-mouse-test--move 5)
+    (wamei/eldoc-mouse-test--fire-timer)
+    (let ((wamei/eldoc-mouse--frame (selected-frame)))
+      (wamei/eldoc-mouse-test--move 1))
+    (should (= wamei/eldoc-mouse-test--hidden 0))
+    (should-not wamei/eldoc-mouse--timer)))
 
 (ert-deftest wamei/eldoc-mouse-show-box-positions-frame-relative-to-anchor ()
   (wamei/eldoc-mouse-test--with-fake-eldoc-box
-    (with-temp-buffer
-      (set-window-buffer (selected-window) (current-buffer))
-      (let* (seen
-             (wamei/eldoc-mouse-position-function
-              (lambda (anchor width height) (setq seen (list anchor width height)) (cons 1 2))))
-        (cl-letf (((symbol-function 'eldoc-box--display)
-                   (lambda (_str) (funcall eldoc-box-position-function 30 5))))
-          (wamei/eldoc-mouse--show-box "doc" (selected-window) 1))
-        (should (equal seen '((0 . 0) 30 5)))))))
+    (let* (seen
+           (wamei/eldoc-mouse-position-function
+            (lambda (anchor width height) (setq seen (list anchor width height)) (cons 1 2))))
+      (cl-letf (((symbol-function 'eldoc-box--display)
+                 (lambda (_str) (funcall eldoc-box-position-function 30 5))))
+        (wamei/eldoc-mouse--show-box "doc" (selected-window) 1))
+      (should (equal seen '((0 . 0) 30 5))))))
 
 (provide 'eldoc-mouse-test)
 ;;; eldoc-mouse-test.el ends here

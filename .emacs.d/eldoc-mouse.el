@@ -2,9 +2,9 @@
 ;;; Commentary:
 ;;
 ;; `wamei/eldoc-mouse-mode' を有効にしたバッファでマウスがシンボルの上に止まると、
-;; その位置の `eldoc-documentation-functions' を呼び、結果を eldoc-box の child frame
-;; でマウスの下に表示する。カーソル位置の eldoc (eldoc-mode / eldoc-box-hover-at-point-mode)
-;; とは独立に動く。
+;; その位置の `eldoc-documentation-functions' を呼び、結果を eldoc-box 流の child frame
+;; でマウスの下に表示する。frame はマウス専用に別に持つので、カーソル位置の eldoc
+;; (eldoc-mode / eldoc-box-hover-at-point-mode) の box は消えず、両方が同時に見える。
 ;;
 ;; eldoc-box 同梱の `eldoc-box-mouse-mode' はバッファの eldoc-mode を切ってしまうので使わない。
 ;; 表示は `eldoc-display-functions' を通さず、eldoc の内部変数 `eldoc--make-callback' を
@@ -55,9 +55,12 @@ native frame からの相対ピクセル (tty では桁・行)。WIDTH と HEIGH
 (defvar wamei/eldoc-mouse--shown nil
   "自分で child frame を表示中なら非 nil。")
 
-(defvar wamei/eldoc-mouse--box-tick nil
-  "自分が表示したときの eldoc-box のバッファの `buffer-modified-tick'。
-閉じる前にこれと比べ、カーソル位置の eldoc-box が上書きした box は閉じない。")
+(defvar wamei/eldoc-mouse--frame nil
+  "マウス用の child frame。eldoc-box がカーソル用に持つ `eldoc-box--frame' とは別に持ち、
+マウス側を出してもカーソル側の box が消えないようにする。")
+
+(defvar wamei/eldoc-mouse--buffer " *eldoc-mouse*"
+  "マウス用の child frame に表示するバッファの名前。")
 
 ;;;; ハンドラ
 
@@ -78,9 +81,10 @@ POS の文字自体がシンボル構成文字であることを先に確かめ�
     (setq wamei/eldoc-mouse--timer nil)))
 
 (defun wamei/eldoc-mouse--in-eldoc-box-p (window)
-  "WINDOW が eldoc-box の child frame のものなら非 nil。"
-  (and (bound-and-true-p eldoc-box--frame)
-       (eq (window-frame window) eldoc-box--frame)))
+  "WINDOW がマウス用かカーソル用の child frame のものなら非 nil。"
+  (let ((frame (window-frame window)))
+    (or (and wamei/eldoc-mouse--frame (eq frame wamei/eldoc-mouse--frame))
+        (and (bound-and-true-p eldoc-box--frame) (eq frame eldoc-box--frame)))))
 
 (defun wamei/eldoc-mouse--still-active-p (window pos)
   "WINDOW の POS が追っている対象のシンボルの中なら非 nil。"
@@ -217,27 +221,25 @@ eldoc-box-hover-at-point-mode の `eldoc-box--follow-cursor' は post-command-ho
         (+ (cdr anchor) (frame-char-height))))
 
 (defun wamei/eldoc-mouse--show-box (string window pos)
-  "STRING を eldoc-box の child frame で WINDOW の POS の文字の近くに表示する。"
+  "STRING を専用の child frame で WINDOW の POS の文字の近くに表示する。
+frame の生成と配置は eldoc-box に任せるが、eldoc-box が読み書きする `eldoc-box--frame' と
+`eldoc-box--buffer' を自分の変数に束縛して呼ぶので、カーソル側の frame は使われない。"
   (let* ((anchor (eldoc-box--point-position-relative-to-native-frame pos window))
          (eldoc-box-position-function
           (lambda (width height)
-            (funcall wamei/eldoc-mouse-position-function anchor width height))))
+            (funcall wamei/eldoc-mouse-position-function anchor width height)))
+         (eldoc-box--frame wamei/eldoc-mouse--frame)
+         (eldoc-box--buffer wamei/eldoc-mouse--buffer))
     (with-current-buffer (window-buffer window)
       (eldoc-box--display string))
-    (setq wamei/eldoc-mouse--box-tick (wamei/eldoc-mouse--current-box-tick))))
-
-(defun wamei/eldoc-mouse--current-box-tick ()
-  "eldoc-box のドキュメントバッファの `buffer-modified-tick'。バッファが無ければ nil。"
-  (when-let* ((buffer (and (boundp 'eldoc-box--buffer) (get-buffer eldoc-box--buffer))))
-    (buffer-modified-tick buffer)))
+    ;; frame が無ければ eldoc-box が作って `eldoc-box--frame' に入れるので回収する
+    (setq wamei/eldoc-mouse--frame eldoc-box--frame)))
 
 (defun wamei/eldoc-mouse--hide-box ()
-  "自分が表示した eldoc-box の child frame を閉じる。
-表示後に別の経路 (カーソル位置の eldoc) が中身を書き換えていれば、その box は
-自分のものではないので触らない。"
-  (when (and (fboundp 'eldoc-box-quit-frame)
-             (equal wamei/eldoc-mouse--box-tick (wamei/eldoc-mouse--current-box-tick)))
-    (eldoc-box-quit-frame)))
+  "専用の child frame を閉じる。まだ作っていなければ何もしない。"
+  (when (and wamei/eldoc-mouse--frame (fboundp 'eldoc-box-quit-frame))
+    (let ((eldoc-box--frame wamei/eldoc-mouse--frame))
+      (eldoc-box-quit-frame))))
 
 ;;;; マイナーモード
 
