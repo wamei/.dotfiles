@@ -252,7 +252,7 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   (gnus-group-news-low-empty . '((t (:inherit gnus-group-mail-1 :weight normal))))
   :config
   (load-theme 'doom-molokai t)
-  (set-frame-parameter nil 'alpha 80))
+  (set-frame-parameter nil 'alpha 90))
 
 (leaf doom-modeline
   :doc "モードライン"
@@ -1454,16 +1454,112 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
   :after vertico
   :global-minor-mode t)
 
+(leaf *popup-appearance
+  :doc "corfu / eldoc-box / vertico-posframe の child frame の背景色と枠線を揃える"
+  ;; 各パッケージの本体・枠線 face をここで定義する 2 つの face に継承させる。
+  ;; 色を変えるときはこの 2 つだけ触る。枠幅は各 leaf で 1 に揃えている。
+  :preface
+  (defface wamei/popup-body '((t (:inherit tooltip)))
+    "child frame ポップアップ本体の face。背景色の共通元。")
+  (defface wamei/popup-border '((t (:background "#525254")))
+    "child frame ポップアップ枠線の face。GUI の 1px の帯はこの :background で塗られる。")
+  (defface wamei/popup-border-line '((t nil))
+    "tty の枠線 (罫線文字) に載せる face。
+`wamei/popup-border' の :background を起動時に :foreground へ写す。背景まで付けると
+罫線のセルがベタ塗りになるので別 face にしている。")
+  :custom-face
+  (corfu-default . '((t (:inherit wamei/popup-body))))
+  (corfu-border . '((t (:inherit wamei/popup-border))))
+  (eldoc-box-body . '((t (:inherit wamei/popup-body))))
+  (eldoc-box-border . '((t (:inherit wamei/popup-border))))
+  (vertico-posframe . '((t (:inherit wamei/popup-body))))
+  (vertico-posframe-border . '((t (:inherit wamei/popup-border))))
+  :config
+  ;; tty の child frame の枠 (undecorated nil) は display table の box-* スロットの
+  ;; 文字で、フレームの外側 1 文字に描かれる。既定の +-| を罫線にし、glyph に face を
+  ;; 載せて色を付ける (枠の色は face では変えられず、glyph の face だけが効く)。
+  ;; 罫線は East Asian Width が A だが Warp は半角で描く。
+  (unless (display-graphic-p)
+    (set-face-foreground 'wamei/popup-border-line
+                         (face-attribute 'wamei/popup-border :background nil t))
+    (unless standard-display-table
+      (setq standard-display-table (make-display-table)))
+    (dolist (slot '((box-vertical . ?│) (box-horizontal . ?─)
+                    (box-down-right . ?┌) (box-down-left . ?┐)
+                    (box-up-right . ?└) (box-up-left . ?┘)))
+      (set-display-table-slot standard-display-table (car slot)
+                              (make-glyph-code (cdr slot) 'wamei/popup-border-line)))
+    ;; ウィンドウの縦の分割線も同じ罫線にする。doom-themes は `vertical-border' の
+    ;; 前景と背景を同じ色にしているので tty ではベタ塗りの 1 桁になる。背景を外して
+    ;; GUI と同じ「細い線」に見せる (色はテーマの前景のまま)。
+    (set-face-attribute 'vertical-border nil :background 'unspecified)
+    (set-display-table-slot standard-display-table 'vertical-border
+                            (make-glyph-code ?│))))
+
+(leaf tooltip
+  :doc "help-echo (flymake の診断メッセージなど) のツールチップ"
+  :ensure nil
+  :preface
+  (defun wamei/tty-tip-shift-for-border (pos)
+    "tty-tip の位置 POS (X . Y) を枠の分だけ右下へ 1 文字ずらす。
+枠 (undecorated nil) はフレームの外側に描かれるので、そのままだとマウス位置の
+文字を枠の角が隠す。端末の右端・下端からはみ出さないように収める。"
+    (cons (min (1+ (car pos))
+               (max 0 (- (display-pixel-width) (frame-width tty-tip--frame) 1)))
+          (min (1+ (cdr pos))
+               (max 0 (- (display-pixel-height) (frame-height tty-tip--frame) 1)))))
+
+  (defun wamei/frame-unset-internal-border-color (frame)
+    "通常フレーム FRAME の内側の枠 (internal border) の色を無色に戻す。
+GUI の tooltip の枠色は `internal-border' face のグローバル値で与えるが、そのままだと
+通常フレームの内側の枠 (macOS では幅 2px) にも色が付くので、フレームごとに打ち消す。
+child frame (corfu / eldoc-box / posframe) は自分でこの face を設定するので触らない。"
+    (unless (frame-parameter frame 'parent-frame)
+      (set-face-background 'internal-border 'unspecified frame)))
+  :custom
+  ;; macOS のネイティブ tooltip は `tooltip' face を無視して小さなシステムフォントで
+  ;; 描く。Emacs 自前の tip frame にすると face の色とフォントが効き、背景が
+  ;; 他のポップアップ (wamei/popup-body は tooltip を継承) と揃う。
+  (use-system-tooltips . nil)
+  ;; 枠は他のポップアップと同じ 1px、透過も同じ 90。外側の枠 (border-width) は
+  ;; macOS では描かれない。
+  (tooltip-frame-parameters . '((name . "tooltip")
+                                (internal-border-width . 1)
+                                (border-width . 0)
+                                (alpha . 90)
+                                (no-special-glyphs . t)))
+  :config
+  ;; tip frame は `frame-list' に現れず after-make-frame-functions も走らないので、
+  ;; 枠色は face のグローバル値でしか渡せない。
+  (when (display-graphic-p)
+    (set-face-background 'internal-border
+                         (face-attribute 'wamei/popup-border :background nil t))
+    (mapc #'wamei/frame-unset-internal-border-color (frame-list))
+    (add-hook 'after-make-frame-functions #'wamei/frame-unset-internal-border-color))
+  ;; tty では tty-tip (Emacs 31) が help-echo を child frame で出す。他のポップアップと
+  ;; 同じ罫線の枠を付け、枠の分だけマウス位置からずらす。マウスは xterm-mouse-mode。
+  (unless (display-graphic-p)
+    (require 'tty-tip)
+    (setq tty-tip-frame-parameters
+          (cons '(undecorated . nil)
+                (assq-delete-all 'undecorated (copy-alist tty-tip-frame-parameters))))
+    (advice-add 'tty-tip--compute-position :filter-return
+                #'wamei/tty-tip-shift-for-border)
+    (tty-tip-mode 1)))
+
 (leaf vertico-posframe
   :doc "ミニバッファを child frame で表示する"
   :ensure t
   :after vertico
-  :if (display-graphic-p)
+  ;; Emacs 31 は tty でも child frame を作れる。posframe 側が `posframe-workable-p' で
+  ;; 同じ判定をし、tty では枠を文字で描く (undecorated nil)。
+  :if (or (display-graphic-p) (featurep 'tty-child-frames))
   :custom
   ;; フレーム中央。モードラインやミニバッファの高さに依存しないので
   ;; 端末パネルの有無で位置がずれない。
   (vertico-posframe-poshandler . #'posframe-poshandler-frame-center)
-  (vertico-posframe-border-width . 2)
+  ;; corfu / eldoc-box と同じ幅 (*popup-appearance 参照)
+  (vertico-posframe-border-width . 1)
   (vertico-posframe-parameters . '((alpha . 90)))
   :global-minor-mode vertico-posframe-mode)
 
@@ -1475,6 +1571,44 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
 (leaf corfu
   :doc "inline補完"
   :ensure t
+  :preface
+  (defvar wamei/corfu--tty-shift nil
+    "非 nil なら `wamei/corfu-tty-make-frame-args' が位置を補正する。
+候補ポップアップ (`corfu--popup-show') の間だけ t にし、同じ `corfu--make-frame' を
+通る corfu-popupinfo には掛けない (そちらは `wamei/corfu-popupinfo-tty-areas' で補正)。")
+
+  (defun wamei/corfu-tty-popup-show (fn &rest args)
+    "`corfu--popup-show' の間だけ `wamei/corfu--tty-shift' を立てる。"
+    (let ((wamei/corfu--tty-shift t))
+      (apply fn args)))
+
+  (defun wamei/corfu-tty-make-frame-args (args)
+    "tty では枠がフレームの外側 1 文字に描かれるので、その分ポップアップを内側へずらす。
+ARGS は `corfu--make-frame' の (FRAME X Y WIDTH HEIGHT)。corfu は tty の枠幅を 0 として
+位置を計算するため、そのままだと上枠がカーソル行を塗りつぶし、左端では左枠が切れる。
+カーソル行より上に出るときは下枠がカーソル行に掛かるので逆向きにずらす。"
+    (if (not wamei/corfu--tty-shift)
+        args
+      (pcase-let* ((`(,frame ,x ,y ,width ,height) args)
+                   (point-y (+ (cadr (window-inside-pixel-edges))
+                               (or (cdr (posn-x-y (posn-at-point))) 0))))
+        (list frame
+              (max 1 (min (1+ x) (- (frame-width) width 1)))
+              (if (> y point-y) (1+ y) (1- y))
+              width height))))
+
+  (defun wamei/corfu-popupinfo-tty-areas (areas)
+    "corfu-popupinfo の候補領域 AREAS (左 右 縦) を tty の枠の分だけずらす。
+corfu-popupinfo は tty の枠幅を 0 として候補ポップアップに密着させるため、そのままだと
+枠が候補の文字に重なる。左右は 1 桁外へ、縦は候補の下なら 1 行下、上なら 1 行上へ
+ずらし、候補ポップアップと枠線を共有する位置に置く。"
+    (pcase-let* ((`(,al ,ar ,av) areas)
+                 (`(,_ ,cfy ,_ ,_) (corfu-popupinfo--frame-geometry corfu--frame)))
+      (list (cons (1- (car al)) (cdr al))
+            (list (1+ (car ar)) (nth 1 ar)
+                  (min (nth 2 ar) (- (frame-width) (car ar) 2)) (nth 3 ar) 'right)
+            (list (car av) (+ (nth 1 av) (if (> (nth 1 av) cfy) 1 -1))
+                  (nth 2 av) (nth 3 av) 'vertical))))
   :custom
   (corfu-cycle . t)
   (corfu-auto . t)
@@ -1490,7 +1624,17 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
   ("M-/" . completion-at-point)
   :global-minor-mode global-corfu-mode corfu-popupinfo-mode
   :config
-  (add-to-list 'corfu--frame-parameters '(alpha . 90)))
+  (add-to-list 'corfu--frame-parameters '(alpha . 90))
+  ;; tty では undecorated nil にすると枠が文字で描かれる (posframe と同じ見た目)。
+  (unless (display-graphic-p)
+    (setq corfu--frame-parameters
+          (cons '(undecorated . nil)
+                (assq-delete-all 'undecorated (copy-alist corfu--frame-parameters))))
+    (advice-add 'corfu--popup-show :around #'wamei/corfu-tty-popup-show)
+    (advice-add 'corfu--make-frame :filter-args #'wamei/corfu-tty-make-frame-args)
+    (with-eval-after-load 'corfu-popupinfo
+      (advice-add 'corfu-popupinfo--possible-areas :filter-return
+                  #'wamei/corfu-popupinfo-tty-areas))))
 
 (leaf orderless
   :doc "補完ファジー検索"
@@ -1967,16 +2111,20 @@ WIDTH と HEIGHT は child frame のピクセルサイズ (tty では桁・行)�
     "tty 版 `eldoc-box--update-childframe-geometry'。FRAME は child frame、WINDOW はその窓。
 本家は child frame を親フレームより 32px 小さく clip するが、tty ではピクセル単位が
 1 文字なので 32 行/桁も削られ、小さい端末では高さが負になって 1 行に潰れる。
-余白を上下左右 1 文字にして親フレーム内に収める。"
+余白を上下左右 1 文字にして親フレーム内に収める。
+tty の枠 (undecorated nil) はフレームの外側 1 文字に描かれるので、位置関数には
+枠込みの大きさを渡し、返った位置から枠の分だけ内側にフレームを置く。"
     (let* ((parent (frame-parent frame))
-           (max-width (- (frame-width parent) 2))
-           (max-height (- (frame-height parent) 2))
+           (border (if (frame-parameter frame 'undecorated) 0 1))
+           (max-width (- (frame-width parent) 2 (* 2 border)))
+           (max-height (- (frame-height parent) 2 (* 2 border)))
            (size (window-text-pixel-size window nil nil max-width max-height t))
            (width (min (1+ (car size)) max-width))
            (height (min (cdr size) max-height))
-           (pos (funcall eldoc-box-position-function width height)))
+           (pos (funcall eldoc-box-position-function
+                         (+ width (* 2 border)) (+ height (* 2 border)))))
       (set-frame-size frame width height t)
-      (set-frame-position frame (car pos) (cdr pos))))
+      (set-frame-position frame (+ (car pos) border) (+ (cdr pos) border))))
 
   (defun wamei/eldoc-box-inhibit-during-completion (fn &rest args)
     "補完ポップアップやゴーストテキストの表示中は eldoc-box の自動表示を止める。
@@ -2008,6 +2156,10 @@ claude-complete と copilot のゴーストテキストも point の直後に描
   ;; defvar なので :custom ではなく setq。C-c d と hover-at-point-mode の両方が読む。
   (setq eldoc-box-at-point-position-function #'wamei/eldoc-box-at-point-position)
   (unless (display-graphic-p)
+    ;; 枠を文字で描く (corfu / posframe と同じ見た目)
+    (setq eldoc-box-frame-parameters
+          (cons '(undecorated . nil)
+                (assq-delete-all 'undecorated (copy-alist eldoc-box-frame-parameters))))
     (advice-add 'eldoc-box--update-childframe-geometry :override
                 #'wamei/eldoc-box-tty-update-childframe-geometry))
   (advice-add 'eldoc-box--eldoc-display-function :around
