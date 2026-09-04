@@ -21,6 +21,7 @@ brew install --cask font-hackgen
 brew install --cask font-hackgen-nerd
 
 brew install --cask google-japanese-ime
+brew install laishulu/homebrew/macism  # Emacs の minibuffer で IME を off にする
 brew install --cask karabiner-elements
 brew install --cask 1password
 brew install --cask nordlayer

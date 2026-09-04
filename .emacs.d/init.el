@@ -118,6 +118,21 @@
   (ns-command-modifier  . 'super)
   (mac-command-modifier . 'super))
 
+(leaf minibuffer-ime
+  :doc "minibuffer に入ったら OS の IME を英字 (ABC) に切り替える"
+  ;; NS ビルドには emacs-mac の `mac-select-input-source' がないので、macism
+  ;; (brew install laishulu/homebrew/macism) を非同期に呼んで入力ソースを変える。
+  ;; 未導入なら何もしない。minibuffer を抜けても元の IME には戻さない。
+  :if (eq system-type 'darwin)
+  :preface
+  (defvar wamei/minibuffer-ime-ascii-source "com.apple.keylayout.ABC"
+    "minibuffer で選ぶ入力ソース ID。シェルで `macism' を実行すると現在値が分かる。")
+  (defun wamei/minibuffer-ime-off ()
+    "OS の入力ソースを `wamei/minibuffer-ime-ascii-source' に切り替える。"
+    (when (executable-find "macism")
+      (start-process "macism" nil "macism" wamei/minibuffer-ime-ascii-source)))
+  :hook (minibuffer-setup-hook . wamei/minibuffer-ime-off))
+
 (leaf tty-display
   :doc "ターミナル(-nw)での表示記号"
   ;; 端末には fringe がないので、右端を超えた行は display table の truncation
