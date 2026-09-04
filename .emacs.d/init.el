@@ -2145,20 +2145,35 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
   (defvar wamei/eldoc-box-at-point-gap '(2 . 1)
     "eldoc-box の child frame をカーソルから離す距離 (桁 . 行)。")
 
+  (defun wamei/eldoc-box-position-near (anchor width height)
+    "ANCHOR の文字から `wamei/eldoc-box-at-point-gap' だけ離れた child frame の位置を返す。
+ANCHOR は native frame 相対の (X . Y)、WIDTH と HEIGHT は child frame のピクセルサイズ
+(tty では桁・行)。下に収まらなければ上、どちらも無理なら下端に寄せる。
+カーソル位置 (`wamei/eldoc-box-at-point-position') とマウス位置 (eldoc-mouse) の両方で使う。"
+    (let* ((gap-x (* (frame-char-width) (car wamei/eldoc-box-at-point-gap)))
+           (gap-y (* (frame-char-height) (cdr wamei/eldoc-box-at-point-gap)))
+           (below (+ (cdr anchor) (frame-char-height) gap-y))
+           (above (- (cdr anchor) gap-y height)))
+      (cons (max 0 (min (+ (car anchor) gap-x) (- (frame-inner-width) width)))
+            (cond ((<= (+ below height) (frame-inner-height)) below)
+                  ((>= above 0) above)
+                  (t (max 0 (- (frame-inner-height) height)))))))
+
   (defun wamei/eldoc-box-at-point-position (width height)
     "カーソルから `wamei/eldoc-box-at-point-gap' だけ離れた child frame の位置を返す。
 WIDTH と HEIGHT は child frame のピクセルサイズ (tty では桁・行)。
 本家の `eldoc-box--default-at-point-position-function' はカーソルの直下・同じ桁に
-出すので近すぎて読みにくい。下に収まらなければ上、どちらも無理なら下端に寄せる。"
-    (let* ((pos (eldoc-box--point-position-relative-to-native-frame))
-           (gap-x (* (frame-char-width) (car wamei/eldoc-box-at-point-gap)))
-           (gap-y (* (frame-char-height) (cdr wamei/eldoc-box-at-point-gap)))
-           (below (+ (cdr pos) (frame-char-height) gap-y))
-           (above (- (cdr pos) gap-y height)))
-      (cons (max 0 (min (+ (car pos) gap-x) (- (frame-inner-width) width)))
-            (cond ((<= (+ below height) (frame-inner-height)) below)
-                  ((>= above 0) above)
-                  (t (max 0 (- (frame-inner-height) height)))))))
+出すので近すぎて読みにくい。"
+    (wamei/eldoc-box-position-near
+     (eldoc-box--point-position-relative-to-native-frame) width height))
+
+  ;; マウスの下のシンボルの eldoc をマウス位置の child frame で表示する (eldoc-mouse.el)。
+  ;; eldoc-box 同梱の eldoc-box-mouse-mode はバッファの eldoc-mode を切るので使わない。
+  ;; :hook で参照するので eldoc-box の読み込みを待たずここで load する。
+  (load (expand-file-name "eldoc-mouse"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (setq wamei/eldoc-mouse-position-function #'wamei/eldoc-box-position-near)
 
   (defun wamei/eldoc-box-tty-update-childframe-geometry (frame window)
     "tty 版 `eldoc-box--update-childframe-geometry'。FRAME は child frame、WINDOW はその窓。
@@ -2200,8 +2215,9 @@ claude-complete と copilot のゴーストテキストも point の直後に描
                (fboundp 'eldoc-box-quit-frame))
       (eldoc-box-quit-frame)))
   ;; elisp などでは eldoc が常時発火して child frame がちらつくため、
-  ;; まずは eglot 管理下のバッファに限定する。
-  :hook (eglot-managed-mode-hook . eldoc-box-hover-at-point-mode)
+  ;; まずは eglot 管理下のバッファに限定する。マウスホバーも同じ範囲。
+  :hook ((eglot-managed-mode-hook . eldoc-box-hover-at-point-mode)
+         (eglot-managed-mode-hook . wamei/eldoc-mouse-mode))
   ;; C-h は keyboard-translate で DEL に潰しているため C-h . は使えない
   :bind ("C-c d" . eldoc-box-help-at-point)
   :config
