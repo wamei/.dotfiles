@@ -299,6 +299,16 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   ((treemacs-mode-hook dired-mode-hook vterm-mode-hook wamei/term-list-mode-hook)
    . (lambda() (display-line-numbers-mode 0))))
 
+(leaf keybinds
+  :doc "キーバインド"
+  :bind (("C-q" . nil)
+         ("M-b" . 'backward-to-word)
+         ("M-f" . 'forward-to-word)
+         ("M-h" . 'backward-kill-word)
+         ("s-x" . 'kill-region)
+         ("s-c" . 'kill-ring-save)
+         ("s-v" . 'yank)))
+
 (leaf vterm
   :doc "フレーム下部に固定する端末パネル"
   :ensure t
@@ -870,7 +880,10 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
           (select-window window))))))
 
   :bind (("C-c c" . claude-code-ide-menu)
-         ("C-x C-a" . wamei/claude-toggle))
+         ("C-x C-a" . wamei/claude-toggle)
+         ("C-q a c" . claude-code-ide)
+         ("C-q a n" . wamei/claude-panel-next)
+         ("C-q a p" . wamei/claude-panel-previous))
   :custom
   ;; 端末バックエンドは導入済みの vterm を使う (既定値だが意図として明示)
   (claude-code-ide-terminal-backend . 'vterm)
@@ -896,16 +909,6 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   (wamei/claude-panel-enable)
   ;; xref や flymake などの Emacs 側の機能を Claude から使えるようにする
   (claude-code-ide-emacs-tools-setup))
-
-(leaf keybinds
-  :doc "キーバインド"
-  :bind (("C-q" . nil)
-         ("M-b" . 'backward-to-word)
-         ("M-f" . 'forward-to-word)
-         ("M-h" . 'backward-kill-word)
-         ("s-x" . 'kill-region)
-         ("s-c" . 'kill-ring-save)
-         ("s-v" . 'yank)))
 
 (leaf project
   :doc "プロジェクト操作"
