@@ -1026,6 +1026,15 @@ M-x treemacs-select-window を直接呼ぶ。"
           (delete-window window))
       (treemacs-select-window)))
 
+  (defun wamei/treemacs--git-update-guard (fn file &rest args)
+    "`treemacs-do-update-single-file-git-state' の :around advice。
+FILE の親ディレクトリが既に無ければ FN を呼ばず nil を返す。
+ディレクトリを再帰削除すると filewatch が子から順に deleted を届け、
+その時点で :directory に渡す親も消えているため make-process が
+file-missing で落ちる (treemacs 側に存在チェックがない)。"
+    (when (file-directory-p (treemacs--parent file))
+      (apply fn file args)))
+
   :custom
   ;; C-x o (other-window) の巡回対象から外す
   (treemacs-is-never-other-window . t)
@@ -1042,7 +1051,9 @@ M-x treemacs-select-window を直接呼ぶ。"
   (treemacs-git-mode 'deferred)
   ;; window に出ている treemacs バッファに root が描画されていないプロジェクトを
   ;; 渡されたら探索を諦める (ガード本体と経緯は project-tabs.el)
-  (advice-add 'treemacs-find-file-node :around #'wamei/treemacs--find-file-node-guard))
+  (advice-add 'treemacs-find-file-node :around #'wamei/treemacs--find-file-node-guard)
+  ;; 削除済みディレクトリに対する git 状態更新で落ちないようにする (ガード本体は :preface)
+  (advice-add 'treemacs-do-update-single-file-git-state :around #'wamei/treemacs--git-update-guard))
 
 (leaf treemacs-nerd-icons
   :doc "treemacs のアイコンを nerd-icons に揃える"
