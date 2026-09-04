@@ -7,6 +7,9 @@ ln -sf ~/.dotfiles/.zshrc ~/.zshrc
 #ln -sf ~/.dotfiles/.gitconfig ~/.gitconfig
 ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
 
+mkdir -p ~/.config/mise
+ln -sf ~/.dotfiles/.config/mise/config.toml ~/.config/mise/config.toml
+
 mkdir -p ~/.aws
 ln -sf ~/.dotfiles/.aws/update-mfa-profile ~/.aws/update-mfa-profile
 

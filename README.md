@@ -42,7 +42,5 @@ brew install --cask warp
 brew install awscli
 brew install copilot
 
-brew install nodenv
-brew install rbenv
-brew install pyenv
+brew install mise
 ```

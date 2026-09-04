@@ -98,23 +98,34 @@ precmd () {
     fi
 }
 show_env() {
-  if [[ -n "$(rbenv local 2>/dev/null)" ]]; then
-    echo -n " %F{009}rb:$(rbenv version-name)%f"
-  else
-    echo -n " rb:$(rbenv version-name)"
-  fi
-  if [[ -n "$VIRTUAL_ENV" && -n "$DIRENV_DIR" ]]; then
-    echo -n " %F{009}py:$(pyenv version-name)($(basename $VIRTUAL_ENV))%f"
-  elif [[ -n "$(pyenv local 2>/dev/null)" ]]; then
-    echo -n " %F{009}py:$(pyenv version-name)%f"
-  else
-    echo -n " py:$(pyenv version-name)"
-  fi
-  if [[ -n "$(nodenv local 2>/dev/null)" ]]; then
-    echo -n " %F{009}node:$(nodenv version-name)%f"
-  else
-    echo -n " node:$(nodenv version-name)"
-  fi
+  show_env_mise
+}
+# mise が今のディレクトリで有効にしているツール (node / bun / python / ruby ...) を全部出す。
+# global 設定 (~/.config/mise/config.toml) 以外から解決されたものは赤で出す。
+# direnv の layout python で venv に入っているときは python に (venv 名) を付けて赤で出す。
+# `mise ls --current` の 1 行: "<tool>  <version>  [(missing)]  <source>  <requested>"
+show_env_mise() {
+  # config が symlink だと source は実体側のパスで出るので、realpath 同士で比べる
+  local global=${${:-~/.config/mise/config.toml}:A}
+  local line tool ver src
+  local -a f
+  mise ls --current 2>/dev/null | while IFS= read -r line; do
+    f=(${(z)line})
+    tool=$f[1] ver=$f[2] src=$f[3]
+    if [[ $src == '(missing)' ]]; then
+      ver+='(missing)'
+      src=$f[4]
+    fi
+    if [[ $tool == python && -n $VIRTUAL_ENV && -n $DIRENV_DIR ]]; then
+      echo -n " %F{009}$tool:$ver(${VIRTUAL_ENV:t})%f"
+      continue
+    fi
+    if [[ ${${src/#\~/$HOME}:A} == $global ]]; then
+      echo -n " $tool:$ver"
+    else
+      echo -n " %F{009}$tool:$ver%f"
+    fi
+  done
 }
 
 # prompt表示設定
@@ -152,41 +163,28 @@ function extract() {
 #圧縮ファイルを実行すると解凍するように
 alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 
-# load local settings
-[[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
-
-source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-source $(brew --prefix)/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
-
-# bindkey              '^I' menu-select
-# bindkey "$terminfo[kcbt]" menu-select
-# bindkey -M menuselect              '^I'         menu-complete
-# bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
-
 # 環境変数関係
+# PATH の組み立て順が重要:
+#   1. path_helper と brew shellenv はどちらも PATH を作り直して自分の dir を先頭に置くので最初に通す
+#      (direnv / mise の実体は brew 配下にあり、activate より前に brew が要る)
+#   2. 各種ツールの bin を足す
+#   3. mise (node / bun / ruby / python) は他のどの dir より前に来る必要があるので最後に activate する
+# 親 shell (vterm / tmux) から mise 入りの PATH を継いでいても、1 がその前に system dir や
+# brew を割り込ませるので、「既に PATH にあるか」で activate を省いてはいけない。
+# 毎回 activate して先頭に付け直し、重複は typeset -U で除く (先に現れた方が残る)。
 setopt no_global_rcs
 if [ -x /usr/libexec/path_helper ]; then
     eval `/usr/libexec/path_helper -s`
 fi
+typeset -U path PATH
 
-export PATH=${HOME}/bin::${PATH}
+# brew
+eval "$(/opt/homebrew/bin/brew shellenv)"
+export PATH="$HOME/.local/bin:$PATH"
+# brew end
+
+export PATH=${HOME}/bin:${PATH}
 export PATH=${HOME}/fvm/default/bin:${PATH}
-
-# rbenv
-[[ -d ${HOME}/.rbenv ]] && \
-case ":$PATH:" in
-  *".rbenv"*) ;;
-  *) eval "$(rbenv init - zsh)" ;;
-esac
-# rbenv end
-
-# nodenv
-[[ -d ${HOME}/.nodenv ]] && \
-case ":$PATH:" in
-  *".nodenv"*) ;;
-  *) eval "$(nodenv init - zsh)" ;;
-esac
-# nodenv end
 
 # pnpm
 export PNPM_HOME="/Users/wamei/Library/pnpm"
@@ -208,21 +206,27 @@ esac
 eval "$(direnv hook zsh)"
 # direnv end
 
-# brew
-eval "$(/opt/homebrew/bin/brew shellenv)"
-export PATH="$HOME/.local/bin:$PATH"
-# brew end
-
-# pyenv
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-# pyenv end
-
 # Added by Antigravity
 export PATH="/Users/wamei/.antigravity/antigravity/bin:$PATH"
 export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
 export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+
+# mise (node / bun / ruby / python)。activate 時と precmd / chpwd で有効なツールの bin を PATH 先頭に差し込むので、
+# PATH を組み終えた最後に置く。設定は ~/.config/mise/config.toml (dotfiles の .config/mise)。
+eval "$(mise activate zsh)"
+# mise end
+
+# load local settings
+[[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
+
+# HOMEBREW_PREFIX は上の brew shellenv が export する (brew を 2 回起動しないため $(brew --prefix) は使わない)
+source $HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
+
+# bindkey              '^I' menu-select
+# bindkey "$terminfo[kcbt]" menu-select
+# bindkey -M menuselect              '^I'         menu-complete
+# bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 # 端末タイトルに直前に実行したコマンドを流す。
 # Emacs (vterm) の端末一覧がこのタイトルを拾って表示する。

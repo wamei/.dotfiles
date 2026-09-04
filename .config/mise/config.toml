@@ -1,0 +1,10 @@
+[tools]
+node = "26"
+bun = "1"
+ruby = "3.1.2"
+python = "3.13.3"
+
+[settings]
+# nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む
+# (mise は既定では無視する)
+idiomatic_version_file_enable_tools = ["node", "ruby", "python"]
