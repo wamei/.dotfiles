@@ -719,6 +719,20 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
                  (window-parameters . ((no-other-window . t)
                                        (no-delete-other-windows . t)))))
   :config
+  ;; vterm は既定色のセルにも `default' face の色を文字列で貼る (vterm--get-color が
+  ;; index -1 で default の背景を返す)。背景が明示されると auto-dim-other-buffers の
+  ;; window ごとの remapping が透けず、非選択の端末だけ暗くならない。既定背景の
+  ;; セルでは nil を返して :background を付けさせない (vterm-module.c は nil なら
+  ;; 属性を省く)。反転表示 (:inverse-video) は vterm-color-inverse-video の色が要るので除く。
+  ;; 既に描かれた文字は次の再描画まで古い色のまま。
+  (defun wamei/vterm-omit-default-background (fn index &rest args)
+    "既定の背景色 (INDEX -1、前景でも反転でもない) なら nil、それ以外は FN に委ねる。"
+    (if (and (eql index -1)
+             (not (memq :foreground args))
+             (not (memq :inverse-video args)))
+        nil
+      (apply fn index args)))
+  (advice-add 'vterm--get-color :around #'wamei/vterm-omit-default-background)
   ;; C-c は単発で SIGINT を送る。vterm は C-c C-t (copy-mode) などを定義して
   ;; C-c を prefix にしているため、prefix ごと置き換える。C-c 配下 (C-c C-t /
   ;; C-c C-l / C-c C-n / C-c C-p / C-c C-r とグローバルの C-c 系) は端末バッファ
@@ -1341,6 +1355,21 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
   (wamei/window-divider-sync-color)
   (add-hook 'enable-theme-functions #'wamei/window-divider-sync-color)
   :global-minor-mode window-divider-mode)
+
+(leaf auto-dim-other-buffers
+  :doc "選択中以外の window の背景を少し暗くして、どこにいるか分かるようにする"
+  ;; face remapping はバッファ単位だが、このパッケージは :filtered (:window ...) 付きの
+  ;; remapping で window ごとに色を分け、選択の切り替えに追随する。
+  :ensure t
+  :custom-face
+  ;; 既定の "#122" は青緑がかって doom-molokai に合わないので、default (#1c1e1f) を
+  ;; 落とした色にする。hide は org-hide 用で前景も背景に合わせる。
+  (auto-dim-other-buffers . '((t (:background "#121314"))))
+  (auto-dim-other-buffers-hide . '((t (:foreground "#121314" :background "#121314"))))
+  :custom
+  ;; ミニバッファに入っても直前の window を暗くしない (戻る場所が分かるように)
+  (auto-dim-other-buffers-dim-on-switch-to-minibuffer . nil)
+  :global-minor-mode auto-dim-other-buffers-mode)
 
 (leaf global-display-line-numbers
   :doc "行番号を表示する"
