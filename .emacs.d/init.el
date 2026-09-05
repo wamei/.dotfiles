@@ -1162,6 +1162,7 @@ file-missing で落ちる (treemacs 側に存在チェックがない)。"
   :bind (("C-x C-j" . dired-toggle-current-or-project-directory)
          (:dired-mode-map
          ("C-c C-s" . dired-toggle-sudo)
+         ("C-c o" . dired-do-open)
          ("RET" . dired-find-file)
          ("a" . dired-find-alternate-file)
          ("^" . dired-up-directory)
@@ -1175,6 +1176,11 @@ file-missing で落ちる (treemacs 側に存在チェックがない)。"
   (setq dired-listing-switches "--color=auto --group-directories-first -alLv")
   (setq insert-directory-program "/opt/homebrew/bin/gls")
   (put 'dired-find-alternate-file 'disabled nil)
+  ;; ファイルを掴んで別の dired バッファへ落とせるようにする (down-mouse-1)。
+  ;; 動かさずに離したときは mouse-1 が押し戻されるので通常のクリックと両立する。
+  (setq dired-mouse-drag-files t)
+  ;; 外部でのファイル変更に追従する (file-notify 経由)。
+  (setq auto-revert-verbose nil)
 
   (defun dired-toggle-current-or-project-directory (n)
     "N が 1 ならカレントファイルの位置、4 (C-u) ならプロジェクトルートを dired で開く。"
@@ -1186,7 +1192,55 @@ file-missing で落ちる (treemacs 側に存在チェックがない)。"
              (if project
                  (project-dired)
                (dired-jump)))
-            ))))
+            )))
+
+  (defun wamei/dired-context-menu-extras (menu click)
+    "右クリックメニューに dired のファイル操作を足す。`context-menu-functions' 用。
+dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続けて、
+コピー・改名・削除・新規作成、ディレクトリ行なら展開/折りたたみを出す。"
+    (when (and (derived-mode-p 'dired-mode)
+               (mouse-posn-property (event-start click) 'dired-filename))
+      ;; 右クリックした行に point を移す。メニューの各コマンドは point の
+      ;; ファイル (またはマーク) に効くので、save-excursion で戻さない。
+      (mouse-set-point click)
+      (let ((file (dired-get-filename nil t)))
+        (define-key menu [wamei-dired-separator] menu-bar-separator)
+        (when (and file (file-directory-p file) (fboundp 'dired-subtree-toggle))
+          (define-key menu [wamei-dired-toggle]
+                      '(menu-item "Expand / Collapse" dired-subtree-toggle)))
+        ;; dired-copy-filename-as-kill は引数 0 で絶対パスをコピーする
+        (define-key menu [wamei-dired-copy-path]
+                    '(menu-item "Copy Path" (lambda () (interactive) (dired-copy-filename-as-kill 0))))
+        (define-key menu [wamei-dired-copy] '(menu-item "Copy…" dired-do-copy))
+        (define-key menu [wamei-dired-rename] '(menu-item "Rename…" dired-do-rename))
+        (define-key menu [wamei-dired-delete] '(menu-item "Delete…" dired-do-delete))
+        (define-key menu [wamei-dired-new-file] '(menu-item "New File…" dired-create-empty-file))
+        (define-key menu [wamei-dired-new-dir] '(menu-item "New Directory…" dired-create-directory))))
+    menu)
+  :hook
+  (dired-mode-hook . auto-revert-mode)
+  :config
+  ;; 右クリックメニュー。dired-mode では dired-context-menu が組み込みで足される。
+  (context-menu-mode 1)
+  (add-hook 'context-menu-functions #'wamei/dired-context-menu-extras))
+
+(leaf dired-subtree
+  :doc "dired でディレクトリをその場で展開する"
+  :ensure t
+  :after dired
+  :bind (:dired-mode-map
+         ("TAB" . dired-subtree-toggle)
+         ("<backtab>" . dired-subtree-cycle))
+  :custom
+  ;; 背景色で深さを表すのはやめ、line-prefix のインデントだけにする
+  (dired-subtree-use-backgrounds . nil)
+  :config
+  ;; nerd-icons-dired は dired-after-readin-hook でしか付け直さないので、
+  ;; 展開した行にもアイコンを付ける。revert 時の復元も dired-subtree-insert を
+  ;; 通るのでここ一箇所で足りる。
+  (with-eval-after-load 'nerd-icons-dired
+    (add-hook 'dired-subtree-after-insert-hook #'nerd-icons-dired--refresh)))
+
 (leaf dired-toggle-sudo
   :ensure t
   :bind (:dired-mode-map
