@@ -17,8 +17,11 @@
 ;; 4. D&D の drop 先
 ;;    別の dired バッファからファイルを subtree の行へ drop すると、その行の
 ;;    ディレクトリ (ファイル行なら親、行が無ければ top) へ移す。macOS の drop は
-;;    常に private で届き dired 既定では copy 扱いだが、Finder と同じく既定は
-;;    移動 (`wamei/dired-tree-drop-action') にする。
+;;    常に private で届き修飾キー (Shift / Control / Meta) は伝わらない。dired 既定
+;;    では private は copy 扱いだが、Finder と同じく既定は移動
+;;    (`wamei/dired-tree-drop-action') にする。複数ファイルの drop は
+;;    `dnd-multiple-handler' プロパティで 1 回にまとめて受け取り、落下先を 1 度だけ
+;;    決めてから全部運ぶ。
 ;;
 ;;; Code:
 
@@ -137,12 +140,29 @@ point は呼び出し前の位置に戻す。"
 
 (defun wamei/dired-tree-revert ()
   "カーソル行のファイルを保って `revert-buffer' する。
-dired 標準の復元は subtree 行では効かないので `dired-utils-goto-line' で戻す。"
-  (let ((file (dired-utils-get-filename)))
+dired 標準の復元は subtree 行では効かないので `dired-utils-goto-line' で戻す。
+
+sidebar は選択されていない window に出る (`wamei/project-sidebar--reveal' は
+window-point だけを動かす) ので、buffer point と window-point はずれる。
+dired 標準の `dired-restore-positions' も window ごとの復元を持つが、subtree 行では
+`dired-goto-file' が効かず行番号にフォールバックするため、行数が変わる revert で
+別の行に飛ぶ。window ごとにも行のファイル名を控えて戻す。"
+  (let ((file (dired-utils-get-filename))
+        (window-files
+         (mapcar (lambda (win)
+                   (cons win (save-excursion
+                               (goto-char (window-point win))
+                               (dired-utils-get-filename))))
+                 (get-buffer-window-list nil nil t))))
     (revert-buffer)
     (when file
       (or (dired-utils-goto-line file)
-          (dired-goto-file file)))))
+          (dired-goto-file file)))
+    (pcase-dolist (`(,win . ,wfile) window-files)
+      (when-let* ((wfile wfile)
+                  (pos (save-excursion
+                         (and (dired-utils-goto-line wfile) (point)))))
+        (set-window-point win pos)))))
 
 ;;; 展開ディレクトリの監視
 
@@ -258,26 +278,61 @@ Finder と同じく既定は移動にする。")
     (wamei/dired-tree--drop-target (and file (file-directory-p file))
                                    file parent (dired-current-directory))))
 
-(defun wamei/dired-tree-dnd-handle-file (uri action)
-  "URI のローカルファイルを point の行の落下先へ ACTION で運ぶ。`dnd-protocol-alist' 用。
+(defun wamei/dired-tree--drop-into-self-p (from to)
+  "TO が FROM 自身か、FROM (ディレクトリ) の中なら t。
+そのまま `rename-file' に渡すとエラーになるので、呼ぶ前に弾く。"
+  (let ((from (expand-file-name from))
+        (to (expand-file-name to)))
+    (or (equal (directory-file-name from) (directory-file-name to))
+        (and (file-directory-p from)
+             (string-prefix-p (file-name-as-directory from)
+                              (file-name-as-directory to))))))
+
+(defun wamei/dired-tree--drop-one (from to action)
+  "FROM を TO へ ACTION で運ぶ。運んだら t。自分自身の中や上書き拒否なら nil。"
+  (cond
+   ((wamei/dired-tree--drop-into-self-p from to)
+    (message "dired-tree: skipping drop of %s into itself" from)
+    nil)
+   (t
+    (let ((overwrite (and (file-exists-p to)
+                          (y-or-n-p (format-message "Overwrite existing file `%s'? " to)))))
+      (when (or overwrite (not (file-exists-p to)))
+        (pcase action
+          ('move (dired-rename-file from to overwrite))
+          ('copy (dired-copy-file from to overwrite))
+          ('link (make-symbolic-link from to overwrite)))
+        t)))))
+
+(defun wamei/dired-tree-dnd-handle-file (uris action)
+  "URIS のローカルファイルを point の行の落下先へ ACTION で運ぶ。`dnd-protocol-alist' 用。
 `dired-dnd-handle-file' は落下先を `dired-current-directory' (top) に固定するので、
-subtree 行を見て決める版。終わったら revert して行を作り直す。"
-  (let* ((from (dnd-get-local-file-name uri t))
-         (action (wamei/dired-tree--resolve-action action)))
-    (when from
-      (let ((to (wamei/dired-tree--drop-destination
-                 from (wamei/dired-tree-drop-directory-at-point))))
-        (unless (equal (directory-file-name from) (directory-file-name to))
-          (let ((overwrite (and (file-exists-p to)
-                                (y-or-n-p (format-message "Overwrite existing file `%s'? " to)))))
-            (when (or overwrite (not (file-exists-p to)))
-              (pcase action
-                ('move (dired-rename-file from to overwrite))
-                ('copy (dired-copy-file from to overwrite))
-                ('link (make-symbolic-link from to overwrite)))
-              (wamei/dired-tree-revert)
-              (run-hooks 'wamei/dired-tree-refresh-hook))))
-        action))))
+subtree 行を見て決める版。終わったら revert して行を作り直す。
+
+URIS は URI 1 本の文字列でもリストでもよい。`dnd-multiple-handler' プロパティを
+付けてあるので `dnd-handle-multiple-urls' は複数ファイルの drop をリストで 1 回だけ
+渡してくる。落下先は最初に 1 回だけ決め (revert で point が動いても drop 先が
+ずれないように)、全部運んでから revert と `wamei/dired-tree-refresh-hook' を
+1 回だけ回す。上書き確認はファイルごとに出す。"
+  (let* ((uris (if (listp uris) uris (list uris)))
+         (action (wamei/dired-tree--resolve-action action))
+         (target (wamei/dired-tree-drop-directory-at-point))
+         (handled nil)
+         (changed nil))
+    (dolist (uri uris)
+      (when-let* ((from (dnd-get-local-file-name uri t)))
+        (setq handled t)
+        (when (wamei/dired-tree--drop-one
+               from (wamei/dired-tree--drop-destination from target) action)
+          (setq changed t))))
+    (when changed
+      (wamei/dired-tree-revert)
+      (run-hooks 'wamei/dired-tree-refresh-hook))
+    (and handled action)))
+
+;; 複数ファイルの drop を 1 回で受け取る。これが無いと `dnd-handle-multiple-urls' が
+;; ファイルごとに呼び、そのたびに revert が走って 2 つめ以降の落下先がずれる。
+(put 'wamei/dired-tree-dnd-handle-file 'dnd-multiple-handler t)
 
 (defun wamei/dired-tree--setup-dnd ()
   "このバッファの `dnd-protocol-alist' の先頭に自前のハンドラを置く。"

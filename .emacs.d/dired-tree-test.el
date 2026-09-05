@@ -4,6 +4,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (package-initialize)
 (require 'dired-subtree)
 (load (expand-file-name "dired-tree.el"
@@ -34,6 +35,12 @@
            (wamei/dired-tree-mode 1)
            ,@body)
        (kill-buffer ,var))))
+
+(defun wamei/dired-tree-test--contents (file)
+  "FILE の中身を文字列で返す。"
+  (with-temp-buffer
+    (insert-file-contents file)
+    (buffer-string)))
 
 ;;; 展開記憶 (純関数)
 
@@ -140,6 +147,34 @@
       (wamei/dired-tree-revert)
       (should (equal (dired-utils-get-filename) (expand-file-name "a/b/c.txt" root))))))
 
+(ert-deftest wamei/dired-tree-revert-keeps-window-point-on-subtree-line ()
+  "sidebar は選択されていない window に出るので window-point が buffer point とずれる。
+revert のあとも window-point が元の行に戻ること。
+
+- 選択中の window は window-point が buffer point と一致してしまうので、
+  ずれを作るために別 window (非選択) に出す。
+- dired 標準の `dired-restore-positions' は window ごとの復元も持つが、
+  subtree 行では `dired-goto-file' が効かず行番号にフォールバックする。
+  行数が変わらない revert では偶然当たってしまうので、revert の契機
+  (外部でのファイル追加) を作って行がずれる状況で確かめる。"
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (let ((win (split-window)))
+        (unwind-protect
+            (progn
+              (set-window-buffer win buf)
+              (should (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root)))
+              (set-window-point win (point))
+              (goto-char (point-min))
+              ;; a より前に並ぶファイルが増えて、以降の行が 1 行下にずれる
+              (write-region "" nil (expand-file-name "0.txt" root))
+              (wamei/dired-tree-revert)
+              (should (equal (save-excursion
+                               (goto-char (window-point win))
+                               (dired-utils-get-filename))
+                             (expand-file-name "a/b/c.txt" root))))
+          (delete-window win))))))
+
 ;;; 監視
 
 (ert-deftest wamei/dired-tree-watch-diff ()
@@ -203,6 +238,66 @@
          (concat "file://" (expand-file-name "e.txt" root)) 'private))
       (should (file-exists-p (expand-file-name "a/e.txt" root)))
       (should-not (file-exists-p (expand-file-name "e.txt" root))))))
+
+(ert-deftest wamei/dired-tree-dnd-copies-file-when-action-is-copy ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/d.txt" root))
+      (let ((wamei/dired-tree-drop-action 'copy))
+        (wamei/dired-tree-dnd-handle-file
+         (concat "file://" (expand-file-name "e.txt" root)) 'private))
+      (should (file-exists-p (expand-file-name "a/e.txt" root)))
+      (should (file-exists-p (expand-file-name "e.txt" root))))))
+
+(ert-deftest wamei/dired-tree-dnd-links-file-when-action-is-link ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/d.txt" root))
+      (wamei/dired-tree-dnd-handle-file
+       (concat "file://" (expand-file-name "e.txt" root)) 'link)
+      (should (file-symlink-p (expand-file-name "a/e.txt" root)))
+      (should (equal (file-truename (expand-file-name "a/e.txt" root))
+                     (file-truename (expand-file-name "e.txt" root))))
+      (should (file-exists-p (expand-file-name "e.txt" root))))))
+
+(ert-deftest wamei/dired-tree-dnd-declined-overwrite-keeps-both-files ()
+  (wamei/dired-tree-test--with-tree root
+    (write-region "dest" nil (expand-file-name "a/e.txt" root))
+    (write-region "src" nil (expand-file-name "e.txt" root))
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/d.txt" root))
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
+        (wamei/dired-tree-dnd-handle-file
+         (concat "file://" (expand-file-name "e.txt" root)) 'private))
+      (should (file-exists-p (expand-file-name "e.txt" root)))
+      (should (equal (wamei/dired-tree-test--contents (expand-file-name "e.txt" root)) "src"))
+      (should (equal (wamei/dired-tree-test--contents (expand-file-name "a/e.txt" root))
+                     "dest")))))
+
+(ert-deftest wamei/dired-tree-dnd-drop-on-self-is-noop ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      ;; point は top の e.txt 自身の行。落下先は top なので移動元と同じ
+      (should (dired-utils-goto-line (expand-file-name "e.txt" root)))
+      (wamei/dired-tree-dnd-handle-file
+       (concat "file://" (expand-file-name "e.txt" root)) 'private)
+      (should (file-exists-p (expand-file-name "e.txt" root))))))
+
+(ert-deftest wamei/dired-tree-dnd-moves-every-file-of-a-multi-file-drop ()
+  (should (get 'wamei/dired-tree-dnd-handle-file 'dnd-multiple-handler))
+  (wamei/dired-tree-test--with-tree root
+    (write-region "" nil (expand-file-name "f.txt" root))
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/d.txt" root))
+      (let ((wamei/dired-tree-drop-action 'move))
+        (wamei/dired-tree-dnd-handle-file
+         (list (concat "file://" (expand-file-name "e.txt" root))
+               (concat "file://" (expand-file-name "f.txt" root)))
+         'private))
+      (should (file-exists-p (expand-file-name "a/e.txt" root)))
+      (should (file-exists-p (expand-file-name "a/f.txt" root)))
+      (should-not (file-exists-p (expand-file-name "e.txt" root)))
+      (should-not (file-exists-p (expand-file-name "f.txt" root))))))
 
 (provide 'dired-tree-test)
 ;;; dired-tree-test.el ends here

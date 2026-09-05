@@ -30,7 +30,9 @@ treemacs にあった機能 (git 状態の色分け、変更の自動検知、ma
   押し戻す。mouse-1 / double-mouse-1 に独自の挙動を載せても D&D と両立する。
 - タブ = プロジェクトの対応は project-tabs.el が担う。サイドバーはタブごとに
   独立したツリー (そのタブのプロジェクト) を持つ。
-- D&D は Emacs 内の dired 同士に限る。Finder との drop / drag は対象外。
+- D&D は Emacs 内の dired 同士を想定する。Finder との drop / drag は対象外だが、
+  Finder からの drop も同じハンドラを通るので (macOS では action が常に `private`)
+  既定では移動になる。
 - Finder で個別に「表示」する機能は入れない (`dired-do-open` で足りる)。
 - 既存の .el (project-tabs.el, desktop-side-windows.el) と同じ流儀で、
   ロジックは別ファイル + ert テスト、数行の設定は init.el に直接書く。
@@ -71,8 +73,12 @@ dired ブロック:
   右クリックした行に point を移してからメニュー項目を組み立てる
   (各コマンドが point のファイルに効くようにするため)。Copy path は
   `dired-copy-filename-as-kill` を引数 0 (絶対パス) で呼ぶ。
-- `dired-mouse-drag-files` は `t` (既定 action は copy、Shift で move、
-  Control で copy、Meta で link。Finder と同じ感覚)。
+- `dired-mouse-drag-files` は `t`。macOS では drop は常に action `private` で届き、
+  修飾キー (Shift / Control / Meta) は受け手に伝わらない。`private` は
+  `wamei/dired-tree-drop-action` (既定 `move`) に読み替えるので、既定は Finder と
+  同じ「移動」になる。Finder からの drop も同じく移動になる。copy したいときは
+  `wamei/dired-tree-drop-action` を `copy` にするか、dired の `C` (`dired-do-copy`)
+  を使う。
 - `C-c o` に `dired-do-open` (macOS の `open`)。
 - dired バッファで `auto-revert-mode` (file-notify 経由、`auto-revert-verbose` nil)。
 
@@ -176,14 +182,25 @@ minor mode `wamei/dired-tree-mode` を dired-mode-hook で有効化する。
 - `wamei/dired-tree-drop-directory-at-point`: point の行がディレクトリならそれ、
   ファイルならその行の親 (subtree overlay の `dired-subtree-name`、無ければ
   `dired-current-directory`)。空行や見出し行なら `dired-current-directory`。
-- `wamei/dired-tree-dnd-handle-file (uri action)`: `dired-dnd-handle-file` は使わず、
+- `wamei/dired-tree-dnd-handle-file (uris action)`: `dired-dnd-handle-file` は使わず、
   自前で運ぶ。ACTION が `private` / `copy` なら `wamei/dired-tree-drop-action`
-  (既定 `move`) に読み替え、`link` はそのまま渡す (macOS の drop は常に `private`
-  で届き、dired 既定では copy 扱いになるため、Finder と同じく既定は移動にする)。
-  移動先が移動元と同じ (自分自身への drop) なら何もしない。移動先に既存ファイルが
-  あれば `y-or-n-p` で上書き確認する。実行後は `wamei/dired-tree-revert` で
-  カーソル位置を保って revert し、`wamei/dired-tree-refresh-hook` を呼ぶ。
-  dired-mode バッファの `dnd-protocol-alist` (buffer-local) の先頭に
+  (既定 `move`) に読み替え、`link` はそのまま渡す。macOS では drop は常に `private`
+  で届き、修飾キー (Shift / Control / Meta) は受け手に伝わらない (`ns-drag-n-drop`
+  が action を渡さない)。dired 既定では `private` は copy 扱いになるが、Finder と
+  同じく既定は移動にする。Finder からの drop も同じく移動になる。copy したいときは
+  `wamei/dired-tree-drop-action` を `copy` にするか dired の `C` を使う。
+- URIS は URI 1 本の文字列でもリストでもよい。シンボルに `dnd-multiple-handler`
+  プロパティを付けてあるので、`dnd-handle-multiple-urls` は複数ファイルの drop を
+  リストで 1 回だけ渡してくる (プロパティが無いと URI ごとに呼ばれ、そのたびに
+  revert が走って 2 つめ以降の落下先が point から取り直されてずれる)。落下先は
+  最初に 1 回だけ決め、全部運んでから revert と `wamei/dired-tree-refresh-hook` を
+  1 回だけ回す (何も動かなければ revert もしない)。上書き確認はファイルごとに出す。
+- 移動先が移動元と同じ (自分自身への drop)、または移動元ディレクトリの中なら、
+  `rename-file` に渡さず message を出して飛ばす
+  (`wamei/dired-tree--drop-into-self-p`)。移動先に既存ファイルがあれば `y-or-n-p`
+  で上書き確認する。実行後は `wamei/dired-tree-revert` でカーソル位置を保って
+  revert し、`wamei/dired-tree-refresh-hook` を呼ぶ。dired-mode バッファの
+  `dnd-protocol-alist` (buffer-local) の先頭に
   `("^file:" . wamei/dired-tree-dnd-handle-file)` を置く。
 - 純関数 `wamei/dired-tree--drop-target (directory-p file parent top)` /
   `wamei/dired-tree--resolve-action (action)`。
@@ -192,6 +209,12 @@ minor mode `wamei/dired-tree-mode` を dired-mode-hook で有効化する。
 
 - revert の前後でカーソル行のファイル名を控えて戻す。dired 標準の復元は
   subtree 行では効かないので `dired-utils-goto-line` を使う。
+- sidebar は選択されていない window に出る (`wamei/project-sidebar--reveal` は
+  window-point だけを動かす) ので、buffer point と window-point はずれる。
+  dired 標準の `dired-restore-positions` も window ごとの復元を持つが、subtree 行
+  では `dired-goto-file` が効かず行番号にフォールバックするため、行数が変わる
+  revert で別の行に飛ぶ。`get-buffer-window-list` の各 window についても
+  window-point の行のファイル名を控え、revert 後に `set-window-point` で戻す。
 
 ## 4. project-sidebar.el
 
