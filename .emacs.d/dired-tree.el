@@ -174,8 +174,13 @@ dired 標準の復元は subtree 行では効かないので `dired-utils-goto-l
                            (when (buffer-live-p buffer)
                              (with-current-buffer buffer
                                (setq wamei/dired-tree--revert-timer nil)
-                               (wamei/dired-tree-revert)
-                               (run-hooks 'wamei/dired-tree-refresh-hook)))))))))
+                               (condition-case err
+                                   (progn
+                                     (wamei/dired-tree-revert)
+                                     (run-hooks 'wamei/dired-tree-refresh-hook))
+                                 (error
+                                  (message "dired-tree: revert failed: %s"
+                                           (error-message-string err))))))))))))
 
 (defun wamei/dired-tree--watch-callback (buffer _event)
   "file-notify のコールバック。BUFFER の revert を予約する。"
@@ -201,7 +206,10 @@ dired 標準の復元は subtree 行では効かないので `dired-utils-goto-l
       (remhash dir wamei/dired-tree--watches))))
 
 (defun wamei/dired-tree--remove-all-watches ()
-  "全ての監視を外す。バッファ kill 用。"
+  "全ての監視と予約中の revert を外す。バッファ kill と mode 無効化用。"
+  (when (timerp wamei/dired-tree--revert-timer)
+    (cancel-timer wamei/dired-tree--revert-timer))
+  (setq wamei/dired-tree--revert-timer nil)
   (when wamei/dired-tree--watches
     (maphash (lambda (_dir desc) (ignore-errors (file-notify-rm-watch desc)))
              wamei/dired-tree--watches)

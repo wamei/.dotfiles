@@ -166,5 +166,15 @@
       (dired-subtree-toggle)
       (should (= (hash-table-count wamei/dired-tree--watches) 0)))))
 
+(ert-deftest wamei/dired-tree-disable-cancels-pending-revert ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root))
+      (wamei/dired-tree--schedule-revert (current-buffer))
+      (should (timerp wamei/dired-tree--revert-timer))
+      (wamei/dired-tree-mode -1)
+      (should-not wamei/dired-tree--revert-timer)
+      (should (= (hash-table-count wamei/dired-tree--watches) 0)))))
+
 (provide 'dired-tree-test)
 ;;; dired-tree-test.el ends here
