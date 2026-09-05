@@ -1791,7 +1791,29 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
   ;; エントリを前に積み、json / jsonc を 1 つの server で受ける。
   (add-to-list 'eglot-server-programs
                '(((wamei/jsonc-ts-mode :language-id "jsonc") js-json-mode json-ts-mode)
-                 . ("vscode-json-language-server" "--stdio")))
+                 . (wamei/eglot-json-server "vscode-json-language-server" "--stdio")))
+  ;; vscode-json-language-server の code action "Sort JSON" は command "json.sort" を
+  ;; 返すが、server は workspace/executeCommand を実装していない (VS Code の拡張が
+  ;; クライアント側で独自リクエスト json/sort を送り、返ってきた TextEdit を当てる)。
+  ;; 既定の eglot-execute だと "Unhandled method workspace/executeCommand" になるので、
+  ;; server を専用クラスにして json.sort だけ同じ手順で処理する。
+  (defclass wamei/eglot-json-server (eglot-lsp-server) ()
+    :documentation "vscode-json-language-server。Sort JSON をクライアント側で実行する。")
+
+  (cl-defmethod eglot-execute ((server wamei/eglot-json-server) action)
+    "ACTION が json.sort なら json/sort を送って結果の編集を当てる。他は既定の処理。"
+    (let* ((command (plist-get action :command))
+           (name (if (stringp command) command (plist-get command :command))))
+      (if (equal name "json.sort")
+          (eglot--apply-text-edits
+           (eglot--request server :json/sort
+                           `(:uri ,(plist-get (eglot--TextDocumentIdentifier) :uri)
+                             ;; 整形幅はバッファの TAB と同じ json-ts-mode の幅に合わせる
+                             :options (:tabSize ,(if (boundp 'json-ts-mode-indent-offset)
+                                                     json-ts-mode-indent-offset
+                                                   tab-width)
+                                       :insertSpaces ,(if indent-tabs-mode :json-false t)))))
+        (cl-call-next-method))))
   ;; @prisma/language-server は起動直後に workspace/configuration (section "prisma")
   ;; を要求し、null が返ると settings.enableDiagnostics の参照でクラッシュする
   ;; (31.12.2 で確認)。eglot はこの値を一時バッファ (major-mode 変数だけ設定、
