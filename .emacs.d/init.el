@@ -1762,12 +1762,63 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
                    (when doc (insert doc))
                    (current-buffer)))))))))
     result)
+
+  (defun wamei/eglot-code-action-params-quickfix-only (args)
+    "eglot の自動問い合わせ (:triggerKind 2) のコードアクションを quickfix に絞る。
+
+`eglot-code-action-suggestion' はカーソル移動ごとに種類を絞らず textDocument/codeAction
+を送るが、typescript-language-server は statement 上のほぼ全ての位置で refactor
+(Extract to function / Move to a new file など) を返すため、ヒントが常時出てしまう。
+ここで :only を付け、直せる問題があるときだけヒントが出るようにする。
+`eglot--code-action-params' の :filter-args advice。手動の `eglot-code-actions'
+(triggerKind 無し) には影響しない。"
+    (if (and (eq (plist-get args :triggerKind) 2)
+             (not (plist-member args :only)))
+        (append args '(:only "quickfix"))
+      args))
+
+  (defun wamei/eglot-code-action-hint-p (doc)
+    "DOC (STRING . PLIST) が eglot のコードアクションヒントなら non-nil。
+eldoc が各 doc に付ける :origin (生成元の documentation function) で判別する。"
+    (eq (plist-get (cdr doc) :origin) 'eglot-code-action-suggestion))
+
+  (defvar wamei/eglot-code-action-hint--last nil
+    "`wamei/eglot-code-action-hint-display' が最後に echo area に出したヒント。
+自分が出したものだけを消すために覚えておく。")
+
+  (defun wamei/eglot-code-action-hint-display (docs interactive)
+    "DOCS のうち eglot のコードアクションヒントだけを echo area に出す。
+
+`eldoc-display-functions' の一員。eglot バッファでは eldoc-box-hover-at-point-mode が
+`eldoc-display-in-echo-area' を外して child frame に出すので、ヒントだけをここで
+echo area に戻す。echo area を触ってよいかの判定は `eldoc-display-in-echo-area' と同じ。
+ヒントが無くなったときは、自分が出したヒントが残っている場合だけ消す。"
+    (when (or interactive
+              (and (eldoc-display-message-no-interference-p)
+                   (not this-command)
+                   (eldoc--message-command-p last-command)))
+      (let ((hint (car (cl-find-if #'wamei/eglot-code-action-hint-p docs))))
+        (cond (hint
+               (setq wamei/eglot-code-action-hint--last (eldoc--message hint)))
+              ((and wamei/eglot-code-action-hint--last
+                    (equal eldoc-last-message wamei/eglot-code-action-hint--last))
+               (setq wamei/eglot-code-action-hint--last nil)
+               (eldoc--message nil))))))
+
+  (defun wamei/eglot-code-action-hint-strip-args (args)
+    "ARGS (DOCS . REST) の DOCS からコードアクションヒントを除く。
+child frame (eldoc-box / eldoc-mouse) の表示関数への :filter-args advice。
+ヒントは echo area に出すので、child frame には重複させない。"
+    (cons (cl-remove-if #'wamei/eglot-code-action-hint-p (car args)) (cdr args)))
   :custom
   ;; 最後のバッファを閉じたら言語サーバを落とす
   (eglot-autoshutdown . t)
   ;; イベントログは肥大化して重いので無効化
   (eglot-events-buffer-config . '(:size 0 :format full))
-  (eglot-code-action-indications . '(left-fringe))
+  ;; コードアクションは eldoc の文字ヒントだけにし、echo area に出す
+  ;; (wamei/eglot-code-action-hint-display)。left-fringe の雷マークは tsserver が
+  ;; どこでも refactor アクションを返すため常時点灯になるので使わない。
+  (eglot-code-action-indications . '(eldoc-hint))
   :hook ((typescript-ts-mode-hook
           tsx-ts-mode-hook
           js-ts-mode-hook
@@ -1779,6 +1830,17 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
           mhtml-mode-hook
           prisma-ts-mode-hook) . eglot-ensure)
   :config
+  ;; コードアクションヒント: quickfix に絞り、echo area にだけ出す (:preface の各関数参照)。
+  ;; eldoc-display-functions は eldoc-box が有効化時に global 値を複製して buffer-local
+  ;; にするので、eglot-managed-mode-hook より前 (= eglot 読み込み時) に global へ足す。
+  ;; advice-add は対象が未定義でも登録でき、定義時に適用される。
+  (advice-add 'eglot--code-action-params :filter-args
+              #'wamei/eglot-code-action-params-quickfix-only)
+  (add-hook 'eldoc-display-functions #'wamei/eglot-code-action-hint-display)
+  (advice-add 'eldoc-box--eldoc-display-function :filter-args
+              #'wamei/eglot-code-action-hint-strip-args)
+  (advice-add 'wamei/eldoc-mouse--display :filter-args
+              #'wamei/eglot-code-action-hint-strip-args)
   ;; eglot 組み込みに Prisma のエントリは無い。@prisma/language-server は
   ;; プロジェクトの依存に入らないのが普通なので bun add -g で入れ、PATH から解決する
   ;; (~/.bun/bin は .zshrc で PATH に足し、exec-path-from-shell で引き継ぐ)。

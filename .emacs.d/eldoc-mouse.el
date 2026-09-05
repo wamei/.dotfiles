@@ -165,35 +165,37 @@ eldoc-box-hover-at-point-mode の `eldoc-box--follow-cursor' は post-command-ho
                        (mapcar #'cdr (sort (copy-sequence docs)
                                            (lambda (a b) (< (car a) (car b)))))
                        target))))
+                 ;; eldoc 本体と同じく plist の先頭に :origin (生成元の関数) を入れる。
+                 ;; 表示側が eglot のコードアクションヒントなどを選別するのに使う。
                  (register
-                  (lambda (index string plist)
+                  (lambda (index string plist origin)
                     (when (and string (> (length string) 0))
-                      (push (cons index (cons string plist)) docs))))
+                      (push (cons index (cons string `(:origin ,origin ,@plist))) docs))))
                  (eldoc--make-callback
-                  (lambda (method _origin)
+                  (lambda (method origin)
                     (let ((index (prog1 howmany (cl-incf howmany))))
                       (pcase-exhaustive method
                         (:enthusiast
                          (lambda (string &rest plist)
                            (when (cl-loop for (i) in docs never (< i index))
                              (setq docs nil)
-                             (funcall register index string plist)
+                             (funcall register index string plist origin)
                              (funcall display))
                            t))
                         (:patient
                          (cl-incf want)
                          (lambda (string &rest plist)
-                           (funcall register index string plist)
+                           (funcall register index string plist origin)
                            (when (zerop (cl-decf want)) (funcall display))
                            t))
                         (:eager
                          (lambda (string &rest plist)
-                           (funcall register index string plist)
+                           (funcall register index string plist origin)
                            (funcall display)
                            t))))))
                  (res (funcall eldoc-documentation-strategy)))
             (when (stringp res)
-              (funcall register 0 res nil)
+              (funcall register 0 res nil eldoc-documentation-strategy)
               (funcall display))))))))
 
 ;;;; 表示

@@ -107,6 +107,24 @@ eldoc-box の child frame は作らず、表示・非表示は履歴に記録す
       (should (equal (car wamei/eldoc-mouse-test--shown)
                      (list "async doc" (selected-window) 2))))))
 
+(defun wamei/eldoc-mouse-test--doc-fn (cb)
+  "テスト用の名前付き documentation function。コールバック経由で doc を返す。"
+  (funcall cb "named doc")
+  t)
+
+(ert-deftest wamei/eldoc-mouse-records-origin-like-eldoc ()
+  "eldoc 本体と同じく、各 doc の plist に生成元の関数を :origin で入れる。
+表示側 (eldoc-box / echo area) が :origin で doc を選別できるようにする。"
+  (wamei/eldoc-mouse-test--with-buffer "foo bar"
+    (let (received)
+      (add-hook 'eldoc-documentation-functions #'wamei/eldoc-mouse-test--doc-fn nil t)
+      (cl-letf (((symbol-function 'wamei/eldoc-mouse--display)
+                 (lambda (docs _target) (setq received docs))))
+        (wamei/eldoc-mouse-test--move 2)
+        (wamei/eldoc-mouse-test--fire-timer))
+      (should (equal received
+                     '(("named doc" :origin wamei/eldoc-mouse-test--doc-fn)))))))
+
 (ert-deftest wamei/eldoc-mouse-compose-strategy-waits-for-all-functions ()
   (wamei/eldoc-mouse-test--with-buffer "foo bar"
     (setq-local eldoc-documentation-strategy #'eldoc-documentation-compose)
