@@ -340,17 +340,11 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
-  (defvar wamei/term-height 0.3
-    "端末ウィンドウの高さ (フレームに対する割合)。
-手動でリサイズすると更新され、次に開くときも同じ割合になる。")
-
-  (defvar wamei/term-list-width 36
-    "端末一覧ウィンドウの幅 (文字数)。
-手動でリサイズすると更新され、次に開くときも同じ幅になる。")
-
-  (defvar wamei/term-list-buffer-name "*terminals*"
-    "端末一覧のバッファ名。display-buffer-alist で端末本体と別扱いにするため、
-`*term: ' で始まらない名前にする。")
+  ;; 端末パネル (下部 side window) と端末一覧の管理は term-panel.el。
+  ;; 端末・一覧ともプロジェクト (タブ) ごとにバッファを分ける。
+  (load (expand-file-name "term-panel"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
 
   (defconst wamei/term-glyph-substitutions
     '((?⏺ . ?●)    ; claude の応答・ツール呼び出しの行頭
@@ -370,384 +364,10 @@ face を付けないので元の文字の色はそのまま引き継がれる。
         (pcase-dolist (`(,from . ,to) wamei/term-glyph-substitutions)
           (aset table from (vector (make-glyph-code to))))
         (setq buffer-display-table table))))
-
-  (defvar-local wamei/term--title nil
-    "端末が最後に報告したタイトル。
-.zshrc の preexec が直前に実行したコマンドをタイトルとして流してくる。")
-
-  (defvar wamei/term--previous-window nil
-    "パネルへ移動する直前に選択していた window。")
-
-  (defvar wamei/term--previous-buffer nil
-    "パネルへ移動する直前に選択していたバッファ。
-パネルを閉じて開き直すなどで window オブジェクトは無効になりうるため、
-戻り先はバッファでも覚えておく。")
-
-  (defvar wamei/term--last nil
-    "最後に表示した端末バッファ。プロジェクトごとの復帰先として使う。")
-
-  ;;; 高さの記憶
-
-  (defun wamei/term--set-height (window)
-    "WINDOW を wamei/term-height の割合にリサイズする。
-display-buffer-alist の window-height に関数として渡す。数値を直接書くと
-alist 登録時の値で固定されてしまい、リサイズを覚えられない。"
-    (let ((delta (- (round (* wamei/term-height (frame-height)))
-                    (window-total-height window))))
-      (unless (zerop delta)
-        (ignore-errors (window-resize window delta nil t)))))
-
-  (defun wamei/term--set-list-width (window)
-    "WINDOW を wamei/term-list-width の幅にする。
-display-buffer-alist の window-width は bottom の side window では
-数値を書いても効かず、変数シンボルは関数扱いで無視される。関数で明示的に
-リサイズする必要がある。preserve-size は縮小前の幅で固定してしまうため使わない。"
-    (let ((delta (- wamei/term-list-width (window-total-width window))))
-      (unless (zerop delta)
-        (ignore-errors (window-resize window delta t t)))))
-
-  (defun wamei/term--remember-height ()
-    "現在の高さの割合を wamei/term-height に覚える。"
-    (when-let* ((window (get-buffer-window (current-buffer))))
-      (when (window-parameter window 'window-side)
-        (let ((ratio (/ (float (window-total-height window)) (frame-height))))
-          (when (< 0.05 ratio 0.95)
-            (setq wamei/term-height ratio))))))
-
-  (defun wamei/term--remember-list-width ()
-    "現在の一覧の幅を wamei/term-list-width に覚える。
-一覧は端末が 1 つになると閉じ、2 つに戻ると display-buffer で作り直されるので、
-window に付いた幅は残らない。変数に覚えておき wamei/term--set-list-width が
-作り直すたびに当てる。幅が変わったら一覧の切り詰め幅も追従させる。"
-    (when-let* ((window (get-buffer-window (current-buffer))))
-      (when (window-parameter window 'window-side)
-        (let ((width (window-total-width window)))
-          (when (and (< 8 width (* 0.8 (frame-width)))
-                     (/= width wamei/term-list-width))
-            (setq wamei/term-list-width width)
-            (wamei/term--list-refresh))))))
-
-  ;;; 端末バッファの管理
-
-  (defun wamei/term--root ()
-    "端末を開くディレクトリ。プロジェクト内ならそのルート。"
-    (if-let* ((project (project-current nil)))
-        (project-root project)
-      default-directory))
-
-  (defun wamei/term--project-name ()
-    "タブ (プロジェクト) を識別する名前。"
-    (file-name-nondirectory (directory-file-name (wamei/term--root))))
-
-  (defun wamei/term--buffer-name (&optional index)
-    "INDEX 番目の端末バッファ名。1 は番号なし。"
-    (if (and index (> index 1))
-        (format "*term: %s %d*" (wamei/term--project-name) index)
-      (format "*term: %s*" (wamei/term--project-name))))
-
-  (defun wamei/term--buffer-regexp ()
-    "現在のプロジェクトの端末バッファ名にマッチする正規表現。
-別プロジェクトの前方一致 (foo と foobar) を拾わないよう末尾まで固定する。"
-    (concat "\\`" (regexp-quote (format "*term: %s" (wamei/term--project-name)))
-            "\\(?: \\([0-9]+\\)\\)?\\*\\'"))
-
-  (defun wamei/term--buffers ()
-    "現在のプロジェクトの端末バッファを番号順に返す。"
-    (let ((regexp (wamei/term--buffer-regexp)))
-      (sort (seq-filter (lambda (buffer)
-                          (string-match-p regexp (buffer-name buffer)))
-                        (buffer-list))
-            (lambda (a b)
-              (< (wamei/term--index a) (wamei/term--index b))))))
-
-  (defun wamei/term--index (buffer)
-    "BUFFER の端末番号。番号なしは 1。"
-    (if (string-match (wamei/term--buffer-regexp) (buffer-name buffer))
-        (string-to-number (or (match-string 1 (buffer-name buffer)) "1"))
-      0))
-
-  (defun wamei/term--next-index ()
-    "未使用の最小の端末番号。"
-    (let ((used (mapcar #'wamei/term--index (wamei/term--buffers)))
-          (index 1))
-      (while (memq index used) (setq index (1+ index)))
-      index))
-
-  (defun wamei/term--window ()
-    "端末本体を表示している window。"
-    (seq-find (lambda (window)
-                (and (eq (window-parameter window 'window-side) 'bottom)
-                     (eql (window-parameter window 'window-slot) 0)
-                     (string-match-p "\\`\\*term: " (buffer-name (window-buffer window)))))
-              (window-list nil 'no-mini)))
-
-  (defun wamei/term--current ()
-    "パネルに出すべき端末バッファ。無ければ nil。"
-    (let ((buffers (wamei/term--buffers)))
-      (or (seq-find (lambda (b) (eq b wamei/term--last)) buffers)
-          (car buffers))))
-
-  (defun wamei/term--create (index)
-    "INDEX 番目の端末を作る。vterm はバッファへ切り替えるので window 構成は戻す。"
-    (let ((default-directory (wamei/term--root)))
-      (save-window-excursion
-        (vterm (wamei/term--buffer-name index)))))
-
-  ;;; 一覧
-
-  (defvar wamei/term-list-mode-map
-    (let ((map (make-sparse-keymap)))
-      (define-key map (kbd "RET") #'wamei/term-list-select)
-      (define-key map (kbd "d") #'wamei/term-list-kill)
-      (define-key map [mouse-1] #'wamei/term-list-select)
-      (define-key map (kbd "<C-tab>") #'wamei/term-next)
-      (define-key map (kbd "<C-S-tab>") #'wamei/term-previous)
-      map)
-    "端末一覧のキーマップ。")
-
-  (define-derived-mode wamei/term-list-mode special-mode "Terminals"
-    "端末一覧のメジャーモード。")
-
-  (defun wamei/term--list-buffer ()
-    "端末一覧のバッファ。無ければ作る。"
-    (or (get-buffer wamei/term-list-buffer-name)
-        (with-current-buffer (get-buffer-create wamei/term-list-buffer-name)
-          (wamei/term-list-mode)
-          (setq-local mode-line-format nil)
-          (add-hook 'window-configuration-change-hook
-                    #'wamei/term--remember-list-width nil t)
-          (current-buffer))))
-
-  (defun wamei/term--record-title (title)
-    "vterm が受け取った TITLE を覚えて一覧に反映する。
-vterm--set-title は vterm-buffer-name-string が nil だと何もしないため、
-:before advice で横取りする。"
-    (setq wamei/term--title title)
-    (when (get-buffer-window wamei/term-list-buffer-name)
-      (wamei/term--list-refresh)))
-
-  (defun wamei/term--label (buffer)
-    "一覧に出す BUFFER の表示名。最後に実行したコマンド、無ければシェル名。"
-    (or (buffer-local-value 'wamei/term--title buffer)
-        (file-name-nondirectory vterm-shell)))
-
-  (defun wamei/term--list-refresh ()
-    "端末一覧を描き直す。"
-    (with-current-buffer (wamei/term--list-buffer)
-      (let ((inhibit-read-only t)
-            (current (wamei/term--current))
-            (width (max 8 (- wamei/term-list-width 2))))
-        (erase-buffer)
-        (dolist (buffer (wamei/term--buffers))
-          (let* ((index (wamei/term--index buffer))
-                 (label (format "%d: %s" index
-                                (truncate-string-to-width
-                                 (wamei/term--label buffer) width nil nil t)))
-                 (start (point)))
-            (insert label "\n")
-            (add-text-properties
-             start (1- (point))
-             (list 'wamei/term-buffer buffer
-                   'mouse-face 'highlight
-                   'keymap wamei/term-list-mode-map
-                   'help-echo "mouse-1: 切り替え / d: 削除"))
-            (when (eq buffer current)
-              (add-face-text-property start (1- (point)) 'highlight)))))
-      (goto-char (point-min))))
-
-  (defun wamei/term--list-update ()
-    "端末が 2 つ以上のときだけ一覧を表示する。"
-    (let ((buffers (wamei/term--buffers))
-          (window (get-buffer-window wamei/term-list-buffer-name)))
-      (cond
-       ;; パネル自体が閉じている、または端末が 1 つ以下なら一覧は出さない
-       ((or (null (wamei/term--window)) (< (length buffers) 2))
-        (when (window-live-p window) (delete-window window)))
-       (t
-        (wamei/term--list-refresh)
-        (unless (window-live-p window)
-          (display-buffer (wamei/term--list-buffer)))))))
-
-  (defun wamei/term-list-select ()
-    "一覧で選んだ端末に切り替える。"
-    (interactive)
-    (when-let* ((buffer (get-text-property (point) 'wamei/term-buffer)))
-      (wamei/term--show buffer)))
-
-  (defun wamei/term-list-kill ()
-    "一覧で選んだ端末を削除する。"
-    (interactive)
-    (when-let* ((buffer (get-text-property (point) 'wamei/term-buffer)))
-      ;; vterm はプロセスが生きているため、そのままだと
-      ;; process-kill-buffer-query-function が確認を求めて止まる
-      (let ((kill-buffer-query-functions nil))
-        (kill-buffer buffer))
-      ;; パネルの差し替え (または最後の端末なら window の削除) は
-      ;; kill-buffer 側で済んでいる。ここでは残った端末へフォーカスを移す。
-      (when-let* ((next (wamei/term--current)))
-        (wamei/term--show next))
-      (wamei/term--list-update)))
-
-  ;;; パネル操作
-
-  (defun wamei/term--hand-over ()
-    "消えようとしている端末がパネルに出ていれば、別の端末に差し替える。
-
-kill-buffer-hook から呼ぶ。パネルは dedicated な side window なので、
-表示中のバッファが消えると kill-buffer が window ごと削除してしまう。
-削除前に同じプロジェクトの別端末へ差し替えておけばパネルは残る。
-他に端末が無ければ何もせず、従来どおりパネルは閉じる。"
-    (let* ((dying (current-buffer))
-           (window (wamei/term--window))
-           (others (remq dying (wamei/term--buffers))))
-      (when (eq dying wamei/term--last) (setq wamei/term--last nil))
-      (when (and window (eq (window-buffer window) dying) others)
-        ;; フォーカスは動かさない。端末内で exit した場合はパネルが
-        ;; 選択されたまま次の端末に切り替わる。
-        (wamei/term--show (or (car (memq wamei/term--last others)) (car others))
-                          t))))
-
-  (defun wamei/term--on-kill ()
-    "端末バッファが消えるときの後始末。シェル終了や kill-buffer から呼ばれる。"
-    (wamei/term--hand-over)
-    ;; 一覧はバッファが実際に消えた後に描き直す
-    (run-at-time 0 nil #'wamei/term--list-update))
-
-  (defun wamei/term--show (buffer &optional no-select)
-    "BUFFER をパネルに出す。NO-SELECT が非 nil ならフォーカスは移さない。
-
-既に端末 window があるときは dedicated を一時的に外して差し替える。
-dedicated のままだと set-window-buffer が失敗する。"
-    (setq wamei/term--last buffer)
-    (let ((window (wamei/term--window)))
-      (if window
-          (progn (set-window-dedicated-p window nil)
-                 (set-window-buffer window buffer)
-                 (set-window-dedicated-p window t))
-        (setq window (display-buffer buffer)))
-      (unless no-select
-        (when (window-live-p window) (select-window window))))
-    (wamei/term--list-update)
-    (get-buffer-window buffer))
-
-  (defun wamei/term--close ()
-    "パネル (端末と一覧) を閉じる。"
-    (when-let* ((window (get-buffer-window wamei/term-list-buffer-name)))
-      (delete-window window))
-    (when-let* ((window (wamei/term--window)))
-      (delete-window window)))
-
-  (defvar wamei/term-cycle-map
-    (let ((map (make-sparse-keymap)))
-      (define-key map (kbd "<C-tab>") #'wamei/term-next)
-      (define-key map (kbd "<C-S-tab>") #'wamei/term-previous)
-      ;; 端末によっては Shift-Tab が iso-lefttab として報告される
-      (define-key map (kbd "<C-S-iso-lefttab>") #'wamei/term-previous)
-      map)
-    "端末内で tab-bar-mode の C-tab 割り当てを上書きするキーマップ。")
-
-  (defun wamei/term--cycle (offset)
-    "現在の端末から OFFSET 個ずれた端末に切り替える。端は巻き戻る。"
-    (let* ((buffers (wamei/term--buffers))
-           (count (length buffers)))
-      (when (> count 1)
-        (let* ((current (wamei/term--current))
-               (index (or (seq-position buffers current) 0)))
-          ;; 切り替えだけを行い、フォーカスは呼び出し元に残す
-          (wamei/term--show (nth (mod (+ index offset) count) buffers) t)))))
-
-  (defun wamei/term-next ()
-    "次の端末に切り替える。"
-    (interactive)
-    (wamei/term--cycle 1))
-
-  (defun wamei/term-previous ()
-    "前の端末に切り替える。"
-    (interactive)
-    (wamei/term--cycle -1))
-
-  (defun wamei/term-new ()
-    "新しい端末を作ってパネルに出す。"
-    (interactive)
-    (wamei/term--show (wamei/term--create (wamei/term--next-index))))
-
-  (defun wamei/term--remember-previous ()
-    "パネルへ移動する直前の window とバッファを覚える。"
-    (setq wamei/term--previous-window (selected-window)
-          wamei/term--previous-buffer (current-buffer)))
-
-  (defun wamei/term--back-window ()
-    "パネルから戻る先の window。
-
-記録した window が生きていればそれを使う。window が閉じられて開き直されて
-いると window オブジェクトは死ぬので、そのときは同じ
-バッファを表示している window を探す (claude-code-ide や sidebar の
-パネルから C-z で入った場合、これが無いと無関係な window に戻ってしまう)。
-どちらも無ければ直近の window。パネル自身は no-other-window なので
-NO-OTHER 指定で候補から外れる。"
-    (or (and (window-live-p wamei/term--previous-window)
-             (eq (window-buffer wamei/term--previous-window)
-                 wamei/term--previous-buffer)
-             wamei/term--previous-window)
-        (and (buffer-live-p wamei/term--previous-buffer)
-             (get-buffer-window wamei/term--previous-buffer))
-        (and (window-live-p wamei/term--previous-window)
-             wamei/term--previous-window)
-        (get-mru-window nil t t t)))
-
-  (defun wamei/term-toggle (&optional arg)
-    "端末パネルへ出入りする。
-
-- 非表示なら開いてフォーカスする
-- 表示中でフォーカスが無ければフォーカスを移す
-- フォーカス中なら元の window へ戻る (パネルは開いたまま)
-- ARG (C-u) 付きならパネルを閉じる
-
-sidebar 側の move-back と同じ考え方に揃えている。"
-    (interactive "P")
-    (let ((window (wamei/term--window)))
-      (cond
-       (arg
-        (wamei/term--close))
-       ((and window (eq window (selected-window)))
-        (let ((back (wamei/term--back-window)))
-          (when (and back (not (eq back window)))
-            (select-window back))))
-       (window
-        (wamei/term--remember-previous)
-        (select-window window))
-       (t
-        (wamei/term--remember-previous)
-        (wamei/term--show (or (wamei/term--current)
-                              (wamei/term--create 1)))))))
   :init
   ;; 端末は下部 side window の slot 0、一覧は同じ side の slot 1 (右隣) へ。
   ;; :config だと vterm がロードされるまで登録されないので :init で行う。
-  (add-to-list 'display-buffer-alist
-               '("\\`\\*term: "
-                 (display-buffer-in-side-window)
-                 (side . bottom)
-                 (slot . 0)
-                 (window-height . wamei/term--set-height)
-                 (dedicated . t)
-                 ;; no-other-window: C-x o (other-window) の巡回対象から外す。
-                 ;; select-window は影響を受けないので C-z のトグルは通る。
-                 ;; no-delete-other-windows: C-x 1 や magit の全画面化
-                 ;; (delete-other-windows) で消えないようにする。sidebar と
-                 ;; claude-code-ide は同じパラメータをパッケージ側で付けている。
-                 (window-parameters . ((no-other-window . t)
-                                       (no-delete-other-windows . t)))))
-  ;; window-width は数値か関数のみ有効 (変数シンボルは関数扱いされ無視される)。
-  ;; bottom の side window では数値も効かないため関数でリサイズする。
-  (add-to-list 'display-buffer-alist
-               '("\\`\\*terminals\\*\\'"
-                 (display-buffer-in-side-window)
-                 (side . bottom)
-                 (slot . 1)
-                 (window-width . wamei/term--set-list-width)
-                 (dedicated . t)
-                 (window-parameters . ((no-other-window . t)
-                                       (no-delete-other-windows . t)))))
+  (wamei/term-panel-setup)
   :config
   ;; vterm は既定色のセルにも `default' face の色を文字列で貼る (vterm--get-color が
   ;; index -1 で default の背景を返す)。背景が明示されると auto-dim-other-buffers の
@@ -783,12 +403,8 @@ sidebar 側の move-back と同じ考え方に揃えている。"
   (advice-add 'vterm--set-title :before #'wamei/term--record-title)
 
   (add-hook 'vterm-mode-hook #'wamei/term--substitute-tall-glyphs)
-  (add-hook 'vterm-mode-hook
-            (lambda ()
-              (add-hook 'window-configuration-change-hook
-                        #'wamei/term--remember-height nil t)
-              ;; シェル終了などでバッファが消えたらパネルと一覧を追従させる
-              (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))))
+  ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
+  (add-hook 'vterm-mode-hook #'wamei/term--setup-buffer))
 
 (leaf claude-code-ide
   :doc "Claude Code の IDE 連携"
@@ -1293,7 +909,7 @@ desktop-side-windows が SPEC の :directory を default-directory に束縛し�
 作り直しているので、パネルに出ていたもの (SPEC の :buffer) をそのまま出す。
 記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
 高さは display-buffer-alist の wamei/term--set-height が wamei/term-height
-(desktop に保存) から決める。一覧 (*terminals*) は端末が 2 つ以上のときだけ
+(desktop に保存) から決める。一覧 (*terminals: <project>*) は端末が 2 つ以上のときだけ
 自動で出るので復元しない。幅は同様に wamei/term-list-width (desktop に保存) から
 wamei/term--set-list-width が決める。"
     (wamei/term--show (or (get-buffer (plist-get spec :buffer))
@@ -1345,9 +961,9 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   (add-to-list 'desktop-globals-to-save 'wamei/term-list-width)
   ;; バッファ名で開き直し方を選ぶ。sidebar は " *sidebar: " で始まる。
   (setq wamei/desktop-side-restorers
-        '(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)
+        `(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)
           ("\\`\\*term: " . wamei/desktop--restore-term)
-          ("\\`\\*terminals\\*\\'" . ignore)
+          (,wamei/term-list-buffer-regexp . ignore)
           ("\\`\\*claude-code\\[" . wamei/desktop--restore-claude)))
   ;; sidebar は dired バッファなので desktop が普通の dired として保存してしまう。
   ;; 除外して restorer に任せる。
@@ -2088,6 +1704,26 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
   (when (treesit-ready-p 'tsx t)
     (add-to-list 'major-mode-remap-alist '(tsx-mode . tsx-ts-mode))))
 
+(leaf json-ts-mode
+  :doc "JSON と JSONC (コメント付き JSON)"
+  ;; .json は組み込みの auto-mode-alist (js-json-mode) と treesit ブロックの remap で
+  ;; json-ts-mode になる。tree-sitter-json は comment ノードを持つのでコメントの
+  ;; ハイライトも効く。
+  ;; JSONC は json-ts-mode の派生モードにする。編集機能は同じだが、eglot が
+  ;; vscode-json-language-server に伝える languageId を "jsonc" にできる ("json" だと
+  ;; コメントが構文エラーとして報告される。eglot ブロックの eglot-server-programs 参照)。
+  ;; 派生モードなので json-ts-mode-hook (eglot / apheleia) はそのまま走る。
+  :when (and (fboundp 'treesit-ready-p) (treesit-ready-p 'json t))
+  :init
+  (define-derived-mode wamei/jsonc-ts-mode json-ts-mode "JSONC"
+    "コメント付き JSON (JSONC) のメジャーモード。
+`json-ts-mode' と同じ編集機能で、言語サーバには jsonc として伝える。")
+  ;; tsconfig / jsconfig と VS Code の設定は仕様上コメントを許す JSONC
+  (dolist (pattern '("\\.jsonc\\'"
+                     "\\(?:tsconfig\\|jsconfig\\)[^/]*\\.json\\'"
+                     "/\\.vscode/[^/]+\\.json\\'"))
+    (add-to-list 'auto-mode-alist (cons pattern #'wamei/jsonc-ts-mode))))
+
 ;; Emacs 31 標準の auto-mode-alist は .js / .jsm / .jsx しか javascript-mode に振らず、
 ;; .mjs / .cjs は fundamental-mode になる。javascript-mode に登録しておけば上の
 ;; major-mode-remap-alist 経由で js-ts-mode に寄る。
@@ -2148,6 +1784,14 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
   ;; (~/.bun/bin は .zshrc で PATH に足し、exec-path-from-shell で引き継ぐ)。
   (add-to-list 'eglot-server-programs
                '(prisma-ts-mode . ("prisma-language-server" "--stdio")))
+  ;; JSONC (wamei/jsonc-ts-mode、json-ts-mode ブロック) は languageId を "jsonc" で伝える。
+  ;; json-ts-mode の派生なので組み込みの json エントリにも当たるが、そちらだと "json"
+  ;; になり vscode-json-language-server がコメントをエラーにする。eglot は
+  ;; 派生関係で先に一致したモードの languageId を使うので、派生モードを先頭に置いた
+  ;; エントリを前に積み、json / jsonc を 1 つの server で受ける。
+  (add-to-list 'eglot-server-programs
+               '(((wamei/jsonc-ts-mode :language-id "jsonc") js-json-mode json-ts-mode)
+                 . ("vscode-json-language-server" "--stdio")))
   ;; @prisma/language-server は起動直後に workspace/configuration (section "prisma")
   ;; を要求し、null が返ると settings.enableDiagnostics の参照でクラッシュする
   ;; (31.12.2 で確認)。eglot はこの値を一時バッファ (major-mode 変数だけ設定、

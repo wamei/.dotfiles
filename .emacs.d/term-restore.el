@@ -138,7 +138,7 @@ batch (端末なし) で tty の近似色に丸めるので当てにしない。
 
 ;;; 保存
 
-(defvar wamei/term--title)                  ; init.el (vterm ブロック) の buffer-local 変数
+(defvar wamei/term--title)                  ; term-panel.el の buffer-local 変数
 
 (defun wamei/term-restore--prompt-line-p ()
   "現在行がプロンプトの行なら非 nil。
