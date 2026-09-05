@@ -14,7 +14,11 @@
 ;;    `wamei/dired-tree-revert-delay' 秒待ってからカーソル位置を保って revert
 ;;    し、`wamei/dired-tree-refresh-hook' を呼ぶ。
 ;; 3. path までの展開 (Task 4)
-;; 4. D&D の drop 先 (Task 6)
+;; 4. D&D の drop 先
+;;    別の dired バッファからファイルを subtree の行へ drop すると、その行の
+;;    ディレクトリ (ファイル行なら親、行が無ければ top) へ移す。macOS の drop は
+;;    常に private で届き dired 既定では copy 扱いだが、Finder と同じく既定は
+;;    移動 (`wamei/dired-tree-drop-action') にする。
 ;;
 ;;; Code:
 
@@ -24,6 +28,8 @@
 (require 'seq)
 (require 'filenotify)
 (require 'subr-x)
+(require 'dired-aux)
+(require 'dnd)
 
 ;; `wamei/dired-tree-mode' は下の `define-minor-mode' で定義されるが、
 ;; それより前にある関数から参照するため前方宣言しておく。
@@ -220,6 +226,65 @@ dired 標準の復元は subtree 行では効かないので `dired-utils-goto-l
   (when wamei/dired-tree-mode
     (wamei/dired-tree--reconcile-watches)))
 
+;;; D&D の drop 先
+
+(defvar wamei/dired-tree-drop-action 'move
+  "drop が private / copy で届いたときの操作。move / copy のいずれか。
+macOS の drop イベントは常に private で届き、dired 既定では copy になる。
+Finder と同じく既定は移動にする。")
+
+(defun wamei/dired-tree--drop-target (directory-p file parent top)
+  "落下先ディレクトリ (末尾 / あり)。
+行がディレクトリ (DIRECTORY-P) ならその FILE、ファイルなら PARENT、行に何も無ければ TOP。"
+  (file-name-as-directory
+   (cond ((and directory-p file) file)
+         (file parent)
+         (t top))))
+
+(defun wamei/dired-tree--drop-destination (from target-dir)
+  "FROM を TARGET-DIR に落としたときのフルパス。"
+  (concat (file-name-as-directory target-dir)
+          (file-name-nondirectory (directory-file-name from))))
+
+(defun wamei/dired-tree--resolve-action (action)
+  "dnd の ACTION を実際の操作に直す。private / copy は `wamei/dired-tree-drop-action'。"
+  (if (memq action '(private copy)) wamei/dired-tree-drop-action action))
+
+(defun wamei/dired-tree-drop-directory-at-point ()
+  "point の行から落下先ディレクトリを決める。"
+  (let* ((file (dired-utils-get-filename))
+         (ov (dired-subtree--get-ov))
+         (parent (if ov (overlay-get ov 'dired-subtree-name) (dired-current-directory))))
+    (wamei/dired-tree--drop-target (and file (file-directory-p file))
+                                   file parent (dired-current-directory))))
+
+(defun wamei/dired-tree-dnd-handle-file (uri action)
+  "URI のローカルファイルを point の行の落下先へ ACTION で運ぶ。`dnd-protocol-alist' 用。
+`dired-dnd-handle-file' は落下先を `dired-current-directory' (top) に固定するので、
+subtree 行を見て決める版。終わったら revert して行を作り直す。"
+  (let* ((from (dnd-get-local-file-name uri t))
+         (action (wamei/dired-tree--resolve-action action)))
+    (when from
+      (let ((to (wamei/dired-tree--drop-destination
+                 from (wamei/dired-tree-drop-directory-at-point))))
+        (unless (equal (directory-file-name from) (directory-file-name to))
+          (let ((overwrite (and (file-exists-p to)
+                                (y-or-n-p (format-message "Overwrite existing file `%s'? " to)))))
+            (when (or overwrite (not (file-exists-p to)))
+              (pcase action
+                ('move (dired-rename-file from to overwrite))
+                ('copy (dired-copy-file from to overwrite))
+                ('link (make-symbolic-link from to overwrite)))
+              (wamei/dired-tree-revert)
+              (run-hooks 'wamei/dired-tree-refresh-hook))))
+        action))))
+
+(defun wamei/dired-tree--setup-dnd ()
+  "このバッファの `dnd-protocol-alist' の先頭に自前のハンドラを置く。"
+  (setq-local dnd-protocol-alist
+              (cons '("^file:" . wamei/dired-tree-dnd-handle-file)
+                    (default-value 'dnd-protocol-alist))))
+
 ;;; minor mode
 
 (define-minor-mode wamei/dired-tree-mode
@@ -231,12 +296,14 @@ dired 標準の復元は subtree 行では効かないので `dired-utils-goto-l
         (add-hook 'dired-subtree-after-remove-hook #'wamei/dired-tree--after-remove nil t)
         (add-hook 'dired-after-readin-hook #'wamei/dired-tree--after-remove 90 t)
         (add-hook 'kill-buffer-hook #'wamei/dired-tree--remove-all-watches nil t)
-        (advice-add 'dired-subtree-remove :before #'wamei/dired-tree--before-remove))
+        (advice-add 'dired-subtree-remove :before #'wamei/dired-tree--before-remove)
+        (wamei/dired-tree--setup-dnd))
     (remove-hook 'dired-subtree-after-insert-hook #'wamei/dired-tree--after-insert t)
     (remove-hook 'dired-subtree-after-remove-hook #'wamei/dired-tree--after-remove t)
     (remove-hook 'dired-after-readin-hook #'wamei/dired-tree--after-remove t)
     (remove-hook 'kill-buffer-hook #'wamei/dired-tree--remove-all-watches t)
-    (wamei/dired-tree--remove-all-watches)))
+    (wamei/dired-tree--remove-all-watches)
+    (kill-local-variable 'dnd-protocol-alist)))
 
 (provide 'dired-tree)
 ;;; dired-tree.el ends here

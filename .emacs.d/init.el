@@ -1241,6 +1241,20 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (with-eval-after-load 'nerd-icons-dired
     (add-hook 'dired-subtree-after-insert-hook #'nerd-icons-dired--refresh)))
 
+(leaf dired-tree
+  :doc "dired-subtree の展開記憶、展開ディレクトリの監視、D&D の落下先"
+  :ensure nil
+  ;; :after は付けない。dired-tree.el が dired-subtree を require するので
+  ;; :preface の load 時点で両方読み込まれる。:after を付けると :hook の登録が
+  ;; eval-after-load に包まれて、読む順が変わったときに黙って効かなくなる。
+  :preface
+  ;; 実体は dired-tree.el。init.el は symlink なので実体の隣から読む。
+  (load (expand-file-name "dired-tree"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :hook
+  (dired-mode-hook . wamei/dired-tree-mode))
+
 (leaf dired-toggle-sudo
   :ensure t
   :bind (:dired-mode-map

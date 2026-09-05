@@ -176,5 +176,33 @@
       (should-not wamei/dired-tree--revert-timer)
       (should (= (hash-table-count wamei/dired-tree--watches) 0)))))
 
+;;; drop 先
+
+(ert-deftest wamei/dired-tree-drop-target-prefers-directory-line ()
+  (should (equal (wamei/dired-tree--drop-target t "/r/a" "/r/" "/r/") "/r/a/"))
+  (should (equal (wamei/dired-tree--drop-target nil "/r/a/x.txt" "/r/a" "/r/") "/r/a/"))
+  (should (equal (wamei/dired-tree--drop-target nil nil nil "/r/") "/r/")))
+
+(ert-deftest wamei/dired-tree-drop-destination-keeps-basename ()
+  (should (equal (wamei/dired-tree--drop-destination "/src/x.txt" "/r/a/") "/r/a/x.txt"))
+  (should (equal (wamei/dired-tree--drop-destination "/src/dir/" "/r/a/") "/r/a/dir")))
+
+(ert-deftest wamei/dired-tree-resolve-action-maps-private-to-default ()
+  (let ((wamei/dired-tree-drop-action 'move))
+    (should (eq (wamei/dired-tree--resolve-action 'private) 'move))
+    (should (eq (wamei/dired-tree--resolve-action 'copy) 'move))
+    (should (eq (wamei/dired-tree--resolve-action 'link) 'link))))
+
+(ert-deftest wamei/dired-tree-dnd-moves-file-into-subtree-directory ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/d.txt" root))
+      ;; point は a/d.txt の行。落下先はその親 a/
+      (let ((wamei/dired-tree-drop-action 'move))
+        (wamei/dired-tree-dnd-handle-file
+         (concat "file://" (expand-file-name "e.txt" root)) 'private))
+      (should (file-exists-p (expand-file-name "a/e.txt" root)))
+      (should-not (file-exists-p (expand-file-name "e.txt" root))))))
+
 (provide 'dired-tree-test)
 ;;; dired-tree-test.el ends here
