@@ -93,11 +93,13 @@
 
 (defun wamei/dired-git-status--root ()
   "このバッファの git ルート (絶対パス、末尾 / なし)。git 管理外なら nil。
-project-current を使い、その root に .git が無ければ nil。"
-  (when-let* ((project (project-current nil))
-              (root (directory-file-name (expand-file-name (project-root project)))))
-    (when (file-exists-p (expand-file-name ".git" root))
-      root)))
+project-current を使い、その root に .git が無ければ nil。
+リモート (TRAMP) では何もしない。"
+  (unless (file-remote-p default-directory)
+    (when-let* ((project (project-current nil))
+                (root (directory-file-name (expand-file-name (project-root project)))))
+      (when (file-exists-p (expand-file-name ".git" root))
+        root))))
 
 ;;; 取得とキャッシュ
 
