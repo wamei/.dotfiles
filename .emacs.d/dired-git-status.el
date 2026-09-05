@@ -15,6 +15,11 @@
 (require 'dired)
 (require 'project)
 (require 'subr-x)
+(require 'cl-lib)
+
+;; `wamei/dired-git-status-mode' は下の `define-minor-mode' で定義されるが、
+;; それより前にある関数から参照するため前方宣言しておく。
+(defvar wamei/dired-git-status-mode)
 
 ;;; face
 
@@ -83,6 +88,138 @@
            (setq dir (directory-file-name (file-name-directory dir))))))
      table)
     out))
+
+;;; ルート
+
+(defun wamei/dired-git-status--root ()
+  "このバッファの git ルート (絶対パス、末尾 / なし)。git 管理外なら nil。
+project-current を使い、その root に .git が無ければ nil。"
+  (when-let* ((project (project-current nil))
+              (root (directory-file-name (expand-file-name (project-root project)))))
+    (when (file-exists-p (expand-file-name ".git" root))
+      root)))
+
+;;; 取得とキャッシュ
+
+(defvar wamei/dired-git-status--cache (make-hash-table :test 'equal)
+  "ルート → propagate 済みの path → state 表。")
+
+(defvar wamei/dired-git-status--running (make-hash-table :test 'equal)
+  "ルート → 実行中のプロセス。値が `again' 付きなら完了後にもう 1 回走らせる。")
+
+(defun wamei/dired-git-status--buffers-for (root)
+  "ROOT を見ている、mode 有効な dired バッファ。"
+  (seq-filter (lambda (buf)
+                (with-current-buffer buf
+                  (and (derived-mode-p 'dired-mode)
+                       (bound-and-true-p wamei/dired-git-status-mode)
+                       (equal (wamei/dired-git-status--root) root))))
+              (buffer-list)))
+
+(defun wamei/dired-git-status--distribute (root)
+  "ROOT のキャッシュを、ROOT を見ている全バッファに描く。"
+  (when-let* ((table (gethash root wamei/dired-git-status--cache)))
+    (dolist (buf (wamei/dired-git-status--buffers-for root))
+      (with-current-buffer buf
+        (wamei/dired-git-status--decorate table)))))
+
+(defun wamei/dired-git-status--fetch (root)
+  "ROOT で git status を非同期に走らせ、終わったらキャッシュして配る。
+実行中なら完了後にもう 1 回だけ走るよう印を付ける。"
+  (if (gethash root wamei/dired-git-status--running)
+      (process-put (gethash root wamei/dired-git-status--running) 'again t)
+    (let* ((buffer (generate-new-buffer " *dired-git-status*"))
+           (default-directory (file-name-as-directory root))
+           (process
+            (make-process
+             :name "dired-git-status"
+             :buffer buffer
+             :command '("git" "status" "--porcelain=v1" "-z" "--untracked-files=all")
+             :noquery t
+             :sentinel
+             (lambda (proc _event)
+               (unless (process-live-p proc)
+                 (let ((again (process-get proc 'again)))
+                   (remhash root wamei/dired-git-status--running)
+                   (when (and (zerop (process-exit-status proc)) (buffer-live-p buffer))
+                     (puthash root
+                              (wamei/dired-git-status--propagate
+                               (wamei/dired-git-status--parse
+                                (with-current-buffer buffer (buffer-string)) root)
+                               root)
+                              wamei/dired-git-status--cache)
+                     (wamei/dired-git-status--distribute root))
+                   (when (buffer-live-p buffer) (kill-buffer buffer))
+                   (when again (wamei/dired-git-status--fetch root))))))))
+      (puthash root process wamei/dired-git-status--running))))
+
+;;; 描画
+
+(defun wamei/dired-git-status--clear ()
+  "このバッファの overlay を全部消す。"
+  (remove-overlays (point-min) (point-max) 'wamei/dired-git-status-overlay t))
+
+(defun wamei/dired-git-status--decorate (table)
+  "TABLE に従い、このバッファの各行のファイル名に face を当てる。"
+  (wamei/dired-git-status--clear)
+  (save-excursion
+    (goto-char (point-min))
+    (while (not (eobp))
+      (when-let* ((file (dired-get-filename nil t))
+                  (state (gethash (directory-file-name file) table))
+                  (face (alist-get state wamei/dired-git-status--faces))
+                  (beg (dired-move-to-filename))
+                  (end (dired-move-to-end-of-filename t)))
+        (let ((ov (make-overlay beg end)))
+          (overlay-put ov 'wamei/dired-git-status-overlay t)
+          (overlay-put ov 'evaporate t)
+          (overlay-put ov 'face face)))
+      (forward-line 1))))
+
+;;; 更新契機
+
+(defun wamei/dired-git-status-refresh ()
+  "このバッファのルートの git 状態を再取得して、同じルートの全バッファに配る。"
+  (interactive)
+  (when-let* ((root (wamei/dired-git-status--root)))
+    (wamei/dired-git-status--fetch root)))
+
+(defun wamei/dired-git-status--redecorate ()
+  "readin / subtree 展開のあと、キャッシュがあれば描き直し、無ければ取得する。"
+  (when wamei/dired-git-status-mode
+    (when-let* ((root (wamei/dired-git-status--root)))
+      (if-let* ((table (gethash root wamei/dired-git-status--cache)))
+          (wamei/dired-git-status--decorate table)
+        (wamei/dired-git-status--fetch root)))))
+
+(defun wamei/dired-git-status--refresh-all-visible ()
+  "表示中の dired バッファのルートを全部再取得する。magit の refresh 後に呼ぶ。"
+  (let (roots)
+    (dolist (win (window-list nil 'no-minibuf))
+      (with-current-buffer (window-buffer win)
+        (when (and (derived-mode-p 'dired-mode) (bound-and-true-p wamei/dired-git-status-mode))
+          (when-let* ((root (wamei/dired-git-status--root)))
+            (cl-pushnew root roots :test #'equal)))))
+    (mapc #'wamei/dired-git-status--fetch roots)))
+
+(with-eval-after-load 'magit
+  (add-hook 'magit-post-refresh-hook #'wamei/dired-git-status--refresh-all-visible))
+
+;;; minor mode
+
+(define-minor-mode wamei/dired-git-status-mode
+  "dired のファイル名に git の状態で色を付ける。"
+  :lighter nil
+  (if wamei/dired-git-status-mode
+      (progn
+        (add-hook 'dired-after-readin-hook #'wamei/dired-git-status--redecorate 95 t)
+        (add-hook 'dired-subtree-after-insert-hook #'wamei/dired-git-status--redecorate 95 t)
+        (add-hook 'wamei/dired-tree-refresh-hook #'wamei/dired-git-status-refresh nil t)
+        (wamei/dired-git-status-refresh))
+    (remove-hook 'dired-after-readin-hook #'wamei/dired-git-status--redecorate t)
+    (remove-hook 'dired-subtree-after-insert-hook #'wamei/dired-git-status--redecorate t)
+    (remove-hook 'wamei/dired-tree-refresh-hook #'wamei/dired-git-status-refresh t)
+    (wamei/dired-git-status--clear)))
 
 (provide 'dired-git-status)
 ;;; dired-git-status.el ends here

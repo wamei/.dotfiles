@@ -1255,6 +1255,16 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :hook
   (dired-mode-hook . wamei/dired-tree-mode))
 
+(leaf dired-git-status
+  :doc "dired のファイル名を git の状態で色分けする (treemacs-git-mode の代替)"
+  :ensure nil
+  :preface
+  (load (expand-file-name "dired-git-status"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :hook
+  (dired-mode-hook . wamei/dired-git-status-mode))
+
 (leaf dired-toggle-sudo
   :ensure t
   :bind (:dired-mode-map

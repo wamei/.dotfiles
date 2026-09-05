@@ -5,6 +5,8 @@
 
 (require 'ert)
 (package-initialize)
+(require 'project)
+(require 'vc)
 (load (expand-file-name "dired-git-status.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
@@ -14,6 +16,16 @@
   (let (acc)
     (maphash (lambda (k v) (push (cons k v) acc)) table)
     (sort acc (lambda (a b) (string< (car a) (car b))))))
+
+;;; フィクスチャ
+
+(defmacro wamei/dired-git-status-test--with-temp-dir (var &rest body)
+  "一時ディレクトリを VAR に束縛して BODY を評価し、後で削除する。"
+  (declare (indent 1))
+  `(let ((,var (file-name-as-directory (make-temp-file "dgs-" t))))
+     (unwind-protect
+         (progn ,@body)
+       (delete-directory ,var t))))
 
 ;;; XY → state
 
@@ -68,6 +80,69 @@
   (let* ((table (wamei/dired-git-status--parse "?? x.txt\0" "/r"))
          (out (wamei/dired-git-status--propagate table "/r")))
     (should-not (gethash "/r" out))))
+
+;;; 描画とルート判定
+
+(ert-deftest wamei/dired-git-status-root-is-nil-outside-git ()
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (with-current-buffer (dired-noselect dir)
+      (should-not (wamei/dired-git-status--root))
+      (kill-buffer))))
+
+(ert-deftest wamei/dired-git-status-decorate-puts-face-on-filename ()
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (write-region "" nil (expand-file-name "a.el" dir))
+    (write-region "" nil (expand-file-name "b.el" dir))
+    (with-current-buffer (dired-noselect dir)
+      (let ((table (make-hash-table :test 'equal)))
+        (puthash (expand-file-name "a.el" dir) 'modified table)
+        (wamei/dired-git-status--decorate table)
+        (dired-goto-file (expand-file-name "a.el" dir))
+        (should (seq-find (lambda (ov) (overlay-get ov 'wamei/dired-git-status-overlay))
+                          (overlays-at (point))))
+        (should (eq (overlay-get (seq-find (lambda (ov) (overlay-get ov 'wamei/dired-git-status-overlay))
+                                           (overlays-at (point)))
+                                 'face)
+                    'wamei/dired-git-status-modified))
+        (dired-goto-file (expand-file-name "b.el" dir))
+        (should-not (seq-find (lambda (ov) (overlay-get ov 'wamei/dired-git-status-overlay))
+                              (overlays-at (point)))))
+      (kill-buffer))))
+
+(ert-deftest wamei/dired-git-status-decorate-replaces-old-overlays ()
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (write-region "" nil (expand-file-name "a.el" dir))
+    (with-current-buffer (dired-noselect dir)
+      (let ((table (make-hash-table :test 'equal)))
+        (puthash (expand-file-name "a.el" dir) 'modified table)
+        (wamei/dired-git-status--decorate table)
+        (wamei/dired-git-status--decorate (make-hash-table :test 'equal))
+        (should-not (seq-find (lambda (ov) (overlay-get ov 'wamei/dired-git-status-overlay))
+                              (overlays-in (point-min) (point-max)))))
+      (kill-buffer))))
+
+(ert-deftest wamei/dired-git-status-fetch-colors-modified-file-in-real-repo ()
+  "実際に git init したリポジトリで非同期取得が終わるまで待ち、色が付くこと。"
+  (skip-unless (executable-find "git"))
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (let ((default-directory dir))
+      (call-process "git" nil nil nil "init" "-q")
+      (write-region "x" nil (expand-file-name "tracked.el" dir))
+      (call-process "git" nil nil nil "add" "tracked.el")
+      (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t" "commit" "-q" "-m" "init")
+      (write-region "y" nil (expand-file-name "tracked.el" dir))
+      (write-region "" nil (expand-file-name "new.el" dir))
+      (with-current-buffer (dired-noselect dir)
+        (wamei/dired-git-status-mode 1)
+        (let ((deadline (+ (float-time) 5)))
+          (while (and (< (float-time) deadline)
+                      (not (gethash (directory-file-name dir) wamei/dired-git-status--cache)))
+            (accept-process-output nil 0.1)))
+        (let ((table (gethash (directory-file-name dir) wamei/dired-git-status--cache)))
+          (should table)
+          (should (eq (gethash (expand-file-name "tracked.el" dir) table) 'modified))
+          (should (eq (gethash (expand-file-name "new.el" dir) table) 'untracked)))
+        (kill-buffer)))))
 
 (provide 'dired-git-status-test)
 ;;; dired-git-status-test.el ends here
