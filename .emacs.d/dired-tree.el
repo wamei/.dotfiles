@@ -19,6 +19,10 @@
 (require 'dired-hacks-utils)
 (require 'seq)
 
+;; `wamei/dired-tree-mode' は下の `define-minor-mode' で定義されるが、
+;; それより前にある関数から参照するため前方宣言しておく。
+(defvar wamei/dired-tree-mode)
+
 ;;; 展開記憶
 
 (defvar-local wamei/dired-tree--expanded nil
