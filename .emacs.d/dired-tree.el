@@ -81,6 +81,51 @@
             (wamei/dired-tree--expanded-remove
              wamei/dired-tree--expanded (overlay-get ov 'dired-subtree-name))))))
 
+;;; path までの展開
+
+(defun wamei/dired-tree--inside-p (root file)
+  "FILE が ROOT の配下 (ROOT 自身を除く) なら t。"
+  (let ((root (file-name-as-directory (expand-file-name root)))
+        (file (expand-file-name file)))
+    (and (string-prefix-p root file)
+         (not (equal (directory-file-name root) (directory-file-name file))))))
+
+(defun wamei/dired-tree--ancestors (root file)
+  "ROOT 直下から FILE の親までのディレクトリ列 (絶対パス、末尾 / なし)。
+FILE が ROOT 直下なら nil。FILE が ROOT 外でも nil。"
+  (when (wamei/dired-tree--inside-p root file)
+    (let ((root (wamei/dired-tree--normalize root))
+          (dir (directory-file-name (file-name-directory (expand-file-name file))))
+          acc)
+      (while (not (equal dir root))
+        (push dir acc)
+        (setq dir (directory-file-name (file-name-directory dir))))
+      acc)))
+
+(defun wamei/dired-tree-expand-to (file)
+  "FILE までの祖先ディレクトリを展開し、FILE の行へ移動する。
+FILE がこのバッファのルート外、または途中の行が見つからなければ nil。"
+  (let ((root (expand-file-name default-directory)))
+    (when (wamei/dired-tree--inside-p root file)
+      (catch 'missing
+        (dolist (dir (wamei/dired-tree--ancestors root file))
+          (unless (dired-utils-goto-line dir)
+            (throw 'missing nil))
+          (unless (dired-subtree--is-expanded-p)
+            (dired-subtree-insert)))
+        (dired-utils-goto-line (wamei/dired-tree--normalize file))))))
+
+;;; カーソル保持
+
+(defun wamei/dired-tree-revert ()
+  "カーソル行のファイルを保って `revert-buffer' する。
+dired 標準の復元は subtree 行では効かないので `dired-utils-goto-line' で戻す。"
+  (let ((file (dired-utils-get-filename)))
+    (revert-buffer)
+    (when file
+      (or (dired-utils-goto-line file)
+          (dired-goto-file file)))))
+
 ;;; minor mode
 
 (define-minor-mode wamei/dired-tree-mode

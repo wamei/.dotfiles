@@ -88,5 +88,38 @@
       (dired-subtree-insert)
       (should (dired-utils-goto-line (expand-file-name "a/b/c.txt" root))))))
 
+;;; 祖先と展開
+
+(ert-deftest wamei/dired-tree-inside-p ()
+  (should (wamei/dired-tree--inside-p "/tmp/r/" "/tmp/r/a/b.txt"))
+  (should-not (wamei/dired-tree--inside-p "/tmp/r" "/tmp/r"))
+  (should-not (wamei/dired-tree--inside-p "/tmp/r" "/tmp/rx/a.txt"))
+  (should-not (wamei/dired-tree--inside-p "/tmp/r" "/tmp/other/a.txt")))
+
+(ert-deftest wamei/dired-tree-ancestors-lists-dirs-below-root ()
+  (should (equal (wamei/dired-tree--ancestors "/tmp/r/" "/tmp/r/a/b/c.txt")
+                 '("/tmp/r/a" "/tmp/r/a/b")))
+  (should (equal (wamei/dired-tree--ancestors "/tmp/r" "/tmp/r/e.txt") nil)))
+
+(ert-deftest wamei/dired-tree-expand-to-opens-ancestors-and-lands-on-file ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (should (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root)))
+      (should (equal (dired-utils-get-filename) (expand-file-name "a/b/c.txt" root)))
+      (should (equal (sort (copy-sequence wamei/dired-tree--expanded) #'string<)
+                     (list (expand-file-name "a" root) (expand-file-name "a/b" root)))))))
+
+(ert-deftest wamei/dired-tree-expand-to-returns-nil-outside-root ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (should-not (wamei/dired-tree-expand-to "/etc/hosts")))))
+
+(ert-deftest wamei/dired-tree-revert-keeps-point-on-subtree-line ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root))
+      (wamei/dired-tree-revert)
+      (should (equal (dired-utils-get-filename) (expand-file-name "a/b/c.txt" root))))))
+
 (provide 'dired-tree-test)
 ;;; dired-tree-test.el ends here
