@@ -1103,8 +1103,13 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
   (put 'dired-find-alternate-file 'disabled nil)
   ;; ファイルを掴んで別の dired バッファへ落とせるようにする (down-mouse-1)。
   ;; 動かさずに離したときは mouse-1 が押し戻されるので通常のクリックと両立する。
+  ;; macOS では drop は常に action `private' で届き、修飾キー (Shift / Control / Meta)
+  ;; は受け手に伝わらない。private は `wamei/dired-tree-drop-action' (既定 `move')
+  ;; に読み替えるので、既定は Finder と同じ「移動」になる。Finder からの drop も
+  ;; 同じく移動になる。copy したいときは `wamei/dired-tree-drop-action' を `copy'
+  ;; にするか、dired の `C' (dired-do-copy) を使う。
   (setq dired-mouse-drag-files t)
-  ;; 外部でのファイル変更に追従する (file-notify 経由)。
+  ;; auto-revert の "Reverting buffer..." などのメッセージを出さない。
   (setq auto-revert-verbose nil)
 
   (defun dired-toggle-current-or-project-directory (n)
@@ -1143,6 +1148,7 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
         (define-key menu [wamei-dired-new-dir] '(menu-item "New Directory…" dired-create-directory))))
     menu)
   :hook
+  ;; 外部でのファイル変更に追従する (file-notify 経由)。
   (dired-mode-hook . auto-revert-mode)
   :config
   ;; 右クリックメニュー。dired-mode では dired-context-menu が組み込みで足される。
@@ -1198,10 +1204,16 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (load (expand-file-name "project-sidebar"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  ;; minor-mode 関数は引数なしで呼ぶと「有効化」なので、hook に
+  ;; hide-mode-line-mode を直接置くと sidebar mode を切ったときにも ON になる。
+  ;; sidebar mode の状態に合わせる関数を挟む。
+  (defun wamei/project-sidebar--sync-hide-mode-line ()
+    "`hide-mode-line-mode' を `wamei/project-sidebar-mode' の on/off に合わせる。"
+    (hide-mode-line-mode (if wamei/project-sidebar-mode 1 -1)))
   :init
   (wamei/project-sidebar-setup)
   :hook
-  (wamei/project-sidebar-mode-hook . hide-mode-line-mode)
+  (wamei/project-sidebar-mode-hook . wamei/project-sidebar--sync-hide-mode-line)
   :config
   (wamei/project-sidebar-follow-mode 1))
 

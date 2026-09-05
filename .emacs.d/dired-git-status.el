@@ -133,27 +133,36 @@ project-current を使い、その root に .git が無ければ nil。
     (let* ((buffer (generate-new-buffer " *dired-git-status*"))
            (default-directory (file-name-as-directory root))
            (process
-            (make-process
-             :name "dired-git-status"
-             :buffer buffer
-             :command '("git" "status" "--porcelain=v1" "-z" "--untracked-files=all")
-             :noquery t
-             :sentinel
-             (lambda (proc _event)
-               (unless (process-live-p proc)
-                 (let ((again (process-get proc 'again)))
-                   (remhash root wamei/dired-git-status--running)
-                   (when (and (zerop (process-exit-status proc)) (buffer-live-p buffer))
-                     (puthash root
-                              (wamei/dired-git-status--propagate
-                               (wamei/dired-git-status--parse
-                                (with-current-buffer buffer (buffer-string)) root)
-                               root)
-                              wamei/dired-git-status--cache)
-                     (wamei/dired-git-status--distribute root))
-                   (when (buffer-live-p buffer) (kill-buffer buffer))
-                   (when again (wamei/dired-git-status--fetch root))))))))
-      (puthash root process wamei/dired-git-status--running))))
+            ;; git が無い / 実行できない環境でも dired を開くだけで signal しないよう、
+            ;; プロセス起動の失敗はここで飲んでメッセージにする。
+            (condition-case err
+                (make-process
+                 :name "dired-git-status"
+                 :buffer buffer
+                 :command '("git" "status" "--porcelain=v1" "-z" "--untracked-files=all")
+                 :noquery t
+                 :sentinel
+                 (lambda (proc _event)
+                   (unless (process-live-p proc)
+                     (let ((again (process-get proc 'again)))
+                       (remhash root wamei/dired-git-status--running)
+                       (when (and (zerop (process-exit-status proc)) (buffer-live-p buffer))
+                         (puthash root
+                                  (wamei/dired-git-status--propagate
+                                   (wamei/dired-git-status--parse
+                                    (with-current-buffer buffer (buffer-string)) root)
+                                   root)
+                                  wamei/dired-git-status--cache)
+                         (wamei/dired-git-status--distribute root))
+                       (when (buffer-live-p buffer) (kill-buffer buffer))
+                       (when again (wamei/dired-git-status--fetch root))))))
+              (error
+               (remhash root wamei/dired-git-status--running)
+               (when (buffer-live-p buffer) (kill-buffer buffer))
+               (message "dired-git-status: git status failed: %s" (error-message-string err))
+               nil))))
+      (when process
+        (puthash root process wamei/dired-git-status--running)))))
 
 ;;; 描画
 

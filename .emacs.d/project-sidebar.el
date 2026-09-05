@@ -204,7 +204,13 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
           (run-at-time 0 nil
                        (lambda ()
                          (setq wamei/project-sidebar--follow-timer nil)
-                         (wamei/project-sidebar--follow frame))))))
+                         ;; タイマー内のエラーは呼び出し元に伝わらず素通りするので、
+                         ;; ここで捕まえてメッセージにする (dired-tree の revert と同じ)。
+                         (condition-case err
+                             (wamei/project-sidebar--follow frame)
+                           (error
+                            (message "project-sidebar: follow failed: %s"
+                                     (error-message-string err)))))))))
 
 (define-minor-mode wamei/project-sidebar-follow-mode
   "メイン window のバッファに sidebar のカーソルを追従させる。"
@@ -274,6 +280,7 @@ down-mouse-1 は束縛しない (dired の D&D に任せる)。")
         (wamei/dired-tree-mode 1)
         (dired-hide-details-mode 1)
         (setq-local dired-omit-verbose nil)   ; "Omitted N lines" を出さない
+        (setq-local dired-omit-size-limit nil) ; 行数が多くても omit を諦めない
         (dired-omit-mode 1)                 ; . と .. を隠す (既定の dired-omit-files)
         (setq-local dired-hide-details-hide-information-lines t)
         (setq-local truncate-lines t)
