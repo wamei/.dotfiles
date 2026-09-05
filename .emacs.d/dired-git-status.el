@@ -8,7 +8,13 @@
 ;; - パース (`wamei/dired-git-status--parse') と伝播 (`--propagate') は純関数
 ;; - 取得はルート単位で 1 回。結果は `wamei/dired-git-status--cache' に置き、
 ;;   同じルートを見る全 dired バッファに配る
-;; - 更新契機: バッファ表示 / revert / magit の refresh / dired-tree の監視
+;; - 更新契機: バッファ表示 / revert (auto-revert・dired-tree・D&D を含む) /
+;;   magit の refresh / Emacs でのファイル保存と外部変更の取り込み
+;;   (after-save-hook・after-revert-hook) / .git の中身の変化 (index・HEAD 等を
+;;   file-notify で監視)。macOS の kqueue はファイル内容の変更をディレクトリ監視で
+;;   拾えないので、ファイル側の契機をここで補う
+;; - フォルダの色: 中のファイルが全部同じ状態ならその色 (untracked だけなら
+;;   untracked、added だけなら added)、混在なら modified、conflict があれば conflict
 ;;
 ;;; Code:
 
@@ -16,6 +22,7 @@
 (require 'project)
 (require 'subr-x)
 (require 'cl-lib)
+(require 'filenotify)
 
 ;; `wamei/dired-git-status-mode' は下の `define-minor-mode' で定義されるが、
 ;; それより前にある関数から参照するため前方宣言しておく。
@@ -72,21 +79,32 @@
           (puthash (directory-file-name (concat root path)) state table))))
     table))
 
+(defun wamei/dired-git-status--summarize (states)
+  "配下のファイルの STATES (リスト) からディレクトリの状態を決める。
+conflict があれば conflict、全部同じならその状態、混在なら modified。"
+  (cond ((memq 'conflict states) 'conflict)
+        ((null (cdr (delete-dups (copy-sequence states)))) (car states))
+        (t 'modified)))
+
 (defun wamei/dired-git-status--propagate (table root)
   "TABLE の各パスの祖先 (ROOT 自身は除く) に状態を足した新しい hash。
-子に conflict があれば conflict、それ以外は modified。"
+祖先には配下の全ファイルの状態を集めて `wamei/dired-git-status--summarize' で決める:
+untracked だけのフォルダは untracked、added だけなら added、混在なら modified、
+conflict があれば conflict。"
   (let ((out (copy-hash-table table))
+        (children (make-hash-table :test 'equal))
         (root (directory-file-name (expand-file-name root))))
     (maphash
      (lambda (path state)
-       (let ((dir (directory-file-name (file-name-directory path)))
-             (mark (if (eq state 'conflict) 'conflict 'modified)))
+       (let ((dir (directory-file-name (file-name-directory path))))
          (while (and (not (equal dir root))
                      (string-prefix-p (concat root "/") (concat dir "/")))
-           (unless (eq (gethash dir out) 'conflict)
-             (puthash dir mark out))
+           (push state (gethash dir children))
            (setq dir (directory-file-name (file-name-directory dir))))))
      table)
+    (maphash (lambda (dir states)
+               (puthash dir (wamei/dired-git-status--summarize states) out))
+             children)
     out))
 
 ;;; ルート
@@ -128,6 +146,7 @@ project-current を使い、その root に .git が無ければ nil。
 (defun wamei/dired-git-status--fetch (root)
   "ROOT で git status を非同期に走らせ、終わったらキャッシュして配る。
 実行中なら完了後にもう 1 回だけ走るよう印を付ける。"
+  (wamei/dired-git-status--watch-git-dir root)
   (if (gethash root wamei/dired-git-status--running)
       (process-put (gethash root wamei/dired-git-status--running) 'again t)
     (let* ((buffer (generate-new-buffer " *dired-git-status*"))
@@ -196,12 +215,19 @@ project-current を使い、その root に .git が無ければ nil。
     (wamei/dired-git-status--fetch root)))
 
 (defun wamei/dired-git-status--redecorate ()
-  "readin / subtree 展開のあと、キャッシュがあれば描き直し、無ければ取得する。"
+  "readin / subtree 展開のあと、キャッシュがあれば描き直す。
+キャッシュが無い (初回) か、revert の途中 (auto-revert・dired-tree・D&D・g) なら
+再取得もする。revert は「何か変わった」合図なので、キャッシュのままにしない。
+初回は mode 有効化が既に取得を始めているので、実行中なら二重に起動しない。"
   (when wamei/dired-git-status-mode
     (when-let* ((root (wamei/dired-git-status--root)))
-      (if-let* ((table (gethash root wamei/dired-git-status--cache)))
-          (wamei/dired-git-status--decorate table)
-        (wamei/dired-git-status--fetch root)))))
+      (let ((table (gethash root wamei/dired-git-status--cache)))
+        (when table
+          (wamei/dired-git-status--decorate table))
+        (when (or (bound-and-true-p revert-buffer-in-progress)
+                  (and (null table)
+                       (not (gethash root wamei/dired-git-status--running))))
+          (wamei/dired-git-status--fetch root))))))
 
 (defun wamei/dired-git-status--refresh-all-visible ()
   "表示中の dired バッファのルートを全部再取得する。magit の refresh 後に呼ぶ。"
@@ -216,6 +242,80 @@ project-current を使い、その root に .git が無ければ nil。
 (with-eval-after-load 'magit
   (add-hook 'magit-post-refresh-hook #'wamei/dired-git-status--refresh-all-visible))
 
+;;; ファイル側の契機 (A)
+
+(defun wamei/dired-git-status--on-file-change ()
+  "保存 / 外部変更の取り込みがあったファイルのルートを再取得する。
+`after-save-hook' と `after-revert-hook' (global) 用。そのルートを見ている
+dired バッファが無ければ何もしない。dired バッファ自身の revert は
+`buffer-file-name' が nil なので対象外 (そちらは `--redecorate' が担う)。"
+  (when-let* ((file buffer-file-name))
+    (unless (file-remote-p file)
+      (let ((default-directory (file-name-directory file)))
+        (when-let* ((root (wamei/dired-git-status--root)))
+          (when (or (gethash root wamei/dired-git-status--cache)
+                    (wamei/dired-git-status--buffers-for root))
+            (wamei/dired-git-status--fetch root)))))))
+
+(add-hook 'after-save-hook #'wamei/dired-git-status--on-file-change)
+(add-hook 'after-revert-hook #'wamei/dired-git-status--on-file-change)
+
+;;; .git の監視 (B)
+
+(defvar wamei/dired-git-status-git-dir-delay 0.3
+  ".git の変化から再取得までの待ち時間 (秒)。index.lock の出入りなど連続する通知をまとめる。")
+
+(defvar wamei/dired-git-status--git-watches (make-hash-table :test 'equal)
+  "ルート → .git ディレクトリの file-notify descriptor。")
+
+(defvar wamei/dired-git-status--git-timers (make-hash-table :test 'equal)
+  "ルート → 予約中の再取得タイマー。")
+
+(defun wamei/dired-git-status--git-dir-changed (root)
+  ".git に変化があった。debounce してから ROOT を再取得する。"
+  (when-let* ((timer (gethash root wamei/dired-git-status--git-timers)))
+    (cancel-timer timer))
+  (puthash root
+           (run-at-time wamei/dired-git-status-git-dir-delay nil
+                        (lambda ()
+                          (remhash root wamei/dired-git-status--git-timers)
+                          (if (wamei/dired-git-status--buffers-for root)
+                              (wamei/dired-git-status--fetch root)
+                            (wamei/dired-git-status--unwatch-git-dir root))))
+           wamei/dired-git-status--git-timers))
+
+(defun wamei/dired-git-status--watch-git-dir (root)
+  "ROOT の .git ディレクトリを監視する (既に監視中なら何もしない)。
+git は index や HEAD を lock ファイル経由の rename で書くので、ファイルではなく
+ディレクトリを見ればエントリの出入りとして届く。.git がファイル (worktree) の
+ときは監視しない。"
+  (let ((gitdir (expand-file-name ".git" root)))
+    (when (and (not (gethash root wamei/dired-git-status--git-watches))
+               (file-directory-p gitdir))
+      (ignore-errors
+        (puthash root
+                 (file-notify-add-watch
+                  gitdir '(change)
+                  (lambda (_event) (wamei/dired-git-status--git-dir-changed root)))
+                 wamei/dired-git-status--git-watches)))))
+
+(defun wamei/dired-git-status--unwatch-git-dir (root)
+  "ROOT の .git の監視と予約中のタイマーを外す。"
+  (when-let* ((desc (gethash root wamei/dired-git-status--git-watches)))
+    (ignore-errors (file-notify-rm-watch desc))
+    (remhash root wamei/dired-git-status--git-watches))
+  (when-let* ((timer (gethash root wamei/dired-git-status--git-timers)))
+    (cancel-timer timer)
+    (remhash root wamei/dired-git-status--git-timers)))
+
+(defun wamei/dired-git-status--release-root ()
+  "このバッファが最後の利用者なら、そのルートの .git 監視を外す。
+mode 無効化と kill-buffer 用。"
+  (when-let* ((root (wamei/dired-git-status--root)))
+    (unless (seq-remove (lambda (b) (eq b (current-buffer)))
+                        (wamei/dired-git-status--buffers-for root))
+      (wamei/dired-git-status--unwatch-git-dir root))))
+
 ;;; minor mode
 
 (define-minor-mode wamei/dired-git-status-mode
@@ -225,12 +325,14 @@ project-current を使い、その root に .git が無ければ nil。
       (progn
         (add-hook 'dired-after-readin-hook #'wamei/dired-git-status--redecorate 95 t)
         (add-hook 'dired-subtree-after-insert-hook #'wamei/dired-git-status--redecorate 95 t)
-        (add-hook 'wamei/dired-tree-refresh-hook #'wamei/dired-git-status-refresh nil t)
+        ;; dired-tree や D&D の revert は revert-buffer を通るので --redecorate が再取得する
+        (add-hook 'kill-buffer-hook #'wamei/dired-git-status--release-root nil t)
         (wamei/dired-git-status-refresh))
     (remove-hook 'dired-after-readin-hook #'wamei/dired-git-status--redecorate t)
     (remove-hook 'dired-subtree-after-insert-hook #'wamei/dired-git-status--redecorate t)
-    (remove-hook 'wamei/dired-tree-refresh-hook #'wamei/dired-git-status-refresh t)
-    (wamei/dired-git-status--clear)))
+    (remove-hook 'kill-buffer-hook #'wamei/dired-git-status--release-root t)
+    (wamei/dired-git-status--clear)
+    (wamei/dired-git-status--release-root)))
 
 (provide 'dired-git-status)
 ;;; dired-git-status.el ends here

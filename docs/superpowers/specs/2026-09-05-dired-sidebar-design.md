@@ -113,7 +113,9 @@ minor mode `wamei/dired-git-status-mode` を dired-mode-hook で有効化する�
   `modified` / `added` / `untracked` / `renamed` / `conflict` の 5 つ。
   リネームは新旧 2 パスが来るので新パスに `renamed`。
 - `wamei/dired-git-status--propagate (table root)`: 変更を含むディレクトリに
-  `modified` を付けて返す (`conflict` が含まれるなら `conflict`)。
+  配下の全ファイルの状態から決めた色を付けて返す (`--summarize`): `conflict` が
+  あれば `conflict`、全部同じ状態ならその状態 (untracked だけのフォルダは
+  untracked、added だけなら added)、混在なら `modified`。
   treemacs と同じく、閉じたディレクトリでも中に変更があれば色が付く。
 
 ### 描画
@@ -127,13 +129,28 @@ minor mode `wamei/dired-git-status-mode` を dired-mode-hook で有効化する�
 
 ### 更新契機
 
-- バッファ表示 (mode 有効化) と revert。
+macOS の file-notify (kqueue) はディレクトリ監視でファイル内容の変更を拾えないので、
+ディレクトリの増減以外は別の契機で補う。
+
+- バッファ表示 (mode 有効化)。
+- revert の途中 (`revert-buffer-in-progress`) の readin: auto-revert (ルート直下の
+  増減)、dired-tree の監視 (展開中ディレクトリの増減)、D&D、`g` のいずれも
+  `revert-buffer` を通るので、キャッシュがあっても再取得する。
+- Emacs でのファイル保存 (`after-save-hook`) と、外部変更を global-auto-revert が
+  取り込んだとき (`after-revert-hook`): そのファイルのルートを見ている dired
+  バッファがあれば再取得 (`wamei/dired-git-status--on-file-change`)。AI やエディタ外
+  ツールが Emacs で開いているファイルを書き換えたケースを拾う。
+- `.git` ディレクトリの file-notify 監視 (`--watch-git-dir`、ルートごとに 1 つ、
+  最初の取得時に登録、最後の dired バッファが閉じたら解除): `git add` / commit /
+  checkout は index や HEAD を lock ファイル経由の rename で書くのでエントリの
+  出入りとして届く。300ms debounce して再取得。`.git` がファイル (worktree) なら
+  監視しない。
 - `magit-post-refresh-hook` (`with-eval-after-load 'magit`)。treemacs-magit の代替。
   表示中の dired バッファのルートを集めて `wamei/dired-git-status--refresh-all-visible`
   でまとめて再取得する。
-- dired-tree.el の file-notify から `wamei/dired-tree-refresh-hook` 経由で
-  `wamei/dired-git-status-refresh` が呼ばれる。
 - 手動 `wamei/dired-git-status-refresh` (interactive)。
+- 拾えないもの: Emacs で開いていないファイルの中身だけが外部で変わったケース。
+  必要になればアイドル時のポーリングを足す。
 
 ## 3. dired-tree.el
 

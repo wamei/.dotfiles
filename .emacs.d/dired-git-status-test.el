@@ -155,5 +155,112 @@ BODY の途中で assertion が失敗しても unwind-protect で必ず kill さ
           (should (eq (gethash (expand-file-name "tracked.el" dir) table) 'modified))
           (should (eq (gethash (expand-file-name "new.el" dir) table) 'untracked)))))))
 
+;;; 伝播 (フォルダの色)
+
+(ert-deftest wamei/dired-git-status-propagate-uniform-untracked-dir-is-untracked ()
+  (let* ((table (wamei/dired-git-status--parse "?? src/a.el\0?? src/deep/b.el\0" "/r"))
+         (out (wamei/dired-git-status--propagate table "/r")))
+    (should (eq (gethash "/r/src" out) 'untracked))
+    (should (eq (gethash "/r/src/deep" out) 'untracked))))
+
+(ert-deftest wamei/dired-git-status-propagate-uniform-added-dir-is-added ()
+  (let* ((table (wamei/dired-git-status--parse "A  src/a.el\0A  src/b.el\0" "/r"))
+         (out (wamei/dired-git-status--propagate table "/r")))
+    (should (eq (gethash "/r/src" out) 'added))))
+
+(ert-deftest wamei/dired-git-status-propagate-mixed-dir-is-modified ()
+  (let* ((table (wamei/dired-git-status--parse "?? src/x/a.el\0 M src/b.el\0" "/r"))
+         (out (wamei/dired-git-status--propagate table "/r")))
+    ;; x の中は untracked だけなので untracked、src は混在なので modified
+    (should (eq (gethash "/r/src/x" out) 'untracked))
+    (should (eq (gethash "/r/src" out) 'modified))))
+
+;;; 更新契機 (実リポジトリ)
+
+(defun wamei/dired-git-status-test--init-repo (dir)
+  "DIR を git リポジトリにして tracked.el を 1 つコミットする。"
+  (let ((default-directory dir))
+    (call-process "git" nil nil nil "init" "-q")
+    (write-region "x" nil (expand-file-name "tracked.el" dir))
+    (call-process "git" nil nil nil "add" "tracked.el")
+    (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                  "commit" "-q" "-m" "init")))
+
+(defun wamei/dired-git-status-test--wait-until (pred &optional seconds)
+  "PRED が非 nil を返すまで最大 SECONDS (既定 5) 秒、プロセス出力とタイマーを回す。"
+  (let ((deadline (+ (float-time) (or seconds 5))))
+    (while (and (< (float-time) deadline) (not (funcall pred)))
+      ;; プロセスの出力と file-notify の通知を受け、sit-for でタイマーも進める
+      (accept-process-output nil 0.1)
+      (sit-for 0.05))
+    (funcall pred)))
+
+(defun wamei/dired-git-status-test--state (dir file)
+  "DIR のルートのキャッシュにおける FILE の state。"
+  (when-let* ((table (gethash (directory-file-name dir) wamei/dired-git-status--cache)))
+    (gethash (expand-file-name file dir) table)))
+
+(ert-deftest wamei/dired-git-status-revert-refetches-status ()
+  "auto-revert 等で dired が revert されたら、キャッシュがあっても再取得する (D)。"
+  (skip-unless (executable-find "git"))
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (wamei/dired-git-status-test--init-repo dir)
+    (wamei/dired-git-status-test--with-dired dir buf
+      (wamei/dired-git-status-mode 1)
+      (should (wamei/dired-git-status-test--wait-until
+               (lambda () (gethash (directory-file-name dir) wamei/dired-git-status--cache))))
+      (write-region "" nil (expand-file-name "new.el" dir))
+      (revert-buffer)
+      (should (wamei/dired-git-status-test--wait-until
+               (lambda () (eq (wamei/dired-git-status-test--state dir "new.el") 'untracked)))))))
+
+(ert-deftest wamei/dired-git-status-save-refetches-status ()
+  "Emacs でファイルを保存したら、そのルートを見ている dired の色を再取得する (A)。"
+  (skip-unless (executable-find "git"))
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (wamei/dired-git-status-test--init-repo dir)
+    (wamei/dired-git-status-test--with-dired dir buf
+      (wamei/dired-git-status-mode 1)
+      (should (wamei/dired-git-status-test--wait-until
+               (lambda () (gethash (directory-file-name dir) wamei/dired-git-status--cache))))
+      (should-not (wamei/dired-git-status-test--state dir "tracked.el"))
+      (let ((fbuf (find-file-noselect (expand-file-name "tracked.el" dir))))
+        (unwind-protect
+            (with-current-buffer fbuf
+              (goto-char (point-max))
+              (insert "y")
+              (let ((inhibit-message t)) (save-buffer)))
+          (kill-buffer fbuf)))
+      (should (wamei/dired-git-status-test--wait-until
+               (lambda () (eq (wamei/dired-git-status-test--state dir "tracked.el") 'modified)))))))
+
+(ert-deftest wamei/dired-git-status-git-dir-change-refetches-status ()
+  "git add など .git の中身が変わったら再取得する (B)。
+file-notify のイベントは command loop 経由で届き batch では配送されないので、
+監視の登録を確かめたうえで、通知ハンドラを直接呼んで debounce → 再取得を検証する。"
+  (skip-unless (executable-find "git"))
+  (wamei/dired-git-status-test--with-temp-dir dir
+    (wamei/dired-git-status-test--init-repo dir)
+    (write-region "" nil (expand-file-name "new.el" dir))
+    (wamei/dired-git-status-test--with-dired dir buf
+      (wamei/dired-git-status-mode 1)
+      (should (wamei/dired-git-status-test--wait-until
+               (lambda () (eq (wamei/dired-git-status-test--state dir "new.el") 'untracked))))
+      (let ((root (directory-file-name dir)))
+        (should (gethash root wamei/dired-git-status--git-watches))
+        (let ((default-directory dir))
+          (call-process "git" nil nil nil "add" "new.el"))
+        (wamei/dired-git-status--git-dir-changed root)
+        (should (wamei/dired-git-status--test-timer-pending-p root))
+        (should (wamei/dired-git-status-test--wait-until
+                 (lambda () (eq (wamei/dired-git-status-test--state dir "new.el") 'added))))
+        ;; バッファを閉じたら監視も外れる
+        (kill-buffer buf)
+        (should-not (gethash root wamei/dired-git-status--git-watches))))))
+
+(defun wamei/dired-git-status--test-timer-pending-p (root)
+  "ROOT の debounce タイマーが予約されているか。"
+  (timerp (gethash root wamei/dired-git-status--git-timers)))
+
 (provide 'dired-git-status-test)
 ;;; dired-git-status-test.el ends here
