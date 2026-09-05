@@ -126,5 +126,49 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
         (wamei/project-sidebar-toggle '(4))
         (should-not (wamei/project-sidebar-window))))))
 
+;;; follow
+
+(ert-deftest wamei/project-sidebar-follow-target ()
+  (should (eq (wamei/project-sidebar--follow-target "/r/a.el" "/r/" "/r/") 'same))
+  (should (eq (wamei/project-sidebar--follow-target "/o/a.el" "/r/" "/o/") 'switch))
+  (should (eq (wamei/project-sidebar--follow-target "/o/a.el" "/r/" nil) 'none))
+  (should (eq (wamei/project-sidebar--follow-target nil "/r/" "/r/") 'none)))
+
+(ert-deftest wamei/project-sidebar-follow-expands-to-visited-file ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((main (selected-window))
+           (file (expand-file-name "src/main.el" root))
+           (buf (find-file-noselect file)))
+      (unwind-protect
+          (progn
+            (set-window-buffer main buf)
+            (let ((win (wamei/project-sidebar-show root)))
+              (wamei/project-sidebar--follow (selected-frame))
+              (with-current-buffer (window-buffer win)
+                (should (equal (save-excursion
+                                 (goto-char (window-point win))
+                                 (dired-utils-get-filename))
+                               file)))
+              (delete-window win)))
+        (kill-buffer buf)))))
+
+(ert-deftest wamei/project-sidebar-follow-switches-to-other-project ()
+  (wamei/project-sidebar-test--with-project root-a
+    (wamei/project-sidebar-test--with-project root-b
+      (let* ((project-find-functions
+              (list (lambda (dir)
+                      (let ((dir (file-truename (expand-file-name dir))))
+                        (cond ((string-prefix-p root-a dir) (cons 'transient root-a))
+                              ((string-prefix-p root-b dir) (cons 'transient root-b)))))))
+             (main (selected-window))
+             (buf (find-file-noselect (expand-file-name "README" root-b))))
+        (unwind-protect
+            (let ((win (wamei/project-sidebar-show root-a)))
+              (set-window-buffer main buf)
+              (wamei/project-sidebar--follow (selected-frame))
+              (should (eq (window-buffer win) (wamei/project-sidebar-buffer root-b)))
+              (delete-window win))
+          (kill-buffer buf))))))
+
 (provide 'project-sidebar-test)
 ;;; project-sidebar-test.el ends here

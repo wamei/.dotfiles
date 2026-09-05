@@ -9,7 +9,8 @@
 ;;   dired-git-status (色)、nerd-icons-dired、右クリックメニューがそのまま効く
 ;; - 見た目: 詳細を隠し、見出し行と . .. を隠し、header-line にプロジェクト名
 ;; - トグル (C-x C-n) は端末パネル (wamei/term-toggle) と同じ 4 態
-;; - follow (Task 11)、マウス (Task 12)、desktop 復元 (Task 13)
+;; - メイン window のファイルに sidebar を追従させる follow-mode を持つ
+;; - マウス (Task 12)、desktop 復元 (Task 13)
 ;;
 ;;; Code:
 
@@ -147,6 +148,68 @@ ROOT は symlink かもしれないので `file-truename' で正規化してか�
   (interactive)
   (when-let* ((back (wamei/project-sidebar--back-window)))
     (select-window back)))
+
+;;; follow
+
+(defun wamei/project-sidebar--follow-target (file shown-root file-root)
+  "FILE に合わせるとき sidebar をどうするか。
+SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) なら `switch'、
+それ以外 (FILE が無い、プロジェクト外) は `none'。"
+  (cond ((null file) 'none)
+        ((and shown-root (wamei/dired-tree--inside-p shown-root file)) 'same)
+        (file-root 'switch)
+        (t 'none)))
+
+(defun wamei/project-sidebar--reveal (window file)
+  "WINDOW の sidebar で FILE の行まで展開し、window-point を移す。フォーカスは動かさない。"
+  (with-current-buffer (window-buffer window)
+    (save-excursion
+      (when (wamei/dired-tree-expand-to file)
+        (set-window-point window (point))))))
+
+(defun wamei/project-sidebar--follow (frame)
+  "FRAME のメイン window のファイルに sidebar を合わせる。"
+  (when (frame-live-p frame)
+    (with-selected-frame frame
+      (when-let* ((window (wamei/project-sidebar-window frame)))
+        (unless (window-parameter (selected-window) 'no-other-window)
+          (let* ((buffer (window-buffer (selected-window)))
+                 (file (let ((f (buffer-file-name buffer))) (and f (file-truename f))))
+                 (shown-root (with-current-buffer (window-buffer window)
+                               (expand-file-name default-directory)))
+                 (file-root (and file
+                                 (let ((default-directory (file-name-directory file)))
+                                   (when (project-current nil)
+                                     (wamei/project-sidebar--root-for default-directory))))))
+            (pcase (wamei/project-sidebar--follow-target file shown-root file-root)
+              ('same (wamei/project-sidebar--reveal window file))
+              ('switch
+               (set-window-dedicated-p window nil)
+               (set-window-buffer window (wamei/project-sidebar-buffer file-root))
+               (set-window-dedicated-p window t)
+               (wamei/project-sidebar--reveal window file)))))))))
+
+(defvar wamei/project-sidebar--follow-timer nil)
+
+(defun wamei/project-sidebar--follow-soon (frame)
+  "`window-buffer-change-functions' / `window-selection-change-functions' 用。
+再表示中は window を触らず、次のコマンド境界で follow する。"
+  (unless (timerp wamei/project-sidebar--follow-timer)
+    (setq wamei/project-sidebar--follow-timer
+          (run-at-time 0 nil
+                       (lambda ()
+                         (setq wamei/project-sidebar--follow-timer nil)
+                         (wamei/project-sidebar--follow frame))))))
+
+(define-minor-mode wamei/project-sidebar-follow-mode
+  "メイン window のバッファに sidebar のカーソルを追従させる。"
+  :global t
+  (if wamei/project-sidebar-follow-mode
+      (progn
+        (add-hook 'window-buffer-change-functions #'wamei/project-sidebar--follow-soon)
+        (add-hook 'window-selection-change-functions #'wamei/project-sidebar--follow-soon))
+    (remove-hook 'window-buffer-change-functions #'wamei/project-sidebar--follow-soon)
+    (remove-hook 'window-selection-change-functions #'wamei/project-sidebar--follow-soon)))
 
 ;;; minor mode
 

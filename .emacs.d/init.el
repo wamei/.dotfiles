@@ -1276,7 +1276,9 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :init
   (wamei/project-sidebar-setup)
   :hook
-  (wamei/project-sidebar-mode-hook . hide-mode-line-mode))
+  (wamei/project-sidebar-mode-hook . hide-mode-line-mode)
+  :config
+  (wamei/project-sidebar-follow-mode 1))
 
 (leaf dired-toggle-sudo
   :ensure t
