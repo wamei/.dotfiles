@@ -135,6 +135,16 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
   (should (eq (wamei/project-sidebar--follow-target "/o/a.el" "/r/" nil) 'none))
   (should (eq (wamei/project-sidebar--follow-target nil "/r/" "/r/") 'none)))
 
+(ert-deftest wamei/project-sidebar-follow-target-ignores-git-dir ()
+  "magit の COMMIT_EDITMSG など .git 配下のファイルには追従しない (.git を展開させない)。"
+  (should (eq (wamei/project-sidebar--follow-target "/r/.git/COMMIT_EDITMSG" "/r/" "/r/") 'none))
+  (should (eq (wamei/project-sidebar--follow-target "/r/.git/rebase-merge/git-rebase-todo" "/r/" "/r/") 'none))
+  ;; worktree: 共通 gitdir は別プロジェクト扱いになるが、これも追従しない
+  (should (eq (wamei/project-sidebar--follow-target "/o/.git/worktrees/x/COMMIT_EDITMSG" "/r/" "/o/") 'none))
+  ;; .gitignore や .github は .git そのものではないので通常どおり
+  (should (eq (wamei/project-sidebar--follow-target "/r/.gitignore" "/r/" "/r/") 'same))
+  (should (eq (wamei/project-sidebar--follow-target "/r/.github/ci.yml" "/r/" "/r/") 'same)))
+
 (ert-deftest wamei/project-sidebar-follow-expands-to-visited-file ()
   (wamei/project-sidebar-test--with-project root
     (let* ((main (selected-window))

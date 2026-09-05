@@ -199,11 +199,19 @@ point を戻した後なので、その位置を使う。表示されていな�
 
 ;;; follow
 
+(defun wamei/project-sidebar--in-git-dir-p (file)
+  "FILE のパスに `.git' というディレクトリ成分が含まれるか。
+magit の COMMIT_EDITMSG や git-rebase-todo はここに置かれる。"
+  (let ((dir (file-name-directory file)))
+    (and dir (member ".git" (split-string dir "/" t)) t)))
+
 (defun wamei/project-sidebar--follow-target (file shown-root file-root)
   "FILE に合わせるとき sidebar をどうするか。
 SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) なら `switch'、
-それ以外 (FILE が無い、プロジェクト外) は `none'。"
+それ以外 (FILE が無い、プロジェクト外、`.git' 配下) は `none'。
+`.git' 配下を弾くのは、magit のコミット時に sidebar が `.git' を展開しないため。"
   (cond ((null file) 'none)
+        ((wamei/project-sidebar--in-git-dir-p file) 'none)
         ((and shown-root (wamei/dired-tree--inside-p shown-root file)) 'same)
         (file-root 'switch)
         (t 'none)))
