@@ -286,6 +286,8 @@ minor mode `wamei/dired-tree-mode` を dired-mode-hook で有効化する。
   overlay をバッファに 1 つ持つ (`wamei/project-sidebar--row-overlay`)。
 - 更新契機: follow (`--reveal`)、sidebar 内のカーソル移動 (`post-command-hook`)、
   revert 後 (`wamei/dired-tree-refresh-hook`、dired-tree が window point を戻した後)。
+- 非選択の sidebar では現在行 overlay が位置を示すので、中空カーソルは出さない
+  (`cursor-in-non-selected-windows` をバッファローカルに nil)。
 
 ### マウスとキー (`wamei/project-sidebar-mode-map`)
 

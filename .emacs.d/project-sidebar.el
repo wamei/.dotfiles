@@ -334,6 +334,8 @@ down-mouse-1 は束縛しない (dired の D&D に任せる)。")
         (setq-local dired-hide-details-hide-information-lines t)
         (setq-local truncate-lines t)
         (setq-local mouse-1-click-follows-link nil)
+        ;; 非選択のときは現在行 overlay があるので、中空カーソルは出さない
+        (setq-local cursor-in-non-selected-windows nil)
         (setq header-line-format
               (list (propertize (concat " " (file-name-nondirectory
                                              (directory-file-name default-directory)))

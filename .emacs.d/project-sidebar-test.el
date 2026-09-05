@@ -297,5 +297,11 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
                                            (line-beginning-position)))))))
         (delete-window win)))))
 
+(ert-deftest wamei/project-sidebar-hides-cursor-when-not-selected ()
+  (wamei/project-sidebar-test--with-project root
+    (with-current-buffer (wamei/project-sidebar-buffer root)
+      (should (local-variable-p 'cursor-in-non-selected-windows))
+      (should-not cursor-in-non-selected-windows))))
+
 (provide 'project-sidebar-test)
 ;;; project-sidebar-test.el ends here
