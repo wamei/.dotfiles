@@ -250,5 +250,52 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
             (should (dired-utils-goto-line (expand-file-name "src/main.el" root))))
         (delete-window win)))))
 
+;;; q と現在行の強調
+
+(ert-deftest wamei/project-sidebar-quit-closes-window ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((main (selected-window))
+           (win (wamei/project-sidebar-show root)))
+      (select-window win)
+      (wamei/project-sidebar-quit)
+      (should-not (wamei/project-sidebar-window))
+      (should (eq (selected-window) main)))))
+
+(ert-deftest wamei/project-sidebar-reveal-marks-current-row ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((win (wamei/project-sidebar-show root))
+           (file (expand-file-name "src/main.el" root)))
+      (unwind-protect
+          (progn
+            (wamei/project-sidebar--reveal win file)
+            (with-current-buffer (window-buffer win)
+              (let ((ov wamei/project-sidebar--row-overlay)
+                    (pos (window-point win)))
+                (should (overlayp ov))
+                (should (= (overlay-start ov)
+                           (save-excursion (goto-char pos) (line-beginning-position))))
+                (should (= (overlay-end ov)
+                           (save-excursion (goto-char pos) (line-beginning-position 2))))
+                (should (eq (overlay-get ov 'face) 'wamei/project-sidebar-current-row))
+                (should (overlay-get ov 'before-string)))))
+        (delete-window win)))))
+
+(ert-deftest wamei/project-sidebar-row-overlay-survives-revert ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((win (wamei/project-sidebar-show root))
+           (file (expand-file-name "src/main.el" root)))
+      (unwind-protect
+          (progn
+            (wamei/project-sidebar--reveal win file)
+            (with-current-buffer (window-buffer win)
+              (wamei/dired-tree-revert)
+              (run-hooks 'wamei/dired-tree-refresh-hook)
+              (let ((ov wamei/project-sidebar--row-overlay))
+                (should (overlay-buffer ov))
+                (should (= (overlay-start ov)
+                           (save-excursion (goto-char (window-point win))
+                                           (line-beginning-position)))))))
+        (delete-window win)))))
+
 (provide 'project-sidebar-test)
 ;;; project-sidebar-test.el ends here

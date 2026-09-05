@@ -122,7 +122,7 @@ minor mode `wamei/dired-git-status-mode` を dired-mode-hook で有効化する�
   `wamei/dired-git-status--decorate` を呼ぶ。バッファの各行 (subtree 行含む) について
   `dired-get-filename` で絶対パスを取り、table にあればファイル名領域に overlay
   (`face` と `wamei/dired-git-status-overlay t`) を張る。既存 overlay は張り直す前に消す。
-- face: `wamei/dired-git-status-modified` (黄)、`-added` (緑)、`-untracked` (緑、やや薄い)、
+- face: `wamei/dired-git-status-modified` (黄)、`-added` (緑)、`-untracked` (シアン。dired-rainbow の実行ファイルの緑と見分けるため)、
   `-renamed` (青)、`-conflict` (赤)。treemacs-git-*-face に寄せた初期値。
 
 ### 更新契機
@@ -253,7 +253,7 @@ minor mode `wamei/dired-tree-mode` を dired-mode-hook で有効化する。
   (端末パネルと同じ)。
 - `wamei/project-sidebar-toggle` は端末パネル (`wamei/term-toggle`) と同じ 4 態:
   非表示 → 開いてフォーカス / 表示中で未フォーカス → フォーカス /
-  フォーカス中 → 元の window へ戻る / `C-u` → 閉じる。`q` は「元の window へ戻る」。
+  フォーカス中 → 元の window へ戻る / `C-u` → 閉じる。`q` は window を閉じる (`C-u C-x C-n` と同じ。戻るだけなら `C-x C-n`)。
 - 出すプロジェクトは、選択 window (side window なら直近の通常 window) の
   バッファの `project-current`。プロジェクト外なら `default-directory` をルートにする。
   この「基準 window」の判定は project-tabs.el の `wamei/project-tabs--name-window`
@@ -276,6 +276,16 @@ minor mode `wamei/dired-tree-mode` を dired-mode-hook で有効化する。
   成功しても失敗しても `unwind-protect` で必ず dedicated を戻す。
 - 純関数 `wamei/project-sidebar--follow-target (file shown-root file-root)`:
   `same` / `switch` / `none` を返す。
+
+### 現在行の強調
+
+- 本文で開いているファイル (follow 先) やカーソル行を、`hl-line` を継承した行背景
+  (`wamei/project-sidebar-current-row`) と左フリンジの三角マーク
+  (`wamei/project-sidebar-current-fringe`、プロジェクト名と同じ色) で示す。
+  `global-hl-line-mode` は選択 window にしか出ないので、非選択の sidebar でも残る
+  overlay をバッファに 1 つ持つ (`wamei/project-sidebar--row-overlay`)。
+- 更新契機: follow (`--reveal`)、sidebar 内のカーソル移動 (`post-command-hook`)、
+  revert 後 (`wamei/dired-tree-refresh-hook`、dired-tree が window point を戻した後)。
 
 ### マウスとキー (`wamei/project-sidebar-mode-map`)
 

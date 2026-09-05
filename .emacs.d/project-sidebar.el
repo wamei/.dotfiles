@@ -10,7 +10,10 @@
 ;; - 見た目: 詳細を隠し、見出し行と . .. を隠し、header-line にプロジェクト名
 ;; - トグル (C-x C-n) は端末パネル (wamei/term-toggle) と同じ 4 態
 ;; - メイン window のファイルに sidebar を追従させる follow-mode を持つ
-;; - クリックでプレビュー、ダブルクリック / RET で開く。desktop 復元 (Task 13)
+;; - クリックでプレビュー、ダブルクリック / RET で開く。q は window を閉じる
+;; - 現在行 (本文で開いているファイル / カーソル行) を行背景と左フリンジの
+;;   三角で示す。hl-line は選択 window にしか出ないので、非選択でも残る overlay を持つ
+;; - desktop 復元は init.el の restorer が `wamei/project-sidebar-show' を呼ぶ
 ;;
 ;;; Code:
 
@@ -31,6 +34,15 @@
 (defface wamei/project-sidebar-root
   '((t (:inherit font-lock-keyword-face :weight bold :height 1.3)))
   "header-line に出すプロジェクト名。")
+
+(defface wamei/project-sidebar-current-row
+  '((t (:inherit hl-line :extend t)))
+  "sidebar の現在行 (本文で開いているファイル、またはカーソル行) の背景。
+`hl-line' は選択 window でしか出ないので、非選択でも消えないよう別に持つ。")
+
+(defface wamei/project-sidebar-current-fringe
+  '((t (:inherit font-lock-keyword-face)))
+  "現在行の左フリンジに出す三角マークの色。")
 
 (defvar wamei/project-sidebar-width 35 "side window の幅 (桁)。")
 
@@ -144,10 +156,46 @@ ROOT は symlink かもしれないので `file-truename' で正規化してか�
         (select-window (wamei/project-sidebar-show dir)))))))
 
 (defun wamei/project-sidebar-quit ()
-  "元の window へ戻る。sidebar は開いたまま。"
+  "sidebar の window を閉じる (`C-u C-x C-n' と同じ)。
+元の window へ戻るだけなら `C-x C-n' を使う。"
   (interactive)
-  (when-let* ((back (wamei/project-sidebar--back-window)))
-    (select-window back)))
+  (wamei/project-sidebar-toggle '(4)))
+
+;;; 現在行
+
+(defvar-local wamei/project-sidebar--row-overlay nil
+  "現在行を示す overlay。行背景と左フリンジの三角マークを持つ。バッファに 1 つ。")
+
+(defun wamei/project-sidebar--mark-row (&optional pos)
+  "POS (既定は point) の行を現在行として強調する。
+overlay は evaporate しないので revert で潰れても消えず、次の呼び出しで張り直せる。"
+  (let ((beg (save-excursion (goto-char (or pos (point))) (line-beginning-position)))
+        (end (save-excursion (goto-char (or pos (point))) (line-beginning-position 2))))
+    (unless (and (overlayp wamei/project-sidebar--row-overlay)
+                 (eq (overlay-buffer wamei/project-sidebar--row-overlay) (current-buffer)))
+      (setq wamei/project-sidebar--row-overlay (make-overlay beg end))
+      (overlay-put wamei/project-sidebar--row-overlay 'wamei/project-sidebar-row t)
+      (overlay-put wamei/project-sidebar--row-overlay 'priority 10)
+      (overlay-put wamei/project-sidebar--row-overlay 'face 'wamei/project-sidebar-current-row)
+      (overlay-put wamei/project-sidebar--row-overlay 'before-string
+                   (propertize " " 'display
+                               '(left-fringe right-triangle
+                                             wamei/project-sidebar-current-fringe))))
+    (move-overlay wamei/project-sidebar--row-overlay beg end)))
+
+(defun wamei/project-sidebar--mark-row-at-window-point ()
+  "このバッファを表示している window の point の行を現在行にする。
+revert のあと (`wamei/dired-tree-refresh-hook') に呼ぶ。dired-tree が window の
+point を戻した後なので、その位置を使う。表示されていなければバッファの point。"
+  (when wamei/project-sidebar-mode
+    (let ((window (get-buffer-window (current-buffer) t)))
+      (wamei/project-sidebar--mark-row (if window (window-point window) (point))))))
+
+(defun wamei/project-sidebar--post-command ()
+  "sidebar 内でカーソルが動いたら現在行を追わせる。`post-command-hook' (buffer-local) 用。"
+  (when (and wamei/project-sidebar-mode
+             (eq (window-buffer (selected-window)) (current-buffer)))
+    (wamei/project-sidebar--mark-row (point))))
 
 ;;; follow
 
@@ -165,7 +213,8 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
   (with-current-buffer (window-buffer window)
     (save-excursion
       (when (wamei/dired-tree-expand-to file)
-        (set-window-point window (point))))))
+        (set-window-point window (point))
+        (wamei/project-sidebar--mark-row (point))))))
 
 (defun wamei/project-sidebar--follow (frame)
   "FRAME のメイン window のファイルに sidebar を合わせる。
@@ -290,8 +339,17 @@ down-mouse-1 は束縛しない (dired の D&D に任せる)。")
                                              (directory-file-name default-directory)))
                                 'face 'wamei/project-sidebar-root)))
         (add-to-invisibility-spec 'wamei/project-sidebar-header)
-        (add-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate 99 t))
+        (add-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate 99 t)
+        ;; 現在行: カーソル移動と revert 後に張り直す (follow は --reveal が直接呼ぶ)
+        (add-hook 'post-command-hook #'wamei/project-sidebar--post-command nil t)
+        (add-hook 'wamei/dired-tree-refresh-hook
+                  #'wamei/project-sidebar--mark-row-at-window-point nil t))
     (remove-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate t)
+    (remove-hook 'post-command-hook #'wamei/project-sidebar--post-command t)
+    (remove-hook 'wamei/dired-tree-refresh-hook #'wamei/project-sidebar--mark-row-at-window-point t)
+    (when (overlayp wamei/project-sidebar--row-overlay)
+      (delete-overlay wamei/project-sidebar--row-overlay)
+      (setq wamei/project-sidebar--row-overlay nil))
     (remove-from-invisibility-spec 'wamei/project-sidebar-header)
     (remove-overlays (point-min) (point-max) 'wamei/project-sidebar-header t)
     (kill-local-variable 'header-line-format)))
