@@ -71,6 +71,18 @@
         (kill-buffer main)
         (kill-buffer side)))))
 
+(ert-deftest wamei/project-tabs-main-window-skips-side-window ()
+  (let* ((main (selected-window))
+         (side (split-window main nil 'left)))
+    (unwind-protect
+        (progn
+          (set-window-parameter side 'no-other-window t)
+          (select-window side)
+          (should (eq (wamei/project-tabs-main-window) main))
+          (select-window main)
+          (should (eq (wamei/project-tabs-main-window) main)))
+      (delete-window side))))
+
 ;;; タブ名の固定
 
 (ert-deftest wamei/project-tabs-pin-renames-unpinned-tab-to-project ()

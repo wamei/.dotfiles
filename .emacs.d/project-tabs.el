@@ -38,16 +38,19 @@
 
 ;;; タブ名
 
-(defun wamei/project-tabs--name-window ()
-  "タブ名の根拠にする window を返す。
-選択 window が side window (no-other-window 付き) なら直近の通常 window。"
+(defun wamei/project-tabs-main-window ()
+  "タブの本文とみなす window。
+選択 window が side window (no-other-window 付き) なら直近の通常 window。
+タブ名の根拠、サイドバーが従うバッファ、サイドバーからファイルを開く先に使う。"
   (if (window-parameter (selected-window) 'no-other-window)
       (or (get-mru-window nil nil t t) (selected-window))
     (selected-window)))
 
+(defalias 'wamei/project-tabs--name-window #'wamei/project-tabs-main-window)
+
 (defun wamei/project-tabs--project-name ()
   "カレントタブが属するプロジェクトの名前。プロジェクト外なら nil。"
-  (with-current-buffer (window-buffer (wamei/project-tabs--name-window))
+  (with-current-buffer (window-buffer (wamei/project-tabs-main-window))
     (when-let* ((project (project-current nil)))
       (project-name project))))
 
@@ -57,7 +60,7 @@
 使われ、タブバーの再描画ごとに呼ばれる。project-current は 2 回目以降
 0.004ms 程度なのでキャッシュは置かない。"
   (or (wamei/project-tabs--project-name)
-      (buffer-name (window-buffer (wamei/project-tabs--name-window)))))
+      (buffer-name (window-buffer (wamei/project-tabs-main-window)))))
 
 ;;; タブ名の固定
 
