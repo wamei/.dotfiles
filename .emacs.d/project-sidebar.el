@@ -10,7 +10,7 @@
 ;; - 見た目: 詳細を隠し、見出し行と . .. を隠し、header-line にプロジェクト名
 ;; - トグル (C-x C-n) は端末パネル (wamei/term-toggle) と同じ 4 態
 ;; - メイン window のファイルに sidebar を追従させる follow-mode を持つ
-;; - マウス (Task 12)、desktop 復元 (Task 13)
+;; - クリックでプレビュー、ダブルクリック / RET で開く。desktop 復元 (Task 13)
 ;;
 ;;; Code:
 
@@ -216,13 +216,54 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
     (remove-hook 'window-buffer-change-functions #'wamei/project-sidebar--follow-soon)
     (remove-hook 'window-selection-change-functions #'wamei/project-sidebar--follow-soon)))
 
+;;; 開く
+
+(defun wamei/project-sidebar--open-in-main (file &optional select)
+  "メイン window に FILE を出す。SELECT が非 nil ならそちらへフォーカスを移す。"
+  (let ((window (wamei/project-tabs-main-window))
+        (buffer (find-file-noselect file)))
+    (set-window-buffer window buffer)
+    (when select
+      (select-window window))))
+
+(defun wamei/project-sidebar-preview ()
+  "point の行がファイルならメイン window に表示する。フォーカスは sidebar に残す。"
+  (interactive)
+  (when-let* ((file (dired-utils-get-filename)))
+    (unless (file-directory-p file)
+      (wamei/project-sidebar--open-in-main file))))
+
+(defun wamei/project-sidebar-open ()
+  "ファイルならメイン window で開いてフォーカスを移す。ディレクトリなら展開/折りたたみ。"
+  (interactive)
+  (when-let* ((file (dired-utils-get-filename)))
+    (if (file-directory-p file)
+        (dired-subtree-toggle)
+      (wamei/project-sidebar--open-in-main file t))))
+
+(defun wamei/project-sidebar-mouse-select (event)
+  "クリックした行を選択し、ファイルならプレビューする。"
+  (interactive "e")
+  (mouse-set-point event)
+  (wamei/project-sidebar-preview))
+
+(defun wamei/project-sidebar-mouse-open (event)
+  "ダブルクリックした行を開く (ファイル) か展開/折りたたみ (ディレクトリ)。"
+  (interactive "e")
+  (mouse-set-point event)
+  (wamei/project-sidebar-open))
+
 ;;; minor mode
 
 (defvar wamei/project-sidebar-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "q") #'wamei/project-sidebar-quit)
+    (define-key map (kbd "RET") #'wamei/project-sidebar-open)
+    (define-key map [mouse-1] #'wamei/project-sidebar-mouse-select)
+    (define-key map [double-mouse-1] #'wamei/project-sidebar-mouse-open)
     map)
-  "sidebar バッファのキーマップ。dired-mode-map より優先される。")
+  "sidebar バッファのキーマップ。dired-mode-map より優先される。
+down-mouse-1 は束縛しない (dired の D&D に任せる)。")
 
 (define-minor-mode wamei/project-sidebar-mode
   "この dired バッファをプロジェクトサイドバーとして扱う。"

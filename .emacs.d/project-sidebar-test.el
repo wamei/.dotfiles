@@ -206,5 +206,49 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
               (delete-window win))
           (kill-buffer buf))))))
 
+;;; 開く
+
+(ert-deftest wamei/project-sidebar-preview-shows-file-without-focus ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((main (selected-window))
+           (win (wamei/project-sidebar-show root)))
+      (unwind-protect
+          (progn
+            (select-window win)
+            (wamei/dired-tree-expand-to (expand-file-name "README" root))
+            (wamei/project-sidebar-preview)
+            (should (eq (selected-window) win))
+            (should (equal (buffer-file-name (window-buffer main))
+                           (expand-file-name "README" root))))
+        (kill-buffer (window-buffer main))
+        (delete-window win)))))
+
+(ert-deftest wamei/project-sidebar-open-selects-main-for-file ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((main (selected-window))
+           (win (wamei/project-sidebar-show root)))
+      (unwind-protect
+          (progn
+            (select-window win)
+            (wamei/dired-tree-expand-to (expand-file-name "README" root))
+            (wamei/project-sidebar-open)
+            (should (eq (selected-window) main))
+            (should (equal (buffer-file-name (window-buffer main))
+                           (expand-file-name "README" root))))
+        (kill-buffer (window-buffer main))
+        (delete-window win)))))
+
+(ert-deftest wamei/project-sidebar-open-toggles-directory ()
+  (wamei/project-sidebar-test--with-project root
+    (let ((win (wamei/project-sidebar-show root)))
+      (unwind-protect
+          (progn
+            (select-window win)
+            (dired-utils-goto-line (expand-file-name "src" root))
+            (wamei/project-sidebar-open)
+            (should (eq (selected-window) win))
+            (should (dired-utils-goto-line (expand-file-name "src/main.el" root))))
+        (delete-window win)))))
+
 (provide 'project-sidebar-test)
 ;;; project-sidebar-test.el ends here
