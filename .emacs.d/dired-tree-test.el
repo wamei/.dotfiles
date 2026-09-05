@@ -140,5 +140,31 @@
       (wamei/dired-tree-revert)
       (should (equal (dired-utils-get-filename) (expand-file-name "a/b/c.txt" root))))))
 
+;;; 監視
+
+(ert-deftest wamei/dired-tree-watch-diff ()
+  (let ((diff (wamei/dired-tree--watch-diff '("/a" "/b") '("/b" "/c"))))
+    (should (equal (car diff) '("/c")))
+    (should (equal (cdr diff) '("/a")))))
+
+(ert-deftest wamei/dired-tree-visible-expanded-follows-overlays ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root))
+      (should (equal (sort (wamei/dired-tree--visible-expanded) #'string<)
+                     (list (expand-file-name "a" root) (expand-file-name "a/b" root))))
+      (dired-utils-goto-line (expand-file-name "a" root))
+      (dired-subtree-toggle)
+      (should-not (wamei/dired-tree--visible-expanded)))))
+
+(ert-deftest wamei/dired-tree-reconcile-registers-watch-per-visible-dir ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root))
+      (should (= (hash-table-count wamei/dired-tree--watches) 2))
+      (dired-utils-goto-line (expand-file-name "a" root))
+      (dired-subtree-toggle)
+      (should (= (hash-table-count wamei/dired-tree--watches) 0)))))
+
 (provide 'dired-tree-test)
 ;;; dired-tree-test.el ends here
