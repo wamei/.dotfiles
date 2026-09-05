@@ -254,7 +254,7 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
 (defvar wamei/project-sidebar--follow-timer nil)
 
 (defun wamei/project-sidebar--follow-soon (frame)
-  "`window-buffer-change-functions' / `window-selection-change-functions' 用。
+  "`window-state-change-functions' 用。
 再表示中は window を触らず、次のコマンド境界で follow する。"
   (unless (timerp wamei/project-sidebar--follow-timer)
     (setq wamei/project-sidebar--follow-timer
@@ -270,14 +270,16 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
                                      (error-message-string err)))))))))
 
 (define-minor-mode wamei/project-sidebar-follow-mode
-  "メイン window のバッファに sidebar のカーソルを追従させる。"
+  "メイン window のバッファに sidebar のカーソルを追従させる。
+
+hook は `window-state-change-functions' に付ける。buffer / selection の変化に加えて
+`set-window-configuration' による復元 (magit の q など) でも走るため。
+`window-buffer-change-functions' は復元では走らない (window の比較用の旧状態も
+一緒に復元されるので変化なしと見なされる)。"
   :global t
   (if wamei/project-sidebar-follow-mode
-      (progn
-        (add-hook 'window-buffer-change-functions #'wamei/project-sidebar--follow-soon)
-        (add-hook 'window-selection-change-functions #'wamei/project-sidebar--follow-soon))
-    (remove-hook 'window-buffer-change-functions #'wamei/project-sidebar--follow-soon)
-    (remove-hook 'window-selection-change-functions #'wamei/project-sidebar--follow-soon)))
+      (add-hook 'window-state-change-functions #'wamei/project-sidebar--follow-soon)
+    (remove-hook 'window-state-change-functions #'wamei/project-sidebar--follow-soon)))
 
 ;;; 開く
 

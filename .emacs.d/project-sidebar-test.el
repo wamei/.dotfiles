@@ -145,6 +145,21 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
   (should (eq (wamei/project-sidebar--follow-target "/r/.gitignore" "/r/" "/r/") 'same))
   (should (eq (wamei/project-sidebar--follow-target "/r/.github/ci.yml" "/r/" "/r/") 'same)))
 
+(ert-deftest wamei/project-sidebar-follow-mode-hooks-window-state-change ()
+  "follow は `window-state-change-functions' で駆動する。
+magit の q (`set-window-configuration') は `window-buffer-change-functions' を
+走らせないが、state-change は走るため。"
+  (let ((was wamei/project-sidebar-follow-mode))
+    (unwind-protect
+        (progn
+          (wamei/project-sidebar-follow-mode 1)
+          (should (memq #'wamei/project-sidebar--follow-soon window-state-change-functions))
+          (wamei/project-sidebar-follow-mode -1)
+          (should-not (memq #'wamei/project-sidebar--follow-soon window-state-change-functions))
+          (should-not (memq #'wamei/project-sidebar--follow-soon window-buffer-change-functions))
+          (should-not (memq #'wamei/project-sidebar--follow-soon window-selection-change-functions)))
+      (wamei/project-sidebar-follow-mode (if was 1 -1)))))
+
 (ert-deftest wamei/project-sidebar-follow-expands-to-visited-file ()
   (wamei/project-sidebar-test--with-project root
     (let* ((main (selected-window))
