@@ -36,11 +36,13 @@
 ;;; バッファ
 
 (defun wamei/project-sidebar--root-for (dir)
-  "DIR が属するプロジェクトのルート (末尾 / あり)。プロジェクト外なら DIR。"
+  "DIR が属するプロジェクトのルート (末尾 / あり)。プロジェクト外なら DIR。
+symlink は `file-truename' で実体に解決する
+(sidebar バッファの識別をシンボリックリンク越しでも同一視するため)。"
   (let ((default-directory (file-name-as-directory (expand-file-name dir))))
     (if-let* ((project (project-current nil)))
-        (file-name-as-directory (expand-file-name (project-root project)))
-      default-directory)))
+        (file-name-as-directory (file-truename (expand-file-name (project-root project))))
+      (file-name-as-directory (file-truename default-directory)))))
 
 (defun wamei/project-sidebar--buffer-name (root)
   "ROOT の sidebar バッファ名。先頭空白でバッファ一覧から隠す。"
@@ -48,9 +50,10 @@
 
 (defun wamei/project-sidebar--hide-header-lines ()
   "先頭のディレクトリ見出し行を overlay で隠す。total 行は dired-hide-details が隠す。
-`invisible' の値は専用シンボルにして `buffer-invisibility-spec' に足す
-(dired-hide-details-mode が spec をリストにするので t では効かないことがある)。"
-  (add-to-invisibility-spec 'wamei/project-sidebar-header)
+`invisible' の値は専用シンボルを使う (dired-hide-details-mode が spec をリストにする
+ので t では効かないことがある)。`buffer-invisibility-spec' への登録は revert のたびに
+呼ばれるとここではなく minor-mode の enable 時に 1 回だけ行う
+(`add-to-invisibility-spec' は非冪等で、revert のたびに呼ぶと重複が積み上がる)。"
   (remove-overlays (point-min) (point-max) 'wamei/project-sidebar-header t)
   (save-excursion
     (goto-char (point-min))
@@ -84,8 +87,10 @@
     buffer))
 
 (defun wamei/project-sidebar-buffer (root)
-  "ROOT の sidebar バッファ。無ければ作る。"
-  (let ((root (file-name-as-directory (expand-file-name root))))
+  "ROOT の sidebar バッファ。無ければ作る。
+ROOT は symlink かもしれないので `file-truename' で正規化してから比べる
+(sidebar バッファは正規化済みの root から作るので default-directory は既に実体)。"
+  (let ((root (file-name-as-directory (file-truename (expand-file-name root)))))
     (or (seq-find (lambda (buf)
                     (with-current-buffer buf
                       (and (bound-and-true-p wamei/project-sidebar-mode)
@@ -155,19 +160,25 @@
   "この dired バッファをプロジェクトサイドバーとして扱う。"
   :lighter nil
   :keymap wamei/project-sidebar-mode-map
-  (when wamei/project-sidebar-mode
-    (wamei/dired-tree-mode 1)
-    (dired-hide-details-mode 1)
-    (setq-local dired-omit-verbose nil)   ; "Omitted N lines" を出さない
-    (dired-omit-mode 1)                 ; . と .. を隠す (既定の dired-omit-files)
-    (setq-local dired-hide-details-hide-information-lines t)
-    (setq-local truncate-lines t)
-    (setq-local mouse-1-click-follows-link nil)
-    (setq header-line-format
-          (list (propertize (concat " " (file-name-nondirectory
-                                         (directory-file-name default-directory)))
-                            'face 'wamei/project-sidebar-root)))
-    (add-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate 99 t)))
+  (if wamei/project-sidebar-mode
+      (progn
+        (wamei/dired-tree-mode 1)
+        (dired-hide-details-mode 1)
+        (setq-local dired-omit-verbose nil)   ; "Omitted N lines" を出さない
+        (dired-omit-mode 1)                 ; . と .. を隠す (既定の dired-omit-files)
+        (setq-local dired-hide-details-hide-information-lines t)
+        (setq-local truncate-lines t)
+        (setq-local mouse-1-click-follows-link nil)
+        (setq header-line-format
+              (list (propertize (concat " " (file-name-nondirectory
+                                             (directory-file-name default-directory)))
+                                'face 'wamei/project-sidebar-root)))
+        (add-to-invisibility-spec 'wamei/project-sidebar-header)
+        (add-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate 99 t))
+    (remove-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate t)
+    (remove-from-invisibility-spec 'wamei/project-sidebar-header)
+    (remove-overlays (point-min) (point-max) 'wamei/project-sidebar-header t)
+    (kill-local-variable 'header-line-format)))
 
 ;;; display-buffer
 

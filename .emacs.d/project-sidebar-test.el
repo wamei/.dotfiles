@@ -18,12 +18,14 @@
 
 (defmacro wamei/project-sidebar-test--with-project (var &rest body)
   "一時ディレクトリを transient プロジェクトにして VAR に束縛し BODY を評価する。
-中に src/main.el と README を作る。"
+中に src/main.el と README を作る。VAR は `file-truename' 済み
+(macOS では /var/folders/… → /private/var/… のように make-temp-file の結果が
+symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化と揃える)。"
   (declare (indent 1))
-  `(let* ((,var (file-name-as-directory (make-temp-file "sidebar-" t)))
+  `(let* ((,var (file-name-as-directory (file-truename (make-temp-file "sidebar-" t))))
           (project-find-functions
            (list (lambda (dir)
-                   (when (string-prefix-p ,var (expand-file-name dir))
+                   (when (string-prefix-p ,var (file-truename (expand-file-name dir)))
                      (cons 'transient ,var))))))
      (unwind-protect
          (progn
@@ -43,7 +45,16 @@
 
 (ert-deftest wamei/project-sidebar-root-for-falls-back-to-dir ()
   (let ((project-find-functions nil))
-    (should (equal (wamei/project-sidebar--root-for "/tmp/nowhere/") "/tmp/nowhere/"))))
+    (should (equal (wamei/project-sidebar--root-for "/tmp/nowhere/")
+                   (file-name-as-directory (file-truename "/tmp/nowhere/"))))))
+
+(ert-deftest wamei/project-sidebar-root-for-resolves-symlink ()
+  (wamei/project-sidebar-test--with-project root
+    (let ((link (make-temp-name (expand-file-name "sidebar-link-" temporary-file-directory))))
+      (make-symbolic-link (directory-file-name root) link)
+      (unwind-protect
+          (should (equal (wamei/project-sidebar--root-for link) root))
+        (delete-file link)))))
 
 (ert-deftest wamei/project-sidebar-buffer-is-dired-with-modes ()
   (wamei/project-sidebar-test--with-project root
@@ -59,6 +70,15 @@
         ;; header-line-format の中身を直接見て代用する。
         (should (string-match-p (file-name-nondirectory (directory-file-name root))
                                 (car header-line-format)))))))
+
+(ert-deftest wamei/project-sidebar-invisibility-spec-added-once ()
+  (wamei/project-sidebar-test--with-project root
+    (let ((buf (wamei/project-sidebar-buffer root)))
+      (with-current-buffer buf
+        (revert-buffer)
+        (revert-buffer)
+        (should (= 1 (seq-count (lambda (e) (eq e 'wamei/project-sidebar-header))
+                                buffer-invisibility-spec)))))))
 
 (ert-deftest wamei/project-sidebar-buffer-is-reused ()
   (wamei/project-sidebar-test--with-project root
