@@ -92,11 +92,12 @@
 
 (defun wamei/dired-tree--ancestors (root file)
   "ROOT 直下から FILE の親までのディレクトリ列 (絶対パス、末尾 / なし)。
-FILE が ROOT 直下なら nil。FILE が ROOT 外でも nil。"
+FILE が ROOT 直下なら nil。FILE が ROOT 外でも nil。FILE 自身の末尾 / は無視する。"
   (when (wamei/dired-tree--inside-p root file)
-    (let ((root (wamei/dired-tree--normalize root))
-          (dir (directory-file-name (file-name-directory (expand-file-name file))))
-          acc)
+    (let* ((root (wamei/dired-tree--normalize root))
+           (file (directory-file-name (expand-file-name file)))
+           (dir (directory-file-name (file-name-directory file)))
+           acc)
       (while (not (equal dir root))
         (push dir acc)
         (setq dir (directory-file-name (file-name-directory dir))))
@@ -104,16 +105,20 @@ FILE が ROOT 直下なら nil。FILE が ROOT 外でも nil。"
 
 (defun wamei/dired-tree-expand-to (file)
   "FILE までの祖先ディレクトリを展開し、FILE の行へ移動する。
-FILE がこのバッファのルート外、または途中の行が見つからなければ nil。"
-  (let ((root (expand-file-name default-directory)))
-    (when (wamei/dired-tree--inside-p root file)
-      (catch 'missing
-        (dolist (dir (wamei/dired-tree--ancestors root file))
-          (unless (dired-utils-goto-line dir)
-            (throw 'missing nil))
-          (unless (dired-subtree--is-expanded-p)
-            (dired-subtree-insert)))
-        (dired-utils-goto-line (wamei/dired-tree--normalize file))))))
+FILE がこのバッファのルート外、または途中の行が見つからなければ nil で、
+point は呼び出し前の位置に戻す。"
+  (let ((root (expand-file-name default-directory))
+        (start (point)))
+    (if (wamei/dired-tree--inside-p root file)
+        (or (catch 'missing
+              (dolist (dir (wamei/dired-tree--ancestors root file))
+                (unless (dired-utils-goto-line dir)
+                  (throw 'missing nil))
+                (unless (dired-subtree--is-expanded-p)
+                  (dired-subtree-insert)))
+              (dired-utils-goto-line (wamei/dired-tree--normalize file)))
+            (progn (goto-char start) nil))
+      nil)))
 
 ;;; カーソル保持
 

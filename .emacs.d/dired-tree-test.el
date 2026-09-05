@@ -114,6 +114,25 @@
     (wamei/dired-tree-test--with-dired root buf
       (should-not (wamei/dired-tree-expand-to "/etc/hosts")))))
 
+(ert-deftest wamei/dired-tree-expand-to-lands-on-directory-without-expanding-it ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (should (equal (wamei/dired-tree--ancestors
+                       root (file-name-as-directory (expand-file-name "a/b" root)))
+                     (list (expand-file-name "a" root))))
+      (should (wamei/dired-tree-expand-to
+               (file-name-as-directory (expand-file-name "a/b" root))))
+      (should (equal (dired-utils-get-filename) (expand-file-name "a/b" root)))
+      (should-not (dired-subtree--is-expanded-p)))))
+
+(ert-deftest wamei/dired-tree-expand-to-returns-nil-and-keeps-point-when-ancestor-missing ()
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (goto-char (point-min))
+      (let ((pos (point)))
+        (should-not (wamei/dired-tree-expand-to (expand-file-name "zz/y.txt" root)))
+        (should (equal (point) pos))))))
+
 (ert-deftest wamei/dired-tree-revert-keeps-point-on-subtree-line ()
   (wamei/dired-tree-test--with-tree root
     (wamei/dired-tree-test--with-dired root buf
