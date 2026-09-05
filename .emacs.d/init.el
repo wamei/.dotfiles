@@ -1343,17 +1343,12 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
     "desktop 読み込み後に claude パネルを開き直すコマンド。nil なら開き直さない。
 プロセスは残らないので、既定ではそのディレクトリの直近の会話を続ける (-c)。")
 
-  (defun wamei/desktop--restore-treemacs (spec)
-    "treemacs を開き直す。
-treemacs は自前の表示関数を通す必要があるので `treemacs-select-window' を使い、
-幅だけ記録 (SPEC の :size) に合わせる。
-初期化時の follow (treemacs--init) は current-buffer のファイルを辿るが、復元中は
-選択 window に前のタブのバッファが残っていることがあるので、ファイルを持たない
-一時バッファから呼ぶ。default-directory は SPEC の :directory
-(desktop-side-windows が束縛) を引き継ぐので、project の推定はそちらで行われる。"
-    (with-temp-buffer
-      (treemacs-select-window))
-    (wamei/desktop-side-resize (treemacs-get-local-window) (plist-get spec :size)))
+  (defun wamei/desktop--restore-sidebar (spec)
+    "sidebar を開き直し、幅を SPEC の :size に合わせる。
+desktop-side-windows が SPEC の :directory を default-directory に束縛して呼ぶので、
+そのディレクトリのプロジェクトの sidebar が出る。"
+    (wamei/desktop-side-resize (wamei/project-sidebar-show default-directory)
+                               (plist-get spec :size)))
 
   (defun wamei/desktop--restore-term (spec)
     "端末パネルを開き直す。
@@ -1392,10 +1387,8 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   ;; early-init.el のジオメトリ復元はフレーム生成前に効いてちらつきを防ぐ役割で、
   ;; 最終的な状態はこちらが決める。
   (desktop-restore-frames . t)
-  ;; treemacs はツリーを自前で再構築するので復元すると壊れる。
   ;; magit はプロセス状態を持つバッファなので除外する。
   (desktop-modes-not-to-save . '(tags-table-mode
-                                 treemacs-mode
                                  magit-status-mode
                                  magit-process-mode
                                  magit-diff-mode
@@ -1413,12 +1406,18 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   ;; 端末パネルの高さの割合と一覧の幅も次回に引き継ぐ
   (add-to-list 'desktop-globals-to-save 'wamei/term-height)
   (add-to-list 'desktop-globals-to-save 'wamei/term-list-width)
-  ;; バッファ名で開き直し方を選ぶ。treemacs は " *Treemacs-Buffer-..." で始まる。
+  ;; バッファ名で開き直し方を選ぶ。sidebar は " *sidebar: " で始まる。
   (setq wamei/desktop-side-restorers
-        '(("\\` \\*Treemacs-" . wamei/desktop--restore-treemacs)
+        '(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)
           ("\\`\\*term: " . wamei/desktop--restore-term)
           ("\\`\\*terminals\\*\\'" . ignore)
           ("\\`\\*claude-code\\[" . wamei/desktop--restore-claude)))
+  ;; sidebar は dired バッファなので desktop が普通の dired として保存してしまう。
+  ;; 除外して restorer に任せる。
+  (setq desktop-buffers-not-to-save
+        (if desktop-buffers-not-to-save
+            (concat "\\` \\*sidebar: \\|" desktop-buffers-not-to-save)
+          "\\` \\*sidebar: "))
   (wamei/desktop-side-setup)
   (wamei/term-restore-setup)
   :global-minor-mode desktop-save-mode)
