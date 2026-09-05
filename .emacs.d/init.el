@@ -1265,6 +1265,19 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :hook
   (dired-mode-hook . wamei/dired-git-status-mode))
 
+(leaf project-sidebar
+  :doc "dired ベースのプロジェクトサイドバー (treemacs の代替)"
+  :ensure nil
+  :bind (("C-x C-n" . wamei/project-sidebar-toggle))
+  :preface
+  (load (expand-file-name "project-sidebar"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :init
+  (wamei/project-sidebar-setup)
+  :hook
+  (wamei/project-sidebar-mode-hook . hide-mode-line-mode))
+
 (leaf dired-toggle-sudo
   :ensure t
   :bind (:dired-mode-map
