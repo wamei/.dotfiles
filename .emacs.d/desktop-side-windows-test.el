@@ -63,13 +63,13 @@ OPTIONS は plist: :last :normal-width :normal-height :side :slot :selected。
   (cons wamei/dsw-test--header tree))
 
 (defun wamei/dsw-test--vscode-layout ()
-  "treemacs (左) / claude (右) / 端末 (下) を含む典型的な構成。
-hc [treemacs 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 95。"
+  "sidebar (左) / claude (右) / 端末 (下) を含む典型的な構成。
+hc [sidebar 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 95。"
   (wamei/dsw-test--state
    (wamei/dsw-test--combo
     'hc 353 95
     (list
-     (wamei/dsw-test--leaf " *Treemacs-Scoped-Buffer-a*" 35 95
+     (wamei/dsw-test--leaf " *sidebar: a*" 35 95
                            :normal-width 0.1 :side 'left :slot -1)
      (wamei/dsw-test--combo
       'vc 250 95
@@ -124,11 +124,11 @@ hc [treemacs 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 9
     (let ((by-buffer (lambda (name)
                        (seq-find (lambda (spec) (equal (plist-get spec :buffer) name))
                                  specs))))
-      (let ((treemacs (funcall by-buffer " *Treemacs-Scoped-Buffer-a*")))
-        (should (eq (plist-get treemacs :side) 'left))
-        (should (= (plist-get treemacs :slot) -1))
+      (let ((sidebar (funcall by-buffer " *sidebar: a*")))
+        (should (eq (plist-get sidebar :side) 'left))
+        (should (= (plist-get sidebar :slot) -1))
         ;; 左右は幅
-        (should (= (plist-get treemacs :size) 35)))
+        (should (= (plist-get sidebar :size) 35)))
       (let ((term (funcall by-buffer "*term: dotfiles*")))
         (should (eq (plist-get term :side) 'bottom))
         (should (= (plist-get term :slot) 0))
@@ -278,10 +278,10 @@ hc [treemacs 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 9
 (ert-deftest wamei/dsw-restorer-for-matches-buffer-name ()
   "バッファ名にマッチした復元関数を選び、無ければ既定を返す。"
   (let ((wamei/desktop-side-restorers '(("\\`\\*term: " . term-restorer)
-                                        ("\\` \\*Treemacs-" . treemacs-restorer))))
+                                        ("\\` \\*sidebar: " . sidebar-restorer))))
     (should (eq (wamei/desktop-side-restorer-for '(:buffer "*term: x*")) 'term-restorer))
-    (should (eq (wamei/desktop-side-restorer-for '(:buffer " *Treemacs-Scoped-Buffer-a*"))
-                'treemacs-restorer))
+    (should (eq (wamei/desktop-side-restorer-for '(:buffer " *sidebar: a*"))
+                'sidebar-restorer))
     (should (eq (wamei/desktop-side-restorer-for '(:buffer "*Help*"))
                 #'wamei/desktop-side-display))))
 
@@ -304,10 +304,10 @@ hc [treemacs 35, vc [main 65 行, term 30 行], claude 68] で幅 353、高さ 9
   (should (equal (wamei/desktop-side-directory
                   '((:buffer "*term: a*" :side bottom :slot 0 :directory "/tmp/term/")
                     (:buffer "*claude-code[a]*" :side right :slot 0 :directory "/tmp/claude/")
-                    (:buffer " *Treemacs-Buffer-Tab a" :side left :slot 0)))
+                    (:buffer " *sidebar: Tab a" :side left :slot 0)))
                  "/tmp/claude/"))
   (should (null (wamei/desktop-side-directory
-                 '((:buffer " *Treemacs-Buffer-Tab a" :side left :slot 0))))))
+                 '((:buffer " *sidebar: Tab a" :side left :slot 0))))))
 
 (ert-deftest wamei/dsw-restore-specs-binds-directory-for-restorer ()
   "restorer は spec の :directory を default-directory として呼ばれる。
@@ -330,7 +330,7 @@ side window のバッファが消えている (再起動後) 状況を再現す�
   (wamei/dsw-test--with-clean-frame
    (lambda ()
      (let ((window-sides-vertical t)
-           (left (get-buffer-create " *Treemacs-Test*"))
+           (left (get-buffer-create " *sidebar: Test*"))
            (term (get-buffer-create "*term: test*")))
        (display-buffer-in-side-window left '((side . left) (slot . -1) (window-width . 20)))
        (display-buffer-in-side-window term '((side . bottom) (slot . 0) (window-height . 6)))
@@ -435,7 +435,7 @@ side window のバッファが消えている (再起動後) 状況を再現す�
            (wamei/dsw-test--combo
             'hc 353 95
             (list
-             (wamei/dsw-test--leaf " *Treemacs-Buffer-Tab a*" 35 95
+             (wamei/dsw-test--leaf " *sidebar: Tab a*" 35 95
                                    :normal-width 0.1 :side 'left :slot 0)
              (wamei/dsw-test--combo
               'vc 216 95
@@ -480,7 +480,7 @@ side window のバッファが消えている (再起動後) 状況を再現す�
   (wamei/dsw-test--with-clean-frame
    (lambda ()
      (let ((window-sides-vertical t)
-           (left (get-buffer-create " *Treemacs-Test*"))
+           (left (get-buffer-create " *sidebar: Test*"))
            (term (get-buffer-create "*term: test*"))
            (a (get-buffer-create "a.el"))
            (b (get-buffer-create "b.el")))

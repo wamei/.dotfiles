@@ -2,7 +2,7 @@
 
 ;;; Commentary:
 
-;; treemacs / 端末 / claude-code-ide などの side window は、表示している
+;; sidebar / 端末 / claude-code-ide などの side window は、表示している
 ;; バッファが desktop に保存されない。そのまま frameset を保存すると復元時に
 ;; 「存在しないバッファを指す side window」が残り、side window だけのタブでは
 ;; window--sides-check-failed から split-window が無限再帰して落ちる。
@@ -17,7 +17,7 @@
 ;; desktop のグローバル変数として一緒に保存する。読み込み後は
 ;; `desktop-after-read-hook' で記録をもとにタブごとに開き直す。
 ;;
-;; バッファの種類ごとの開き直し方 (treemacs は treemacs-select-window など) は
+;; バッファの種類ごとの開き直し方 (sidebar は wamei/desktop--restore-sidebar など) は
 ;; `wamei/desktop-side-restorers' に登録する。登録が無いものは、同名のバッファ
 ;; が復元されていれば記録どおりの side window に表示する。
 ;;
@@ -372,7 +372,7 @@ FRAMESET の states は差し替える (frameset 自体は `frameset-save' が�
 
 (defun wamei/desktop-side-resize (window size)
   "side window WINDOW を記録した SIZE (左右なら幅、上下なら高さ) に合わせる。
-treemacs のように幅を固定しているバッファでも効くよう window-size-fixed を外す。"
+sidebar のように幅を固定しているバッファでも効くよう window-size-fixed を外す。"
   (when (and (window-live-p window) size)
     (let* ((horizontal (memq (window-parameter window 'window-side) '(left right)))
            (delta (- size (if horizontal
@@ -387,8 +387,8 @@ treemacs のように幅を固定しているバッファでも効くよう wind
   "SPECS が属するディレクトリ。開き直す順で最初に :directory を持つ spec のもの。無ければ nil。
 タブを選ぶときの `default-directory' に使う。復元時点ではタブの本文バッファが
 遅延復元でまだ無く、選択 window に前のタブのバッファが残っている。タブ選択に
-反応してプロジェクトを推定するもの (treemacs の Tabs スコープは workspace が無い
-タブでは current-buffer から project を決める) が、そのバッファに引かれないようにする。"
+反応してプロジェクトを推定するもの (sidebar は current-buffer から project を
+決める) が、そのバッファに引かれないようにする。"
   (seq-some (lambda (spec) (plist-get spec :directory))
             (wamei/desktop-side-sort-specs specs)))
 
@@ -421,7 +421,7 @@ restorer は spec の :directory (保存時のバッファの `default-directory
             (unwind-protect
                 (pcase-dolist (`(,index . ,specs) by-tab)
                   (when (< index count)
-                    ;; タブ選択に反応する処理 (treemacs の workspace 作成など) が
+                    ;; タブ選択に反応する処理 (sidebar の follow-mode など) が
                     ;; 前のタブのバッファからプロジェクトを推定しないよう、
                     ;; 選ぶ前からタブのディレクトリにしておく
                     (let ((default-directory (or (wamei/desktop-side-directory specs)

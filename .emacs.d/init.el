@@ -57,7 +57,7 @@
             (user-mail-address . "wamei@gmail.com")
             (user-login-name . "wamei")
             (create-lockfiles . nil)
-            ;; 左右の side window (treemacs / claude-code-ide) をフレーム全高にし、
+            ;; 左右の side window (sidebar / claude-code-ide) をフレーム全高にし、
             ;; 下部の side window (端末パネル) はその内側に収める。VSCode と同じ配置。
             (window-sides-vertical . t)
             (tab-width . 4)
@@ -295,8 +295,8 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   :ensure t
   :leaf-defer nil
   :hook
-  ((treemacs-mode-hook vterm-mode-hook) . hide-mode-line-mode)
-  ((treemacs-mode-hook dired-mode-hook vterm-mode-hook wamei/term-list-mode-hook)
+  ((vterm-mode-hook) . hide-mode-line-mode)
+  ((dired-mode-hook vterm-mode-hook wamei/term-list-mode-hook)
    . (lambda() (display-line-numbers-mode 0))))
 
 (leaf keybinds
@@ -681,7 +681,7 @@ dedicated のままだと set-window-buffer が失敗する。"
 
 記録した window が生きていればそれを使う。window が閉じられて開き直されて
 いると window オブジェクトは死ぬので、そのときは同じ
-バッファを表示している window を探す (claude-code-ide や treemacs の
+バッファを表示している window を探す (claude-code-ide や sidebar の
 パネルから C-z で入った場合、これが無いと無関係な window に戻ってしまう)。
 どちらも無ければ直近の window。パネル自身は no-other-window なので
 NO-OTHER 指定で候補から外れる。"
@@ -703,8 +703,7 @@ NO-OTHER 指定で候補から外れる。"
 - フォーカス中なら元の window へ戻る (パネルは開いたまま)
 - ARG (C-u) 付きならパネルを閉じる
 
-treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
-同じ考え方に揃えている。"
+sidebar 側の move-back と同じ考え方に揃えている。"
     (interactive "P")
     (let ((window (wamei/term--window)))
       (cond
@@ -734,7 +733,7 @@ treemacs 側の treemacs-select-when-already-in-treemacs = move-back と
                  ;; no-other-window: C-x o (other-window) の巡回対象から外す。
                  ;; select-window は影響を受けないので C-z のトグルは通る。
                  ;; no-delete-other-windows: C-x 1 や magit の全画面化
-                 ;; (delete-other-windows) で消えないようにする。treemacs と
+                 ;; (delete-other-windows) で消えないようにする。sidebar と
                  ;; claude-code-ide は同じパラメータをパッケージ側で付けている。
                  (window-parameters . ((no-other-window . t)
                                        (no-delete-other-windows . t)))))
@@ -854,7 +853,7 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
 - フォーカス中なら元の window へ戻る (パネルは開いたまま)
 - ARG (C-u) 付きならパネルを閉じる
 
-端末パネル (C-z) や treemacs (C-x C-n) と同じ操作感に揃えている。"
+端末パネル (C-z) や sidebar (C-x C-n) と同じ操作感に揃えている。"
     (interactive "P")
     ;; 自前のコマンドなのでパッケージの autoload は効かない
     (require 'claude-code-ide)
@@ -887,7 +886,7 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   :custom
   ;; 端末バックエンドは導入済みの vterm を使う (既定値だが意図として明示)
   (claude-code-ide-terminal-backend . 'vterm)
-  ;; treemacs が左、端末パネルが下なので右に出す
+  ;; sidebar が左、端末パネルが下なので右に出す
   (claude-code-ide-window-side . 'right)
   ;; 高さだけのリサイズを Claude に通知しない workaround (upstream #1422 対策) を切る。
   ;; この filter は vterm--set-size で libvterm 側だけ新しい行数にした後 nil を返し、
@@ -975,7 +974,7 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
          ("C-q k" . tab-close)
          ("C-q r" . tab-rename))
   :preface
-  ;; タブ名の決定と固定、treemacs 側のガードは project-tabs.el に分けている。
+  ;; タブ名の決定と固定は project-tabs.el に分けている。
   ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
   (load (expand-file-name "project-tabs"
                           (file-name-directory (file-truename user-init-file)))
@@ -999,68 +998,10 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
   (define-key tab-bar-mode-map [(control shift tab)] nil)
   (define-key tab-bar-mode-map [(control shift iso-lefttab)] nil)
   ;; タブにプロジェクトのバッファが初めて出た時点で名前を固定する。
-  ;; 固定しないとカレントバッファのプロジェクトが変わるたびにタブ名 = treemacs
-  ;; のスコープが動く (詳細は project-tabs.el の Commentary)。
+  ;; 固定しないとカレントバッファのプロジェクトが変わるたびにタブ名が動く
+  ;; (詳細は project-tabs.el の Commentary)。
   (add-hook 'window-buffer-change-functions #'wamei/project-tabs--pin-name-soon)
   :global-minor-mode tab-bar-mode)
-
-(leaf treemacs
-  :doc "ファイルツリー"
-  :ensure t
-  :bind (("C-x C-n" . wamei/treemacs-toggle))
-  :preface
-  (defun wamei/treemacs-toggle (&optional arg)
-    "treemacs を選択する。ARG (C-u) 付きなら閉じる。
-
-フォーカスが既に treemacs にあるときの挙動は
-treemacs-select-when-already-in-treemacs (move-back) が決める。
-treemacs-quit は bury-buffer を使い side window では挙動が読みにくいので、
-window を直接削除する。
-
-なお treemacs-select-window は prefix 引数を workspace 切り替えに使うため、
-ここで横取りするとその用途は使えなくなる。必要なら
-M-x treemacs-select-window を直接呼ぶ。"
-    (interactive "P")
-    (if arg
-        (when-let* ((window (treemacs-get-local-window)))
-          (delete-window window))
-      (treemacs-select-window)))
-
-  (defun wamei/treemacs--git-update-guard (fn file &rest args)
-    "`treemacs-do-update-single-file-git-state' の :around advice。
-FILE の親ディレクトリが既に無ければ FN を呼ばず nil を返す。
-ディレクトリを再帰削除すると filewatch が子から順に deleted を届け、
-その時点で :directory に渡す親も消えているため make-process が
-file-missing で落ちる (treemacs 側に存在チェックがない)。"
-    (when (file-directory-p (treemacs--parent file))
-      (apply fn file args)))
-
-  :custom
-  ;; C-x o (other-window) の巡回対象から外す
-  (treemacs-is-never-other-window . t)
-  ;; treemacs 内で再度呼んだら閉じずに元の window へ戻る (既定値だが意図として明示)
-  (treemacs-select-when-already-in-treemacs . 'move-back)
-  (treemacs-position . 'left)
-  (treemacs-width . 35)
-  :config
-  ;; 外部でのファイル変更に追従する
-  (treemacs-filewatch-mode 1)
-  ;; 編集中のバッファをツリー上で追う
-  (treemacs-follow-mode 1)
-  ;; git の状態を色分けする。deferred は python3 を別プロセスで使う非同期版
-  (treemacs-git-mode 'deferred)
-  ;; window に出ている treemacs バッファに root が描画されていないプロジェクトを
-  ;; 渡されたら探索を諦める (ガード本体と経緯は project-tabs.el)
-  (advice-add 'treemacs-find-file-node :around #'wamei/treemacs--find-file-node-guard)
-  ;; 削除済みディレクトリに対する git 状態更新で落ちないようにする (ガード本体は :preface)
-  (advice-add 'treemacs-do-update-single-file-git-state :around #'wamei/treemacs--git-update-guard))
-
-(leaf treemacs-nerd-icons
-  :doc "treemacs のアイコンを nerd-icons に揃える"
-  :ensure t
-  :after treemacs
-  :config
-  (treemacs-nerd-icons-config))
 
 (leaf transient
   :doc "magit 等のキー操作メニュー"
@@ -1077,19 +1018,14 @@ file-missing で落ちる (treemacs 側に存在チェックがない)。"
   :doc "git操作"
   :ensure t
   :bind ("C-x g" . magit-status)
-  ;; status は side window (treemacs / claude-code-ide / 端末パネル) を残して
+  ;; status は side window (sidebar / claude-code-ide / 端末パネル) を残して
   ;; 主領域いっぱいに表示し、q で開く前の window 構成に戻す。
   ;; fullframe 化は delete-other-windows で行われるため、side window 側に
   ;; no-delete-other-windows パラメータが付いていることが前提
-  ;; (treemacs と claude-code-ide はパッケージが付け、端末は vterm の
-  ;; display-buffer-alist で付けている)。
+  ;; (claude-code-ide はパッケージが付け、sidebar と端末は display-buffer-alist で
+  ;; 付けている)。
   :custom ((magit-display-buffer-function . #'magit-display-buffer-fullframe-status-v1)
            (magit-bury-buffer-function . #'magit-restore-window-configuration)))
-
-(leaf treemacs-magit
-  :doc "magit の操作後に treemacs の git 表示を更新する"
-  :ensure t
-  :after treemacs magit)
 
 (leaf claude-cli
   :doc "claude -p でコミットメッセージ生成と単発 prompt"
@@ -1144,17 +1080,6 @@ file-missing で落ちる (treemacs 側に存在チェックがない)。"
   ;; corfu のポップアップ中はゴーストテキストを出さない (二重表示と TAB の取り合いを避ける)。
   (add-to-list 'copilot-disable-predicates
                (lambda () (bound-and-true-p completion-in-region-mode))))
-
-(leaf treemacs-tab-bar
-  :doc "treemacs をタブごとに分ける"
-  :ensure t
-  :after treemacs
-  ;; パッケージのロード時に Tabs スコープが登録されるため require が必要。
-  ;; :ensure だけだと未ロードで treemacs-set-scope-type が失敗する。
-  :require t
-  :config
-  ;; treemacs-scope-types は既定で Frames のみ。このパッケージが Tabs を足す
-  (treemacs-set-scope-type 'Tabs))
 
 (leaf dired
   :doc "diredの設定"

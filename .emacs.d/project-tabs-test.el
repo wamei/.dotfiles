@@ -7,7 +7,6 @@
 (require 'project)
 (require 'tab-bar)
 (package-initialize)
-(require 'treemacs)
 (load (expand-file-name "project-tabs.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
@@ -119,53 +118,6 @@
     (with-temp-buffer
       (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-a/")
       (should-not (wamei/project-tabs-pin-name)))))
-
-;;; treemacs のガード
-
-(defun wamei/project-tabs-test--project (path)
-  (treemacs-project->create! :name (file-name-nondirectory path)
-                             :path path :path-status 'local-readable))
-
-(ert-deftest wamei/project-tabs-treemacs-guard-skips-when-root-not-rendered ()
-  "root ノードが DOM にないプロジェクトは探索せず nil を返す。"
-  (with-temp-buffer
-    (setq treemacs-dom (make-hash-table :test 'equal))
-    (let ((called nil))
-      (should-not (wamei/treemacs--find-file-node-guard
-                   (lambda (&rest _) (setq called t))
-                   "/tmp/proj-a/file"
-                   (wamei/project-tabs-test--project "/tmp/proj-a")))
-      (should-not called))))
-
-(ert-deftest wamei/project-tabs-treemacs-guard-delegates-when-root-rendered ()
-  (with-temp-buffer
-    (setq treemacs-dom (make-hash-table :test 'equal))
-    (treemacs-dom-node->insert-into-dom!
-     (treemacs-dom-node->create! :key "/tmp/proj-a" :position 1))
-    (let ((project (wamei/project-tabs-test--project "/tmp/proj-a")))
-      (should (equal (wamei/treemacs--find-file-node-guard
-                      (lambda (path proj) (list path proj))
-                      "/tmp/proj-a/file" project)
-                     (list "/tmp/proj-a/file" project))))))
-
-(ert-deftest wamei/project-tabs-treemacs-guard-resolves-project-from-workspace ()
-  "PROJECT 省略時は現在の workspace から探し、見つからなければ nil。"
-  (with-temp-buffer
-    (setq treemacs-dom (make-hash-table :test 'equal))
-    (treemacs-dom-node->insert-into-dom!
-     (treemacs-dom-node->create! :key "/tmp/proj-a" :position 1))
-    (let* ((project (wamei/project-tabs-test--project "/tmp/proj-a"))
-           (treemacs-override-workspace
-            (treemacs-workspace->create! :name "test" :projects (list project))))
-      ;; persist ファイルの読み込みを抑止する
-      (put 'treemacs :state-is-restored t)
-      (should (equal (wamei/treemacs--find-file-node-guard
-                      (lambda (path proj) (list path proj))
-                      "/tmp/proj-a/file")
-                     (list "/tmp/proj-a/file" project)))
-      (should-not (wamei/treemacs--find-file-node-guard
-                   (lambda (&rest _) (error "should not be called"))
-                   "/tmp/other/file")))))
 
 (provide 'project-tabs-test)
 ;;; project-tabs-test.el ends here
