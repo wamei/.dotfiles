@@ -168,13 +168,16 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
         (set-window-point window (point))))))
 
 (defun wamei/project-sidebar--follow (frame)
-  "FRAME のメイン window のファイルに sidebar を合わせる。"
+  "FRAME のメイン window のファイルに sidebar を合わせる。
+リモートのファイルには追従しない (`file-truename' が TRAMP 接続を試みて
+ブロックするのを避けるため、`file-remote-p' で先に弾く)。"
   (when (frame-live-p frame)
     (with-selected-frame frame
       (when-let* ((window (wamei/project-sidebar-window frame)))
         (unless (window-parameter (selected-window) 'no-other-window)
           (let* ((buffer (window-buffer (selected-window)))
-                 (file (let ((f (buffer-file-name buffer))) (and f (file-truename f))))
+                 (file (let ((f (buffer-file-name buffer)))
+                         (and f (not (file-remote-p f)) (file-truename f))))
                  (shown-root (with-current-buffer (window-buffer window)
                                (expand-file-name default-directory)))
                  (file-root (and file
@@ -184,9 +187,11 @@ SHOWN-ROOT の配下なら `same'、別プロジェクト (FILE-ROOT あり) な
             (pcase (wamei/project-sidebar--follow-target file shown-root file-root)
               ('same (wamei/project-sidebar--reveal window file))
               ('switch
-               (set-window-dedicated-p window nil)
-               (set-window-buffer window (wamei/project-sidebar-buffer file-root))
-               (set-window-dedicated-p window t)
+               (unwind-protect
+                   (progn
+                     (set-window-dedicated-p window nil)
+                     (set-window-buffer window (wamei/project-sidebar-buffer file-root)))
+                 (set-window-dedicated-p window t))
                (wamei/project-sidebar--reveal window file)))))))))
 
 (defvar wamei/project-sidebar--follow-timer nil)

@@ -5,6 +5,7 @@
 
 (require 'ert)
 (require 'project)
+(require 'cl-lib)
 (package-initialize)
 (require 'dired-subtree)
 (let ((dir (file-name-directory (or load-file-name buffer-file-name))))
@@ -167,6 +168,41 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
               (set-window-buffer main buf)
               (wamei/project-sidebar--follow (selected-frame))
               (should (eq (window-buffer win) (wamei/project-sidebar-buffer root-b)))
+              (delete-window win))
+          (kill-buffer buf))))))
+
+(ert-deftest wamei/project-sidebar-follow-skips-remote-buffer ()
+  (wamei/project-sidebar-test--with-project root
+    (let* ((main (selected-window))
+           (buf (generate-new-buffer " *sidebar-test-remote*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer buf
+              (setq buffer-file-name "/ssh:example.invalid:/tmp/x.el"))
+            (let ((win (wamei/project-sidebar-show root)))
+              (set-window-buffer main buf)
+              (wamei/project-sidebar--follow (selected-frame))
+              (should (eq (window-buffer win) (wamei/project-sidebar-buffer root)))
+              (delete-window win)))
+        (kill-buffer buf)))))
+
+(ert-deftest wamei/project-sidebar-follow-switch-keeps-window-dedicated-on-error ()
+  (wamei/project-sidebar-test--with-project root-a
+    (wamei/project-sidebar-test--with-project root-b
+      (let* ((project-find-functions
+              (list (lambda (dir)
+                      (let ((dir (file-truename (expand-file-name dir))))
+                        (cond ((string-prefix-p root-a dir) (cons 'transient root-a))
+                              ((string-prefix-p root-b dir) (cons 'transient root-b)))))))
+             (main (selected-window))
+             (buf (find-file-noselect (expand-file-name "README" root-b))))
+        (unwind-protect
+            (let ((win (wamei/project-sidebar-show root-a)))
+              (set-window-buffer main buf)
+              (cl-letf (((symbol-function 'wamei/project-sidebar-buffer)
+                         (lambda (&rest _) (error "boom"))))
+                (ignore-errors (wamei/project-sidebar--follow (selected-frame))))
+              (should (window-dedicated-p win))
               (delete-window win))
           (kill-buffer buf))))))
 
