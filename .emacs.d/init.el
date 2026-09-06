@@ -1626,22 +1626,17 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
 (leaf sql
   :doc "SQL バッファと SQLi (組み込み)。psql / mysql を comint で動かして結果を見る。
 
-接続は M-x sql-connect (C-u 付きで接続先を選び直せる) か M-x sql-postgres / sql-mysql。
+接続先は Emacs 用に書き直さず、クライアントが元々読む設定ファイルだけを情報源にする
+(sql-connections.el が列挙する):
+  ~/.my.cnf          の [client<名前>] → C-u M-x sql-connect の mysql:<名前>
+  ~/.pg_service.conf の [<名前>]       → 同じく postgres:<名前>
+ホスト・ユーザ・パスワードはそちらに書く (mysql / psql / sqls / 他のツールと共有できる)。
+Emacs は名前だけを渡すので、認証情報はプロセスの引数に出ない。編集したら
+M-x sql-connections-refresh で読み直す。
 SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) / C-c C-b (バッファ)。
-補完は sqls (eglot ブロック) が担当する。
-パスワードは repo に置かず ~/.pgpass と ~/.my.cnf に任せる。"
+補完は sqls (eglot ブロック) が同じ設定ファイルを見る。"
   :ensure nil
   :preface
-  (defvar wamei/sql-connections-file "~/.emacs.d/sql-connections.el"
-    "`sql-connection-alist' を書く個人ファイル。あれば sql の読み込み時に load する。
-ホスト名・ユーザ名・DB 名が入るので dotfiles には置かない。書式:
-
-  (setq sql-connection-alist
-        \\='((app-pg (sql-product \\='postgres) (sql-server \"127.0.0.1\")
-                   (sql-port 5432) (sql-user \"app\") (sql-database \"app_development\"))
-          (app-my (sql-product \\='mysql) (sql-server \"127.0.0.1\")
-                   (sql-port 3306) (sql-user \"root\") (sql-database \"app\"))))")
-
   (defun wamei/sql-interactive-setup ()
     "SQLi バッファの表示設定。"
     ;; 結果の 1 行はウィンドウ幅を超えるのが普通なので、折り返さず横スクロールで読む
@@ -1658,8 +1653,11 @@ SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) 
   (sql-mysql-options . '("-t" "-A"))
   :hook (sql-interactive-mode-hook . wamei/sql-interactive-setup)
   :config
-  (when (file-readable-p wamei/sql-connections-file)
-    (load wamei/sql-connections-file nil t)))
+  ;; 接続先の列挙は sql-connections.el (init.el は symlink なので実体の隣から読む)
+  (load (expand-file-name "sql-connections"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (sql-connections-refresh))
 
 (leaf prisma-ts-mode
   :doc "Prisma スキーマ (tree-sitter)"
@@ -1857,6 +1855,20 @@ sqls はプロジェクトの依存ではなく mise で入れる道具なので
 入っていない環境では .sql を開いてもエラーにせず黙って諦める。"
     (when (executable-find "sqls")
       (eglot-ensure)))
+
+  (defun wamei/sqls-switch-connection ()
+    "sqls が持っている接続 (.dir-locals.el の :sqls :connections) を選び直す。
+sqls は同時に 1 接続しか見ないので、複数 DB を行き来するときに使う。"
+    (interactive)
+    (let* ((server (or (eglot-current-server) (user-error "言語サーバに接続していない")))
+           (lines (split-string
+                   (string-trim (eglot-execute server '(:command "showConnections" :arguments [])))
+                   "\n" t))
+           (choice (completing-read "sqls connection: " lines nil t)))
+      ;; 各行は "<番号> <driver>  <dataSourceName>"。switchConnections は番号の文字列を取る。
+      (eglot-execute server `(:command "switchConnections"
+                              :arguments [,(car (split-string choice))]))
+      (message "sqls: %s" choice)))
   :custom
   ;; 最後のバッファを閉じたら言語サーバを落とす
   (eglot-autoshutdown . t)
@@ -1895,16 +1907,11 @@ sqls はプロジェクトの依存ではなく mise で入れる道具なので
   (add-to-list 'eglot-server-programs
                '(prisma-ts-mode . ("prisma-language-server" "--stdio")))
   ;; sqls (Go 製の SQL 言語サーバ、mise で導入) はテーブル / カラム名の補完とホバーを返す。
-  ;; 接続情報はプロジェクトごとに .dir-locals.el で渡す:
-  ;;   ((nil . ((eglot-workspace-configuration
-  ;;             . (:sqls (:connections [(:driver "postgresql"
-  ;;                                      :dataSourceName "host=127.0.0.1 port=5432 user=app dbname=app sslmode=disable")
-  ;;                                     (:driver "mysql"
-  ;;                                      :dataSourceName "root:pw@tcp(127.0.0.1:3306)/app")]))))))
-  ;; eglot は workspace configuration を一時バッファで評価する際に
-  ;; hack-dir-local-variables-non-file-buffer を呼ぶので .dir-locals.el が効き、
-  ;; 下の wamei/eglot-workspace-configuration より優先される。
-  ;; プロジェクト共通にしたければ ~/.config/sqls/config.yml でもよい (sqls config)。
+  ;; 接続情報は ~/.my.cnf と ~/.pg_service.conf から wamei/eglot-workspace-configuration
+  ;; 経由で渡す。sqls が見るのは常に 1 接続なので、切り替えは
+  ;; M-x wamei/sqls-switch-connection。プロジェクト固有にしたければ .dir-locals.el で
+  ;; eglot-workspace-configuration を上書きできる (eglot は workspace configuration を
+  ;; 一時バッファで評価する際に hack-dir-local-variables-non-file-buffer を呼ぶため)。
   (add-to-list 'eglot-server-programs '(sql-mode . ("sqls")))
   ;; JSONC (wamei/jsonc-ts-mode、json-ts-mode ブロック) は languageId を "jsonc" で伝える。
   ;; json-ts-mode の派生なので組み込みの json エントリにも当たるが、そちらだと "json"
@@ -1943,8 +1950,15 @@ sqls はプロジェクトの依存ではなく mise で入れる道具なので
   ;; 返す関数にする。.dir-locals.el の指定があればそちらが優先される。
   (defun wamei/eglot-workspace-configuration (server)
     "SERVER の管理するモードに応じた workspace configuration を返す。"
-    (when (memq 'prisma-ts-mode (eglot--major-modes server))
-      '(:prisma (:enableDiagnostics t))))
+    (let ((modes (eglot--major-modes server)))
+      (cond
+       ((memq 'prisma-ts-mode modes)
+        '(:prisma (:enableDiagnostics t)))
+       ;; sqls は my.cnf / pg_service.conf を自分では読めないので、sql-connections.el が
+       ;; 展開した接続情報を渡す (sql ブロック参照)。
+       ((and (memq 'sql-mode modes) (fboundp 'sql-connections-sqls))
+        (let ((sqls (sql-connections-sqls)))
+          (and sqls (list :sqls sqls)))))))
   (setq-default eglot-workspace-configuration #'wamei/eglot-workspace-configuration)
   (advice-add 'eglot-completion-at-point :filter-return
               #'wamei/eglot-capf-doc-with-detail))
