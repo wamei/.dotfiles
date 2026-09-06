@@ -100,7 +100,9 @@ precmd () {
 show_env() {
   show_env_mise
 }
-# mise が今のディレクトリで有効にしているツール (node / bun / python / ruby ...) を全部出す。
+# mise が今のディレクトリで有効にしているツール (node / bun / python / ruby ...) を出す。
+# go:github.com/... のような backend 付き (go install / npm / cargo などで入れた単体ツール)
+# は言語のバージョンではなく単に入れたバイナリなので、プロンプトからは除く。
 # global 設定 (~/.config/mise/config.toml) 以外から解決されたものは赤で出す。
 # direnv の layout python で venv に入っているときは python に (venv 名) を付けて赤で出す。
 # `mise ls --current` の 1 行: "<tool>  <version>  [(missing)]  <source>  <requested>"
@@ -112,6 +114,8 @@ show_env_mise() {
   mise ls --current 2>/dev/null | while IFS= read -r line; do
     f=(${(z)line})
     tool=$f[1] ver=$f[2] src=$f[3]
+    # backend 付き (<backend>:<pkg>) は除外
+    [[ $tool == *:* ]] && continue
     if [[ $src == '(missing)' ]]; then
       ver+='(missing)'
       src=$f[4]
