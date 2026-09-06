@@ -329,8 +329,10 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   ;; C-c と C-h は端末へ送りたいが、ここから外すと vterm のキーマップ構築が
   ;; C-c C-y 等の定義で "starts with non-prefix key" と落ちるので、残したまま
   ;; :config で上書きする。
+  ;; M-w は除外しないと ESC マップの一括束縛 (vterm--self-insert-meta) に取られ、
+  ;; ESC w が端末へ送られて kill-ring-save が呼ばれない。
   (vterm-keymap-exceptions
-   . '("C-c" "C-x" "C-u" "C-g" "C-h" "C-l" "M-x" "M-o" "C-y" "M-y"
+   . '("C-c" "C-x" "C-u" "C-g" "C-h" "C-l" "M-x" "M-o" "C-y" "M-y" "M-w"
        "C-q" "C-z" "C-S-z" "<C-tab>" "<C-S-tab>"))
   (vterm-max-scrollback . 10000)
   :preface
@@ -395,7 +397,7 @@ face を付けないので元の文字の色はそのまま引き継がれる。
   ;; 送る前に point から行末までを kill-ring に入れる (term-input.el)。
   (define-key vterm-mode-map (kbd "C-k") #'wamei/term-input-kill-line)
   ;; 貼り付けは vterm-yank を使う。yank はバッファに直接挿入するだけで
-  ;; 端末プロセスには届かない。コピー (s-c) は通常のリージョン操作で効く。
+  ;; 端末プロセスには届かない。コピー (M-w / s-c) は通常のリージョン操作で効く。
   (define-key vterm-mode-map (kbd "s-v") #'vterm-yank)
   (define-key vterm-mode-map (kbd "C-y") #'vterm-yank)
   (define-key vterm-mode-map (kbd "M-y") #'vterm-yank-pop)
