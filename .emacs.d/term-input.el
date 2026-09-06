@@ -59,25 +59,37 @@
 
 (defun wamei/term-input-forward-wheel (event)
   "ホイール EVENT をイベント位置の SGR マウス報告として端末へ送る。
+送り先はポインタの下の window の端末なので、その window が選択されていなくても効く。
 `vterm-copy-mode' 中は `mwheel-scroll' に委譲する。"
   (interactive "e")
-  (if (bound-and-true-p vterm-copy-mode)
-      (mwheel-scroll event)
-    (when-let* ((button (wamei/term-input--wheel-button (event-basic-type event)))
-                (posn (event-start event))
-                ;; actual-col-row は文字セル単位で正確だが、文字の無い場所では nil
-                (pos (or (posn-actual-col-row posn) (posn-col-row posn))))
-      ;; `vterm-send-string' は末尾で
-      ;;   (accept-process-output PROC vterm-timer-delay nil t)
-      ;; を呼び、端末が何か返すまで最大 `vterm-timer-delay' (既定 0.1 秒) ブロックする。
-      ;; TUI が末端 (履歴の一番下など) に達して再描画を返さなくなると 1 イベントごとに
-      ;; 満額待つため、トラックパッドの慣性で積まれた数百イベントが直列に効いて
-      ;; Emacs 全体が数十秒止まる。C-g は実行中の 1 コマンドを止めるだけで、
-      ;; キューに残ったイベントが同じことを繰り返すので復帰しない。
-      ;; 0 にすると届いている出力だけ読んで即座に返る (待たないだけで送信はする)。
-      (let ((vterm-timer-delay 0))
-        (vterm-send-string
-         (wamei/term-input--sgr-mouse button (car pos) (cdr pos)))))))
+  ;; マウスイベントのキー引きはポインタ下のバッファのキーマップで行われるが、
+  ;; コマンド実行時の `current-buffer' は選択中の window のバッファになる。
+  ;; `vterm--term' と `vterm--process' はバッファローカルなので、current-buffer の
+  ;; まま送ると非選択の端末では `vterm-send-string' が (when vterm--term ...) で
+  ;; 黙って何もしない。`mwheel-scroll' と同じくイベント側の window を基準にする。
+  (let* ((posn (event-start event))
+         (window (posn-window posn))
+         (buffer (if (window-live-p window)
+                     (window-buffer window)
+                   (current-buffer))))
+    (with-current-buffer buffer
+      (if (bound-and-true-p vterm-copy-mode)
+          (mwheel-scroll event)
+        (when-let* ((button (wamei/term-input--wheel-button (event-basic-type event)))
+                    ;; actual-col-row は文字セル単位で正確だが、文字の無い場所では nil
+                    (pos (or (posn-actual-col-row posn) (posn-col-row posn))))
+          ;; `vterm-send-string' は末尾で
+          ;;   (accept-process-output PROC vterm-timer-delay nil t)
+          ;; を呼び、端末が何か返すまで最大 `vterm-timer-delay' (既定 0.1 秒)
+          ;; ブロックする。TUI が末端 (履歴の一番下など) に達して再描画を返さなく
+          ;; なると 1 イベントごとに満額待つため、トラックパッドの慣性で積まれた
+          ;; 数百イベントが直列に効いて Emacs 全体が数十秒止まる。C-g は実行中の
+          ;; 1 コマンドを止めるだけで、キューに残ったイベントが同じことを繰り返す
+          ;; ので復帰しない。0 にすると届いている出力だけ読んで即座に返る
+          ;; (待たないだけで送信はする)。
+          (let ((vterm-timer-delay 0))
+            (vterm-send-string
+             (wamei/term-input--sgr-mouse button (car pos) (cdr pos)))))))))
 
 (defvar wamei/term-input-mouse-mode-map
   (let ((map (make-sparse-keymap)))

@@ -17,6 +17,9 @@
 (defvar wamei/term-input-test--delays nil
   "`vterm-send-string' が呼ばれた時点の `vterm-timer-delay'。")
 
+(defvar wamei/term-input-test--buffers nil
+  "`vterm-send-string' が呼ばれた時点の `current-buffer' の名前。")
+
 ;; vterm 本体の defcustom。term-input.el 側の (defvar vterm-timer-delay) は
 ;; そのファイル限りの宣言なので、テスト側で束縛するには値付きで special にする。
 (defvar vterm-timer-delay 0.1
@@ -27,6 +30,7 @@
   (declare (indent 0))
   `(let ((wamei/term-input-test--sent nil)
          (wamei/term-input-test--delays nil)
+         (wamei/term-input-test--buffers nil)
          (vterm-timer-delay 0.1)
          (kill-ring nil)
          (kill-ring-yank-pointer nil)
@@ -38,6 +42,7 @@
                ((symbol-function 'vterm-send-string)
                 (lambda (string &optional _paste-p)
                   (push vterm-timer-delay wamei/term-input-test--delays)
+                  (push (buffer-name) wamei/term-input-test--buffers)
                   (push string wamei/term-input-test--sent))))
        ,@body)))
 
@@ -126,6 +131,16 @@
 
 ;;; ホイール転送コマンド
 
+(defmacro wamei/term-input-test--with-window-buffer (buffer &rest body)
+  "選択中の window に BUFFER を出して BODY を実行し、後で元へ戻す。
+マウスイベントの posn-window は選択中の window になるので、
+「ポインタの下のバッファ」と `current-buffer' を食い違わせるために使う。"
+  (declare (indent 1))
+  `(let ((wamei/term-input-test--saved (window-buffer (selected-window))))
+     (unwind-protect
+         (progn (set-window-buffer (selected-window) ,buffer) ,@body)
+       (set-window-buffer (selected-window) wamei/term-input-test--saved))))
+
 (defun wamei/term-input-test--wheel-event (type col row)
   "TYPE のホイールイベントを (COL . ROW) の位置で組み立てる。"
   (list type
@@ -155,18 +170,41 @@
       ;; 束縛は転送の間だけで、抜けたら元に戻っている
       (should (equal vterm-timer-delay 0.1)))))
 
+(ert-deftest wamei/term-input-forward-wheel-uses-event-window-buffer ()
+  "ポインタの下の端末へ送る。window が選択されていなくても効く。
+
+マウスイベントのキー引きはポインタ下のバッファのキーマップで行われるが、
+コマンド実行時の `current-buffer' は選択中の window のバッファになる。
+`vterm--term' や `vterm--process' はバッファローカルなので、current-buffer の
+まま送ると非選択の端末では `vterm-send-string' が黙って何もしない。"
+  (wamei/term-input-test--with-vterm
+    (let ((term (generate-new-buffer " *term-under-mouse*")))
+      (unwind-protect
+          (wamei/term-input-test--with-window-buffer term
+            ;; current-buffer はポインタ下とは別のバッファ
+            (with-temp-buffer
+              (wamei/term-input-forward-wheel
+               (wamei/term-input-test--wheel-event 'wheel-down 3 7)))
+            (should (equal wamei/term-input-test--sent '("\e[<65;4;8M")))
+            (should (equal wamei/term-input-test--buffers (list (buffer-name term)))))
+        (kill-buffer term)))))
+
 (ert-deftest wamei/term-input-forward-wheel-in-copy-mode-scrolls-emacs ()
   "copy-mode 中は端末へ送らず Emacs の通常スクロールに任せる。"
   (wamei/term-input-test--with-vterm
     (let ((scrolled nil))
       (cl-letf (((symbol-function 'mwheel-scroll)
                  (lambda (event &optional _arg) (setq scrolled event))))
-        (with-temp-buffer
-          (setq-local vterm-copy-mode t)
-          (let ((event (wamei/term-input-test--wheel-event 'wheel-up 0 0)))
-            (wamei/term-input-forward-wheel event)
-            (should-not wamei/term-input-test--sent)
-            (should (eq scrolled event))))))))
+        (let ((term (generate-new-buffer " *term-under-mouse*")))
+          (unwind-protect
+              (progn
+                (with-current-buffer term (setq-local vterm-copy-mode t))
+                (wamei/term-input-test--with-window-buffer term
+                  (let ((event (wamei/term-input-test--wheel-event 'wheel-up 0 0)))
+                    (wamei/term-input-forward-wheel event)
+                    (should-not wamei/term-input-test--sent)
+                    (should (eq scrolled event)))))
+            (kill-buffer term)))))))
 
 ;;; minor mode
 
