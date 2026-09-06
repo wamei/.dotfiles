@@ -3,6 +3,10 @@ node = "26"
 bun = "1"
 ruby = "3.1.2"
 python = "3.13.3"
+# sqls (SQL の言語サーバ、Emacs の eglot から使う)。配布バイナリが x86_64 のみで
+# Rosetta 頼みになるため go backend で arm64 にビルドする。go はそのためのツール。
+go = "1"
+"go:github.com/sqls-server/sqls" = "latest"
 
 [settings]
 # nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む

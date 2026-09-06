@@ -211,6 +211,10 @@ export PATH="/Users/wamei/.antigravity/antigravity/bin:$PATH"
 export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
 export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
 
+# libpq (psql / pg_dump)。postgresql と衝突するため keg-only で symlink されず、bin を明示的に足す。
+# Emacs の sql-mode (M-x sql-postgres) が psql を PATH から引く。
+export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
+
 # mise (node / bun / ruby / python)。activate 時と precmd / chpwd で有効なツールの bin を PATH 先頭に差し込むので、
 # PATH を組み終えた最後に置く。設定は ~/.config/mise/config.toml (dotfiles の .config/mise)。
 eval "$(mise activate zsh)"

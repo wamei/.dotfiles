@@ -1623,6 +1623,44 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
   ;; 素の .env と foo.env 形式も対象にする
   :mode ("\\.env\\'" "\\.env\\.[^/]*\\'"))
 
+(leaf sql
+  :doc "SQL バッファと SQLi (組み込み)。psql / mysql を comint で動かして結果を見る。
+
+接続は M-x sql-connect (C-u 付きで接続先を選び直せる) か M-x sql-postgres / sql-mysql。
+SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) / C-c C-b (バッファ)。
+補完は sqls (eglot ブロック) が担当する。
+パスワードは repo に置かず ~/.pgpass と ~/.my.cnf に任せる。"
+  :ensure nil
+  :preface
+  (defvar wamei/sql-connections-file "~/.emacs.d/sql-connections.el"
+    "`sql-connection-alist' を書く個人ファイル。あれば sql の読み込み時に load する。
+ホスト名・ユーザ名・DB 名が入るので dotfiles には置かない。書式:
+
+  (setq sql-connection-alist
+        \\='((app-pg (sql-product \\='postgres) (sql-server \"127.0.0.1\")
+                   (sql-port 5432) (sql-user \"app\") (sql-database \"app_development\"))
+          (app-my (sql-product \\='mysql) (sql-server \"127.0.0.1\")
+                   (sql-port 3306) (sql-user \"root\") (sql-database \"app\"))))")
+
+  (defun wamei/sql-interactive-setup ()
+    "SQLi バッファの表示設定。"
+    ;; 結果の 1 行はウィンドウ幅を超えるのが普通なので、折り返さず横スクロールで読む
+    (setq-local truncate-lines t))
+  :custom
+  ;; 接続先を指定せずに SQLi を起動したときの既定 (sql-connect は接続定義側の指定を使う)
+  (sql-product . 'postgres)
+  ;; 入力履歴を Emacs のセッション間で残す (SQLi の終了時に書き出される)
+  (sql-input-ring-file-name . "~/.emacs.d/sql-history")
+  ;; mysql は出力先が tty でないと罫線なしの TSV を吐く。comint は tty ではないので
+  ;; -t (--table) を明示する。-A は起動時のテーブル名読み込み (補完用) を止める指定で、
+  ;; 補完は sqls に任せるため不要、大きい DB では接続が目に見えて遅くなる。
+  ;; psql 側は sql-postgres-options の既定 ("-P" "pager=off") で足りる。
+  (sql-mysql-options . '("-t" "-A"))
+  :hook (sql-interactive-mode-hook . wamei/sql-interactive-setup)
+  :config
+  (when (file-readable-p wamei/sql-connections-file)
+    (load wamei/sql-connections-file nil t)))
+
 (leaf prisma-ts-mode
   :doc "Prisma スキーマ (tree-sitter)"
   :ensure t
@@ -1812,6 +1850,13 @@ echo area に戻す。echo area を触ってよいかの判定は `eldoc-display
 child frame (eldoc-box / eldoc-mouse) の表示関数への :filter-args advice。
 ヒントは echo area に出すので、child frame には重複させない。"
     (cons (cl-remove-if #'wamei/eglot-code-action-hint-p (car args)) (cdr args)))
+
+  (defun wamei/sql-eglot-ensure ()
+    "sqls が PATH にあるときだけ eglot を起動する。
+sqls はプロジェクトの依存ではなく mise で入れる道具なので (~/.config/mise/config.toml)、
+入っていない環境では .sql を開いてもエラーにせず黙って諦める。"
+    (when (executable-find "sqls")
+      (eglot-ensure)))
   :custom
   ;; 最後のバッファを閉じたら言語サーバを落とす
   (eglot-autoshutdown . t)
@@ -1821,16 +1866,17 @@ child frame (eldoc-box / eldoc-mouse) の表示関数への :filter-args advice�
   ;; (wamei/eglot-code-action-hint-display)。left-fringe の雷マークは tsserver が
   ;; どこでも refactor アクションを返すため常時点灯になるので使わない。
   (eglot-code-action-indications . '(eldoc-hint))
-  :hook ((typescript-ts-mode-hook
-          tsx-ts-mode-hook
-          js-ts-mode-hook
-          js-mode-hook
-          json-ts-mode-hook
-          css-ts-mode-hook
-          css-mode-hook
-          html-ts-mode-hook
-          mhtml-mode-hook
-          prisma-ts-mode-hook) . eglot-ensure)
+  :hook (((typescript-ts-mode-hook
+           tsx-ts-mode-hook
+           js-ts-mode-hook
+           js-mode-hook
+           json-ts-mode-hook
+           css-ts-mode-hook
+           css-mode-hook
+           html-ts-mode-hook
+           mhtml-mode-hook
+           prisma-ts-mode-hook) . eglot-ensure)
+         (sql-mode-hook . wamei/sql-eglot-ensure))
   :config
   ;; コードアクションヒント: quickfix に絞り、echo area にだけ出す (:preface の各関数参照)。
   ;; eldoc-display-functions は eldoc-box が有効化時に global 値を複製して buffer-local
@@ -1848,6 +1894,18 @@ child frame (eldoc-box / eldoc-mouse) の表示関数への :filter-args advice�
   ;; (~/.bun/bin は .zshrc で PATH に足し、exec-path-from-shell で引き継ぐ)。
   (add-to-list 'eglot-server-programs
                '(prisma-ts-mode . ("prisma-language-server" "--stdio")))
+  ;; sqls (Go 製の SQL 言語サーバ、mise で導入) はテーブル / カラム名の補完とホバーを返す。
+  ;; 接続情報はプロジェクトごとに .dir-locals.el で渡す:
+  ;;   ((nil . ((eglot-workspace-configuration
+  ;;             . (:sqls (:connections [(:driver "postgresql"
+  ;;                                      :dataSourceName "host=127.0.0.1 port=5432 user=app dbname=app sslmode=disable")
+  ;;                                     (:driver "mysql"
+  ;;                                      :dataSourceName "root:pw@tcp(127.0.0.1:3306)/app")]))))))
+  ;; eglot は workspace configuration を一時バッファで評価する際に
+  ;; hack-dir-local-variables-non-file-buffer を呼ぶので .dir-locals.el が効き、
+  ;; 下の wamei/eglot-workspace-configuration より優先される。
+  ;; プロジェクト共通にしたければ ~/.config/sqls/config.yml でもよい (sqls config)。
+  (add-to-list 'eglot-server-programs '(sql-mode . ("sqls")))
   ;; JSONC (wamei/jsonc-ts-mode、json-ts-mode ブロック) は languageId を "jsonc" で伝える。
   ;; json-ts-mode の派生なので組み込みの json エントリにも当たるが、そちらだと "json"
   ;; になり vscode-json-language-server がコメントをエラーにする。eglot は
