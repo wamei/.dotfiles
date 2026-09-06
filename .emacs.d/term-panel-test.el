@@ -223,5 +223,44 @@
         (wamei/term-previous)
         (should (eq (window-buffer (wamei/term--window)) second))))))
 
+;;; 作成直後の pty サイズ同期
+
+(defmacro wamei/term-panel-test--with-process-buffer (name &rest body)
+  "NAME のバッファに生きたプロセスを付けて BODY を評価する。
+`process' にプロセスを束縛する。終了時にプロセスとバッファを消す。"
+  (declare (indent 1))
+  `(let* ((buffer (get-buffer-create ,name))
+          (process (start-process "term-panel-test" buffer "sleep" "10")))
+     (unwind-protect
+         (progn ,@body)
+       (delete-process process)
+       (kill-buffer buffer))))
+
+(ert-deftest wamei/term-panel-sync-size-once-on-first-output ()
+  "端末の最初の出力で 1 回だけ window に合わせて pty サイズを直す。2 回目以降は何もしない。"
+  (wamei/term-panel-test--with-process-buffer "*term: alpha 2*"
+    (let ((calls 0))
+      (cl-letf (((symbol-function 'window--adjust-process-windows)
+                 (lambda () (setq calls (1+ calls)))))
+        (wamei/term--sync-size-on-first-output process "first")
+        (wamei/term--sync-size-on-first-output process "second")
+        (should (= calls 1))))))
+
+(ert-deftest wamei/term-panel-sync-size-ignores-other-vterm-buffers ()
+  "パネルの端末 (*term: ...) 以外の vterm バッファには手を出さない。"
+  (wamei/term-panel-test--with-process-buffer "*claude-code[alpha]*"
+    (let ((calls 0))
+      (cl-letf (((symbol-function 'window--adjust-process-windows)
+                 (lambda () (setq calls (1+ calls)))))
+        (wamei/term--sync-size-on-first-output process "first")
+        (should (= calls 0))))))
+
+(ert-deftest wamei/term-panel-sync-size-survives-dead-buffer ()
+  "プロセスのバッファが既に消えていてもエラーにしない。"
+  (let ((process (start-process "term-panel-test" nil "sleep" "10")))
+    (unwind-protect
+        (should-not (wamei/term--sync-size-on-first-output process "first"))
+      (delete-process process))))
+
 (provide 'term-panel-test)
 ;;; term-panel-test.el ends here

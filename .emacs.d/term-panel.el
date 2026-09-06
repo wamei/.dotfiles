@@ -158,6 +158,32 @@ window に付いた幅は残らない。変数に覚えておき wamei/term--set
   ;; シェル終了などでバッファが消えたらパネルと一覧を追従させる
   (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
 
+(defvar-local wamei/term--size-synced nil
+  "非 nil なら、この端末の pty サイズは shell 起動後に一度 window へ合わせ済み。")
+
+(defun wamei/term--sync-size-on-first-output (process _input)
+  "PROCESS の端末が最初に出力したとき、一度だけ pty のサイズを表示中の window に合わせる。
+`vterm--filter' の :after advice として使う (結線は init.el)。
+
+vterm は shell を `stty rows R columns C && exec zsh' で起こし、R と C には
+作成時点の window のサイズを使う。端末は `wamei/term--create' の
+save-window-excursion の中で作られ、その後 `wamei/term--show' でパネルに出る。
+2 つ目以降は一覧 (`wamei/term-list-width') が右に出て端末の幅が縮むので、
+表示時に Emacs が pty を新しいサイズにしても、その後に走る shell 側の stty が
+作成時のサイズで上書きし、libvterm (表示) と pty (shell の認識) が食い違う。
+shell の最初の出力は stty より後なので、そこで Emacs 側のサイズ反映をやり直す。
+パネルの端末以外 (claude-code 等) には触らない。"
+  (when-let* ((buffer (process-buffer process)))
+    (when (and (buffer-live-p buffer)
+               (string-prefix-p "*term: " (buffer-name buffer))
+               (not (buffer-local-value 'wamei/term--size-synced buffer)))
+      (with-current-buffer buffer
+        (setq wamei/term--size-synced t))
+      ;; window-configuration-change-hook で Emacs が呼ぶものと同じ。
+      ;; 表示中のプロセスだけを対象にするので、非表示の端末は表示時に直る。
+      (window--adjust-process-windows)
+      t)))
+
 (defun wamei/term--create (index)
   "INDEX 番目の端末を作る。vterm はバッファへ切り替えるので window 構成は戻す。"
   (let ((default-directory (wamei/term--root)))

@@ -335,6 +335,11 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
    . '("C-c" "C-x" "C-u" "C-g" "C-h" "C-l" "M-x" "M-o" "C-y" "M-y" "M-w"
        "C-q" "C-z" "C-S-z" "<C-tab>" "<C-S-tab>"))
   (vterm-max-scrollback . 10000)
+  ;; 既定 (80) だと、それより狭い window では libvterm と pty を 80 桁にしたまま
+  ;; 表示だけ切り詰めるので、shell の折り返し位置と画面がずれる。パネルは端末が
+  ;; 2 つ以上になると右に一覧 (wamei/term-list-width) が出て 80 桁を割りやすく、
+  ;; zsh-autocomplete の候補リストが重なって描かれる。window の実幅に追従させる。
+  (vterm-min-window-width . 20)
   :preface
   ;; kill-ring 連携とホイール転送。実体は term-input.el (init.el は symlink なので
   ;; 実体の隣から読む)。
@@ -403,6 +408,9 @@ face を付けないので元の文字の色はそのまま引き継がれる。
   (define-key vterm-mode-map (kbd "M-y") #'vterm-yank-pop)
   ;; 一覧に「最後に実行したコマンド」を出すため、端末が報告するタイトルを拾う
   (advice-add 'vterm--set-title :before #'wamei/term--record-title)
+  ;; shell 起動時の stty が作成時の window サイズで pty を上書きするので、最初の
+  ;; 出力で一度だけ表示中の window に合わせ直す (term-panel.el)
+  (advice-add 'vterm--filter :after #'wamei/term--sync-size-on-first-output)
 
   (add-hook 'vterm-mode-hook #'wamei/term--substitute-tall-glyphs)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
@@ -1631,8 +1639,8 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
   ~/.my.cnf          の [client<名前>] → C-u M-x sql-connect の mysql:<名前>
   ~/.pg_service.conf の [<名前>]       → 同じく postgres:<名前>
 ホスト・ユーザ・パスワードはそちらに書く (mysql / psql / sqls / 他のツールと共有できる)。
-Emacs は名前だけを渡すので、認証情報はプロセスの引数に出ない。編集したら
-M-x sql-connections-refresh で読み直す。
+Emacs は名前だけを渡すので、認証情報はプロセスの引数に出ない。設定ファイルの編集は
+接続先を選ぶ直前に自動で読み直す (Emacs で保存した場合は sqls にも即座に反映する)。
 SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) / C-c C-b (バッファ)。
 補完は sqls (eglot ブロック) が同じ設定ファイルを見る。"
   :ensure nil
@@ -1641,6 +1649,34 @@ SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) 
     "SQLi バッファの表示設定。"
     ;; 結果の 1 行はウィンドウ幅を超えるのが普通なので、折り返さず横スクロールで読む
     (setq-local truncate-lines t))
+
+  (defun wamei/sql-connections-reload (&rest _)
+    "接続先を client 設定ファイルから読み直す。advice 用に引数を捨てる。"
+    (sql-connections-refresh))
+
+  (defun wamei/sql-eglot-servers ()
+    "sql-mode のバッファを管理している eglot サーバの一覧。"
+    (when (fboundp 'eglot-current-server)
+      (delete-dups
+       (delq nil (mapcar (lambda (buffer)
+                           (with-current-buffer buffer
+                             (and (derived-mode-p 'sql-mode) (eglot-current-server))))
+                         (buffer-list))))))
+
+  (defun wamei/sql-connections-reload-on-save ()
+    "client 設定ファイルを保存したら接続先を読み直し、sqls にも新しい設定を送る。
+sqls は workspace/didChangeConfiguration で接続一覧を作り直すので、再起動しなくてよい。"
+    (when (and buffer-file-name
+               (member (file-truename buffer-file-name)
+                       (mapcar #'file-truename
+                               (seq-filter #'file-exists-p
+                                           (list sql-connections-my-cnf
+                                                 sql-connections-pg-service-file)))))
+      (sql-connections-refresh)
+      (dolist (server (wamei/sql-eglot-servers))
+        (eglot-signal-didChangeConfiguration server))
+      (message "sql-connections: %s"
+               (mapconcat #'symbol-name (mapcar #'car sql-connection-alist) " "))))
   :custom
   ;; 接続先を指定せずに SQLi を起動したときの既定 (sql-connect は接続定義側の指定を使う)
   (sql-product . 'postgres)
@@ -1657,7 +1693,13 @@ SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) 
   (load (expand-file-name "sql-connections"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
-  (sql-connections-refresh))
+  (sql-connections-refresh)
+  ;; 設定ファイルを編集した後に M-x sql-connections-refresh を打たなくて済むようにする。
+  ;; 接続先を選ぶ直前に読み直せば、Emacs の外で編集した場合も拾える。
+  (advice-add 'sql-read-connection :before #'wamei/sql-connections-reload)
+  (advice-add 'sql-connect :before #'wamei/sql-connections-reload)
+  ;; Emacs で保存したときは走っている sqls にも知らせる (補完がすぐ追従する)
+  (add-hook 'after-save-hook #'wamei/sql-connections-reload-on-save))
 
 (leaf prisma-ts-mode
   :doc "Prisma スキーマ (tree-sitter)"
