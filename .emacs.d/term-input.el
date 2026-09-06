@@ -24,6 +24,7 @@
 (declare-function vterm-send-key "vterm")
 (declare-function vterm-send-string "vterm")
 (defvar vterm-copy-mode)
+(defvar vterm-timer-delay)
 
 ;;; kill-line
 
@@ -66,8 +67,17 @@
                 (posn (event-start event))
                 ;; actual-col-row は文字セル単位で正確だが、文字の無い場所では nil
                 (pos (or (posn-actual-col-row posn) (posn-col-row posn))))
-      (vterm-send-string
-       (wamei/term-input--sgr-mouse button (car pos) (cdr pos))))))
+      ;; `vterm-send-string' は末尾で
+      ;;   (accept-process-output PROC vterm-timer-delay nil t)
+      ;; を呼び、端末が何か返すまで最大 `vterm-timer-delay' (既定 0.1 秒) ブロックする。
+      ;; TUI が末端 (履歴の一番下など) に達して再描画を返さなくなると 1 イベントごとに
+      ;; 満額待つため、トラックパッドの慣性で積まれた数百イベントが直列に効いて
+      ;; Emacs 全体が数十秒止まる。C-g は実行中の 1 コマンドを止めるだけで、
+      ;; キューに残ったイベントが同じことを繰り返すので復帰しない。
+      ;; 0 にすると届いている出力だけ読んで即座に返る (待たないだけで送信はする)。
+      (let ((vterm-timer-delay 0))
+        (vterm-send-string
+         (wamei/term-input--sgr-mouse button (car pos) (cdr pos)))))))
 
 (defvar wamei/term-input-mouse-mode-map
   (let ((map (make-sparse-keymap)))

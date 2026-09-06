@@ -14,10 +14,20 @@
 (defvar wamei/term-input-test--sent nil
   "スタブが受け取った送信内容。(KEY SHIFT META CTRL) か文字列。")
 
+(defvar wamei/term-input-test--delays nil
+  "`vterm-send-string' が呼ばれた時点の `vterm-timer-delay'。")
+
+;; vterm 本体の defcustom。term-input.el 側の (defvar vterm-timer-delay) は
+;; そのファイル限りの宣言なので、テスト側で束縛するには値付きで special にする。
+(defvar vterm-timer-delay 0.1
+  "vterm の `accept-process-output' 待ち時間 (テスト用のスタブ定義)。")
+
 (defmacro wamei/term-input-test--with-vterm (&rest body)
   "vterm の送信関数をスタブに差し替えて BODY を実行する。"
   (declare (indent 0))
   `(let ((wamei/term-input-test--sent nil)
+         (wamei/term-input-test--delays nil)
+         (vterm-timer-delay 0.1)
          (kill-ring nil)
          (kill-ring-yank-pointer nil)
          (last-command nil)
@@ -27,6 +37,7 @@
                   (push (list key shift meta ctrl) wamei/term-input-test--sent)))
                ((symbol-function 'vterm-send-string)
                 (lambda (string &optional _paste-p)
+                  (push vterm-timer-delay wamei/term-input-test--delays)
                   (push string wamei/term-input-test--sent))))
        ,@body)))
 
@@ -128,6 +139,21 @@
       (wamei/term-input-forward-wheel
        (wamei/term-input-test--wheel-event 'wheel-down 3 7))
       (should (equal wamei/term-input-test--sent '("\e[<65;4;8M"))))))
+
+(ert-deftest wamei/term-input-forward-wheel-does-not-wait-for-output ()
+  "端末が何も返さなくても待たない。
+
+`vterm-send-string' は末尾で (accept-process-output PROC vterm-timer-delay nil t)
+を呼ぶため、既定の 0.1 秒のままだと TUI が末端に達して再描画を返さなくなった
+とたんに 1 イベントごとに満額ブロックする。慣性スクロールで数百イベント積まれる
+と Emacs 全体が数十秒止まるので、転送中は 0 にして即座に返させる。"
+  (wamei/term-input-test--with-vterm
+    (with-temp-buffer
+      (wamei/term-input-forward-wheel
+       (wamei/term-input-test--wheel-event 'wheel-down 3 7))
+      (should (equal wamei/term-input-test--delays '(0)))
+      ;; 束縛は転送の間だけで、抜けたら元に戻っている
+      (should (equal vterm-timer-delay 0.1)))))
 
 (ert-deftest wamei/term-input-forward-wheel-in-copy-mode-scrolls-emacs ()
   "copy-mode 中は端末へ送らず Emacs の通常スクロールに任せる。"
