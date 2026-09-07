@@ -430,6 +430,10 @@ face を付けないので元の文字の色はそのまま引き継がれる。
   (load (expand-file-name "claude-panel"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  ;; パネルの mode-line に使用量 (セッション / 週 / Fable) を出す。
+  (load (expand-file-name "claude-usage"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
 
   (defun wamei/claude-code-ide--no-other-window (window)
     "claude のウィンドウを C-x o (other-window) の巡回対象から外す。
@@ -532,6 +536,9 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
               :after #'wamei/term-input-mouse-mode)
   ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
+  ;; vterm は hide-mode-line で mode-line を消しているが、Claude のバッファだけは
+  ;; 戻して使用量のバーを出す (claude-usage.el)
+  (wamei/claude-usage-enable)
   ;; xref や flymake などの Emacs 側の機能を Claude から使えるようにする
   (claude-code-ide-emacs-tools-setup))
 
