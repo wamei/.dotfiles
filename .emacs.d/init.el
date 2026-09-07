@@ -534,6 +534,11 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   ;; pty へ渡さないので、Claude のバッファでだけマウス報告として転送する (term-input.el)。
   (advice-add 'claude-code-ide--configure-vterm-buffer
               :after #'wamei/term-input-mouse-mode)
+  ;; Cmd+V は vterm-yank (kill-ring) なのでテキストしか送れない。Claude は C-v を
+  ;; 受けると自分でクリップボードの画像を読むので、画像のときだけキーを流す
+  ;; (term-input.el)。シェルでは C-v が quoted-insert なので Claude だけに付ける。
+  (advice-add 'claude-code-ide--configure-vterm-buffer
+              :after #'wamei/term-input-paste-mode)
   ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
   ;; vterm は hide-mode-line で mode-line を消しているが、Claude のバッファだけは

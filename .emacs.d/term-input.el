@@ -16,13 +16,23 @@
 ;;   fullscreen 表示など) の内蔵スクロールが効かない。マウス追跡を有効にしていない
 ;;   プログラムには文字列として届いてしまうので、常時ではなく該当バッファでだけ有効にする。
 ;;   `vterm-copy-mode' 中は Emacs の通常スクロールに任せる。
+;;
+;; - `wamei/term-input-paste-mode'
+;;   Cmd+V でクリップボードの画像を端末のプログラムに渡す。macOS の Cmd+V は
+;;   `vterm-yank' (kill-ring) に割り当ててあるためテキストしか送れず、画像を
+;;   コピーしても何も起きない。Claude Code は C-v を受けると自分で osascript を
+;;   叩いて macOS のクリップボードから画像を取り出すので、Emacs 側で画像を運ぶ
+;;   必要はなく、キーだけ端末へ流せばよい。シェルでは C-v が quoted-insert に
+;;   なって固まるので、常時ではなく該当バッファでだけ有効にする。
 
 ;;; Code:
 
 (require 'mwheel)
+(require 'seq)
 
 (declare-function vterm-send-key "vterm")
 (declare-function vterm-send-string "vterm")
+(declare-function vterm-yank "vterm")
 (defvar vterm-copy-mode)
 (defvar vterm-timer-delay)
 
@@ -106,6 +116,38 @@
   "マウスホイールを端末へマウス報告として転送する。"
   :lighter nil
   :keymap wamei/term-input-mouse-mode-map)
+
+;;; クリップボードの画像を端末へ渡す
+
+(defun wamei/term-input--clipboard-image-p ()
+  "システムのクリップボードに画像があれば非 nil。
+NS では画像をコピーすると TARGETS に image/png と image/tiff が並ぶ
+\(テキストだけなら STRING)。外部プロセスを起こさずに判定できる。
+選択が取れない環境 (tty など) では nil。"
+  (seq-some (lambda (target)
+              (string-prefix-p "image/" (symbol-name target)))
+            (append (ignore-errors (gui-get-selection 'CLIPBOARD 'TARGETS)) nil)))
+
+(defun wamei/term-input-paste ()
+  "クリップボードに画像があれば C-v を端末へ送り、無ければ通常の貼り付け。
+Claude Code は C-v を受けると osascript で macOS のクリップボードを
+«class PNGf» として読み、ファイルに書き出して添付する。画像そのものは
+Emacs を経由しないので、ここで送るのはキーだけでよい。"
+  (interactive)
+  (if (wamei/term-input--clipboard-image-p)
+      (vterm-send-key "v" nil nil t)
+    (vterm-yank)))
+
+(defvar wamei/term-input-paste-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "s-v") #'wamei/term-input-paste)
+    map)
+  "`wamei/term-input-paste-mode' のキーマップ。")
+
+(define-minor-mode wamei/term-input-paste-mode
+  "Cmd+V でクリップボードの画像を端末のプログラムに渡す。"
+  :lighter nil
+  :keymap wamei/term-input-paste-mode-map)
 
 (provide 'term-input)
 ;;; term-input.el ends here

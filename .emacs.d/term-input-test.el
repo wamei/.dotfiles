@@ -225,5 +225,61 @@
     (wamei/term-input-mouse-mode -1)
     (should-not (eq (key-binding [wheel-down]) #'wamei/term-input-forward-wheel))))
 
+
+;;; クリップボードの画像判定
+
+(defmacro wamei/term-input-test--with-clipboard (targets &rest body)
+  "`gui-get-selection' が TARGETS を返すようにして BODY を実行する。
+TARGETS が `error' なら選択が取れない環境 (tty など) を模す。"
+  (declare (indent 1))
+  `(cl-letf (((symbol-function 'gui-get-selection)
+              (lambda (&optional _selection type)
+                (if (eq ,targets 'error)
+                    (error "No selection")
+                  (when (eq type 'TARGETS) ,targets)))))
+     ,@body))
+
+(ert-deftest wamei/term-input-clipboard-image-p-detects-image ()
+  "画像をコピーすると TARGETS に image/* が並ぶ。"
+  (wamei/term-input-test--with-clipboard [TARGETS image/png image/tiff]
+    (should (wamei/term-input--clipboard-image-p))))
+
+(ert-deftest wamei/term-input-clipboard-image-p-rejects-text ()
+  "テキストだけのときは nil。"
+  (wamei/term-input-test--with-clipboard [TARGETS STRING]
+    (should-not (wamei/term-input--clipboard-image-p))))
+
+(ert-deftest wamei/term-input-clipboard-image-p-handles-no-selection ()
+  "選択が空でも、取得できない環境でも落ちない。"
+  (wamei/term-input-test--with-clipboard nil
+    (should-not (wamei/term-input--clipboard-image-p)))
+  (wamei/term-input-test--with-clipboard 'error
+    (should-not (wamei/term-input--clipboard-image-p))))
+
+;;; 貼り付け
+
+(ert-deftest wamei/term-input-paste-sends-ctrl-v-for-image ()
+  "画像なら C-v を端末へ送る (Claude が自分でクリップボードを読む)。"
+  (wamei/term-input-test--with-vterm
+    (cl-letf (((symbol-function 'vterm-yank)
+               (lambda (&rest _) (push 'yank wamei/term-input-test--sent))))
+      (wamei/term-input-test--with-clipboard [TARGETS image/png]
+        (call-interactively #'wamei/term-input-paste))
+      (should (equal wamei/term-input-test--sent '(("v" nil nil t)))))))
+
+(ert-deftest wamei/term-input-paste-yanks-for-text ()
+  "画像でなければ従来どおり kill-ring から貼る。"
+  (wamei/term-input-test--with-vterm
+    (cl-letf (((symbol-function 'vterm-yank)
+               (lambda (&rest _) (push 'yank wamei/term-input-test--sent))))
+      (wamei/term-input-test--with-clipboard [TARGETS STRING]
+        (call-interactively #'wamei/term-input-paste))
+      (should (equal wamei/term-input-test--sent '(yank))))))
+
+(ert-deftest wamei/term-input-paste-mode-binds-super-v ()
+  "`wamei/term-input-paste-mode' が Cmd+V を横取りする。"
+  (should (eq (lookup-key wamei/term-input-paste-mode-map (kbd "s-v"))
+              #'wamei/term-input-paste)))
+
 (provide 'term-input-test)
 ;;; term-input-test.el ends here
