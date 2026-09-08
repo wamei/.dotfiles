@@ -353,6 +353,11 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
+  ;; libvterm が実装していない faint (SGR 2) を色に置き換える。実体は term-faint.el。
+  (load (expand-file-name "term-faint"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+
   (defconst wamei/term-glyph-substitutions
     '((?⏺ . ?●)    ; claude の応答・ツール呼び出しの行頭
       (?⏵ . ?▶)    ; claude の "⏵⏵ auto mode on"
@@ -411,6 +416,11 @@ face を付けないので元の文字の色はそのまま引き継がれる。
   ;; shell 起動時の stty が作成時の window サイズで pty を上書きするので、最初の
   ;; 出力で一度だけ表示中の window に合わせ直す (term-panel.el)
   (advice-add 'vterm--filter :after #'wamei/term--sync-size-on-first-output)
+  ;; libvterm は SGR 2 (faint) を実装しておらず、薄字の指定はセルへ届く前に落ちる。
+  ;; Claude Code は入力欄の推奨プロンプトを faint だけで描く (色は付けない) ため、
+  ;; そのままだと入力済みの文字と同じ色になる。libvterm へ渡る前に色へ置き換える
+  ;; (term-faint.el)。
+  (wamei/term-faint-enable)
 
   (add-hook 'vterm-mode-hook #'wamei/term--substitute-tall-glyphs)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
