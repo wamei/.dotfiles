@@ -51,7 +51,7 @@
 
 (defun wamei/term-restore--tail (text lines)
   "TEXT の末尾 LINES 行を返す。各行の行末の空白と、末尾の空行は落とす。
-vterm は画面の下端まで空行で埋めるので、そのままだと空行ばかりになる。
+端末は画面の下端まで空行で埋めるので、そのままだと空行ばかりになる。
 テキストプロパティ (色) は保つ。"
   (let ((kept (seq-drop-while
                #'string-empty-p
@@ -67,7 +67,7 @@ vterm は画面の下端まで空行で埋めるので、そのままだと空�
 
 (defun wamei/term-restore--rgb (color)
   "色名 COLOR を (R G B) (各 0-255) にする。解決できなければ nil。
-vterm は色を #rrggbb で付けるので自前で読む。`color-name-to-rgb' は
+端末は色を #rrggbb で付けるので自前で読む。`color-name-to-rgb' は
 batch (端末なし) で tty の近似色に丸めるので当てにしない。"
   (cond
    ((not (stringp color)) nil)
@@ -87,36 +87,33 @@ batch (端末なし) で tty の近似色に丸めるので当てにしない。
         (mapcar (lambda (v) (/ v 256)) values)))))
 
 (defun wamei/term-restore--sgr-params (face)
-  "vterm の `font-lock-face' plist FACE を SGR の引数 (文字列のリスト) にする。
-属性、前景色、背景色の順。vterm はデフォルト色のセルにも `default' face の
-前景・背景を明示的に付けるので、それと同じ色は出さない (復元先のテーマに任せる)。"
+  "ghostel の `face' plist FACE を SGR の引数 (文字列のリスト) にする。
+属性、前景色、背景色の順。ghostel は装飾のないセルには face を付けないので、
+ここに来る色は端末が明示したものだけ。"
   (let ((params nil))
     (when (eq (plist-get face :weight) 'bold) (push "1" params))
     (when (eq (plist-get face :slant) 'italic) (push "3" params))
     (when (plist-get face :underline) (push "4" params))
     (when (plist-get face :inverse-video) (push "7" params))
     (when (plist-get face :strike-through) (push "9" params))
-    (pcase-dolist (`(,key ,code ,default)
-                   `((:foreground "38" ,(face-foreground 'default nil t))
-                     (:background "48" ,(face-background 'default nil t))))
+    (pcase-dolist (`(,key ,code) '((:foreground "38") (:background "48")))
       (when-let* ((rgb (wamei/term-restore--rgb (plist-get face key))))
-        (unless (equal rgb (wamei/term-restore--rgb default))
-          (push (format "%s;2;%d;%d;%d" code (nth 0 rgb) (nth 1 rgb) (nth 2 rgb))
-                params))))
+        (push (format "%s;2;%d;%d;%d" code (nth 0 rgb) (nth 1 rgb) (nth 2 rgb))
+              params)))
     (nreverse params)))
 
 (defun wamei/term-restore--ansi (text)
-  "TEXT の `font-lock-face' (vterm が色ごとに付ける plist) を SGR エスケープにして
+  "TEXT の `face' (ghostel が色ごとに付ける plist) を SGR エスケープにして
 プロパティなしの文字列で返す。face が同じ区間ごとに開始のエスケープを置き、
 区間の終わりで \\e[0m に戻す。"
   (let ((pos 0)
         (parts nil))
     (while (< pos (length text))
-      (let* ((next (or (next-single-property-change pos 'font-lock-face text)
+      (let* ((next (or (next-single-property-change pos 'face text)
                        (length text)))
              (chunk (substring-no-properties text pos next))
              (params (wamei/term-restore--sgr-params
-                      (get-text-property pos 'font-lock-face text))))
+                      (get-text-property pos 'face text))))
         (push (if params
                   (concat "\e[" (string-join params ";") "m" chunk "\e[0m")
                 chunk)
@@ -142,19 +139,18 @@ batch (端末なし) で tty の近似色に丸めるので当てにしない。
 
 (defun wamei/term-restore--prompt-line-p ()
   "現在行がプロンプトの行なら非 nil。
-シェルがプロンプトの各行末で OSC 51;A を出すと、vterm はそれを受けた位置の
-1 文字 (行末なら改行、入力途中ならコマンドの先頭文字) に `vterm-prompt'
-プロパティを付ける (.zshrc の _wamei_vterm_prompt_mark)。行内 (末尾の改行を含む)
-にその印があればプロンプトの行とみなす。"
+ghostel は OSC 133 のシェル統合 (bash/zsh/fish に自動注入される) でプロンプトの
+範囲を受け取り、その文字に `ghostel-prompt' プロパティを付ける。行内 (末尾の
+改行を含む) にその印があればプロンプトの行とみなす。"
   (text-property-any (line-beginning-position)
                      (min (point-max) (1+ (line-end-position)))
-                     'vterm-prompt t))
+                     'ghostel-prompt t))
 
 (defun wamei/term-restore--content ()
   "現在のバッファの内容を、末尾のプロンプト行と空行を除いて返す。
 末尾から空行を飛ばし、プロンプトの行が続く限り遡って切る。最後の行が
 プロンプトでなければ (コマンド実行中) 何も落とさない。
-色 (font-lock-face) は残し、書き出すときに `wamei/term-restore--ansi' で SGR にする。"
+色 (face) は残し、書き出すときに `wamei/term-restore--ansi' で SGR にする。"
   (save-excursion
     (goto-char (point-max))
     (skip-chars-backward " \t\n")
