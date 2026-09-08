@@ -170,7 +170,7 @@ alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 #      (direnv / mise の実体は brew 配下にあり、activate より前に brew が要る)
 #   2. 各種ツールの bin を足す
 #   3. mise (node / bun / ruby / python) は他のどの dir より前に来る必要があるので最後に activate する
-# 親 shell (vterm / tmux) から mise 入りの PATH を継いでいても、1 がその前に system dir や
+# 親 shell (ghostel / tmux) から mise 入りの PATH を継いでいても、1 がその前に system dir や
 # brew を割り込ませるので、「既に PATH にあるか」で activate を省いてはいけない。
 # 毎回 activate して先頭に付け直し、重複は typeset -U で除く (先に現れた方が残る)。
 setopt no_global_rcs
@@ -227,7 +227,7 @@ source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 # bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 # 端末タイトルに直前に実行したコマンドを流す。
-# Emacs (vterm) の端末一覧がこのタイトルを拾って表示する。
+# Emacs (ghostel) の端末一覧がこのタイトルを拾って表示する。
 # 既存の precmd() を壊さないよう add-zsh-hook を使う。
 # precmd 側では戻さないので、コマンド終了後も最後のコマンド名が残る。
 autoload -Uz add-zsh-hook
