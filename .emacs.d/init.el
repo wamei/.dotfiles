@@ -681,6 +681,22 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
   :custom ((magit-display-buffer-function . #'magit-display-buffer-fullframe-status-v1)
            (magit-bury-buffer-function . #'magit-restore-window-configuration)))
 
+(leaf docker
+  :doc "コンテナ / イメージ / compose の操作 (transient)"
+  :ensure t
+  ;; 既定の C-x C-d (list-directory) を置き換える。dired があるので使っていない。
+  :bind ("C-c d" . docker)
+  :custom
+  ;; docker inspect の JSON を出すモード。既定は json-mode が無ければ js-mode
+  ;; だが json-mode は入れておらず、JSON は treesit で見ている。
+  ((docker-inspect-view-mode . 'json-ts-mode)
+   ;; 対話が要るコマンド (exec / attach / image run) を出す端末。既定の auto は
+   ;; eat > ghostel > vterm > shell の順に見つけたものを使うので、後で eat を
+   ;; 入れたときに黙って切り替わる。vterm に固定する。
+   ;; ここで開く端末のバッファ名は "* docker ... *" で、端末パネルの
+   ;; display-buffer-alist ("\\`\\*term: ") には当たらないのでパネルとは独立に出る。
+   (docker-terminal-backend . 'vterm)))
+
 (leaf claude-cli
   :doc "claude -p でコミットメッセージ生成と単発 prompt"
   :ensure nil
@@ -2203,7 +2219,7 @@ tty の枠 (undecorated nil) はフレームの外側 1 文字に描かれるの
 
 どちらも point 位置に child frame を出すため重なって読めなくなる。
 eldoc-box--inhibit-childframe は 0.5 秒のアイドルタイマーで勝手に解除される
-ため使わず、表示経路そのものを塞ぐ。C-c d (eldoc-box-help-at-point) は
+ため使わず、表示経路そのものを塞ぐ。C-c h (eldoc-box-help-at-point) は
 この関数を通らないので手動表示は従来どおり効く。
 claude-complete と copilot のゴーストテキストも point の直後に描かれるため、同じ理由で塞ぐ。"
     (unless (or (bound-and-true-p completion-in-region-mode)
@@ -2223,7 +2239,7 @@ claude-complete と copilot のゴーストテキストも point の直後に描
   :hook ((eglot-managed-mode-hook . eldoc-box-hover-at-point-mode)
          (eglot-managed-mode-hook . wamei/eldoc-mouse-mode))
   ;; C-h は keyboard-translate で DEL に潰しているため C-h . は使えない
-  :bind ("C-c d" . eldoc-box-help-at-point)
+  :bind ("C-c h" . eldoc-box-help-at-point)
   :config
   (add-to-list 'eldoc-box-frame-parameters '(alpha . 90))
   ;; defvar なので :custom ではなく setq。C-c d と hover-at-point-mode の両方が読む。
