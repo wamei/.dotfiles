@@ -119,9 +119,11 @@ TOOL は `biome' か `prettier'。見つからなければ nil。TRAMP のパス
 
 (defun wamei/project-formatter-probe-snippet (mode)
   "MODE の言語で、フォーマットするとインデント 1 段が現れる最小の断片を返す。
-JSON は改行を入れておかないと 1 行に畳まれてインデントが観測できない。"
+JSON は改行を入れておかないと 1 行に畳まれてインデントが観測できない。
+YAML はインデントで構造を表すので、字下げの浅いネストを渡して整形後の幅を見る。"
   (cond
    ((provided-mode-derived-p mode 'json-ts-mode) "{\n\"a\":1}")
+   ((provided-mode-derived-p mode 'yaml-ts-mode) "a:\n b: c")
    ((provided-mode-derived-p mode 'css-base-mode) "a{color:red}")
    (t "if(a){b()}")))
 

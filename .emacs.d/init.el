@@ -1777,6 +1777,10 @@ sqls は workspace/didChangeConfiguration で接続一覧を作り直すので�
   :require t
   :custom (treesit-font-lock-level . 4)
   :config
+  ;; dockerfile-ts-mode / yaml-ts-mode は自分が動作確認した commit の recipe を
+  ;; treesit-language-source-alist に append するが、それはモードを読み込んだ後の話で、
+  ;; 起動直後の wamei/treesit-install-missing-grammars からは見えない。ここに書いておけば
+  ;; grammar 導入だけ先にできる (assoc は先頭が勝つのでこちらの指定が使われる)。
   (setq treesit-language-source-alist
         '((typescript . ("https://github.com/tree-sitter/tree-sitter-typescript" nil "typescript/src"))
           (tsx        . ("https://github.com/tree-sitter/tree-sitter-typescript" nil "tsx/src"))
@@ -1784,7 +1788,9 @@ sqls は workspace/didChangeConfiguration で接続一覧を作り直すので�
           (css        . ("https://github.com/tree-sitter/tree-sitter-css"))
           (html       . ("https://github.com/tree-sitter/tree-sitter-html"))
           (json       . ("https://github.com/tree-sitter/tree-sitter-json"))
-          (prisma     . ("https://github.com/victorhqc/tree-sitter-prisma"))))
+          (prisma     . ("https://github.com/victorhqc/tree-sitter-prisma"))
+          (dockerfile . ("https://github.com/camdencheek/tree-sitter-dockerfile"))
+          (yaml       . ("https://github.com/tree-sitter-grammars/tree-sitter-yaml"))))
 
   (defun wamei/treesit-install-missing-grammars ()
     "未導入の tree-sitter grammar をまとめて導入する。"
@@ -1840,6 +1846,28 @@ sqls は workspace/didChangeConfiguration で接続一覧を作り直すので�
 ;; .mjs / .cjs は fundamental-mode になる。javascript-mode に登録しておけば上の
 ;; major-mode-remap-alist 経由で js-ts-mode に寄る。
 (add-to-list 'auto-mode-alist '("\\.[cm]js\\'" . javascript-mode))
+
+(leaf yaml-ts-mode
+  :doc "YAML と docker-compose"
+  :ensure nil
+  ;; .yml / .yaml → yaml-ts-mode の紐付けは Emacs 同梱の autoload (yaml-ts-mode-maybe) が
+  ;; 持っているので :mode は不要。grammar は treesit ブロックで導入する。
+  ;; docker-compose は yaml-ts-mode の派生モードにする。編集機能は同じだが、
+  ;; モードラインで compose のバッファだと分かり、compose 固有の設定を足す場所ができる。
+  ;; 言語サーバに送る languageId は eglot 側のエントリで "yaml" に固定する
+  ;; (派生モードのままだと eglot がモード名から作ってしまう。eglot ブロック参照)。
+  ;; compose の schema は SchemaStore のカタログがファイル名で当てるので設定は要らない。
+  :when (and (fboundp 'treesit-ready-p) (treesit-ready-p 'yaml t))
+  :init
+  (define-derived-mode wamei/docker-compose-ts-mode yaml-ts-mode "Compose"
+    "docker-compose ファイルのメジャーモード。
+`yaml-ts-mode' と同じ編集機能で、言語サーバには yaml として伝える。")
+  ;; docker compose が既定で読むファイル名 (compose.yaml / docker-compose.yml と、
+  ;; docker-compose.override.yml のような中置き付き)。同梱の "\\.ya?ml\\'" より
+  ;; 前に積まれるので、compose だけこちらに振り分かる。
+  (add-to-list 'auto-mode-alist
+               '("/\\(?:docker-\\)?compose\\(?:\\.[^/]*\\)?\\.ya?ml\\'"
+                 . wamei/docker-compose-ts-mode)))
 
 (leaf eglot
   :doc "LSP クライアント (Emacs 組み込み)"
@@ -1963,7 +1991,10 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
            css-mode-hook
            html-ts-mode-hook
            mhtml-mode-hook
-           prisma-ts-mode-hook) . eglot-ensure)
+           prisma-ts-mode-hook
+           dockerfile-ts-mode-hook
+           ;; 派生の wamei/docker-compose-ts-mode でもこのフックは走る
+           yaml-ts-mode-hook) . eglot-ensure)
          (sql-mode-hook . wamei/sql-eglot-ensure))
   :config
   ;; コードアクションヒント: quickfix に絞り、echo area にだけ出す (:preface の各関数参照)。
@@ -2011,6 +2042,16 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
   (add-to-list 'eglot-server-programs
                '(((wamei/jsonc-ts-mode :language-id "jsonc") js-json-mode json-ts-mode)
                  . (wamei/eglot-json-server "vscode-json-language-server" "--stdio")))
+  ;; docker-compose (wamei/docker-compose-ts-mode、yaml-ts-mode ブロック) は yaml-ts-mode の
+  ;; 派生なので組み込みの yaml エントリでもサーバは起動するが、そのままだと eglot が
+  ;; モード名から languageId を作り "wamei/docker-compose" を送る。yaml-language-server は
+  ;; schema をファイルの URI で当てるので実害は出なかったが (手元で確認)、正しい languageId
+  ;; を送るために派生モードを先頭に置いたエントリを前に積む。
+  ;; compose の schema は yaml-language-server が既定で参照する SchemaStore のカタログが
+  ;; compose*.y*ml / docker-compose*.y*ml に compose-spec を当てるので、yaml.schemas は不要。
+  (add-to-list 'eglot-server-programs
+               '(((wamei/docker-compose-ts-mode :language-id "yaml") yaml-ts-mode)
+                 . ("yaml-language-server" "--stdio")))
   ;; vscode-json-language-server の code action "Sort JSON" は command "json.sort" を
   ;; 返すが、server は workspace/executeCommand を実装していない (VS Code の拡張が
   ;; クライアント側で独自リクエスト json/sort を送り、返ってきた TextEdit を当てる)。
@@ -2073,7 +2114,10 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
           js-mode-hook
           json-ts-mode-hook
           css-ts-mode-hook
-          css-mode-hook) . wamei/project-formatter-maybe-enable)
+          css-mode-hook
+          ;; yaml は prettier だけが対象。biome は .yml / .yaml を扱えず標準出力が空になり、
+          ;; apheleia は空の出力ではバッファを触らないので biome のプロジェクトでは何もしない。
+          yaml-ts-mode-hook) . wamei/project-formatter-maybe-enable)
         ;; 編集時のインデントをフォーマッタの実測値に合わせる。editorconfig が変数を
         ;; 適用する直前に props を書き換えるので .editorconfig よりフォーマッタが優先。
         (editorconfig-hack-properties-functions

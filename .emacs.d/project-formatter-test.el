@@ -174,7 +174,8 @@ BODY 中は `root' にプロジェクトルート、`src' に src/ が束縛さ�
   (should (equal (wamei/project-formatter-probe-snippet 'css-ts-mode) "a{color:red}"))
   (should (equal (wamei/project-formatter-probe-snippet 'css-mode) "a{color:red}"))
   (should (equal (wamei/project-formatter-probe-snippet 'typescript-ts-mode) "if(a){b()}"))
-  (should (equal (wamei/project-formatter-probe-snippet 'js-ts-mode) "if(a){b()}")))
+  (should (equal (wamei/project-formatter-probe-snippet 'js-ts-mode) "if(a){b()}"))
+  (should (equal (wamei/project-formatter-probe-snippet 'yaml-ts-mode) "a:\n b: c")))
 
 (ert-deftest wamei/project-formatter-parse-indentation-tab ()
   "2 行目がタブで始まればタブインデント。"

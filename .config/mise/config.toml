@@ -23,6 +23,10 @@ go = "1"
 "npm:typescript" = "latest"
 "npm:vscode-langservers-extracted" = "latest"
 "npm:@prisma/language-server" = "latest"
+# Emacs の eglot が起動する言語サーバ。dockerfile-language-server-nodejs の bin は
+# docker-langserver で、どちらも eglot 組み込みのエントリがそのまま使う名前。
+"npm:dockerfile-language-server-nodejs" = "latest"
+"npm:yaml-language-server" = "latest"
 "npm:@redocly/cli" = "latest"
 "npm:macos-audio-devices" = "latest"
 "npm:@google/clasp" = "latest"
