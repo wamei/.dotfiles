@@ -1,0 +1,38 @@
+# yamllint のグローバル設定。Emacs の yaml-ts-mode 同梱の flymake backend と
+# コマンドラインの両方がこれを読む (yamllint は -c > $YAMLLINT_CONFIG_FILE >
+# カレントから上へ辿って見つけた .yamllint > このファイル、の順で探す)。
+# プロジェクト固有のルールは repo のルートに .yamllint を置けばこれを上書きできる。
+#
+# 方針: YAML の整形は prettier に任せている (init.el の project-formatter)。
+# prettier が保存時に直せる整形ルールは残しておけば消えるので既定のままにし、
+# prettier と衝突するもの・prettier では直しようがなく毎回出るだけのものを外す。
+# 手元の YAML 200 ファイル (lock とビルド生成物を除く) を prettier で整形した状態で
+# 既定だと 1216 件、この設定で 49 件。残りは実際に直す価値のあるものだけになる。
+extends: default
+
+rules:
+  # 既定の 80 は YAML には短すぎる。実測の中央値が 101、90 パーセンタイルが 138 で、
+  # 長い行の中身は URL・日本語の description・埋め込みシェルコマンドが大半。
+  # どれも prettier は折らない (折ると意味が変わる) ので、警告だけが残り続ける。
+  line-length: disable
+
+  # 先頭の "---" を要求する。compose も GitHub Actions も慣習として書かないので
+  # ほぼ全ファイルに 1 件ずつ付くだけになる。
+  document-start: disable
+
+  # 既定は {a: 1} を要求するが、prettier は flow map を { "a": 1 } と書く。
+  # フォーマッタと linter が真逆を主張して直しようがなくなるので prettier に合わせる。
+  # 1 に留めるのは {  a: 1  } のような過剰な空きは拾いたいため。
+  braces:
+    max-spaces-inside: 1
+
+  # インラインコメントの前を 2 スペース空けろというルール。1 スペースで書いており
+  # prettier も詰めないので、これだけで実測 160 件出ていた。
+  # 開始スペース (#comment ではなく # comment) の要求は既定のまま残す。
+  comments:
+    min-spaces-from-content: 1
+
+  # YAML 1.1 で真偽値に化けうる値の警告。キーまで見るため GitHub Actions の
+  # `on:` が毎回引っかかる。値側 (yes / no などの書き間違い) の検査は残す。
+  truthy:
+    check-keys: false
