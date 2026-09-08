@@ -444,6 +444,11 @@ face を付けないので元の文字の色はそのまま引き継がれる。
   (load (expand-file-name "claude-usage"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  ;; 動いているセッションを 1 タブに並べて見る (claude-grid.el)。
+  ;; claude-panel を require するので読み込みはこの後。
+  (load (expand-file-name "claude-grid"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
 
   (defun wamei/claude-code-ide--no-other-window (window)
     "claude のウィンドウを C-x o (other-window) の巡回対象から外す。
@@ -522,7 +527,8 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
          ("C-x C-a" . wamei/claude-toggle)
          ("C-q a c" . claude-code-ide)
          ("C-q a n" . wamei/claude-panel-next)
-         ("C-q a p" . wamei/claude-panel-previous))
+         ("C-q a p" . wamei/claude-panel-previous)
+         ("C-q a g" . wamei/claude-grid-tab))
   :custom
   ;; 端末バックエンドは導入済みの vterm を使う (既定値だが意図として明示)
   (claude-code-ide-terminal-backend . 'vterm)
