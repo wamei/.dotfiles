@@ -347,6 +347,15 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
             ;; 約 10KB = 十数行しか残らない。
             (ghostel-max-scrollback . ,(* 10 1024 1024))
             (ghostel-module-directory . ,(locate-user-emacs-file "ghostel/"))
+            ;; ghostel はセルに収まらないフォールバックフォントのグリフを縮めて
+            ;; 格子を守る (既定 0.0 = どこまでも縮める)。縮小率は元の文字の
+            ;; フォント (⏺ ⏵ ⧉ なら STIX Two Math) から計算され、display table で
+            ;; Menlo の ● ▶ ❐ に置き換えた後のグリフにもそのまま掛かるので、
+            ;; 収まるはずの記号が半分の大きさで 2 セル枠の左下に描かれる。
+            ;; 縮小を切り、背の高い記号は従来どおり display table
+            ;; (wamei/term-glyph-substitutions) で同形の記号に置き換えて行高を守る。
+            ;; 置換に無い背の高い記号が出た行だけ数 px 伸びる (vterm 時代と同じ)。
+            (ghostel-glyph-scale-floor . 1.0)
             ;; タイトルが変わったら端末一覧を描き直す (term-panel.el)。
             ;; この変数の既定は nil (= 改名機構そのものが off) なので、これは
             ;; 「改名を抑止する」設定ではなく「一覧の再描画という副作用のために
@@ -379,7 +388,10 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   (defun wamei/term--substitute-tall-glyphs ()
     "`wamei/term-glyph-substitutions' を現在のバッファの display table に登録する。
 ghostel-mode は `buffer-display-table' を使わないので、無ければ自分で作る。
-face を付けないので元の文字の色はそのまま引き継がれる。"
+face を付けないので元の文字の色はそのまま引き継がれる。
+ghostel 自身のグリフ縮小 (ghostel-glyph-scale-floor) は元の文字の寸法で
+決まり、置換後のグリフにも掛かる。縮小は :custom で切ってあるので、この
+置換だけが行高を守る手段になる。"
     (when (display-graphic-p)
       (let ((table (or buffer-display-table (make-display-table))))
         (pcase-dolist (`(,from . ,to) wamei/term-glyph-substitutions)
