@@ -26,6 +26,12 @@ go = "1"
 "npm:@redocly/cli" = "latest"
 "npm:macos-audio-devices" = "latest"
 "npm:@google/clasp" = "latest"
+# 静的ファイルのライブリロードサーバ (VSCode の live-server 拡張と同じ用途)。本家
+# live-server は 2022 年から止まっているので後継の five-server を使う。bin に
+# five-server と live-server の両方が入るので `live-server <dir>` で引ける。
+# package.json の engines は ^18.19.0 だが node 26 で起動・リロードとも確認済み。
+# 依存の html-validate が bin を持つため PATH に漏れるが、既存コマンドと衝突しない。
+"npm:five-server" = "latest"
 
 # 他人の repo が pnpm / yarn 前提のときに使う。pnpm は aqua backend のネイティブ
 # バイナリで node を要らないのでそちらから入れる。yarn は既定 (vfox) と aqua が
