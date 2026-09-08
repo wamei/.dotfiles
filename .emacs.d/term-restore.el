@@ -21,7 +21,9 @@
 ;; desktop 復元の間だけで、復元の仕上げ (`wamei/term-restore-ensure') が記録を
 ;; 空にして `wamei/term-restore--restoring' を下ろす。以降は同じ名前で開き直した
 ;; 端末に古い出力が出ることはない (記録は autosave が作り直すので、記録を
-;; 空にするだけでは足りない)。
+;; 空にするだけでは足りない)。`desktop-read' が desktop ファイルを読めなかった
+;; セッション (ファイルが無い / 他のインスタンスがロックを持っている) では
+;; `desktop-after-read-hook' が走らないので、その 2 つのフックからも窓を閉じる。
 ;;
 ;; `desktop-restore-eager' (init.el では 10) を超えた端末は desktop が idle 復元に
 ;; 回すため、side window の復元 (desktop-side-windows) に間に合わないことがある。
@@ -63,9 +65,13 @@ kill した端末の出力が同じ名前で開き直した新しいシェルに
 記録ごとの印 (:injected) だけでは窓の外側を押さえられない。
 
 初期値が t なのは、`ghostel-desktop' が `desktop-read' の中で端末を復元する
-時点ではまだどのフックも走っていないため。desktop ファイルが無くて
-`desktop-after-read-hook' が走らない場合は t のままになるが、そのときは
-`wamei/term-restore-saved' が空なので注入は起きない。")
+時点ではまだどのフックも走っていないため。窓を閉じるのは
+`wamei/term-restore--finish-restoring' で、`desktop-read' がファイルを読めた
+ときの `desktop-after-read-hook' (`wamei/term-restore-ensure' 経由) だけでなく、
+読めなかった 2 つの分岐 (`desktop-no-desktop-file-hook' /
+`desktop-not-loaded-hook') からも呼ぶ。どちらの分岐でも
+`desktop-save-mode' の autosave は動き続けて記録を埋めるので、「記録が空だから
+注入は起きない」では済まない。")
 
 ;;; バッファ名
 
@@ -318,6 +324,19 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
       (cancel-timer desktop-lazy-timer)
       (setq desktop-lazy-timer nil))))
 
+(defun wamei/term-restore--finish-restoring ()
+  "スクロールバック注入の窓を閉じる (`wamei/term-restore--restoring' を下ろす)。
+`desktop-read' がファイルを読めなかった 2 つの分岐
+\(`desktop-no-desktop-file-hook' / `desktop-not-loaded-hook') からも
+`wamei/term-restore-ensure' の後始末からも呼ぶ。
+
+注入は「復元された端末に前回の出力を再生する」ためだけの仕組みなので、
+desktop を読まなかったセッションでは最初から注入する理由が無い。読めなかったと
+分かった時点で窓を閉じておかないと、`desktop-save-mode' の autosave が記録を
+埋めた後に端末を kill して同名で開き直したとき、死んだ端末の出力が新しい
+シェルに再生されてしまう。"
+  (setq wamei/term-restore--restoring nil))
+
 (defun wamei/term-restore-ensure ()
   "desktop の復元の仕上げ。取りこぼした端末を作り、タイトルを戻し、記録を空にする。
 `desktop-after-read-hook' から (深さ -10 で) 呼ぶ。side window の開き直し
@@ -347,8 +366,8 @@ desktop 復元中の C-g (quit) でも記録とフラグが残らないように
                       (setq-local ghostel-title title)))))
             (error (message "term-restore: %s を復元できません: %s"
                             name (error-message-string err))))))
-    (setq wamei/term-restore-saved nil
-          wamei/term-restore--restoring nil)))
+    (setq wamei/term-restore-saved nil)
+    (wamei/term-restore--finish-restoring)))
 
 ;;; desktop への組み込み
 
@@ -363,7 +382,14 @@ desktop 復元中の C-g (quit) でも記録とフラグが残らないように
   (add-hook 'ghostel-pre-spawn-hook #'wamei/term-restore--inject-scrollback)
   ;; desktop-side-windows の開き直しより先に、取りこぼした端末を用意して
   ;; タイトルを戻し、記録を空にする
-  (add-hook 'desktop-after-read-hook #'wamei/term-restore-ensure -10))
+  (add-hook 'desktop-after-read-hook #'wamei/term-restore-ensure -10)
+  ;; desktop-after-read-hook は `desktop-read' がファイルを読めたときしか
+  ;; 走らない。読めなかった 2 つの分岐 (ファイルが無い / 他のインスタンスが
+  ;; ロックを持っている) でも注入の窓を閉じる。ここを繋がないとフラグが
+  ;; セッション中ずっと t のまま残り、autosave が記録を埋めた後に端末を
+  ;; kill して開き直すと死んだ端末の出力が再生される。
+  (add-hook 'desktop-no-desktop-file-hook #'wamei/term-restore--finish-restoring)
+  (add-hook 'desktop-not-loaded-hook #'wamei/term-restore--finish-restoring))
 
 (provide 'term-restore)
 ;;; term-restore.el ends here

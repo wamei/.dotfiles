@@ -379,9 +379,10 @@ spawn で走る。desktop の autosave が記録を埋め直すため、端末�
 
 (ert-deftest wamei/term-restore-restoring-flag-starts-enabled ()
   "フラグの初期値は t (起動直後は desktop 復元の窓の中)。
-desktop ファイルが無くて `desktop-after-read-hook' が走らない場合も t のままだが、
-そのときは `wamei/term-restore-saved' が空なので注入は起きない。
-セッションスコープなので `desktop-globals-to-save' には入れない。"
+セッションスコープなので `desktop-globals-to-save' には入れない
+\(復元中かどうかを永続化すると再起動なしで注入が復活してしまう)。
+`desktop-read' がファイルを読めなかったときは `desktop-after-read-hook' が
+走らないが、その 2 つの分岐でも窓を閉じる (下の -closes-window-when-* を参照)。"
   (should (default-value 'wamei/term-restore--restoring))
   (let ((desktop-globals-to-save nil)
         (desktop-save-hook nil)
@@ -584,19 +585,86 @@ ghostel-desktop は `desktop-read' の中で端末を復元するので、pre-sp
           (when (memq timer timer-idle-list) (cancel-timer timer))
           (kill-buffer "*term: foo*"))))))
 
+;;; desktop を読めなかった分岐
+
+(ert-deftest wamei/term-restore-closes-window-when-no-desktop-file ()
+  "desktop ファイルが無い分岐 (`desktop-no-desktop-file-hook') でも窓を閉じる。
+`desktop-after-read-hook' は `desktop-read' がファイルを読めたときしか走らない。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((desktop-no-desktop-file-hook nil)
+          (desktop-globals-to-save nil)
+          (desktop-save-hook nil)
+          (desktop-after-read-hook nil)
+          (desktop-not-loaded-hook nil)
+          (ghostel-pre-spawn-hook nil))
+      (wamei/term-restore-setup)
+      (run-hooks 'desktop-no-desktop-file-hook)
+      (should-not wamei/term-restore--restoring))))
+
+(ert-deftest wamei/term-restore-closes-window-when-desktop-locked ()
+  "他のインスタンスがロックを持っている分岐 (`desktop-not-loaded-hook') でも窓を閉じる。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((desktop-not-loaded-hook nil)
+          (desktop-globals-to-save nil)
+          (desktop-save-hook nil)
+          (desktop-after-read-hook nil)
+          (desktop-no-desktop-file-hook nil)
+          (ghostel-pre-spawn-hook nil))
+      (wamei/term-restore-setup)
+      (run-hooks 'desktop-not-loaded-hook)
+      (should-not wamei/term-restore--restoring))))
+
+(ert-deftest wamei/term-restore-no-inject-after-desktop-read-failed ()
+  "desktop を読めなかったセッションでは、autosave が記録を作っても注入しない。
+
+`desktop-save-mode' と `wamei/term-restore-setup' は無条件に有効なので、
+desktop を読めなくても 30 秒アイドルの autosave が記録を埋める。窓を閉じて
+おかないと、端末を kill して同名で開き直したときに死んだ端末の出力が
+再生されてしまう (記録が空だから安全、という話ではない)。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory))
+          (desktop-no-desktop-file-hook nil)
+          (desktop-globals-to-save nil)
+          (desktop-save-hook nil)
+          (desktop-after-read-hook nil)
+          (desktop-not-loaded-hook nil)
+          (ghostel-pre-spawn-hook nil))
+      (write-region "old output\n" nil file nil 'silent)
+      (wamei/term-restore-setup)
+      (run-hooks 'desktop-no-desktop-file-hook)
+      (unwind-protect
+          (progn
+            ;; autosave が記録を作ったところを模す
+            (setq wamei/term-restore-saved
+                  (list (list :name "*term: foo*" :directory "/tmp/"
+                              :title nil :scrollback file)))
+            (with-current-buffer (get-buffer-create "*term: foo*")
+              (let ((process-environment (copy-sequence process-environment)))
+                (wamei/term-restore--inject-scrollback)
+                (should-not (getenv "WAMEI_TERM_RESTORE")))))
+        (kill-buffer "*term: foo*")))))
+
 ;;; desktop への組み込み
 
 (ert-deftest wamei/term-restore-setup-hooks-into-desktop ()
-  "desktop の保存・読み込みと ghostel-pre-spawn-hook に組み込み、記録の変数を保存対象にする。"
+  "desktop の保存・読み込みと ghostel-pre-spawn-hook に組み込み、記録の変数を保存対象にする。
+`desktop-read' が desktop ファイルを読めなかった 2 つの分岐
+\(`desktop-no-desktop-file-hook' / `desktop-not-loaded-hook') にも結線する。
+ここに結線しないと `wamei/term-restore-ensure' が一度も呼ばれず、注入の窓が
+セッション中ずっと開いたままになる。"
   (let ((desktop-globals-to-save nil)
         (desktop-save-hook nil)
         (desktop-after-read-hook nil)
+        (desktop-no-desktop-file-hook nil)
+        (desktop-not-loaded-hook nil)
         (ghostel-pre-spawn-hook nil))
     (wamei/term-restore-setup)
     (should (memq 'wamei/term-restore-saved desktop-globals-to-save))
     (should (memq #'wamei/term-restore-save desktop-save-hook))
     (should (memq #'wamei/term-restore--inject-scrollback ghostel-pre-spawn-hook))
-    (should (memq #'wamei/term-restore-ensure desktop-after-read-hook))))
+    (should (memq #'wamei/term-restore-ensure desktop-after-read-hook))
+    (should (memq #'wamei/term-restore--finish-restoring desktop-no-desktop-file-hook))
+    (should (memq #'wamei/term-restore--finish-restoring desktop-not-loaded-hook))))
 
 (provide 'term-restore-test)
 ;;; term-restore-test.el ends here
