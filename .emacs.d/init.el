@@ -497,7 +497,9 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
          ("C-q a p" . wamei/claude-panel-previous)
          ("C-q a g" . wamei/claude-grid-tab))
   :custom
-  ;; 端末バックエンドは導入済みの ghostel を使う (既定値だが意図として明示)
+  ;; 端末バックエンドは既定の vterm から ghostel へ明示的に上書きする。
+  ;; claude-code-ide-terminal-backend の docstring が ghostel を推奨バックエンドと
+  ;; して挙げており、TUI の描画アーティファクトが最も少ないため。
   (claude-code-ide-terminal-backend . 'ghostel)
   ;; sidebar が左、端末パネルが下なので右に出す
   (claude-code-ide-window-side . 'right)
