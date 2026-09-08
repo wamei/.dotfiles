@@ -670,8 +670,73 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
 (leaf docker
   :doc "コンテナ / イメージ / compose の操作 (transient)"
   :ensure t
-  ;; 既定の C-x C-d (list-directory) を置き換える。dired があるので使っていない。
+  ;; eldoc-box を C-c h へ移して空けた C-c d に割り当てる。
   :bind ("C-c d" . docker)
+  :preface
+  (defvar wamei/docker-current-projects nil
+    "現在の project に属する compose プロジェクト名のリスト。
+コンテナ一覧を開くたびに `wamei/docker--record-current-projects' が更新する。")
+
+  (defun wamei/docker--projects-under (root)
+    "ROOT 配下を working_dir に持つ compose プロジェクト名を返す。
+
+compose のプロジェクト名はディレクトリ名からは導けない。compose.yaml の name:
+や COMPOSE_PROJECT_NAME で決まり、compose ファイルがサブディレクトリにあることも
+ある (例: /path/to/BeecoV2/docker で立てたプロジェクト名が beeco-v2)。
+コンテナに付く com.docker.compose.project.working_dir ラベルが ROOT 配下かどうかで
+判定する。
+
+docker.el 本体の docker-run-async と違い `process-lines' はシェルを通さないので、
+Go テンプレート内の \" をエスケープしなくてよい。docker-command を
+bound-and-true-p で読むのは、M-x docker-containers を直接呼ぶと下の advice が
+autoload より先に走り、docker-core がまだロードされていないことがあるため。"
+    (when root
+      (let ((prefix (expand-file-name (file-name-as-directory root))))
+        (delete-dups
+         (delq nil
+               (mapcar
+                (lambda (line)
+                  (let* ((parts (split-string line "\t"))
+                         (name (car parts))
+                         (dir (cadr parts)))
+                    (and name dir
+                         (not (string-empty-p name))
+                         (not (string-empty-p dir))
+                         (string-prefix-p prefix (file-name-as-directory dir))
+                         name)))
+                (ignore-errors
+                  (process-lines (or (bound-and-true-p docker-command) "docker")
+                                 "ps" "--format"
+                                 (concat "{{ .Label \"com.docker.compose.project\" }}\t"
+                                         "{{ .Label \"com.docker.compose.project.working_dir\" }}")))))))))
+
+  (defun wamei/docker--record-current-projects (&rest _)
+    "現在のバッファの project から `wamei/docker-current-projects' を更新する。
+一覧のバッファ (*docker-containers*) は一度作られると作り直されず
+default-directory が古いままなので、一覧を開く側で拾っておく。"
+    (setq wamei/docker-current-projects
+          (when-let* ((project (project-current nil default-directory)))
+            (wamei/docker--projects-under (project-root project)))))
+
+  (defun wamei/docker--project-first-< (a b)
+    "compose プロジェクト名 A を B より前に出すなら非 nil。
+現在の project のものを先頭に、compose 以外 (空文字) を末尾に置く。
+`docker-container-columns' の :sort は行ではなく列の値だけを受け取る
+(docker-utils-columns-list-format が -on で包む)。"
+    (let ((a-current (and (member a wamei/docker-current-projects) t))
+          (b-current (and (member b wamei/docker-current-projects) t)))
+      (cond ((not (eq a-current b-current)) a-current)
+            ((string-empty-p a) nil)
+            ((string-empty-p b) t)
+            (t (string< a b)))))
+  :init
+  ;; 一覧を開く時点のバッファで project を拾う。C-x C-d 経由は docker-open-hook、
+  ;; M-x docker-containers 直叩きは advice が拾う。
+  ;; :config (with-eval-after-load 'docker) に置くと、docker-containers の autoload が
+  ;; 読むのは docker-container.el だけで feature docker が provide されないため、
+  ;; その経路では結線されない。
+  (add-hook 'docker-open-hook #'wamei/docker--record-current-projects)
+  (advice-add 'docker-containers :before #'wamei/docker--record-current-projects)
   :custom
   ;; docker inspect の JSON を出すモード。既定は json-mode が無ければ js-mode
   ;; だが json-mode は入れておらず、JSON は treesit で見ている。
@@ -681,7 +746,25 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
    ;; 入れたときに黙って切り替わる。vterm に固定する。
    ;; ここで開く端末のバッファ名は "* docker ... *" で、端末パネルの
    ;; display-buffer-alist ("\\`\\*term: ") には当たらないのでパネルとは独立に出る。
-   (docker-terminal-backend . 'vterm)))
+   (docker-terminal-backend . 'vterm)
+   ;; 既定から Id と Command を落とし、compose のプロジェクト名とサービス名を出す。
+   ;; 操作対象の識別子は docker-container-id-template (.Names) が別に持つので Id 列は
+   ;; 無くてよい。Status 列は docker-container-propertize-entry が名前で探すので消せない。
+   ;; テンプレート内の \" は、docker-run-async が start-file-process-shell-command で
+   ;; --format="..." を渡すため、シェルの二重引用符を閉じないようにエスケープしている。
+   ;; :sort に #'foo と書くと '(...) の中では (function foo) というリストのまま残り、
+   ;; docker.el 側の -on が funcall して落ちるので裸のシンボルを渡す。
+   (docker-container-columns
+    . '((:name "Project" :width 16 :template "{{ json (.Label \\\"com.docker.compose.project\\\") }}"
+                :sort wamei/docker--project-first-< :format nil)
+        (:name "Service" :width 22 :template "{{ json (.Label \\\"com.docker.compose.service\\\") }}"
+                :sort nil :format nil)
+        (:name "Names"   :width 33 :template "{{ json .Names }}"  :sort nil :format nil)
+        (:name "Status"  :width 27 :template "{{ json .Status }}" :sort nil :format nil)
+        (:name "Image"   :width 30 :template "{{ json .Image }}"  :sort nil :format nil)
+        (:name "Ports"   :width 24 :template "{{ json .Ports }}"  :sort nil :format nil)))
+   ;; 現在の project → 他の compose プロジェクト (名前順) → compose 以外 の順に並ぶ。
+   (docker-container-default-sort-key . '("Project" . nil))))
 
 (leaf claude-cli
   :doc "claude -p でコミットメッセージ生成と単発 prompt"
