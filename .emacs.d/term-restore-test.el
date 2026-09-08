@@ -110,12 +110,18 @@
 
 (ert-deftest wamei/term-restore-ansi-emits-colors-equal-to-default ()
   "ghostel は装飾のないセルに face を付けないので、テーマの既定色と同じ色でも
-抑止しない (face が付いている = 端末が明示した色)。"
-  (should (equal (wamei/term-restore--ansi
-                  (concat "plain"
-                          (wamei/term-restore-test--colored
-                           "red" :foreground "#ff0000")))
-                 "plain\e[38;2;255;0;0mred\e[0m")))
+抑止しない (face が付いている = 端末が明示した色)。`face-foreground'/
+`face-background' の `default' をこの fixture と同じ色にしても出力が変わら
+ないことを見て、既定色を読んで比較する抑止処理に戻っていないかを確認する。"
+  (cl-letf (((symbol-function 'face-foreground)
+             (lambda (face &rest _) (when (eq face 'default) "#ff0000")))
+            ((symbol-function 'face-background)
+             (lambda (face &rest _) (when (eq face 'default) "#000000"))))
+    (should (equal (wamei/term-restore--ansi
+                    (concat "plain"
+                            (wamei/term-restore-test--colored
+                             "red" :foreground "#ff0000")))
+                   "plain\e[38;2;255;0;0mred\e[0m"))))
 
 (ert-deftest wamei/term-restore-ansi-ignores-unresolvable-face ()
   "解決できない色しか無い face は何も出さない。"
@@ -203,12 +209,44 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
         (kill-buffer buffer)))))
 
 (ert-deftest wamei/term-restore-save-prunes-unreferenced-files ()
-  "記録されていないスクロールバックのファイルは消す。"
+  "記録されていないスクロールバックのファイルは消すが、記録にあるものは残す
+\(全消しに退化しても検出できるよう両方を assert する)。"
   (wamei/term-restore-test--with-saved-dir
-    (let ((stale (expand-file-name "gone-1.txt" wamei/term-restore-directory)))
+    (let ((stale (expand-file-name "gone-1.txt" wamei/term-restore-directory))
+          (buffer (get-buffer-create "*term: foo*")))
       (write-region "old\n" nil stale nil 'silent)
-      (wamei/term-restore-save)
-      (should-not (file-exists-p stale)))))
+      (unwind-protect
+          (progn
+            (with-current-buffer buffer
+              (setq default-directory "/tmp/")
+              (insert "hello\n"))
+            (wamei/term-restore-save)
+            (should-not (file-exists-p stale))
+            (should (file-exists-p (plist-get (car wamei/term-restore-saved) :scrollback))))
+        (kill-buffer buffer)))))
+
+(ert-deftest wamei/term-restore-save-writes-tail-ansi-and-drops-prompt ()
+  "保存は `--content' → `--tail' → `--ansi' を通して書く。末尾のプロンプト行は
+落ち、色は SGR になり、行数は `wamei/term-restore-scrollback-lines' に
+切り詰められる (`--entry' の合成をまとめて確認する結合テスト)。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((wamei/term-restore-scrollback-lines 2)
+          (buffer (get-buffer-create "*term: foo*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer buffer
+              (setq default-directory "/tmp/")
+              (insert "one\n" "two\n")
+              (insert (wamei/term-restore-test--colored "three" :foreground "#ff0000") "\n")
+              (insert "$ ")
+              (wamei/term-restore-test--insert-marked "\n"))
+            (wamei/term-restore-save)
+            (let ((file (plist-get (car wamei/term-restore-saved) :scrollback)))
+              (should (equal (with-temp-buffer
+                               (insert-file-contents file)
+                               (buffer-string))
+                             "two\n\e[38;2;255;0;0mthree\e[0m\n"))))
+        (kill-buffer buffer)))))
 
 ;;; スクロールバックの注入
 
@@ -226,7 +264,9 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
             ;; 状態で呼ぶので、それを模す
             (let ((process-environment (copy-sequence process-environment)))
               (wamei/term-restore--inject-scrollback)
-              (should (equal (getenv "WAMEI_TERM_RESTORE") file)))
+              (should (equal (getenv "WAMEI_TERM_RESTORE") file))
+              ;; 注入しても記録は残る (消すのは `-ensure' の仕上げ)
+              (should wamei/term-restore-saved))
           (kill-buffer (current-buffer)))))))
 
 (ert-deftest wamei/term-restore-inject-ignores-missing-file ()
@@ -331,6 +371,59 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
                   (should-not (getenv "WAMEI_TERM_RESTORE")))))
           (kill-buffer buffer))))))
 
+(ert-deftest wamei/term-restore-ensure-clears-records-after-inject-not-before ()
+  "pre-spawn hook (`--inject-scrollback') が `ghostel-create' の中 (spawn 直前の
+ホストバッファ) で走っても、注入時点では記録がまだ残っていて
+WAMEI_TERM_RESTORE が立ち、記録を空にするのは `-ensure' の仕上げであること
+を確認する。クリアの契機を `--inject-scrollback' 側に置く誤実装だと、
+ここで注入が空振りするか、`-ensure' 後も記録が残ってしまい落ちる。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory))
+          (injected 'not-called))
+      (write-region "old output\n" nil file nil 'silent)
+      (setq wamei/term-restore-saved
+            (list (list :name "*term: foo*" :directory "/tmp/"
+                        :title nil :scrollback file)))
+      (unwind-protect
+          (let ((process-environment (copy-sequence process-environment)))
+            (cl-letf (((symbol-function 'ghostel-create)
+                       (lambda (&optional name &rest _)
+                         (let ((buffer (get-buffer-create name)))
+                           ;; ghostel-pre-spawn-hook は spawn 直前にホスト
+                           ;; バッファで (引数なしで) 走る
+                           (with-current-buffer buffer
+                             (wamei/term-restore--inject-scrollback)
+                             (setq injected (getenv "WAMEI_TERM_RESTORE")))
+                           buffer))))
+              (wamei/term-restore-ensure)
+              (should (equal injected file))
+              (should-not wamei/term-restore-saved)))
+        (kill-buffer "*term: foo*")))))
+
+(ert-deftest wamei/term-restore-ensure-continues-and-clears-after-error ()
+  "ある端末の生成でエラーが起きても他の端末は処理を続け、記録は最後に空になる
+\(condition-case は各エントリごとで、全体のクリアを止めない)。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: broken*" :directory "/tmp/"
+                      :title nil :scrollback nil)
+                (list :name "*term: ok*" :directory "/tmp/"
+                      :title "make test" :scrollback nil)))
+    (let ((calls nil))
+      (unwind-protect
+          (cl-letf (((symbol-function 'ghostel-create)
+                     (lambda (&optional name &rest _)
+                       (push name calls)
+                       (if (equal name "*term: broken*")
+                           (error "boom")
+                         (get-buffer-create name)))))
+            (wamei/term-restore-ensure)
+            (should (equal (reverse calls) '("*term: broken*" "*term: ok*")))
+            (should (equal (buffer-local-value 'ghostel-title (get-buffer "*term: ok*"))
+                           "make test"))
+            (should-not wamei/term-restore-saved))
+        (when (get-buffer "*term: ok*") (kill-buffer "*term: ok*"))))))
+
 (ert-deftest wamei/term-restore-ensure-falls-back-to-home ()
   "記録のディレクトリが無くなっていればホームで作る。"
   (wamei/term-restore-test--with-saved-dir
@@ -343,6 +436,28 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
             (wamei/term-restore-ensure)
             (should (equal (cdar calls) (expand-file-name "~/"))))
         (kill-buffer "*term: foo*")))))
+
+(ert-deftest wamei/term-restore-ensure-drops-lazy-queue-entry ()
+  "取りこぼしを作った端末は `desktop-buffer-args-list' の遅延キューからも
+除く。残っていると `desktop-restore-eager' を超えて lazy 復元に回っていた
+ときに、後の idle 復元 (`desktop-idle-create-buffers' 等) が同名の
+バッファをもう一つ作ってしまう (`desktop-create-buffer' が名前の重複を
+検査せず `rename-buffer' で uniquify するだけなので)。無関係なキューの
+要素は残す。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title nil :scrollback nil)))
+    (let ((desktop-buffer-args-list
+           (list (list 208 nil "*term: foo*" 'term-mode nil 0 nil nil nil)
+                 (list 208 nil "*scratch*" 'lisp-interaction-mode nil 0 nil nil nil))))
+      (wamei/term-restore-test--with-fake-create
+        (unwind-protect
+            (progn
+              (wamei/term-restore-ensure)
+              (should (equal (mapcar (lambda (args) (nth 2 args)) desktop-buffer-args-list)
+                             '("*scratch*"))))
+          (kill-buffer "*term: foo*"))))))
 
 ;;; desktop への組み込み
 

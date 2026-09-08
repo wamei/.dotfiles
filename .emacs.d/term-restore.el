@@ -210,7 +210,9 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
                                   wamei/term-restore-scrollback-lines)))
       (list :name (buffer-name buffer)
             :directory default-directory
-            :title (buffer-local-value 'ghostel-title buffer)
+            ;; ghostel 未ロードで `ghostel-title' が unbound のことがある
+            ;; (`wamei/term-restore-ensure' 側の `bound-and-true-p' と対称にする)
+            :title (and (boundp 'ghostel-title) (buffer-local-value 'ghostel-title buffer))
             :scrollback file))))
 
 (defun wamei/term-restore--prune (entries)
@@ -256,6 +258,18 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
         (file-name-as-directory directory)
       (expand-file-name "~/"))))
 
+(defun wamei/term-restore--drop-lazy-queue-entry (name)
+  "NAME の端末を `desktop-buffer-args-list' の遅延キューから取り除く。
+`desktop-create-buffer' (desktop.el) は既存バッファ名を検査せず、名前が
+食い違えば `rename-buffer' で uniquify するだけなので、`desktop-restore-eager'
+を超えて lazy 復元に回された端末をここで先に作っても、キューに残ったままだと
+後の idle 復元が同名をもう一つ作ってしまう (そのときは記録も空なので
+スクロールバックも付かない)。キューの各要素は `desktop-create-buffer' への
+引数リストで、バッファ名は (nth 2 args)。"
+  (setq desktop-buffer-args-list
+        (seq-remove (lambda (args) (equal (nth 2 args) name))
+                    desktop-buffer-args-list)))
+
 (defun wamei/term-restore-ensure ()
   "desktop の復元の仕上げ。取りこぼした端末を作り、タイトルを戻し、記録を空にする。
 `desktop-after-read-hook' から (深さ -10 で) 呼ぶ。side window の開き直し
@@ -265,25 +279,30 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
 回されたものの取りこぼし。ghostel-desktop が `desktop-read' 中に復元していれば
 生成は起きず、タイトルの復元だけが効く。端末が既にタイトルを報告していれば
 そちらを残す。記録を最後に空にするのは、同じ名前で開き直した端末に前回の
-出力を再生しないため。"
-  (dolist (entry wamei/term-restore-saved)
-    (let ((name (plist-get entry :name)))
-      (condition-case err
-          (let ((buffer (or (get-buffer name)
-                            (let ((default-directory
-                                   (wamei/term-restore--entry-directory entry)))
-                              (ghostel-create name)))))
-            (when-let* ((title (plist-get entry :title)))
-              (with-current-buffer buffer
-                (unless (bound-and-true-p ghostel-title) (setq-local ghostel-title title)))))
-        (error (message "term-restore: %s を復元できません: %s"
-                        name (error-message-string err))))))
-  (setq wamei/term-restore-saved nil))
+出力を再生しないため。`unwind-protect' で括るのは、desktop 復元中の C-g
+\(quit) でも記録が残らないようにするため (`condition-case' は error しか
+拾わない)。"
+  (unwind-protect
+      (dolist (entry wamei/term-restore-saved)
+        (let ((name (plist-get entry :name)))
+          (condition-case err
+              (let ((buffer (or (get-buffer name)
+                                (let ((default-directory
+                                       (wamei/term-restore--entry-directory entry)))
+                                  (ghostel-create name)))))
+                (wamei/term-restore--drop-lazy-queue-entry name)
+                (when-let* ((title (plist-get entry :title)))
+                  (with-current-buffer buffer
+                    (unless (bound-and-true-p ghostel-title)
+                      (setq-local ghostel-title title)))))
+            (error (message "term-restore: %s を復元できません: %s"
+                            name (error-message-string err))))))
+    (setq wamei/term-restore-saved nil)))
 
 ;;; desktop への組み込み
 
 (defun wamei/term-restore-setup ()
-  "desktop の保存・読み込みに組み込む。"
+  "desktop の保存・読み込みと `ghostel-pre-spawn-hook' に組み込む。"
   (add-to-list 'desktop-globals-to-save 'wamei/term-restore-saved)
   (add-hook 'desktop-save-hook #'wamei/term-restore-save)
   ;; 端末の起動時にスクロールバックを環境変数で渡す
