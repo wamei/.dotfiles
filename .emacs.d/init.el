@@ -348,7 +348,11 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
             (ghostel-max-scrollback . ,(* 10 1024 1024))
             (ghostel-module-directory . ,(locate-user-emacs-file "ghostel/"))
             ;; タイトルが変わったら端末一覧を描き直す (term-panel.el)。
-            ;; nil を返す関数なのでバッファ名は変わらない。
+            ;; この変数の既定は nil (= 改名機構そのものが off) なので、これは
+            ;; 「改名を抑止する」設定ではなく「一覧の再描画という副作用のために
+            ;; 改名機構を on にする」設定。関数は現在のバッファ名を返し、
+            ;; ghostel--rename-managed が必ず no-op になるようにしてある。
+            ;; cd (OSC 7) でも呼ばれるので 1 コマンドにつき 2 回走る。
             (ghostel-buffer-name-function . #'wamei/term--on-title-change))
   :preface
   ;; kill-ring 連携とクリップボードの画像渡し。実体は term-input.el
@@ -386,6 +390,12 @@ face を付けないので元の文字の色はそのまま引き継がれる。
   ;; :config だと ghostel がロードされるまで登録されないので :init で行う。
   (wamei/term-panel-setup)
   :config
+  ;; ここで貼るキーは ghostel-semi-char-mode-map (ghostel-keymap-exceptions の
+  ;; :set が作るマップ) に直接足しているだけなので、init 後に M-x customize で
+  ;; ghostel-keymap-exceptions を触ると ghostel--rebuild-semi-char-keymap が
+  ;; setcdr でマップをその場で作り直し、この C-k と s-v は黙って失われる。
+  ;; init 時の順序 (:custom → :config) では問題にならない。
+  ;;
   ;; C-k はそのまま端末へ送ると zsh の CUTBUFFER にしか残らないので、
   ;; 送る前に point から行末までを kill-ring に入れる (term-input.el)。
   (define-key ghostel-semi-char-mode-map (kbd "C-k") #'wamei/term-input-kill-line)

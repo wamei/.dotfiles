@@ -155,8 +155,8 @@
                                 (buffer-string)))))))
 
 (ert-deftest wamei/term-panel-title-change-refreshes-list ()
-  "`ghostel-buffer-name-function' として呼ばれると一覧を描き直し、nil を返す
-\(nil はバッファ名を変えないという意味)。"
+  "`ghostel-buffer-name-function' として呼ばれると一覧を描き直し、
+現在のバッファ名を返す (`ghostel--rename-managed' が必ず no-op になる値)。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
@@ -167,7 +167,8 @@
           (setq-local ghostel-title "make test")
           (cl-letf (((symbol-function 'wamei/term--list-refresh)
                      (lambda () (setq calls (1+ calls)) (funcall refresh))))
-            (should-not (wamei/term--on-title-change "make test"))))
+            (should (equal (wamei/term--on-title-change "make test")
+                           "*term: alpha*"))))
         (should (>= calls 1))
         (should (string-match-p "make test"
                                 (with-current-buffer list-buffer (buffer-string))))))))
@@ -187,8 +188,24 @@
       (cl-letf (((symbol-function 'wamei/term--list-refresh)
                  (lambda () (setq calls (1+ calls)) nil)))
         (wamei/term-panel-test--in alpha
-          (wamei/term--on-title-change "x"))
+          ;; 端末以外でも返り値は自分のバッファ名 (改名は起きない)
+          (should (equal (wamei/term--on-title-change "x") (buffer-name))))
         (should (= calls 0))))))
+
+(ert-deftest wamei/term-panel-title-change-survives-refresh-error ()
+  "一覧の再描画が signal しても外へ漏らさない。
+
+`ghostel--set-title' / `ghostel--set-directory' はこの関数の呼び出しを
+`condition-case' で包まないので、漏らすと端末の出力処理 (プロセスフィルタ)
+の中でエラーになる。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (wamei/term--list-buffer))
+    (cl-letf (((symbol-function 'wamei/term--list-refresh)
+               (lambda () (error "boom"))))
+      (with-current-buffer (get-buffer "*term: alpha*")
+        (should (equal (wamei/term--on-title-change "x") "*term: alpha*"))))))
 
 (ert-deftest wamei/term-panel-list-hides-cursor-when-not-selected ()
   "一覧は選択していない window ではカーソルを出さない (sidebar と同じ)。"

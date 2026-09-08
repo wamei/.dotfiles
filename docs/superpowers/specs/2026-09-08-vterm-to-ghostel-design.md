@@ -192,7 +192,7 @@ ghostel-desktop は desktop の per-buffer 機構で `desktop-read` 中に端末
 
 `wamei/term-restore--parse-name` は残す。バッファ名からの端末生成には使わなくなるが、スクロールバックのファイル名 (`<project>-<index>.txt`) を決めるのに要る。
 
-これで `*term: <project>[ N]*` の生成・解析が term-panel.el と二重管理になっている問題も解消する (term-panel.el 側の 1 箇所に一本化)。
+これで `*term: <project>[ N]*` の **生成** は term-panel.el の 1 箇所 (`wamei/term--buffer-name`) に一本化される。**解析** は用途が違うため 2 箇所に残る: term-panel.el の `wamei/term--buffer-regexp` (現在のプロジェクトの端末だけを拾う) と、term-restore.el の `wamei/term-restore--name-regexp` / `--parse-name` (プロジェクト名と番号を取り出してスクロールバックのファイル名 `<project>-<index>.txt` を決める汎用のもの)。端末の生成にバッファ名の解析を使わなくなった、というのが変わる点。
 
 ### 残す部分
 

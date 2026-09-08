@@ -90,8 +90,13 @@
   "BUFFER の会話名。端末が報告したタイトルから状態表示を外したもの。
 ghostel は OSC 0/2 のタイトルを `ghostel-title' に入れる。claude-code-ide は
 Claude のバッファでバッファ名の自動リネームを切るが、`ghostel-title' 自体は
-設定されるので値は読める。"
-  (when-let* ((title (buffer-local-value 'ghostel-title buffer)))
+設定されるので値は読める。
+`boundp' で守るのは、上の `(defvar ghostel-title)' (値なし) が symbol を
+special にするだけで束縛はしないため。ghostel 未ロードのまま呼ばれると
+`buffer-local-value' が void-variable になる
+\(term-panel.el / term-restore.el の参照と同じ形に揃えている)。"
+  (when-let* (((boundp 'ghostel-title))
+              (title (buffer-local-value 'ghostel-title buffer)))
     (wamei/claude-panel--clean-title title)))
 
 (defun wamei/claude-panel--tab-name (buffer &optional _buffers)

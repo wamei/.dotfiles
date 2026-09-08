@@ -225,6 +225,23 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
             (should (file-exists-p (plist-get (car wamei/term-restore-saved) :scrollback))))
         (kill-buffer buffer)))))
 
+(ert-deftest wamei/term-restore-save-prune-skips-directories ()
+  "スクロールバックの置き場にディレクトリが混じっても signal しない
+\(`delete-file' は `desktop-save-hook' の中で走るので、落ちると desktop の
+保存ごと止まる)。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((subdir (expand-file-name "subdir" wamei/term-restore-directory))
+          (buffer (get-buffer-create "*term: foo*")))
+      (make-directory subdir t)
+      (unwind-protect
+          (progn
+            (with-current-buffer buffer
+              (setq default-directory "/tmp/")
+              (insert "hello\n"))
+            (wamei/term-restore-save)
+            (should (file-directory-p subdir)))
+        (kill-buffer buffer)))))
+
 (ert-deftest wamei/term-restore-save-writes-tail-ansi-and-drops-prompt ()
   "保存は `--content' → `--tail' → `--ansi' を通して書く。末尾のプロンプト行は
 落ち、色は SGR になり、行数は `wamei/term-restore-scrollback-lines' に
@@ -472,15 +489,43 @@ ghostel-desktop は `desktop-read' の中で端末を復元するので、pre-sp
     (setq wamei/term-restore-saved
           (list (list :name "*term: foo*" :directory "/tmp/"
                       :title nil :scrollback nil)))
-    (let ((desktop-buffer-args-list
-           (list (list 208 nil "*term: foo*" 'term-mode nil 0 nil nil nil)
-                 (list 208 nil "*scratch*" 'lisp-interaction-mode nil 0 nil nil nil))))
+    (let* ((timer (run-with-idle-timer 100 t #'ignore))
+           (desktop-lazy-timer timer)
+           (desktop-buffer-args-list
+            (list (list 208 nil "*term: foo*" 'term-mode nil 0 nil nil nil)
+                  (list 208 nil "*scratch*" 'lisp-interaction-mode nil 0 nil nil nil))))
       (wamei/term-restore-test--with-fake-create
         (unwind-protect
             (progn
               (wamei/term-restore-ensure)
               (should (equal (mapcar (lambda (args) (nth 2 args)) desktop-buffer-args-list)
-                             '("*scratch*"))))
+                             '("*scratch*")))
+              ;; キューが残っているうちはタイマを止めない
+              (should (eq desktop-lazy-timer timer)))
+          (cancel-timer timer)
+          (kill-buffer "*term: foo*"))))))
+
+(ert-deftest wamei/term-restore-ensure-cancels-lazy-timer-when-queue-empties ()
+  "遅延キューを空にしたら `desktop-lazy-timer' も止める。
+
+`desktop-idle-create-buffers' のタイマ停止は `while' の内側にあるので、
+外からキューを空にすると空振りのタイマが毎アイドル走り続ける。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title nil :scrollback nil)))
+    (let* ((timer (run-with-idle-timer 100 t #'ignore))
+           (desktop-lazy-timer timer)
+           (desktop-buffer-args-list
+            (list (list 208 nil "*term: foo*" 'term-mode nil 0 nil nil nil))))
+      (wamei/term-restore-test--with-fake-create
+        (unwind-protect
+            (progn
+              (wamei/term-restore-ensure)
+              (should-not desktop-buffer-args-list)
+              (should-not desktop-lazy-timer)
+              (should-not (memq timer timer-idle-list)))
+          (when (memq timer timer-idle-list) (cancel-timer timer))
           (kill-buffer "*term: foo*"))))))
 
 ;;; desktop への組み込み
