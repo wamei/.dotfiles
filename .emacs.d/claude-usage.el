@@ -91,8 +91,12 @@
   "SVG バーの溝の不透明度。mode-line の地の色に対してどれだけ浮かせるか。"
   :type 'float)
 
-(defvar wamei/claude-usage-use-images (display-graphic-p)
-  "非 nil なら SVG でバーを描く。nil なら文字で描く。")
+(defvar wamei/claude-usage-use-images 'auto
+  "SVG でバーを描くか。`auto' なら描くフレームごとに判定する。
+`auto' 以外の非 nil なら常に SVG、nil なら常に文字。
+ロード時に 1 回だけ決めると、GUI の Emacs から emacsclient -nw で tty
+フレームを開いたときに、画像を出せないフレームへ SVG を渡してバーが
+空白になる (tty は display プロパティの画像を無視して下の文字を出す)。")
 
 (defface wamei/claude-usage-normal '((t :inherit success))
   "余裕があるときのバーの色。")
@@ -174,9 +178,17 @@ S / W / F のラベルはバーや割合と同じ色 (`wamei/claude-usage--face'
           (format-time-string "%H:%M" time)
         (format-time-string "%-m/%-d %H:%M" time)))))
 
-(defun wamei/claude-usage--filled (percent width)
-  "PERCENT を WIDTH 分割したときの埋まる数。0..WIDTH に収める。"
-  (max 0 (min width (round (* width (/ (float (max 0 (min 100 percent))) 100))))))
+(defun wamei/claude-usage--steps (percent width)
+  "PERCENT を WIDTH 桁 × 2 段に落としたときの段数。0..WIDTH*2 に収める。
+半段を使うので桁数の 2 倍の段階が出せる (6 桁なら 12 段)。
+丸めで 0 段になっても、0% でなければ半段は出す。SVG のバーも
+「0 でない限り最低でも高さぶんの幅」を出しており、0% と 1% が
+同じ絵になると使い始めたかどうか分からないため。"
+  (let* ((clamped (max 0 (min 100 percent)))
+         (steps (round (* width 2 (/ (float clamped) 100)))))
+    (if (and (zerop steps) (> clamped 0))
+        1
+      (max 0 (min (* width 2) steps)))))
 
 (defun wamei/claude-usage--face (entry)
   "ENTRY の severity と割合から使う face を決める。厳しい方を採る。"
@@ -215,10 +227,19 @@ rsvg はこれを色として解釈しない。"
                        '(0 1 2))))
     color))
 
-(defun wamei/claude-usage--text-bar (percent width)
-  "PERCENT を WIDTH 桁の文字バーにする。"
-  (let ((filled (wamei/claude-usage--filled percent width)))
-    (concat (make-string filled ?█) (make-string (- width filled) ?░))))
+(defun wamei/claude-usage--text-bar (percent width face)
+  "PERCENT を WIDTH 桁の文字バーにする。埋まりは FACE、溝は溝の色。
+太線 ━ (U+2501) で埋め、端数は半段の ╸ (U+2578)、残りは細線 ─ (U+2500)。
+どれも現行の █ / ░ と同じ East Asian Ambiguous なので端末での幅は変わらない。
+埋まりと溝を別の face にするのは SVG のバーと同じ理由で、1 色で塗ると
+線の太さの差だけで読むことになり tty では見分けにくい。"
+  (let* ((steps (wamei/claude-usage--steps percent width))
+         (full (/ steps 2))
+         (half (= 1 (mod steps 2))))
+    (concat (propertize (concat (make-string full ?━) (if half "╸" ""))
+                        'face face)
+            (propertize (make-string (- width full (if half 1 0)) ?─)
+                        'face 'wamei/claude-usage-track))))
 
 (defun wamei/claude-usage--svg-bar (percent width height track fill)
   "PERCENT を WIDTH x HEIGHT ピクセルの SVG バーにする。
@@ -241,17 +262,26 @@ TRACK は溝、FILL は埋まっている部分の色。返り値は画像を di
                      :rx radius :ry radius :gradient "bar"))
     (propertize " " 'display (svg-image svg :scale 1 :ascent 'center))))
 
+(defun wamei/claude-usage--images-p ()
+  "いま描いているフレームで SVG バーを使うなら非 nil。
+mode-line の (:eval ...) は描画中の window を `selected-window' にして呼ばれる
+ので、その window のフレームで判定する。"
+  (and (if (eq wamei/claude-usage-use-images 'auto)
+           (display-graphic-p (window-frame))
+         wamei/claude-usage-use-images)
+       (image-type-available-p 'svg)
+       t))
+
 (defun wamei/claude-usage--bar (percent face)
   "PERCENT のバー。画像が使えれば SVG、駄目なら文字。色は FACE から取る。"
-  (if (and wamei/claude-usage-use-images (image-type-available-p 'svg))
+  (if (wamei/claude-usage--images-p)
       (wamei/claude-usage--svg-bar
        percent
-       (* wamei/claude-usage-bar-columns (frame-char-width))
+       (* wamei/claude-usage-bar-columns (frame-char-width (window-frame)))
        wamei/claude-usage-bar-height
        (or (face-foreground 'wamei/claude-usage-track nil t) "#888888")
        (or (face-foreground face nil t) "#888888"))
-    (propertize (wamei/claude-usage--text-bar percent wamei/claude-usage-bar-columns)
-                'face face)))
+    (wamei/claude-usage--text-bar percent wamei/claude-usage-bar-columns face)))
 
 ;;; 1 行の組み立て
 
@@ -457,9 +487,11 @@ remap には色を直接入れてあるので、テーマが変わったら入�
   "mode-line に出す 1 行。redisplay ごとに呼ばれるのでキャッシュする。"
   (let* ((now (current-time))
          ;; 取得世代と分が同じなら同じ見た目になる (リセット時刻は分までしか出さない)
+         ;; 画像が使えるかはフレームごとに変わる (GUI と tty で同じ 1 行を
+         ;; 使い回すと、tty 側でバーが空白になる)
          (key (list wamei/claude-usage--generation
                     (floor (float-time now) 60)
-                    wamei/claude-usage-use-images)))
+                    (wamei/claude-usage--images-p))))
     (unless (equal (car wamei/claude-usage--cache) key)
       (setq wamei/claude-usage--cache
             (cons key (wamei/claude-usage--escape

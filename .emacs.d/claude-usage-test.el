@@ -106,22 +106,53 @@
 
 ;;; バー (文字)
 
+(defun wamei/claude-usage-test--text-bar (percent width)
+  "文字バーの見た目だけを取り出す (face は別のテストで見る)。"
+  (substring-no-properties
+   (wamei/claude-usage--text-bar percent width 'wamei/claude-usage-normal)))
+
 (ert-deftest wamei/claude-usage-test-text-bar-width ()
   "文字バーは指定した桁数ちょうど。"
-  (should (equal (length (wamei/claude-usage--text-bar 40 6)) 6))
-  (should (equal (length (wamei/claude-usage--text-bar 0 6)) 6))
-  (should (equal (length (wamei/claude-usage--text-bar 100 6)) 6)))
+  (should (equal (length (wamei/claude-usage-test--text-bar 40 6)) 6))
+  (should (equal (length (wamei/claude-usage-test--text-bar 0 6)) 6))
+  (should (equal (length (wamei/claude-usage-test--text-bar 100 6)) 6)))
 
 (ert-deftest wamei/claude-usage-test-text-bar-fill ()
-  "割合に応じて埋まる。端は 0 / 全部。"
-  (should (equal (wamei/claude-usage--text-bar 0 4) "░░░░"))
-  (should (equal (wamei/claude-usage--text-bar 100 4) "████"))
-  (should (equal (wamei/claude-usage--text-bar 50 4) "██░░")))
+  "太線で埋め、残りは細線。端は 0 / 全部。"
+  (should (equal (wamei/claude-usage-test--text-bar 0 4) "────"))
+  (should (equal (wamei/claude-usage-test--text-bar 100 4) "━━━━"))
+  (should (equal (wamei/claude-usage-test--text-bar 50 4) "━━──")))
+
+(ert-deftest wamei/claude-usage-test-text-bar-half-steps ()
+  "桁数の 2 倍の段階を持ち、半段は ╸ で出す。"
+  (should (equal (wamei/claude-usage-test--text-bar 30 6) "━━────"))
+  (should (equal (wamei/claude-usage-test--text-bar 37 6) "━━────"))
+  (should (equal (wamei/claude-usage-test--text-bar 45 6) "━━╸───"))
+  (should (equal (wamei/claude-usage-test--text-bar 50 6) "━━━───"))
+  (should (equal (wamei/claude-usage-test--text-bar 95 6) "━━━━━╸")))
+
+(ert-deftest wamei/claude-usage-test-text-bar-shows-tiny-values ()
+  "0 でなければ必ず半段は出す (SVG の「0 でない限り最低幅を出す」と同じ)。
+0% と 1% が同じ絵になると、使い始めたのか分からない。"
+  (should (equal (wamei/claude-usage-test--text-bar 0 6) "──────"))
+  (should (equal (wamei/claude-usage-test--text-bar 1 6) "╸─────")))
+
+(ert-deftest wamei/claude-usage-test-text-bar-splits-faces ()
+  "埋まりは値の色、溝は `wamei/claude-usage-track'。
+1 色で塗ると太線と細線の差だけで読むことになり、tty では見づらい。"
+  (let ((bar (wamei/claude-usage--text-bar 45 6 'wamei/claude-usage-warning)))
+    (should (equal (substring-no-properties bar) "━━╸───"))
+    ;; 太線と半段までが値の色
+    (should (eq (get-text-property 0 'face bar) 'wamei/claude-usage-warning))
+    (should (eq (get-text-property 2 'face bar) 'wamei/claude-usage-warning))
+    ;; 残りの細線は溝の色
+    (should (eq (get-text-property 3 'face bar) 'wamei/claude-usage-track))
+    (should (eq (get-text-property 5 'face bar) 'wamei/claude-usage-track))))
 
 (ert-deftest wamei/claude-usage-test-text-bar-clamps ()
   "100 を超えても溢れない。"
-  (should (equal (wamei/claude-usage--text-bar 150 4) "████"))
-  (should (equal (wamei/claude-usage--text-bar -10 4) "░░░░")))
+  (should (equal (wamei/claude-usage-test--text-bar 150 4) "━━━━"))
+  (should (equal (wamei/claude-usage-test--text-bar -10 4) "────")))
 
 ;;; 色の正規化
 
@@ -171,9 +202,9 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
          (now (wamei/claude-usage-test--time "2026-09-07T09:00:00+09:00"))
          (line (substring-no-properties
                 (wamei/claude-usage--render (wamei/claude-usage-test--state) now))))
-    (should (string-match-p "S ░░░░░░ +0%" line))
-    (should (string-match-p "W ██░░░░ +29%" line))
-    (should (string-match-p "F ██░░░░ +40%" line))
+    (should (string-match-p "S ────── +0%" line))
+    (should (string-match-p "W ━╸──── +29%" line))
+    (should (string-match-p "F ━━╸─── +40%" line))
     ;; JST での各リセット時刻。S は当日なので時刻だけ
     (should (string-match-p "0% ↻ 14:50" line))
     (should (string-match-p "29% ↻ 9/10 21:59" line))
@@ -194,7 +225,7 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
          (line (substring-no-properties
                 (wamei/claude-usage--render state (current-time)))))
     (should (string-match-p "S —" line))
-    (should (string-match-p "W █░░░░░ +12%" line))
+    (should (string-match-p "W ╸───── +12%" line))
     (should (string-match-p "F —" line))))
 
 ;;; mode-line への受け渡し
@@ -411,6 +442,7 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
           (funcall stale)
           (should (eq wamei/claude-usage--request fresh)))))))
 
+
 ;;; 取れた値のインスタンス間共有
 
 ;; /api/oauth/usage は同一アカウントで 1〜2 分に 1 回しか通らず、枠は GUI Emacs /
@@ -527,5 +559,31 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
         (wamei/claude-usage--tick)
         (should (equal fetches 0))
         (should-not wamei/claude-usage--state)))))
+
+;;; フレームごとのバー
+
+(ert-deftest wamei/claude-usage-test-images-p-follows-frame ()
+  "既定 (auto) は描くフレームで判定する。tty/batch では画像を使わない。"
+  (let ((wamei/claude-usage-use-images 'auto))
+    (should-not (wamei/claude-usage--images-p)))
+  (let ((wamei/claude-usage-use-images nil))
+    (should-not (wamei/claude-usage--images-p))))
+
+(ert-deftest wamei/claude-usage-test-bar-falls-back-on-tty ()
+  "auto のまま tty で描くと SVG ではなく文字バーになる。"
+  (let* ((wamei/claude-usage-use-images 'auto)
+         (bar (wamei/claude-usage--bar 50 'wamei/claude-usage-normal)))
+    (should (equal (substring-no-properties bar) "━━━───"))
+    (should-not (get-text-property 0 'display bar))))
+
+(ert-deftest wamei/claude-usage-test-mode-line-cache-follows-frame ()
+  "GUI と tty のフレームで同じ 1 行を使い回さない (画像は tty で見えない)。"
+  (let ((wamei/claude-usage--cache nil)
+        (wamei/claude-usage--state
+         (list :weekly (list :percent 29 :severity "normal" :resets-at nil))))
+    (cl-letf (((symbol-function 'wamei/claude-usage--images-p) (lambda () nil)))
+      (should (string-match-p "━" (wamei/claude-usage-mode-line))))
+    (cl-letf (((symbol-function 'wamei/claude-usage--images-p) (lambda () t)))
+      (should-not (string-match-p "━" (wamei/claude-usage-mode-line))))))
 
 ;;; claude-usage-test.el ends here
