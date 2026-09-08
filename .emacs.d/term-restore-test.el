@@ -178,11 +178,15 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
 ;;; 保存
 
 (defmacro wamei/term-restore-test--with-saved-dir (&rest body)
-  "スクロールバックの出力先を一時ディレクトリにして BODY を評価する。"
+  "スクロールバックの出力先を一時ディレクトリにして BODY を評価する。
+`wamei/term-restore--restoring' も t に束縛して「起動時の desktop 復元中」を
+既定にする。`wamei/term-restore-ensure' がこのフラグを nil にするので、
+束縛しないと ensure を呼ぶテストが後続のテストに影響する。"
   (declare (indent 0))
   `(let* ((dir (file-name-as-directory (make-temp-file "term-restore-" t)))
           (wamei/term-restore-directory dir)
-          (wamei/term-restore-saved nil))
+          (wamei/term-restore-saved nil)
+          (wamei/term-restore--restoring t))
      (unwind-protect (progn ,@body)
        (delete-directory dir t))))
 
@@ -348,6 +352,58 @@ spawn で走る。desktop の autosave が記録を埋め直すため、端末�
                   (push (cons name default-directory) calls)
                   (get-buffer-create name))))
        ,@body)))
+
+(ert-deftest wamei/term-restore-inject-only-during-restore-window ()
+  "注入が効くのは起動時の desktop 復元の間だけ。
+
+`wamei/term-restore-ensure' が復元の仕上げでフラグを下ろすので、その後に
+`desktop-save-mode' の autosave が記録を作り直しても (端末を kill して同名で
+開き直しても) 注入は起きない。:injected は記録ごとの印なので、記録が作り
+直されるとリセットされてしまい、この窓の外側はそれでは押さえられない。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory)))
+      (write-region "old output\n" nil file nil 'silent)
+      (unwind-protect
+          (wamei/term-restore-test--with-fake-create
+            ;; 復元の仕上げ (ここでフラグが下がる)
+            (wamei/term-restore-ensure)
+            ;; autosave が記録を作り直したところを模す (:injected は付かない)
+            (setq wamei/term-restore-saved
+                  (list (list :name "*term: foo*" :directory "/tmp/"
+                              :title nil :scrollback file)))
+            (with-current-buffer (get-buffer-create "*term: foo*")
+              (let ((process-environment (copy-sequence process-environment)))
+                (wamei/term-restore--inject-scrollback)
+                (should-not (getenv "WAMEI_TERM_RESTORE")))))
+        (when (get-buffer "*term: foo*") (kill-buffer "*term: foo*"))))))
+
+(ert-deftest wamei/term-restore-restoring-flag-starts-enabled ()
+  "フラグの初期値は t (起動直後は desktop 復元の窓の中)。
+desktop ファイルが無くて `desktop-after-read-hook' が走らない場合も t のままだが、
+そのときは `wamei/term-restore-saved' が空なので注入は起きない。
+セッションスコープなので `desktop-globals-to-save' には入れない。"
+  (should (default-value 'wamei/term-restore--restoring))
+  (let ((desktop-globals-to-save nil)
+        (desktop-save-hook nil)
+        (desktop-after-read-hook nil)
+        (ghostel-pre-spawn-hook nil))
+    (wamei/term-restore-setup)
+    (should-not (memq 'wamei/term-restore--restoring desktop-globals-to-save))))
+
+(ert-deftest wamei/term-restore-ensure-lowers-restoring-flag ()
+  "復元の仕上げでフラグを下ろす。C-g (quit) で抜けても下ろす
+\(記録のクリアと同じ `unwind-protect' の後始末)。"
+  (wamei/term-restore-test--with-saved-dir
+    (wamei/term-restore-ensure)
+    (should-not wamei/term-restore--restoring))
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title nil :scrollback nil)))
+    (cl-letf (((symbol-function 'ghostel-create)
+               (lambda (&rest _) (signal 'quit nil))))
+      (condition-case nil (wamei/term-restore-ensure) (quit nil))
+      (should-not wamei/term-restore--restoring))))
 
 (ert-deftest wamei/term-restore-ensure-creates-missing-terminals ()
   "ghostel-desktop が復元しなかった端末だけを作り、タイトルを戻す。"
