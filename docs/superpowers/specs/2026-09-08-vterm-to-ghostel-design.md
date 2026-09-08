@@ -101,7 +101,10 @@ Emacs 31.1 (aarch64-apple-darwin25)、ghostel 20260902.1753 (MELPA) + ネイテ�
                  "C-g" "C-l" "M-o" "M-w"   ; keyboard-quit / recenter / other-window / kill-ring-save
                  "C-q" "C-z"               ; 端末パネルの prefix とトグル
                  "C-<tab>" "C-S-<tab>"))   ; wamei/term-next / -previous
-            (ghostel-max-scrollback . 10000)
+            ;; ghostel-max-scrollback は行数ではなく「バイト数」(既定 5MB)。
+            ;; vterm-max-scrollback は行数 (10000 行) だったので、docstring の
+            ;; 「5MB ≒ 5,000 行」から 10MB にして 10000 行相当を確保する。
+            (ghostel-max-scrollback . ,(* 10 1024 1024))
             (ghostel-module-directory . ,(locate-user-emacs-file "ghostel/")))
   :preface
   (load ... "term-input") (load ... "term-panel")   ; term-faint の load は削除
