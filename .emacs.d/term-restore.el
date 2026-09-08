@@ -219,11 +219,14 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
             :scrollback file))))
 
 (defun wamei/term-restore--prune (entries)
-  "`wamei/term-restore-directory' から ENTRIES が参照しないファイルを消す。"
+  "`wamei/term-restore-directory' から ENTRIES が参照しないファイルを消す。
+`file-regular-p' で絞るのは、サブディレクトリが混じったときに
+`delete-file' が `desktop-save-hook' の中で signal しないため。"
   (when (file-directory-p wamei/term-restore-directory)
     (let ((referenced (mapcar (lambda (entry) (plist-get entry :scrollback)) entries)))
       (dolist (file (directory-files wamei/term-restore-directory t "\\`[^.]"))
-        (unless (member file referenced)
+        (when (and (file-regular-p file)
+                   (not (member file referenced)))
           (delete-file file))))))
 
 (defun wamei/term-restore-save ()
@@ -280,10 +283,18 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
 を超えて lazy 復元に回された端末をここで先に作っても、キューに残ったままだと
 後の idle 復元が同名をもう一つ作ってしまう (そのときは記録も空なので
 スクロールバックも付かない)。キューの各要素は `desktop-create-buffer' への
-引数リストで、バッファ名は (nth 2 args)。"
+引数リストで、バッファ名は (nth 2 args)。
+
+キューが空になったら `desktop-lazy-timer' も止める。`desktop-idle-create-buffers'
+のタイマ停止 (`unless desktop-buffer-args-list' → `cancel-timer') は `while' の
+内側にあるので、外からキューを空にするとタイマが残り、毎アイドルで空振りする。"
   (setq desktop-buffer-args-list
         (seq-remove (lambda (args) (equal (nth 2 args) name))
-                    desktop-buffer-args-list)))
+                    desktop-buffer-args-list))
+  (unless desktop-buffer-args-list
+    (when (bound-and-true-p desktop-lazy-timer)
+      (cancel-timer desktop-lazy-timer)
+      (setq desktop-lazy-timer nil))))
 
 (defun wamei/term-restore-ensure ()
   "desktop の復元の仕上げ。取りこぼした端末を作り、タイトルを戻し、記録を空にする。

@@ -210,20 +210,44 @@ window に付いた幅は残らない。変数に覚えておき wamei/term--set
 
 (defun wamei/term--on-title-change (_title)
   "端末のタイトルが変わったら一覧を描き直す。バッファ名は変えない。
-`ghostel-buffer-name-function' に設定して使う。この変数はタイトル変更 (OSC 0/2)
-と cd (OSC 7) のたびに端末バッファで呼ばれる公開フックで、nil を返すと
-`ghostel--rename-managed' が no-op になりバッファ名は変わらない。
+
+`ghostel-buffer-name-function' に設定して使う。この変数の既定は nil
+\(= 改名機構そのものが off) なので、これは「改名を抑止する」設定ではなく
+「一覧の再描画という副作用のために改名機構を on にする」設定。
+現在のバッファ名をそのまま返すことで `ghostel--rename-managed' の
+\(not (equal new-name (buffer-name))) が偽になり、必ず no-op になる。
+nil を返すとタイトルがクリアされたときだけ `ghostel--set-title' の `or' が
+`ghostel--initial-name' に落ちて `ghostel--rename-managed' を呼ぶので、
+\(今は no-op でも) rename の経路を武装した状態になってしまう。
+
+呼ばれるのはタイトル変更 (OSC 0/2) のときだけではなく cd (OSC 7) のときも。
+ghostel の zsh 統合は precmd ごとに OSC 7 を出すので、1 コマンドにつき
+一覧の再描画が 2 回走る (旧 `vterm--set-title' advice は 1 回だった)。
+そのたびに `project-current' と `buffer-list' の走査、一覧バッファの
+作り直しが起きるので、ここに重い処理を足さないこと。
+
+`ghostel--set-title' と `ghostel--set-directory' はこの関数の呼び出しを
+`condition-case' で包まないため、ここで signal すると端末の出力処理
+\(プロセスフィルタ) の中でエラーになる。一覧の再描画は `project-current' を
+通り、消えたディレクトリや remote な `default-directory' で signal しうるので
+`with-demoted-errors' で押さえる。
+
 呼ばれた時点で `ghostel-title' は新しい値になっている。
 別タブで見えていない一覧も描き直しておく (戻ったときに古いままにしない)。"
-  (when (and (string-prefix-p "*term: " (buffer-name))
-             (get-buffer (wamei/term--list-buffer-name)))
-    (wamei/term--list-refresh))
-  nil)
+  (with-demoted-errors "端末一覧の再描画に失敗しました: %S"
+    (when (and (string-prefix-p "*term: " (buffer-name))
+               (get-buffer (wamei/term--list-buffer-name)))
+      (wamei/term--list-refresh)))
+  (buffer-name))
 
 (defun wamei/term--label (buffer)
   "一覧に出す BUFFER の表示名。最後に実行したコマンド、無ければシェル名。
-タイトルは .zshrc の preexec が OSC 0 で流し、ghostel が `ghostel-title' に入れる。"
-  (or (buffer-local-value 'ghostel-title buffer)
+タイトルは .zshrc の preexec が OSC 0 で流し、ghostel が `ghostel-title' に入れる。
+`boundp' で守るのは、この file 冒頭の `(defvar ghostel-title)' (値なし) が
+symbol を special にするだけで束縛はしないため。ghostel 未ロードのまま
+呼ばれると `buffer-local-value' が void-variable になる
+\(term-restore.el / claude-panel.el の参照と同じ形に揃えている)。"
+  (or (and (boundp 'ghostel-title) (buffer-local-value 'ghostel-title buffer))
       (file-name-nondirectory (if (boundp 'ghostel-shell) ghostel-shell shell-file-name))))
 
 (defun wamei/term--list-refresh ()
