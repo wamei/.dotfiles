@@ -8,7 +8,36 @@ python = "3.13.3"
 go = "1"
 "go:github.com/sqls-server/sqls" = "latest"
 
+# npm パッケージのグローバル導入。プロジェクトの依存には入らないが PATH から引きたい
+# 道具 (Emacs の eglot / apheleia が起動する言語サーバとフォーマッタ、単体 CLI) を
+# ここに集める。実体の取得は bun (下の npm.package_manager)。
+"npm:@biomejs/biome" = "latest"
+"npm:prettier" = "latest"
+# TypeScript 7 の tsc は native バイナリ (typescript-go) で、`tsc --lsp -stdio` が
+# そのまま言語サーバになる (init.el の eglot ブロックがこれを起動する)。そのため
+# typescript-language-server は入れない。
+"npm:typescript" = "latest"
+"npm:vscode-langservers-extracted" = "latest"
+"npm:@prisma/language-server" = "latest"
+"npm:@redocly/cli" = "latest"
+"npm:macos-audio-devices" = "latest"
+"npm:@google/clasp" = "latest"
+
+# 他人の repo が pnpm / yarn 前提のときに使う。pnpm は aqua backend のネイティブ
+# バイナリで node を要らないのでそちらから入れる。yarn は既定 (vfox) と aqua が
+# berry (4 系) なので、classic を使い続けるため npm backend で 1 系を指定する。
+# どちらも backend を明示するのは、.zshrc の show_env_mise が backend 付き
+# (<backend>:<pkg>) を「言語のバージョンではない道具」としてプロンプトから除くため。
+"aqua:pnpm/pnpm" = "latest"
+"npm:yarn" = "1"
+
 [settings]
 # nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む
 # (mise は既定では無視する)
 idiomatic_version_file_enable_tools = ["node", "ruby", "python"]
+# npm backend が実際に叩くパッケージマネージャ。既定の "auto" だと npm が使われる。
+npm.package_manager = "bun"
+# バージョン一覧の取得を npm CLI に任せる。mise 内蔵の取得だと packument が大きい
+# パッケージ (@prisma/language-server は 25MB) で fetch_remote_versions_timeout に
+# 間に合わず "latest" が解決できない。取得だけ npm、インストールは上の bun。
+npm.shell_out = true

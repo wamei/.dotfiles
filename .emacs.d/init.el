@@ -1879,8 +1879,10 @@ eglot は :detail を :company-docsig に、:documentation を :company-doc-buff
     "eglot の自動問い合わせ (:triggerKind 2) のコードアクションを quickfix に絞る。
 
 `eglot-code-action-suggestion' はカーソル移動ごとに種類を絞らず textDocument/codeAction
-を送るが、typescript-language-server は statement 上のほぼ全ての位置で refactor
-(Extract to function / Move to a new file など) を返すため、ヒントが常時出てしまう。
+を送るが、サーバによっては statement 上のほぼ全ての位置で refactor (Extract to
+function / Move to a new file など) を返すため、ヒントが常時出てしまう
+(typescript-language-server がそうだった。今の tsc --lsp は codeActionKinds に
+quickfix と source.* しか出さない)。
 ここで :only を付け、直せる問題があるときだけヒントが出るようにする。
 `eglot--code-action-params' の :filter-args advice。手動の `eglot-code-actions'
 (triggerKind 無し) には影響しない。"
@@ -1949,8 +1951,8 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
   ;; イベントログは肥大化して重いので無効化
   (eglot-events-buffer-config . '(:size 0 :format full))
   ;; コードアクションは eldoc の文字ヒントだけにし、echo area に出す
-  ;; (wamei/eglot-code-action-hint-display)。left-fringe の雷マークは tsserver が
-  ;; どこでも refactor アクションを返すため常時点灯になるので使わない。
+  ;; (wamei/eglot-code-action-hint-display)。left-fringe の雷マークは、どこでも
+  ;; refactor アクションを返すサーバ (tsserver 系) では常時点灯になるので使わない。
   (eglot-code-action-indications . '(eldoc-hint))
   :hook (((typescript-ts-mode-hook
            tsx-ts-mode-hook
@@ -1975,9 +1977,23 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
               #'wamei/eglot-code-action-hint-strip-args)
   (advice-add 'wamei/eldoc-mouse--display :filter-args
               #'wamei/eglot-code-action-hint-strip-args)
+  ;; TypeScript / JavaScript は typescript-language-server ではなく tsc 本体を使う。
+  ;; TypeScript 7 の tsc は native バイナリ (typescript-go) で、--lsp を付けると
+  ;; 言語サーバになる。サーバがバイナリそのものなので、プロジェクトに typescript が
+  ;; 入っていないディレクトリでも動く (typescript-language-server は node_modules の
+  ;; typescript を探して見つからないと initialize で失敗する)。診断は
+  ;; publishDiagnostics ではなく pull (textDocument/diagnostic) で返るが、eglot は
+  ;; :diagnosticProvider があればそちらを使う。languageId は組み込みエントリと同じに
+  ;; 揃える (tsx は "typescriptreact"、js は "javascript")。
+  (add-to-list 'eglot-server-programs
+               '(((js-mode :language-id "javascript")
+                  (js-ts-mode :language-id "javascript")
+                  (tsx-ts-mode :language-id "typescriptreact")
+                  (typescript-ts-mode :language-id "typescript"))
+                 . ("tsc" "--lsp" "-stdio")))
   ;; eglot 組み込みに Prisma のエントリは無い。@prisma/language-server は
-  ;; プロジェクトの依存に入らないのが普通なので bun add -g で入れ、PATH から解決する
-  ;; (~/.bun/bin は .zshrc で PATH に足し、exec-path-from-shell で引き継ぐ)。
+  ;; プロジェクトの依存に入らないのが普通なので mise で入れ (~/.config/mise/config.toml)、
+  ;; PATH から解決する (mise が差し込む bin を exec-path-from-shell で引き継ぐ)。
   (add-to-list 'eglot-server-programs
                '(prisma-ts-mode . ("prisma-language-server" "--stdio")))
   ;; sqls (Go 製の SQL 言語サーバ、mise で導入) はテーブル / カラム名の補完とホバーを返す。
