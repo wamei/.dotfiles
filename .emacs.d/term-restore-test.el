@@ -294,6 +294,31 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
             (should-not (getenv "WAMEI_TERM_RESTORE")))
         (kill-buffer (current-buffer))))))
 
+(ert-deftest wamei/term-restore-inject-happens-only-once ()
+  "同じ端末名への注入は 1 回だけ。2 回目以降は空振りする。
+
+`ghostel-pre-spawn-hook' はグローバルなので、記録が残っている間はすべての
+spawn で走る。desktop の autosave が記録を埋め直すため、端末を kill して
+同じ名前で開き直すと死んだ端末の出力が再生されてしまう。注入済みの印を
+付けて 1 回で打ち止めにする。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory)))
+      (write-region "old output\n" nil file nil 'silent)
+      (setq wamei/term-restore-saved
+            (list (list :name "*term: foo*" :directory "/tmp/"
+                        :title nil :scrollback file)))
+      (with-current-buffer (get-buffer-create "*term: foo*")
+        (unwind-protect
+            (progn
+              (let ((process-environment (copy-sequence process-environment)))
+                (wamei/term-restore--inject-scrollback)
+                (should (equal (getenv "WAMEI_TERM_RESTORE") file)))
+              ;; 2 回目 (kill して同名で開き直した端末を模す)
+              (let ((process-environment (copy-sequence process-environment)))
+                (wamei/term-restore--inject-scrollback)
+                (should-not (getenv "WAMEI_TERM_RESTORE"))))
+          (kill-buffer (current-buffer)))))))
+
 ;;; 復元の仕上げ
 
 (defmacro wamei/term-restore-test--with-fake-create (&rest body)
@@ -371,33 +396,32 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
                   (should-not (getenv "WAMEI_TERM_RESTORE")))))
           (kill-buffer buffer))))))
 
-(ert-deftest wamei/term-restore-ensure-clears-records-after-inject-not-before ()
-  "pre-spawn hook (`--inject-scrollback') が `ghostel-create' の中 (spawn 直前の
-ホストバッファ) で走っても、注入時点では記録がまだ残っていて
-WAMEI_TERM_RESTORE が立ち、記録を空にするのは `-ensure' の仕上げであること
-を確認する。クリアの契機を `--inject-scrollback' 側に置く誤実装だと、
-ここで注入が空振りするか、`-ensure' 後も記録が残ってしまい落ちる。"
+(ert-deftest wamei/term-restore-ensure-restores-title-after-inject ()
+  "注入が `-ensure' より先に済んでいても、記録は仕上げまで残っていてタイトルが戻る。
+
+ghostel-desktop は `desktop-read' の中で端末を復元するので、pre-spawn hook
+(`--inject-scrollback') は `wamei/term-restore-ensure' より先に走る。注入を
+契機に記録を消す実装 (`--inject-scrollback' の中で `delq' する等) にすると、
+仕上げに記録が届かず、この端末のタイトルを戻せなくなる。"
   (wamei/term-restore-test--with-saved-dir
-    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory))
-          (injected 'not-called))
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory)))
       (write-region "old output\n" nil file nil 'silent)
       (setq wamei/term-restore-saved
             (list (list :name "*term: foo*" :directory "/tmp/"
-                        :title nil :scrollback file)))
+                        :title "make test" :scrollback file)))
       (unwind-protect
-          (let ((process-environment (copy-sequence process-environment)))
-            (cl-letf (((symbol-function 'ghostel-create)
-                       (lambda (&optional name &rest _)
-                         (let ((buffer (get-buffer-create name)))
-                           ;; ghostel-pre-spawn-hook は spawn 直前にホスト
-                           ;; バッファで (引数なしで) 走る
-                           (with-current-buffer buffer
-                             (wamei/term-restore--inject-scrollback)
-                             (setq injected (getenv "WAMEI_TERM_RESTORE")))
-                           buffer))))
-              (wamei/term-restore-ensure)
-              (should (equal injected file))
-              (should-not wamei/term-restore-saved)))
+          (wamei/term-restore-test--with-fake-create
+            ;; ghostel-desktop が復元済みの端末を模す (注入は -ensure より前)
+            (with-current-buffer (get-buffer-create "*term: foo*")
+              (let ((process-environment (copy-sequence process-environment)))
+                (wamei/term-restore--inject-scrollback)
+                (should (equal (getenv "WAMEI_TERM_RESTORE") file))))
+            (wamei/term-restore-ensure)
+            ;; 復元済みなので作り直さない
+            (should-not calls)
+            (should (equal (buffer-local-value 'ghostel-title (get-buffer "*term: foo*"))
+                           "make test"))
+            (should-not wamei/term-restore-saved))
         (kill-buffer "*term: foo*")))))
 
 (ert-deftest wamei/term-restore-ensure-continues-and-clears-after-error ()

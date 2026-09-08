@@ -43,7 +43,10 @@
   "前回保存した端末の記録。plist のリストで、各要素は
 :name (バッファ名) :directory (作業ディレクトリ)
 :title (最後に報告されたタイトル、無ければ nil) :scrollback (書き出したファイル)
-を持つ。`desktop-globals-to-save' 経由で desktop ファイルに書かれる。")
+を持つ。`desktop-globals-to-save' 経由で desktop ファイルに書かれる。
+復元時に `wamei/term-restore--inject-scrollback' が :injected t を足し、
+同じ記録からの注入を 1 回に留める (`wamei/term-restore-save' が記録を
+作り直すときは付かない)。")
 
 ;;; バッファ名
 
@@ -239,15 +242,27 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
             wamei/term-restore-saved))
 
 (defun wamei/term-restore--inject-scrollback ()
-  "この端末に記録があれば WAMEI_TERM_RESTORE に載せる。
+  "この端末に記録があれば WAMEI_TERM_RESTORE に載せる。同じ記録では 1 回だけ。
 `ghostel-pre-spawn-hook' から呼ぶ。このフックは端末バッファで
 `process-environment' を動的束縛した状態で呼ばれるので、`setenv' がそのまま
-子プロセスに届く。記録を消すのはここではなく `wamei/term-restore-ensure'
+子プロセスに届く。
+
+記録を消すのはここではなく `wamei/term-restore-ensure'
 \(desktop の復元が終わったとき)。ここで消すと、ghostel-desktop が
-`desktop-read' 中に復元した端末の記録が仕上げに届かず、タイトルを戻せない。"
+`desktop-read' 中に復元した端末の記録が仕上げに届かず、タイトルを戻せない。
+代わりに注入済みの印 (:injected) を付けて 2 回目以降は空振りさせる。
+このフックはグローバルなので記録が残っている間はすべての端末の spawn で
+走り、`desktop-save-mode' の autosave が記録を埋め直すため、印が無いと
+端末を kill して同じ名前で開き直すたびに死んだ端末の出力が再生されてしまう。
+\(autosave が記録を作り直した直後の 1 回は素通しになるが、復元経路の
+不変条件を壊さずに繰り返しの再生を止めるのがここの役目。)"
   (when-let* ((entry (wamei/term-restore--entry-for (buffer-name)))
+              ((not (plist-get entry :injected)))
               (file (plist-get entry :scrollback)))
     (when (file-readable-p file)
+      ;; entry は非 nil なので plist-put はその場で書き換わる
+      ;; (`wamei/term-restore-saved' に入っている cons をそのまま触る)
+      (plist-put entry :injected t)
       (setenv "WAMEI_TERM_RESTORE" file))))
 
 (defun wamei/term-restore--entry-directory (entry)
