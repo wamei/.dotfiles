@@ -38,6 +38,19 @@
   "フィクスチャをパースした状態。"
   (wamei/claude-usage--parse wamei/claude-usage-test--json))
 
+(defmacro wamei/claude-usage-test--with-cache-file (&rest body)
+  "共有ファイルを一時ファイルに向けて BODY を実行する。実ファイルには触らない。"
+  (declare (indent 0))
+  `(let* ((wamei/claude-usage-cache-file
+           (make-temp-name (expand-file-name "claude-usage-test-"
+                                             temporary-file-directory)))
+          (wamei/claude-usage--state nil)
+          (wamei/claude-usage--state-time nil)
+          (wamei/claude-usage--generation 0))
+     (unwind-protect (progn ,@body)
+       (when (file-exists-p wamei/claude-usage-cache-file)
+         (delete-file wamei/claude-usage-cache-file)))))
+
 ;;; パース
 
 (ert-deftest wamei/claude-usage-test-parse-picks-three-limits ()
@@ -313,15 +326,15 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
 
 (defmacro wamei/claude-usage-test--with-stubbed-fetch (retrieve &rest body)
   "`url-retrieve\' を RETRIEVE に、トークン取得を固定値に差し替えて BODY を実行する。
-ネットワークにも Keychain にも触らない。"
+ネットワークにも Keychain にも触らない。取れた値を書く共有ファイルも
+一時ファイルへ向ける (実ファイルをテストのフィクスチャで汚さない)。"
   (declare (indent 1))
-  `(let ((wamei/claude-usage--request nil)
-         (wamei/claude-usage--request-id 0)
-         (wamei/claude-usage--state nil)
-         (wamei/claude-usage--generation 0))
-     (cl-letf (((symbol-function 'wamei/claude-usage--token) (lambda () "token"))
-               ((symbol-function 'url-retrieve) ,retrieve))
-       ,@body)))
+  `(wamei/claude-usage-test--with-cache-file
+     (let ((wamei/claude-usage--request nil)
+           (wamei/claude-usage--request-id 0))
+       (cl-letf (((symbol-function 'wamei/claude-usage--token) (lambda () "token"))
+                 ((symbol-function 'url-retrieve) ,retrieve))
+         ,@body))))
 
 (defun wamei/claude-usage-test--expire ()
   "取得中のリクエストの開始時刻を時間切れの側へ戻す。"
@@ -397,5 +410,122 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
           (should fresh)
           (funcall stale)
           (should (eq wamei/claude-usage--request fresh)))))))
+
+;;; 取れた値のインスタンス間共有
+
+;; /api/oauth/usage は同一アカウントで 1〜2 分に 1 回しか通らず、枠は GUI Emacs /
+;; emacs -nw / 走っている Claude Code のセッションで共有になる。各 Emacs が独立に
+;; 60 秒ごとに投げると後から起動した方が 429 を引き続け、前回値が無いので
+;; ダッシュのままになる。取れた値はファイルに置いて、
+;;   - 起動直後はそこから出す
+;;   - interval 内に誰かが取っていれば自分は投げない
+;; ようにする。
+
+(ert-deftest wamei/claude-usage-test-cache-round-trip ()
+  "書いた使用量と時刻をそのまま読み戻せる。"
+  (wamei/claude-usage-test--with-cache-file
+    (let ((state (wamei/claude-usage-test--state))
+          (time (wamei/claude-usage-test--time "2026-09-07T09:00:00+09:00")))
+      (wamei/claude-usage--write-cache state time)
+      (let ((cache (wamei/claude-usage--read-cache)))
+        (should (equal (plist-get cache :state) state))
+        (should (time-equal-p (plist-get cache :time) time))))))
+
+(ert-deftest wamei/claude-usage-test-cache-tolerates-missing-and-garbage ()
+  "ファイルが無い・壊れていても例外にしない。"
+  (wamei/claude-usage-test--with-cache-file
+    (should (null (wamei/claude-usage--read-cache)))
+    (with-temp-file wamei/claude-usage-cache-file (insert "(:state"))
+    (should (null (wamei/claude-usage--read-cache)))
+    (with-temp-file wamei/claude-usage-cache-file (insert "42"))
+    (should (null (wamei/claude-usage--read-cache)))))
+
+(ert-deftest wamei/claude-usage-test-adopt-takes-newer-cache ()
+  "他のインスタンスが取った新しい値を拾い、mode-line のキャッシュも捨てる。"
+  (wamei/claude-usage-test--with-cache-file
+    (let ((state (wamei/claude-usage-test--state)))
+      (wamei/claude-usage--write-cache state (current-time))
+      (should (wamei/claude-usage--adopt-cache))
+      (should (equal wamei/claude-usage--state state))
+      (should wamei/claude-usage--state-time)
+      (should (equal wamei/claude-usage--generation 1)))))
+
+(ert-deftest wamei/claude-usage-test-adopt-keeps-newer-own-state ()
+  "自分の方が新しければファイルの古い値で上書きしない。"
+  (wamei/claude-usage-test--with-cache-file
+    (setq wamei/claude-usage--state 'mine
+          wamei/claude-usage--state-time (current-time))
+    (wamei/claude-usage--write-cache (wamei/claude-usage-test--state)
+                                     (time-subtract (current-time) 300))
+    (should-not (wamei/claude-usage--adopt-cache))
+    (should (eq wamei/claude-usage--state 'mine))
+    (should (equal wamei/claude-usage--generation 0))))
+
+(ert-deftest wamei/claude-usage-test-receive-writes-cache ()
+  "取れたらファイルにも書く (他のインスタンスが起動直後から出せるように)。"
+  (wamei/claude-usage-test--with-stubbed-fetch
+      (lambda (_url callback cbargs &rest _)
+        (with-current-buffer (generate-new-buffer " *stub-response*")
+          (insert "HTTP/1.1 200 OK\n\n" wamei/claude-usage-test--json)
+          (apply callback nil cbargs))
+        (generate-new-buffer " *stub*"))
+    (wamei/claude-usage--fetch)
+    (should wamei/claude-usage--state)
+    (let ((cache (wamei/claude-usage--read-cache)))
+      (should (equal (plist-get cache :state) wamei/claude-usage--state))
+      (should (plist-get cache :time)))))
+
+(ert-deftest wamei/claude-usage-test-receive-keeps-cache-on-error ()
+  "失敗したらファイルは触らない (前回値を壊さない)。"
+  (wamei/claude-usage-test--with-stubbed-fetch
+      (lambda (_url callback cbargs &rest _)
+        (with-current-buffer (generate-new-buffer " *stub-response*")
+          (apply callback '(:error (error http 429)) cbargs))
+        (generate-new-buffer " *stub*"))
+    (let ((state (wamei/claude-usage-test--state)))
+      (wamei/claude-usage--write-cache state (current-time))
+      (wamei/claude-usage--fetch)
+      (should (equal (plist-get (wamei/claude-usage--read-cache) :state)
+                     state)))))
+
+(ert-deftest wamei/claude-usage-test-tick-skips-fetch-when-cache-is-fresh ()
+  "interval 内に誰かが取っていれば投げずに拾うだけにする。"
+  (wamei/claude-usage-test--with-cache-file
+    (let ((fetches 0))
+      (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () t))
+                ((symbol-function 'wamei/claude-usage--fetch)
+                 (lambda () (cl-incf fetches))))
+        (wamei/claude-usage--write-cache (wamei/claude-usage-test--state)
+                                         (current-time))
+        (wamei/claude-usage--tick)
+        (should (equal fetches 0))
+        (should wamei/claude-usage--state)))))
+
+(ert-deftest wamei/claude-usage-test-tick-fetches-when-cache-is-stale ()
+  "誰も取っていない時間が続いたら自分で取りに行く。古い値は出したまま。"
+  (wamei/claude-usage-test--with-cache-file
+    (let ((fetches 0))
+      (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () t))
+                ((symbol-function 'wamei/claude-usage--fetch)
+                 (lambda () (cl-incf fetches))))
+        (wamei/claude-usage--write-cache
+         (wamei/claude-usage-test--state)
+         (time-subtract (current-time) (1+ wamei/claude-usage-interval)))
+        (wamei/claude-usage--tick)
+        (should (equal fetches 1))
+        (should wamei/claude-usage--state)))))
+
+(ert-deftest wamei/claude-usage-test-tick-does-nothing-while-hidden ()
+  "パネルが見えていなければ拾いにも取りにも行かない。"
+  (wamei/claude-usage-test--with-cache-file
+    (let ((fetches 0))
+      (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () nil))
+                ((symbol-function 'wamei/claude-usage--fetch)
+                 (lambda () (cl-incf fetches))))
+        (wamei/claude-usage--write-cache (wamei/claude-usage-test--state)
+                                         (current-time))
+        (wamei/claude-usage--tick)
+        (should (equal fetches 0))
+        (should-not wamei/claude-usage--state)))))
 
 ;;; claude-usage-test.el ends here

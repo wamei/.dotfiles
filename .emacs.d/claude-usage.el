@@ -13,6 +13,11 @@
 ;; - 形: レスポンスの limits 配列から kind が session / weekly_all と、
 ;;   scope.model.display_name が "Fable" の weekly_scoped を拾う。非公開の
 ;;   エンドポイントなので、形が変わったら黙って前回値を残し、無ければダッシュを出す。
+;; - 共有: エンドポイントは同一アカウントで 1〜2 分に 1 回しか通らず、その枠は
+;;   Claude Code 本体のセッションとも共有になる (超えると 429)。各 Emacs が独立に
+;;   投げると、後から起動した方は 429 を引き続けたまま前回値も持たないので
+;;   ダッシュのままになる。取れた値は `wamei/claude-usage-cache-file' に置き、
+;;   起動直後はそこから出す / interval 内に誰かが取っていれば自分は投げない。
 ;; - 表示: vterm のバッファは hide-mode-line-mode で mode-line が消えているので、
 ;;   Claude のバッファだけそれを外して自前の mode-line を入れる。window を増やさない
 ;;   ので desktop の復元 (desktop-side-windows.el) や slot 管理には影響しない。
@@ -57,6 +62,13 @@
 終わることがある。取得中の印が残ったままだと以後の取得が全部素通りして表示が
 凍るので、時間切れで見切る。"
   :type 'integer)
+
+(defcustom wamei/claude-usage-cache-file
+  (expand-file-name "claude-usage.eld" user-emacs-directory)
+  "最後に取れた使用量を置くファイル。Emacs のインスタンス間で共有する。
+起動直後の Emacs がここから値を出せるようにし、`wamei/claude-usage-interval'
+内に誰かが取っていれば自分は投げないための置き場。"
+  :type 'file)
 
 (defcustom wamei/claude-usage-keychain-service "Claude Code-credentials"
   "アクセストークンが入っている Keychain のサービス名 (macOS)。"
@@ -273,6 +285,9 @@ NOW は当日かどうかの判定に使う (リセット時刻の出し方が�
 (defvar wamei/claude-usage--state nil
   "最後に取れた使用量。形は `wamei/claude-usage--parse' の返り値。")
 
+(defvar wamei/claude-usage--state-time nil
+  "`wamei/claude-usage--state' が取れた時刻。共有ファイルとの新しさ比べに使う。")
+
 (defvar wamei/claude-usage--generation 0
   "取得のたびに増える番号。mode-line のキャッシュを捨てるのに使う。")
 
@@ -282,6 +297,52 @@ NOW は当日かどうかの判定に使う (リセット時刻の出し方が�
 
 (defvar wamei/claude-usage--request-id 0
   "リクエストごとに増える番号。見切ったあとに遅れて返った応答を見分ける。")
+
+;;; 取れた値の共有
+
+(defun wamei/claude-usage--read-cache ()
+  "共有ファイルの中身を (:state ... :time ...) で返す。読めなければ nil。
+別のインスタンスが書いている途中や、壊れた中身でも例外にしない。"
+  (when (file-readable-p wamei/claude-usage-cache-file)
+    (when-let* ((cache (ignore-errors
+                         (with-temp-buffer
+                           (insert-file-contents wamei/claude-usage-cache-file)
+                           (goto-char (point-min))
+                           (read (current-buffer)))))
+                ((consp cache))
+                ((plist-get cache :state))
+                ((plist-get cache :time)))
+      cache)))
+
+(defun wamei/claude-usage--write-cache (state time)
+  "STATE と TIME を共有ファイルに書く。書けなくても取得は続ける。"
+  (ignore-errors
+    (with-temp-file wamei/claude-usage-cache-file
+      (let ((print-level nil)
+            (print-length nil))
+        (prin1 (list :state state :time time) (current-buffer))
+        (insert "\n")))))
+
+(defun wamei/claude-usage--adopt-cache ()
+  "共有ファイルの方が新しければ取り込む。取り込んだら非 nil。
+他のインスタンスが取ってくれた値を、自分では投げずに使う。"
+  (when-let* ((cache (wamei/claude-usage--read-cache))
+              (time (plist-get cache :time))
+              ((or (null wamei/claude-usage--state-time)
+                   (time-less-p wamei/claude-usage--state-time time))))
+    (setq wamei/claude-usage--state (plist-get cache :state)
+          wamei/claude-usage--state-time time)
+    (cl-incf wamei/claude-usage--generation)
+    (force-mode-line-update t)
+    t))
+
+(defun wamei/claude-usage--fresh-p ()
+  "持っている値が `wamei/claude-usage-interval' 内のものなら非 nil。"
+  (and wamei/claude-usage--state-time
+       (time-less-p (time-since wamei/claude-usage--state-time)
+                    wamei/claude-usage-interval)))
+
+;;; 取得
 
 (defun wamei/claude-usage--token-from-json (body)
   "認証情報の JSON 文字列 BODY からアクセストークンを取り出す。"
@@ -337,7 +398,9 @@ macOS では Keychain、無ければ `wamei/claude-usage-credentials-file' か�
   (unwind-protect
       (unless (plist-get status :error)
         (when-let* ((parsed (wamei/claude-usage--parse (wamei/claude-usage--body))))
-          (setq wamei/claude-usage--state parsed)
+          (setq wamei/claude-usage--state parsed
+                wamei/claude-usage--state-time (current-time))
+          (wamei/claude-usage--write-cache parsed wamei/claude-usage--state-time)
           (cl-incf wamei/claude-usage--generation)
           (force-mode-line-update t)))
     (kill-buffer (current-buffer))))
@@ -496,9 +559,15 @@ vterm のバッファは hide-mode-line-mode で mode-line が消えているの
                  (frame-list))))
 
 (defun wamei/claude-usage--tick ()
-  "パネルが見えているときだけ取りに行く。"
+  "パネルが見えているときだけ動く。
+まず共有ファイルから他のインスタンスが取った値を拾い、それが
+`wamei/claude-usage-interval' 内なら自分では投げない。エンドポイントの枠は
+アカウント単位で狭く、Emacs を 2 つ動かすと後から起動した方が 429 を
+引き続けて一度も表示できなくなる。"
   (when (wamei/claude-usage--visible-p)
-    (wamei/claude-usage--fetch)))
+    (wamei/claude-usage--adopt-cache)
+    (unless (wamei/claude-usage--fresh-p)
+      (wamei/claude-usage--fetch))))
 
 ;;; 有効化
 
@@ -507,6 +576,8 @@ vterm のバッファは hide-mode-line-mode で mode-line が消えているの
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :after #'wamei/claude-usage--after-display)
   (add-hook 'enable-theme-functions #'wamei/claude-usage--invalidate)
+  ;; 起動直後はまだ取れていないので、他のインスタンスが置いた値を出す
+  (wamei/claude-usage--adopt-cache)
   (mapc #'wamei/claude-usage--setup (wamei/claude-usage--buffers))
   (unless wamei/claude-usage--timer
     (setq wamei/claude-usage--timer
