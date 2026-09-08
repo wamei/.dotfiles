@@ -57,8 +57,8 @@
 ;;; 色の変換
 
 (defun wamei/term-restore-test--colored (text &rest face)
-  "TEXT に vterm が付けるのと同じ `font-lock-face' plist FACE を付けて返す。"
-  (propertize text 'font-lock-face face))
+  "TEXT に ghostel が付けるのと同じ `face' plist FACE を付けて返す。"
+  (propertize text 'face face))
 
 (ert-deftest wamei/term-restore-ansi-passes-plain-text-through ()
   "face の無い文字列はそのまま。"
@@ -95,19 +95,14 @@
                   (wamei/term-restore-test--colored "a" :foreground "#f80"))
                  "\e[38;2;255;136;0ma\e[0m")))
 
-(ert-deftest wamei/term-restore-ansi-omits-default-colors ()
-  "vterm はデフォルト色のセルにもテーマの前景・背景を付けるので、`default' face と
-同じ色は出さない (テーマを変えても古い色が残らない)。"
-  (cl-letf (((symbol-function 'face-foreground)
-             (lambda (face &rest _) (when (eq face 'default) "#767679")))
-            ((symbol-function 'face-background)
-             (lambda (face &rest _) (when (eq face 'default) "#1c1e1f"))))
-    (should (equal (wamei/term-restore--ansi
-                    (concat (wamei/term-restore-test--colored
-                             "plain" :foreground "#767679" :background "#1c1e1f" :extend t)
-                            (wamei/term-restore-test--colored
-                             "red" :foreground "#ff0000" :background "#1c1e1f" :extend t)))
-                   "plain\e[38;2;255;0;0mred\e[0m"))))
+(ert-deftest wamei/term-restore-ansi-emits-colors-equal-to-default ()
+  "ghostel は装飾のないセルに face を付けないので、テーマの既定色と同じ色でも
+抑止しない (face が付いている = 端末が明示した色)。"
+  (should (equal (wamei/term-restore--ansi
+                  (concat "plain"
+                          (wamei/term-restore-test--colored
+                           "red" :foreground "#ff0000")))
+                 "plain\e[38;2;255;0;0mred\e[0m")))
 
 (ert-deftest wamei/term-restore-ansi-ignores-unresolvable-face ()
   "解決できない色しか無い face は何も出さない。"
@@ -118,10 +113,9 @@
 ;;; プロンプト行の除外
 
 (defun wamei/term-restore-test--insert-marked (text)
-  "TEXT を vterm がプロンプトの終わりに付ける `vterm-prompt' プロパティ付きで挿入する。
-vterm はプロンプト本文ではなく、OSC 51;A を受けた位置の 1 文字 (プロンプト直後の
-改行や入力コマンドの先頭文字) に印を付ける。"
-  (insert (propertize text 'vterm-prompt t 'rear-nonsticky t)))
+  "TEXT を ghostel がプロンプトに付ける `ghostel-prompt' プロパティ付きで挿入する。
+ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に印を付ける。"
+  (insert (propertize text 'ghostel-prompt t 'rear-nonsticky t)))
 
 (ert-deftest wamei/term-restore-content-drops-trailing-prompt-lines ()
   "末尾に続くプロンプト行 (複数行でも) と、その後の空行は落とす。"
@@ -156,10 +150,10 @@ vterm はプロンプト本文ではなく、OSC 51;A を受けた位置の 1 �
     (should (equal (wamei/term-restore--content) "a\nb\n"))))
 
 (ert-deftest wamei/term-restore-content-keeps-faces ()
-  "色 (font-lock-face) は残す。復元時に SGR へ写すため。"
+  "色 (face) は残す。復元時に SGR へ写すため。"
   (with-temp-buffer
     (insert (wamei/term-restore-test--colored "a" :foreground "#ff0000") "\n")
-    (should (equal (get-text-property 0 'font-lock-face (wamei/term-restore--content))
+    (should (equal (get-text-property 0 'face (wamei/term-restore--content))
                    '(:foreground "#ff0000")))))
 
 ;;; 保存
