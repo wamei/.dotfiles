@@ -16,6 +16,10 @@ go = "1"
 # TypeScript 7 の tsc は native バイナリ (typescript-go) で、`tsc --lsp -stdio` が
 # そのまま言語サーバになる (init.el の eglot ブロックがこれを起動する)。そのため
 # typescript-language-server は入れない。
+# npm backend は install 先の node_modules/.bin も PATH に出すので、
+# vscode-langservers-extracted が依存で抱える typescript 4.9.5 の tsc / tsserver まで
+# 漏れてくる。PATH の優先順はこのファイルの記述順なので、tsc を 7 系にするには
+# typescript を vscode-langservers-extracted より前に置く (入れ替えると 4.9.5 が勝つ)。
 "npm:typescript" = "latest"
 "npm:vscode-langservers-extracted" = "latest"
 "npm:@prisma/language-server" = "latest"
