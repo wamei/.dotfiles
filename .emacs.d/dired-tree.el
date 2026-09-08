@@ -138,9 +138,43 @@ point は呼び出し前の位置に戻す。"
 
 ;;; カーソル保持
 
+(defun wamei/dired-tree--remember-marks ()
+  "マークの付いた行の (ファイル名 . マーカー文字) を上から順に集める。
+`dired-remember-marks' と違って行のファイル名を `dired-utils-get-filename' で取るので
+subtree の行も拾える。"
+  (save-excursion
+    (goto-char (point-min))
+    (let (marks)
+      (while (not (eobp))
+        (let ((char (char-after (line-beginning-position))))
+          (when (and char (not (eq char ?\s)))
+            (when-let* ((file (dired-utils-get-filename)))
+              (push (cons file char) marks))))
+        (forward-line 1))
+      (nreverse marks))))
+
+(defun wamei/dired-tree--restore-marks (marks)
+  "MARKS (`wamei/dired-tree--remember-marks' の結果) を行に戻す。
+行が消えていたものは黙って捨てる。"
+  (let ((inhibit-read-only t))
+    (save-excursion
+      (pcase-dolist (`(,file . ,char) marks)
+        (when (or (dired-utils-goto-line file)
+                  (dired-goto-file file))
+          (goto-char (line-beginning-position))
+          (unless (eq (char-after) char)
+            (delete-char 1)
+            (insert-char char)))))))
+
 (defun wamei/dired-tree-revert ()
-  "カーソル行のファイルを保って `revert-buffer' する。
+  "カーソル行のファイルとマークを保って `revert-buffer' する。
 dired 標準の復元は subtree 行では効かないので `dired-utils-goto-line' で戻す。
+
+マークも同じ理由で落ちる。`dired-revert' は `dired-mark-remembered' で戻すが、
+これは `dired-goto-file' を使うので top-level の行しか見つけられず、展開した
+ディレクトリ配下のマークだけが消える。監視による revert が挟まると「マークが
+勝手に消える」ように見えるので、こちらでも控えて戻す (top-level の行は標準の
+復元と二重になるが、同じ文字なら何もしない)。
 
 sidebar は選択されていない window に出る (`wamei/project-sidebar--reveal' は
 window-point だけを動かす) ので、buffer point と window-point はずれる。
@@ -148,6 +182,7 @@ dired 標準の `dired-restore-positions' も window ごとの復元を持つが
 `dired-goto-file' が効かず行番号にフォールバックするため、行数が変わる revert で
 別の行に飛ぶ。window ごとにも行のファイル名を控えて戻す。"
   (let ((file (dired-utils-get-filename))
+        (marks (wamei/dired-tree--remember-marks))
         (window-files
          (mapcar (lambda (win)
                    (cons win (save-excursion
@@ -155,6 +190,7 @@ dired 標準の `dired-restore-positions' も window ごとの復元を持つが
                                (dired-utils-get-filename))))
                  (get-buffer-window-list nil nil t))))
     (revert-buffer)
+    (wamei/dired-tree--restore-marks marks)
     (when file
       (or (dired-utils-goto-line file)
           (dired-goto-file file)))

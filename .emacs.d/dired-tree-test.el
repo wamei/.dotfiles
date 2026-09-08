@@ -175,6 +175,33 @@ revert のあとも window-point が元の行に戻ること。
                              (expand-file-name "a/b/c.txt" root))))
           (delete-window win))))))
 
+(ert-deftest wamei/dired-tree-revert-keeps-marks-on-subtree-lines ()
+  "revert のあとも subtree 行のマークが残ること。
+dired 標準の `dired-mark-remembered' は `dired-goto-file' で行を探すので
+subtree 行のマークだけ落ちる。top-level の行は標準の復元で残る。"
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (should (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root)))
+      (dired-mark 1)
+      (dired-utils-goto-line (expand-file-name "e.txt" root))
+      (dired-mark 1)
+      (wamei/dired-tree-revert)
+      (should (equal (sort (dired-get-marked-files nil nil nil nil t) #'string<)
+                     (sort (list (expand-file-name "a/b/c.txt" root)
+                                 (expand-file-name "e.txt" root))
+                           #'string<))))))
+
+(ert-deftest wamei/dired-tree-revert-keeps-marker-characters ()
+  "`*' 以外のマーカー文字 (`D' など) もそのまま戻ること。"
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (should (wamei/dired-tree-expand-to (expand-file-name "a/b/c.txt" root)))
+      (let ((dired-marker-char ?D))
+        (dired-mark 1))
+      (wamei/dired-tree-revert)
+      (should (dired-utils-goto-line (expand-file-name "a/b/c.txt" root)))
+      (should (eq (char-after (line-beginning-position)) ?D)))))
+
 ;;; 監視
 
 (ert-deftest wamei/dired-tree-watch-diff ()
