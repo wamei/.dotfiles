@@ -14,7 +14,7 @@
 ;;   セッションが増減してもタブは増えない。
 ;; - 並べ方: 基本は左右に 1 行。1 個あたりが `wamei/claude-grid-min-window-width'
 ;;   を切るなら行を足してグリッドにする (Claude の TUI は幅が狭いと崩れる)。
-;; - side window: 組む前に消す。同じ vterm バッファを side window とグリッドの
+;; - side window: 組む前に消す。同じ端末バッファを side window とグリッドの
 ;;   両方に出すと、pty のサイズをどちらの window に合わせるかで競合する。
 ;; - 並び順はセッション名 (proj または proj:name) の昇順。パッケージのセッション
 ;;   一覧は順序不定なので並べ替えが要る。表示履歴を見る claude-panel の tab-line

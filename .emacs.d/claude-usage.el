@@ -3,7 +3,7 @@
 ;;; Commentary:
 
 ;; Claude Code の `/usage' が出している「今のセッション / 今週 / Fable」の消費率を
-;; claude-code-ide のパネル (右サイドの vterm バッファ) の mode-line に常時出す。
+;; claude-code-ide のパネル (右サイドの ghostel バッファ) の mode-line に常時出す。
 ;;
 ;; - 取得: `/usage' が叩いている非公開エンドポイント /api/oauth/usage を
 ;;   OAuth のアクセストークンで直接呼ぶ。トークンは macOS の Keychain
@@ -18,9 +18,10 @@
 ;;   投げると、後から起動した方は 429 を引き続けたまま前回値も持たないので
 ;;   ダッシュのままになる。取れた値は `wamei/claude-usage-cache-file' に置き、
 ;;   起動直後はそこから出す / interval 内に誰かが取っていれば自分は投げない。
-;; - 表示: vterm のバッファは hide-mode-line-mode で mode-line が消えているので、
-;;   Claude のバッファだけそれを外して自前の mode-line を入れる。window を増やさない
-;;   ので desktop の復元 (desktop-side-windows.el) や slot 管理には影響しない。
+;; - 表示: 端末バッファは init.el が `ghostel-mode-hook' に `hide-mode-line-mode' を
+;;   掛けて mode-line を消しているので、Claude のバッファだけそれを外して自前の
+;;   mode-line を入れる。window を増やさないので desktop の復元
+;;   (desktop-side-windows.el) や slot 管理には影響しない。
 ;;   mode-line は改行できない (Emacs 31 でも "a\nb" は 1 行に ^J で出る) ため 1 行。
 ;; - バー: SVG の角丸 + グラデーション。画像が使えない端末では ░/█ の文字に落とす。
 ;;   redisplay ごとに作り直すと重いので、取得世代と分単位の時刻でキャッシュする。
@@ -538,7 +539,7 @@ BACKGROUND はパネルの地色、DIM は非選択 window での暗転後の地
 (defun wamei/claude-usage--blend-in (&optional background dim)
   "mode-line の帯をパネルの地色に溶け込ませる。
 BACKGROUND の既定はバッファの地色、DIM の既定は auto-dim-other-buffers の背景。
-Claude のパネルは vterm が alt-screen を全面に描いているので、mode-line だけ
+Claude のパネルは端末が alt-screen を全面に描いているので、mode-line だけ
 別の地色だと帯が浮く。バッファローカルな face remap なので他の window には
 影響しない。何度呼んでも remap は積み上がらない。"
   (mapc #'face-remap-remove-relative wamei/claude-usage--remaps)
@@ -554,7 +555,8 @@ Claude のパネルは vterm が alt-screen を全面に描いているので、
 
 (defun wamei/claude-usage--setup (buffer)
   "BUFFER に使用量の mode-line を付ける。何度呼んでもよい。
-vterm のバッファは hide-mode-line-mode で mode-line が消えているので先に外す。"
+端末バッファは init.el の `ghostel-mode-hook' で hide-mode-line-mode が
+掛かっているので先に外す。"
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (unless (equal mode-line-format wamei/claude-usage--mode-line-format)
