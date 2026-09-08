@@ -119,5 +119,163 @@
       (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-a/")
       (should-not (wamei/project-tabs-pin-name)))))
 
+
+;;; タブに紐づくプロジェクト
+
+(defmacro wamei/project-tabs-test--with-projects (&rest body)
+  "/tmp/proj-NAME/ 以下をそれぞれ別のプロジェクトとみなす環境で BODY を評価する。"
+  (declare (indent 0))
+  `(let ((project-find-functions
+          (list (lambda (dir)
+                  (let ((dir (expand-file-name dir)))
+                    (when (string-match "\\`\\(/tmp/proj-[a-z]+/\\)" dir)
+                      (cons 'transient (match-string 1 dir))))))))
+     ,@body))
+
+(defmacro wamei/project-tabs-test--with-setup (&rest body)
+  "`project-current' への advice を張った状態で BODY を評価する。"
+  (declare (indent 0))
+  `(progn
+     (wamei/project-tabs-setup)
+     (unwind-protect (progn ,@body)
+       (advice-remove 'project-current #'wamei/project-tabs--use-tab-root))))
+
+(defun wamei/project-tabs-test--root-in (dir command)
+  "DIR を `default-directory'、COMMAND を `this-command' として見えるプロジェクトの root。"
+  (with-temp-buffer
+    (setq default-directory dir)
+    (let ((this-command command))
+      (when-let* ((project (project-current nil)))
+        (project-root project)))))
+
+(ert-deftest wamei/project-tabs-set-root-round-trips ()
+  (wamei/project-tabs-test--with-tab-bar
+    (wamei/project-tabs-set-root "/tmp/proj-a")
+    (should (equal (wamei/project-tabs-current-root) "/tmp/proj-a/"))))
+
+(ert-deftest wamei/project-tabs-root-survives-tab-switch ()
+  "独自パラメータはタブを切り替えても残る (実体の cdr につないでいる)。"
+  (wamei/project-tabs-test--with-tab-bar
+    (wamei/project-tabs-set-root "/tmp/proj-a/")
+    (tab-new)
+    (should-not (wamei/project-tabs-current-root))
+    (tab-bar-select-tab 1)
+    (should (equal (wamei/project-tabs-current-root) "/tmp/proj-a/"))))
+
+(ert-deftest wamei/project-tabs-pin-records-root ()
+  "タブ名を固定するときに root も紐づける。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (with-temp-buffer
+        (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-a/src/")
+        (should (equal (wamei/project-tabs-pin-name) "proj-a"))
+        (should (equal (wamei/project-tabs-current-root) "/tmp/proj-a/"))))))
+
+(ert-deftest wamei/project-tabs-pin-records-root-for-pinned-tab ()
+  "名前が固定済みのタブ (desktop 復元など) も、名前が一致するプロジェクトなら紐づける。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (tab-rename "proj-a")
+      (with-temp-buffer
+        (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-a/src/")
+        (should-not (wamei/project-tabs-pin-name))
+        (should (equal (wamei/project-tabs-current-root) "/tmp/proj-a/"))))))
+
+(ert-deftest wamei/project-tabs-pin-skips-root-for-other-project ()
+  "名前が固定済みのタブに別プロジェクトのバッファが出ても紐づけない。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (tab-rename "proj-a")
+      (with-temp-buffer
+        (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-b/")
+        (should-not (wamei/project-tabs-pin-name))
+        (should-not (wamei/project-tabs-current-root))))))
+
+(ert-deftest wamei/project-tabs-pin-keeps-recorded-root ()
+  "既に紐づいた root は上書きしない。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-set-root "/tmp/proj-a/")
+      (with-temp-buffer
+        (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-b/")
+        (wamei/project-tabs-pin-name)
+        (should (equal (wamei/project-tabs-current-root) "/tmp/proj-a/"))))))
+
+;;; project 系コマンドの起点
+
+(ert-deftest wamei/project-tabs-command-uses-tab-root ()
+  "別プロジェクトのバッファにいても project 系コマンドはタブの root を見る。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (wamei/project-tabs-set-root "/tmp/proj-a/")
+        (should (equal (wamei/project-tabs-test--root-in
+                        "/tmp/proj-b/" 'project-find-file)
+                       "/tmp/proj-a/"))))))
+
+(ert-deftest wamei/project-tabs-command-uses-tab-root-outside-project ()
+  "プロジェクト外のバッファ (*scratch* 等) でもタブの root を見る。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (wamei/project-tabs-set-root "/tmp/proj-a/")
+        (should (equal (wamei/project-tabs-test--root-in
+                        "/tmp/elsewhere/" 'project-find-file)
+                       "/tmp/proj-a/"))))))
+
+(ert-deftest wamei/project-tabs-extra-command-uses-tab-root ()
+  "`wamei/project-tabs-commands' に入れたコマンドもタブの root を見る。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (wamei/project-tabs-set-root "/tmp/proj-a/")
+        (let ((wamei/project-tabs-commands '(consult-project-buffer)))
+          (should (equal (wamei/project-tabs-test--root-in
+                          "/tmp/proj-b/" 'consult-project-buffer)
+                         "/tmp/proj-a/")))))))
+
+(ert-deftest wamei/project-tabs-other-command-uses-buffer-project ()
+  "project 系でないコマンド (eglot や apheleia の経路) はバッファのプロジェクトのまま。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (wamei/project-tabs-set-root "/tmp/proj-a/")
+        (should (equal (wamei/project-tabs-test--root-in "/tmp/proj-b/" 'find-file)
+                       "/tmp/proj-b/"))
+        (should (equal (wamei/project-tabs-test--root-in "/tmp/proj-b/" nil)
+                       "/tmp/proj-b/"))))))
+
+(ert-deftest wamei/project-tabs-respects-directory-override ()
+  "`project-current-directory-override' を立てている呼び出し (C-x t p 等) には触らない。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (wamei/project-tabs-set-root "/tmp/proj-a/")
+        (let ((project-current-directory-override "/tmp/proj-b/"))
+          (should (equal (wamei/project-tabs-test--root-in
+                          "/tmp/elsewhere/" 'project-find-file)
+                         "/tmp/proj-b/")))))))
+
+(ert-deftest wamei/project-tabs-respects-explicit-directory ()
+  "DIRECTORY 引数を明示した呼び出しはそのまま通す。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (wamei/project-tabs-set-root "/tmp/proj-a/")
+        (let ((this-command 'project-find-file))
+          (should (equal (project-root (project-current nil "/tmp/proj-b/"))
+                         "/tmp/proj-b/")))))))
+
+(ert-deftest wamei/project-tabs-without-tab-root-uses-buffer-project ()
+  "root 未記録のタブでは従来どおりバッファのプロジェクトを見る。"
+  (wamei/project-tabs-test--with-projects
+    (wamei/project-tabs-test--with-tab-bar
+      (wamei/project-tabs-test--with-setup
+        (should (equal (wamei/project-tabs-test--root-in
+                        "/tmp/proj-b/" 'project-find-file)
+                       "/tmp/proj-b/"))
+        (should-not (wamei/project-tabs-test--root-in
+                     "/tmp/elsewhere/" 'project-find-file))))))
+
 (provide 'project-tabs-test)
 ;;; project-tabs-test.el ends here

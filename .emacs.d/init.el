@@ -567,24 +567,6 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   :doc "プロジェクト操作"
   :ensure nil
   :preface
-  (defun wamei/project--tab-root (tab)
-    "TAB に紐づけたプロジェクトルート。無ければ nil。"
-    (alist-get 'wamei-project tab))
-
-  (defun wamei/project--set-current-tab-root (root)
-    "現在のタブに ROOT を紐づける。
-
-tab-bar--tab と tab-bar--current-tab-make はどちらも既知のキー以外を
-そのまま引き継ぐので、独自パラメータはタブ切り替えを跨いで残る。
-
-タブは (current-tab (KEY . VALUE) ...) という構造で先頭がシンボルのため、
-setf alist-get だと局所変数へ push されるだけで実体に残らない。
-保存されているリストへ直接つなぐ必要がある。"
-    (when-let* ((tab (tab-bar--current-tab-find)))
-      (if-let* ((cell (assq 'wamei-project (cdr tab))))
-          (setcdr cell root)
-        (setcdr tab (cons (cons 'wamei-project root) (cdr tab))))))
-
   (defun wamei/project--find-tab-index (root)
     "ROOT に対応するタブの位置 (0 始まり) を返す。無ければ nil。"
     (let ((name (file-name-nondirectory (directory-file-name root))))
@@ -593,9 +575,9 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
        nil
        (lambda (tab _)
          (or
-          ;; 明示的に紐づけたタブ
-          (equal (wamei/project--tab-root tab) root)
-          ;; 他の経路 (C-x t p など) で作られたタブは名前で拾う。
+          ;; プロジェクトを紐づけたタブ (project-tabs.el)
+          (equal (wamei/project-tabs-root tab) root)
+          ;; 紐づけ前 (タブ名固定より前) のタブは名前で拾う。
           ;; タブ名は wamei/tab-bar-tab-name-project がプロジェクト名にしている。
           (equal (alist-get 'name tab) name))))))
 
@@ -607,7 +589,7 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
       (if index
           (tab-bar-select-tab (1+ index))
         (tab-new)
-        (wamei/project--set-current-tab-root root)
+        (wamei/project-tabs-set-root root)
         (project-switch-project root))))
   :bind (("C-x C-f" . project-find-file)
          ("C-x C-p" . project-switch-project)
@@ -655,6 +637,10 @@ setf alist-get だと局所変数へ push されるだけで実体に残らな�
   ;; 固定しないとカレントバッファのプロジェクトが変わるたびにタブ名が動く
   ;; (詳細は project-tabs.el の Commentary)。
   (add-hook 'window-buffer-change-functions #'wamei/project-tabs--pin-name-soon)
+  ;; project 系の対話コマンドは、開いているバッファがプロジェクト外 (*scratch*
+  ;; など) でも別プロジェクトでも、タブに紐づいたプロジェクトを起点にする
+  ;; (詳細は project-tabs.el の Commentary)。
+  (wamei/project-tabs-setup)
   :global-minor-mode tab-bar-mode)
 
 (leaf transient
