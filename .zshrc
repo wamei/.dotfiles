@@ -190,15 +190,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export PATH=${HOME}/bin:${PATH}
 export PATH=${HOME}/fvm/default/bin:${PATH}
 
-# pnpm
-export PNPM_HOME="/Users/wamei/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
-# pnpm end
-
-# bun (global bin)
+# bun (global bin)。PATH から引きたい npm パッケージは mise 管理に寄せた
+# (~/.config/mise/config.toml) ので普段は空。手で bun add -g したときの受け皿。
 export BUN_INSTALL="$HOME/.bun"
 case ":$PATH:" in
   *":$BUN_INSTALL/bin:"*) ;;
