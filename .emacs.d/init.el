@@ -729,14 +729,37 @@ default-directory が古いままなので、一覧を開く側で拾ってお�
             ((string-empty-p a) nil)
             ((string-empty-p b) t)
             (t (string< a b)))))
+
+  (defun wamei/docker--dim-stopped-entry (entry)
+    "動いていないコンテナの ENTRY を薄く表示する。
+
+`docker-container-propertize-entry' が Status セルに付けた face
+(docker-face-status-down / -other) は残したいので、Status 以外のセルだけ
+shadow に塗り替える。tabulated-list は行単位の face を持たないのでセルごとに付ける。
+判定は docker.el 自身と同じく Status が \"Up\" で始まるかどうか。"
+    (let* ((names (mapcar (lambda (column) (plist-get column :name))
+                          docker-container-columns))
+           (index (seq-position names "Status"))
+           (data (cadr entry))
+           (status (and index (substring-no-properties (aref data index)))))
+      (when (and status (not (string-prefix-p "Up" status)))
+        (dotimes (i (length data))
+          (unless (= i index)
+            (aset data i (propertize (substring-no-properties (aref data i))
+                                     'font-lock-face 'shadow)))))
+      entry))
   :init
-  ;; 一覧を開く時点のバッファで project を拾う。C-x C-d 経由は docker-open-hook、
+  ;; 一覧を開く時点のバッファで project を拾う。transient 経由は docker-open-hook、
   ;; M-x docker-containers 直叩きは advice が拾う。
   ;; :config (with-eval-after-load 'docker) に置くと、docker-containers の autoload が
   ;; 読むのは docker-container.el だけで feature docker が provide されないため、
   ;; その経路では結線されない。
   (add-hook 'docker-open-hook #'wamei/docker--record-current-projects)
   (advice-add 'docker-containers :before #'wamei/docker--record-current-projects)
+  ;; Up でない行を薄くする。docker-container-propertize-entry は init 時点では
+  ;; 未定義だが、advice は後から来る defun を生き延びる。
+  (advice-add 'docker-container-propertize-entry :filter-return
+              #'wamei/docker--dim-stopped-entry)
   :custom
   ;; docker inspect の JSON を出すモード。既定は json-mode が無ければ js-mode
   ;; だが json-mode は入れておらず、JSON は treesit で見ている。
