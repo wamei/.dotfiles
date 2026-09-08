@@ -2075,11 +2075,36 @@ child frame (eldoc-box / eldoc-mouse) の表示関数への :filter-args advice�
 ヒントは echo area に出すので、child frame には重複させない。"
     (cons (cl-remove-if #'wamei/eglot-code-action-hint-p (car args)) (cdr args)))
 
-  (defun wamei/sql-eglot-ensure ()
-    "sqls が PATH にあるときだけ eglot を起動する。
-sqls はプロジェクトの依存ではなく mise で入れる道具なので (~/.config/mise/config.toml)、
-入っていない環境では .sql を開いてもエラーにせず黙って諦める。"
-    (when (executable-find "sqls")
+  (defun wamei/eglot-server-available-p ()
+    "現在のバッファを担当する言語サーバが起動できそうなら非 nil。
+`eglot-server-programs' から実行ファイルを引いて `executable-find' で探す。
+REMOTE 引数を渡すので、TRAMP 越しのバッファではリモート側の PATH を見る
+\(/docker:… でコンテナ内のファイルを開いたとき、mac 側の道具を誤って
+見つけない)。host + port の接続は実行ファイルではないので判定せず許可する。"
+    ;; `eglot--guess-contact' は該当エントリが無いと contact に nil を返し、
+    ;; `eglot-alternatives' のエントリは候補が全滅すると error を投げる。
+    ;; どちらも「起動できない」なので nil に畳む。
+    (ignore-errors
+      (let ((contact (nth 3 (eglot--guess-contact))))
+        (when contact
+          (let ((program (and (stringp (car contact))
+                              ;; ("host" 1234) は TCP 接続で実行ファイルではない
+                              (or (null (cdr contact)) (stringp (cadr contact)))
+                              (car contact))))
+            (if program
+                (and (executable-find program t) t)
+              t))))))
+
+  (defun wamei/eglot-ensure-if-available ()
+    "言語サーバの実行ファイルが見つかるときだけ eglot を起動する。
+言語サーバはプロジェクトの依存ではなく mise で入れる道具なので
+\(~/.config/mise/config.toml)、入っていない環境ではエラーにせず黙って諦める。
+これが無いと、TRAMP でコンテナ内のファイルを開いたときに eglot が
+リモートで存在しないコマンドを起動しようとする。リモートではコマンドが
+シェル越しに起動する (`eglot--cmd') ので `make-process' 自体は成功し、
+死んだプロセスに initialize を送って \"Output file descriptor … is closed\"
+になる (`debug-on-error' が t だとデバッガが開く)。"
+    (when (wamei/eglot-server-available-p)
       (eglot-ensure)))
 
   (defun wamei/sqls-switch-connection ()
@@ -2104,20 +2129,22 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
   ;; (wamei/eglot-code-action-hint-display)。left-fringe の雷マークは、どこでも
   ;; refactor アクションを返すサーバ (tsserver 系) では常時点灯になるので使わない。
   (eglot-code-action-indications . '(eldoc-hint))
-  :hook (((typescript-ts-mode-hook
-           tsx-ts-mode-hook
-           js-ts-mode-hook
-           js-mode-hook
-           json-ts-mode-hook
-           css-ts-mode-hook
-           css-mode-hook
-           html-ts-mode-hook
-           mhtml-mode-hook
-           prisma-ts-mode-hook
-           dockerfile-ts-mode-hook
-           ;; 派生の wamei/docker-compose-ts-mode でもこのフックは走る
-           yaml-ts-mode-hook) . eglot-ensure)
-         (sql-mode-hook . wamei/sql-eglot-ensure))
+  ;; eglot-ensure ではなく wamei/eglot-ensure-if-available を通す (:preface 参照)。
+  ;; サーバが PATH に無い環境では黙って諦める。
+  :hook ((typescript-ts-mode-hook
+          tsx-ts-mode-hook
+          js-ts-mode-hook
+          js-mode-hook
+          json-ts-mode-hook
+          css-ts-mode-hook
+          css-mode-hook
+          html-ts-mode-hook
+          mhtml-mode-hook
+          prisma-ts-mode-hook
+          dockerfile-ts-mode-hook
+          sql-mode-hook
+          ;; 派生の wamei/docker-compose-ts-mode でもこのフックは走る
+          yaml-ts-mode-hook) . wamei/eglot-ensure-if-available)
   :config
   ;; コードアクションヒント: quickfix に絞り、echo area にだけ出す (:preface の各関数参照)。
   ;; eldoc-display-functions は eldoc-box が有効化時に global 値を複製して buffer-local
