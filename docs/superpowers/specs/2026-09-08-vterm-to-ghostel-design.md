@@ -101,7 +101,10 @@ Emacs 31.1 (aarch64-apple-darwin25)、ghostel 20260902.1753 (MELPA) + ネイテ�
                  "C-g" "C-l" "M-o" "M-w"   ; keyboard-quit / recenter / other-window / kill-ring-save
                  "C-q" "C-z"               ; 端末パネルの prefix とトグル
                  "C-<tab>" "C-S-<tab>"))   ; wamei/term-next / -previous
-            (ghostel-max-scrollback . 10000)
+            ;; ghostel-max-scrollback は行数ではなく「バイト数」(既定 5MB)。
+            ;; vterm-max-scrollback は行数 (10000 行) だったので、docstring の
+            ;; 「5MB ≒ 5,000 行」から 10MB にして 10000 行相当を確保する。
+            (ghostel-max-scrollback . ,(* 10 1024 1024))
             (ghostel-module-directory . ,(locate-user-emacs-file "ghostel/")))
   :preface
   (load ... "term-input") (load ... "term-panel")   ; term-faint の load は削除
@@ -189,7 +192,7 @@ ghostel-desktop は desktop の per-buffer 機構で `desktop-read` 中に端末
 
 `wamei/term-restore--parse-name` は残す。バッファ名からの端末生成には使わなくなるが、スクロールバックのファイル名 (`<project>-<index>.txt`) を決めるのに要る。
 
-これで `*term: <project>[ N]*` の生成・解析が term-panel.el と二重管理になっている問題も解消する (term-panel.el 側の 1 箇所に一本化)。
+これで `*term: <project>[ N]*` の **生成** は term-panel.el の 1 箇所 (`wamei/term--buffer-name`) に一本化される。**解析** は用途が違うため 2 箇所に残る: term-panel.el の `wamei/term--buffer-regexp` (現在のプロジェクトの端末だけを拾う) と、term-restore.el の `wamei/term-restore--name-regexp` / `--parse-name` (プロジェクト名と番号を取り出してスクロールバックのファイル名 `<project>-<index>.txt` を決める汎用のもの)。端末の生成にバッファ名の解析を使わなくなった、というのが変わる点。
 
 ### 残す部分
 
@@ -254,17 +257,40 @@ ghostel-desktop は desktop の per-buffer 機構で `desktop-read` 中に端末
 
 Phase 0 と同じ手順 (`emacs --daemon=... --init-directory=<scratch>`、`elpa` は per-package symlink、tmux で tty frame)。**render window が無いと ghostel は描画しないので、frame を付けてから確認する。**
 
-1. `C-z` で端末パネルが開く。`stty size` が window の実幅・実高と一致する
-2. 端末を 2 つ以上開いて一覧 (slot 1) が出た状態で、幅 80 未満でも zsh-autocomplete の候補が重ならない
-3. Claude Code (`claude-code-ide`) の TUI で faint の薄字が薄く出る。ホイールで TUI 内スクロールが効く
-4. Claude パネルで Cmd+V が画像を渡す。タブ名が会話名になる
-5. `C-c C-c` で SIGINT、`C-k` で kill-ring に入る、`C-y` で貼れる
-6. desktop: 端末 2 つ + Claude パネルを開いて Emacs を落とし、再起動で本数・ディレクトリ・スクロールバックが戻る
-7. GUI frame (`emacsclient -c`) で `⏺` `⏵` `⧉` を含む行の行高が揺れない
+#### 実測結果 (2026-09-09、tty frame 120x40 の隔離 daemon)
+
+1. **パネルと pty サイズ: 一致**。`C-z` で `*term: <project>*` が下部 side window に開き、`stty size` が `12 119` = `window-body-height` 12 / `window-max-chars-per-line` 119 と完全一致。80 桁の床も `stty` レースも無い。`display-line-numbers` を切っていることが桁数の一致に効いている (行番号を出すと pty が window より狭くなる)
+2. **タイトルの連鎖: 通った**。`.zshrc` の preexec (OSC 0) → `ghostel-title` → `ghostel-buffer-name-function` に置いた `wamei/term--on-title-change` → 端末一覧の再描画。一覧が `1: stty size; echo MARK` / `2: sleep 4` になる。private な advice を公開フックに置き換えた設計が実地で機能した
+3. **キー: 設計どおり**。C-k → `wamei/term-input-kill-line`、s-v / C-y → `ghostel-yank`、M-y → `ghostel-yank-pop`、C-c C-c → `ghostel-send-C-c`、C-c C-t → `ghostel-copy-mode`、C-z → `wamei/term-toggle`、C-tab → `wamei/term-next`、M-w → `kill-ring-save`
+4. **desktop 復元: 通った**。`Desktop: 1 frame, 2 buffers restored.` で 2 端末が名前どおり戻り、タイトルも復元され、`wamei/term-restore-saved` は nil にクリアされた
+5. **スクロールバックの注入と再生: 通った**。復元後のシェルの環境に `WAMEI_TERM_RESTORE=<dir>/<project>-1.txt` が届く (`ghostel-pre-spawn-hook` 経由)。zsh 側は `INSIDE_EMACS=ghostel` のとき cat して unset、`INSIDE_EMACS=vterm` のときは何もしない
+6. **Claude パネル: 通った**。`*claude-code[<project>]*` が `ghostel-mode` で開き、tab-line 有効、s-v → `wamei/term-input-paste`、C-tab → `wamei/claude-panel-next`、`ghostel-kill-buffer-on-exit` nil。**タブ名が Claude の報告した `"Claude Code"` になる** (`ghostel-title` の遅延参照が実地で機能)
+7. **ネイティブモジュール**: `ghostel-module-directory` (elpa の外) に 0.53.0 が入り、ディレクトリは自動作成される。elpa 側に dylib は置かれない。モジュール未取得の間だけ起動時に `Native module not found` の警告が 2 回出る
+8. **batch テスト**: 170 tests / 0 unexpected / 1 既知 skip (batch では `format-mode-line` が空になる claude-usage の 1 件)
+
+daemon には frame が無いので、desktop 復元の時点では側 window (パネル) が再構成されず、復元されたバッファは空のまま残る。window に出して `ghostel-force-redraw` を呼ぶと描画される。これは「render window が無いと `ghostel--redraw-now` が描画をスキップする」という ghostel の性質 (実測 #0) 由来で、移行による退化ではない。
+
+#### GUI で目視が必要な項目 (未確認)
+
+自動化できないので、master に入れてから GUI の Emacs で確認する:
+
+- Claude Code の TUI で faint の薄字が薄く出る
+- `⏺` `⏵` `⧉` を含む行の行高が揺れない
+- TUI にマウスを乗せてホイールを回すと TUI 内部がスクロールする
+- Claude パネルで Cmd+V が画像を添付する
+- 非選択の端末 window が `auto-dim-other-buffers` で暗くなる
+- desktop 復元でパネル (側 window) が開き直り、前回のスクロールバックが色付きで出る
+- 端末を 2 つ以上開いて一覧が出た状態で、幅 80 未満でも zsh-autocomplete の候補が重ならない
 
 ### 移行後に消えるものの確認
 
-`grep -rn vterm ~/.dotfiles` の結果が、履歴的な記述 (memory / docs) 以外に残らないこと。`~/.emacs.d/elpa` から vterm を削除し、`vterm-module.so` のビルド成果物も消えることを確認する。
+`grep -rn vterm` の結果が、次の 3 件と履歴的な記述 (docs) 以外に残らないこと:
+
+- `.zshrc` の「今は何も出さない」理由の説明 (`vterm 時代は OSC 51;A を自前で出していた`)
+- `init.el` の `既定の vterm から ghostel へ明示的に上書きする` (claude-code-ide の既定値は vterm という事実)
+- `init.el` の `eat > ghostel > vterm > shell` (docker.el 自身のバックエンド判定順)
+
+`~/.emacs.d/elpa` からの vterm の削除は、この branch が master に入って GUI で動作確認できてからにする。稼働中の Emacs が vterm 上で動いている間に消すと足場を外すことになる。
 
 ## 実装順
 

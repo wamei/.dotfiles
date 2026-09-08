@@ -1,20 +1,23 @@
 ;;; term-panel.el --- フレーム下部の端末パネルと端末一覧 -*- lexical-binding: t; -*-
 ;;; Commentary:
-;; vterm の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
+;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
 ;; 出す。端末が 2 つ以上あるときは右隣に一覧 (`wamei/term-list-mode') を出す。
 ;;
 ;; 端末バッファは "*term: <project>[ N]*"、一覧は "*terminals: <project>*" と
 ;; プロジェクト名で分ける。一覧は表示中の端末と同じプロジェクトのものを出すので、
 ;; タブ (プロジェクト) を切り替えても別プロジェクトの端末が並ばない。
 ;;
-;; vterm そのものへの結線 (display-buffer-alist、vterm-mode-hook、advice) は
-;; init.el の vterm ブロックで行う。テストは term-panel-test.el。
+;; ghostel そのものへの結線 (display-buffer-alist、ghostel-mode-hook、
+;; ghostel-buffer-name-function) は init.el の ghostel ブロックで行う。
+;; テストは term-panel-test.el。
 ;;; Code:
 
 (require 'project)
 (require 'seq)
 
-(defvar vterm-shell)                    ; vterm.el
+(defvar ghostel-shell)                  ; ghostel.el
+(defvar ghostel-title)                  ; ghostel.el (buffer-local)
+(declare-function ghostel-create "ghostel" (&optional name display identity))
 
 (defvar wamei/term-height 0.3
   "端末ウィンドウの高さ (フレームに対する割合)。
@@ -31,10 +34,6 @@ display-buffer-alist で端末本体と別扱いにするため、`*term: ' で�
 (defconst wamei/term-list-buffer-regexp
   (concat "\\`" (regexp-quote wamei/term-list-buffer-prefix))
   "端末一覧のバッファ名にマッチする正規表現。display-buffer-alist と desktop の復元で使う。")
-
-(defvar-local wamei/term--title nil
-  "端末が最後に報告したタイトル。
-.zshrc の preexec が直前に実行したコマンドをタイトルとして流してくる。")
 
 (defvar wamei/term--previous-window nil
   "パネルへ移動する直前に選択していた window。")
@@ -149,7 +148,7 @@ window に付いた幅は残らない。変数に覚えておき wamei/term--set
         (car buffers))))
 
 (defun wamei/term--setup-buffer ()
-  "端末バッファのパネル向け設定。vterm-mode-hook から呼ぶ。
+  "端末バッファのパネル向け設定。`ghostel-mode-hook' から呼ぶ。
 非選択の window では Emacs が point の位置に中抜きカーソルを描くが、端末では
 シェルのカーソル位置と重なって紛らわしいだけなので、パネルが非アクティブの
 ときは出さない。高さの記憶と kill 時の後始末もここで登録する。"
@@ -158,37 +157,12 @@ window に付いた幅は残らない。変数に覚えておき wamei/term--set
   ;; シェル終了などでバッファが消えたらパネルと一覧を追従させる
   (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
 
-(defvar-local wamei/term--size-synced nil
-  "非 nil なら、この端末の pty サイズは shell 起動後に一度 window へ合わせ済み。")
-
-(defun wamei/term--sync-size-on-first-output (process _input)
-  "PROCESS の端末が最初に出力したとき、一度だけ pty のサイズを表示中の window に合わせる。
-`vterm--filter' の :after advice として使う (結線は init.el)。
-
-vterm は shell を `stty rows R columns C && exec zsh' で起こし、R と C には
-作成時点の window のサイズを使う。端末は `wamei/term--create' の
-save-window-excursion の中で作られ、その後 `wamei/term--show' でパネルに出る。
-2 つ目以降は一覧 (`wamei/term-list-width') が右に出て端末の幅が縮むので、
-表示時に Emacs が pty を新しいサイズにしても、その後に走る shell 側の stty が
-作成時のサイズで上書きし、libvterm (表示) と pty (shell の認識) が食い違う。
-shell の最初の出力は stty より後なので、そこで Emacs 側のサイズ反映をやり直す。
-パネルの端末以外 (claude-code 等) には触らない。"
-  (when-let* ((buffer (process-buffer process)))
-    (when (and (buffer-live-p buffer)
-               (string-prefix-p "*term: " (buffer-name buffer))
-               (not (buffer-local-value 'wamei/term--size-synced buffer)))
-      (with-current-buffer buffer
-        (setq wamei/term--size-synced t))
-      ;; window-configuration-change-hook で Emacs が呼ぶものと同じ。
-      ;; 表示中のプロセスだけを対象にするので、非表示の端末は表示時に直る。
-      (window--adjust-process-windows)
-      t)))
-
 (defun wamei/term--create (index)
-  "INDEX 番目の端末を作る。vterm はバッファへ切り替えるので window 構成は戻す。"
+  "INDEX 番目の端末を作って返す。
+`ghostel-create' は DISPLAY を渡さなければ表示しないので、window 構成は変わらない
+\(パネルへの表示は `wamei/term--show' が display-buffer で行う)。"
   (let ((default-directory (wamei/term--root)))
-    (save-window-excursion
-      (vterm (wamei/term--buffer-name index)))))
+    (ghostel-create (wamei/term--buffer-name index))))
 
 ;;; 一覧
 
@@ -234,19 +208,47 @@ shell の最初の出力は stty より後なので、そこで Emacs 側のサ�
                                    (buffer-name (window-buffer window)))))
             (window-list nil 'no-mini)))
 
-(defun wamei/term--record-title (title)
-  "vterm が受け取った TITLE を覚えて一覧に反映する。
-vterm--set-title は vterm-buffer-name-string が nil だと何もしないため、
-:before advice で横取りする。"
-  (setq wamei/term--title title)
-  ;; 別タブで見えていない一覧も描き直しておく (戻ったときに古いままにしない)
-  (when (get-buffer (wamei/term--list-buffer-name))
-    (wamei/term--list-refresh)))
+(defun wamei/term--on-title-change (_title)
+  "端末のタイトルが変わったら一覧を描き直す。バッファ名は変えない。
+
+`ghostel-buffer-name-function' に設定して使う。この変数の既定は nil
+\(= 改名機構そのものが off) なので、これは「改名を抑止する」設定ではなく
+「一覧の再描画という副作用のために改名機構を on にする」設定。
+現在のバッファ名をそのまま返すことで `ghostel--rename-managed' の
+\(not (equal new-name (buffer-name))) が偽になり、必ず no-op になる。
+nil を返すとタイトルがクリアされたときだけ `ghostel--set-title' の `or' が
+`ghostel--initial-name' に落ちて `ghostel--rename-managed' を呼ぶので、
+\(今は no-op でも) rename の経路を武装した状態になってしまう。
+
+呼ばれるのはタイトル変更 (OSC 0/2) のときだけではなく cd (OSC 7) のときも。
+ghostel の zsh 統合は precmd ごとに OSC 7 を出すので、1 コマンドにつき
+一覧の再描画が 2 回走る (旧 `vterm--set-title' advice は 1 回だった)。
+そのたびに `project-current' と `buffer-list' の走査、一覧バッファの
+作り直しが起きるので、ここに重い処理を足さないこと。
+
+`ghostel--set-title' と `ghostel--set-directory' はこの関数の呼び出しを
+`condition-case' で包まないため、ここで signal すると端末の出力処理
+\(プロセスフィルタ) の中でエラーになる。一覧の再描画は `project-current' を
+通り、消えたディレクトリや remote な `default-directory' で signal しうるので
+`with-demoted-errors' で押さえる。
+
+呼ばれた時点で `ghostel-title' は新しい値になっている。
+別タブで見えていない一覧も描き直しておく (戻ったときに古いままにしない)。"
+  (with-demoted-errors "端末一覧の再描画に失敗しました: %S"
+    (when (and (string-prefix-p "*term: " (buffer-name))
+               (get-buffer (wamei/term--list-buffer-name)))
+      (wamei/term--list-refresh)))
+  (buffer-name))
 
 (defun wamei/term--label (buffer)
-  "一覧に出す BUFFER の表示名。最後に実行したコマンド、無ければシェル名。"
-  (or (buffer-local-value 'wamei/term--title buffer)
-      (file-name-nondirectory (if (boundp 'vterm-shell) vterm-shell shell-file-name))))
+  "一覧に出す BUFFER の表示名。最後に実行したコマンド、無ければシェル名。
+タイトルは .zshrc の preexec が OSC 0 で流し、ghostel が `ghostel-title' に入れる。
+`boundp' で守るのは、この file 冒頭の `(defvar ghostel-title)' (値なし) が
+symbol を special にするだけで束縛はしないため。ghostel 未ロードのまま
+呼ばれると `buffer-local-value' が void-variable になる
+\(term-restore.el / claude-panel.el の参照と同じ形に揃えている)。"
+  (or (and (boundp 'ghostel-title) (buffer-local-value 'ghostel-title buffer))
+      (file-name-nondirectory (if (boundp 'ghostel-shell) ghostel-shell shell-file-name))))
 
 (defun wamei/term--list-refresh ()
   "現在のプロジェクトの端末一覧を描き直し、そのバッファを返す。"
@@ -307,7 +309,7 @@ vterm--set-title は vterm-buffer-name-string が nil だと何もしないた�
   "一覧で選んだ端末を削除する。"
   (interactive)
   (when-let* ((buffer (get-text-property (point) 'wamei/term-buffer)))
-    ;; vterm はプロセスが生きているため、そのままだと
+    ;; 端末はプロセスが生きているため、そのままだと
     ;; process-kill-buffer-query-function が確認を求めて止まる
     (let ((kill-buffer-query-functions nil))
       (kill-buffer buffer))
@@ -455,7 +457,7 @@ sidebar 側の move-back と同じ考え方に揃えている。"
   "端末と一覧の display-buffer-alist を登録する。
 
 端末は下部 side window の slot 0、一覧は同じ side の slot 1 (右隣) へ。
-vterm がロードされる前に登録しておく必要があるので、init.el の :init から呼ぶ。"
+ghostel がロードされる前に登録しておく必要があるので、init.el の :init から呼ぶ。"
   (add-to-list 'display-buffer-alist
                '("\\`\\*term: "
                  (display-buffer-in-side-window)

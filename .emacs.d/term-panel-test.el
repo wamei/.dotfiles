@@ -5,6 +5,12 @@
 
 (require 'ert)
 (require 'cl-lib)
+
+;; ghostel 本体の buffer-local 変数。ghostel を読まない batch でも
+;; setq-local / buffer-local-value できるよう special にしておく。
+(defvar-local ghostel-title nil
+  "端末が報告したタイトル (テスト用のスタブ定義)。")
+
 (load (expand-file-name "term-panel.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
@@ -23,16 +29,16 @@
                 (cons 'transient root)))
             wamei/term-panel-test--roots))
 
-(defun wamei/term-panel-test--fake-vterm (name)
-  "vterm の代わり。NAME のバッファを作って `default-directory' を引き継ぎ、切り替える。"
+(defun wamei/term-panel-test--fake-ghostel-create (&optional name _display _identity)
+  "`ghostel-create' の代わり。NAME のバッファを作って `default-directory' を引き継ぐ。"
   (let ((dir default-directory))
     (with-current-buffer (get-buffer-create name)
       (setq default-directory dir)
-      (switch-to-buffer (current-buffer)))))
+      (current-buffer))))
 
 (defmacro wamei/term-panel-test--with-projects (vars &rest body)
   "VARS のそれぞれを一時ディレクトリの transient プロジェクトに束縛して BODY を評価する。
-ディレクトリ名末尾 (プロジェクト名) は変数名になる。端末は vterm を使わず空バッファで代える。"
+ディレクトリ名末尾 (プロジェクト名) は変数名になる。端末は ghostel を使わず空バッファで代える。"
   (declare (indent 1))
   `(let* ((base (file-name-as-directory (file-truename (make-temp-file "term-panel-" t))))
           ,@(mapcar (lambda (var)
@@ -45,7 +51,8 @@
           (wamei/term--previous-window nil)
           (wamei/term--previous-buffer nil))
      (unwind-protect
-         (cl-letf (((symbol-function 'vterm) #'wamei/term-panel-test--fake-vterm))
+         (cl-letf (((symbol-function 'ghostel-create)
+                    #'wamei/term-panel-test--fake-ghostel-create))
            ,@(mapcar (lambda (var) `(make-directory ,var t)) vars)
            ,@body)
        (dolist (buf (buffer-list))
@@ -136,15 +143,69 @@
       (should (equal (wamei/term-panel-test--list-entries list-a)
                      '("*term: alpha*" "*term: alpha 2*"))))))
 
-(ert-deftest wamei/term-panel-record-title-updates-label ()
+(ert-deftest wamei/term-panel-label-comes-from-ghostel-title ()
+  "一覧のラベルは端末が報告したタイトル (`ghostel-title') を出す。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
       (with-current-buffer (wamei/term--create 2)
-        (wamei/term--record-title "make test"))
+        (setq-local ghostel-title "make test"))
       (should (string-match-p "2: make test"
                               (with-current-buffer (wamei/term--list-refresh)
                                 (buffer-string)))))))
+
+(ert-deftest wamei/term-panel-title-change-refreshes-list ()
+  "`ghostel-buffer-name-function' として呼ばれると一覧を描き直し、
+現在のバッファ名を返す (`ghostel--rename-managed' が必ず no-op になる値)。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (let ((list-buffer (wamei/term--list-buffer))
+            (refresh (symbol-function 'wamei/term--list-refresh))
+            (calls 0))
+        (with-current-buffer (get-buffer "*term: alpha*")
+          (setq-local ghostel-title "make test")
+          (cl-letf (((symbol-function 'wamei/term--list-refresh)
+                     (lambda () (setq calls (1+ calls)) (funcall refresh))))
+            (should (equal (wamei/term--on-title-change "make test")
+                           "*term: alpha*"))))
+        (should (>= calls 1))
+        (should (string-match-p "make test"
+                                (with-current-buffer list-buffer (buffer-string))))))))
+
+(ert-deftest wamei/term-panel-title-change-ignores-other-buffers ()
+  "端末以外のバッファでは一覧を描き直さない。
+
+`wamei/term--on-title-change' の返り値は実装が何をしても一定なので、
+返り値ではなく `wamei/term--list-refresh' の呼び出し回数で見る
+\(そうしないとプレフィックスのガードを消しても通ってしまう)。
+一覧バッファは先に作っておき、ガードのうちバッファ名の判定だけを残す。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (wamei/term--list-buffer))
+    (let ((calls 0))
+      (cl-letf (((symbol-function 'wamei/term--list-refresh)
+                 (lambda () (setq calls (1+ calls)) nil)))
+        (wamei/term-panel-test--in alpha
+          ;; 端末以外でも返り値は自分のバッファ名 (改名は起きない)
+          (should (equal (wamei/term--on-title-change "x") (buffer-name))))
+        (should (= calls 0))))))
+
+(ert-deftest wamei/term-panel-title-change-survives-refresh-error ()
+  "一覧の再描画が signal しても外へ漏らさない。
+
+`ghostel--set-title' / `ghostel--set-directory' はこの関数の呼び出しを
+`condition-case' で包まないので、漏らすと端末の出力処理 (プロセスフィルタ)
+の中でエラーになる。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (wamei/term--list-buffer))
+    (cl-letf (((symbol-function 'wamei/term--list-refresh)
+               (lambda () (error "boom"))))
+      (with-current-buffer (get-buffer "*term: alpha*")
+        (should (equal (wamei/term--on-title-change "x") "*term: alpha*"))))))
 
 (ert-deftest wamei/term-panel-list-hides-cursor-when-not-selected ()
   "一覧は選択していない window ではカーソルを出さない (sidebar と同じ)。"
@@ -222,45 +283,6 @@
         (should (eq (window-buffer (wamei/term--window)) first))
         (wamei/term-previous)
         (should (eq (window-buffer (wamei/term--window)) second))))))
-
-;;; 作成直後の pty サイズ同期
-
-(defmacro wamei/term-panel-test--with-process-buffer (name &rest body)
-  "NAME のバッファに生きたプロセスを付けて BODY を評価する。
-`process' にプロセスを束縛する。終了時にプロセスとバッファを消す。"
-  (declare (indent 1))
-  `(let* ((buffer (get-buffer-create ,name))
-          (process (start-process "term-panel-test" buffer "sleep" "10")))
-     (unwind-protect
-         (progn ,@body)
-       (delete-process process)
-       (kill-buffer buffer))))
-
-(ert-deftest wamei/term-panel-sync-size-once-on-first-output ()
-  "端末の最初の出力で 1 回だけ window に合わせて pty サイズを直す。2 回目以降は何もしない。"
-  (wamei/term-panel-test--with-process-buffer "*term: alpha 2*"
-    (let ((calls 0))
-      (cl-letf (((symbol-function 'window--adjust-process-windows)
-                 (lambda () (setq calls (1+ calls)))))
-        (wamei/term--sync-size-on-first-output process "first")
-        (wamei/term--sync-size-on-first-output process "second")
-        (should (= calls 1))))))
-
-(ert-deftest wamei/term-panel-sync-size-ignores-other-vterm-buffers ()
-  "パネルの端末 (*term: ...) 以外の vterm バッファには手を出さない。"
-  (wamei/term-panel-test--with-process-buffer "*claude-code[alpha]*"
-    (let ((calls 0))
-      (cl-letf (((symbol-function 'window--adjust-process-windows)
-                 (lambda () (setq calls (1+ calls)))))
-        (wamei/term--sync-size-on-first-output process "first")
-        (should (= calls 0))))))
-
-(ert-deftest wamei/term-panel-sync-size-survives-dead-buffer ()
-  "プロセスのバッファが既に消えていてもエラーにしない。"
-  (let ((process (start-process "term-panel-test" nil "sleep" "10")))
-    (unwind-protect
-        (should-not (wamei/term--sync-size-on-first-output process "first"))
-      (delete-process process))))
 
 (provide 'term-panel-test)
 ;;; term-panel-test.el ends here

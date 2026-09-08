@@ -192,7 +192,7 @@
 (defvar font-family "HackGen Console NF"
   "既定フォント。
 Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角字形で持つ。
-無印の HackGen はこれらが全角字形なので、端末 (vterm) の TUI が 1 セル
+無印の HackGen はこれらが全角字形なので、端末 (ghostel) の TUI が 1 セル
 前提で描いた図形が 2 倍幅になって崩れる。")
 
 (leaf font
@@ -221,7 +221,7 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
     ;; 記号ブロックの fallback を行高の合うフォントに固定する。
     ;; HackGen が持たない記号 (claude のスピナー ✢✳✶✻ や ⚙ ⌃ など) は既定だと
     ;; STIX Two Math / Arial Unicode MS に fallback し、ascent/descent が HackGen
-    ;; (20px = 16+4) より大きいためその行だけ 23〜28px に伸びる。vterm の TUI は
+    ;; (20px = 16+4) より大きいためその行だけ 23〜28px に伸びる。ghostel の TUI は
     ;; 行高固定を前提にしているので、スピナーが回るたびに内容が押し下げられて
     ;; window から溢れ、Emacs が 1 行スクロールして画面全体が上下に揺れる。
     ;; Menlo は 17px にすると 20px = 16+4 で HackGen と一致し、これらの記号を
@@ -295,8 +295,8 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   :ensure t
   :leaf-defer nil
   :hook
-  ((vterm-mode-hook) . hide-mode-line-mode)
-  ((dired-mode-hook vterm-mode-hook wamei/term-list-mode-hook)
+  ((ghostel-mode-hook) . hide-mode-line-mode)
+  ((dired-mode-hook ghostel-mode-hook wamei/term-list-mode-hook)
    . (lambda() (display-line-numbers-mode 0))))
 
 (leaf keybinds
@@ -309,7 +309,7 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
          ("s-c" . 'kill-ring-save)
          ("s-v" . 'yank)))
 
-(leaf vterm
+(leaf ghostel
   :doc "フレーム下部に固定する端末パネル"
   :ensure t
   :bind (("C-z" . wamei/term-toggle)
@@ -322,27 +322,41 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
          ("C-q t p" . wamei/term-previous)
          ;; 端末によっては Shift-Tab が iso-lefttab として報告される
          ("<C-S-iso-lefttab>" . wamei/term-previous))
-  :custom
-  ;; C-q / C-z / C-S-z は端末へ送らず Emacs 側で処理する
-  ;; (C-c C-x M-x 等は既定で除外済み)。この変数は :set で vterm-mode-map を
-  ;; 作り直す defcustom なので、add-to-list ではなく customize 経由で設定する。
-  ;; C-c と C-h は端末へ送りたいが、ここから外すと vterm のキーマップ構築が
-  ;; C-c C-y 等の定義で "starts with non-prefix key" と落ちるので、残したまま
-  ;; :config で上書きする。
-  ;; M-w は除外しないと ESC マップの一括束縛 (vterm--self-insert-meta) に取られ、
-  ;; ESC w が端末へ送られて kill-ring-save が呼ばれない。
-  (vterm-keymap-exceptions
-   . '("C-c" "C-x" "C-u" "C-g" "C-h" "C-l" "M-x" "M-o" "C-y" "M-y" "M-w"
-       "C-q" "C-z" "C-S-z" "<C-tab>" "<C-S-tab>"))
-  (vterm-max-scrollback . 10000)
-  ;; 既定 (80) だと、それより狭い window では libvterm と pty を 80 桁にしたまま
-  ;; 表示だけ切り詰めるので、shell の折り返し位置と画面がずれる。パネルは端末が
-  ;; 2 つ以上になると右に一覧 (wamei/term-list-width) が出て 80 桁を割りやすく、
-  ;; zsh-autocomplete の候補リストが重なって描かれる。window の実幅に追従させる。
-  (vterm-min-window-width . 20)
+  ;; ghostel-keymap-exceptions は「端末へ送らず Emacs 側で処理するキー」。
+  ;; 既定 ("C-c" "C-x" "C-u" "C-h" "M-x" "M-:" "C-\\") に、パネルの操作と
+  ;; Emacs 側で使いたいキーを足す。文字列は key-description 形式なので
+  ;; "<C-tab>" ではなく "C-<tab>" と書く。C-S-z と C-S-<iso-lefttab> は
+  ;; ghostel が束縛しないので挙げる必要がない。
+  ;; :set でキーマップを作り直す defcustom なので customize 経由で設定する。
+  ;;
+  ;; C-c は既定どおり例外のままにする (端末へは C-c C-c で SIGINT が届く)。
+  ;; その代わり C-c 配下の ghostel のコマンド (C-c C-t copy mode /
+  ;; C-c C-l line mode / C-c C-p ハイパーリンク) が使える。
+  ;;
+  ;; ghostel-module-directory は、既定のパッケージディレクトリだと package の
+  ;; 更新でロード中のモジュールが消えるので elpa の外に置く。
+  :custom `((ghostel-keymap-exceptions
+             . '("C-c" "C-x" "C-u" "C-h" "M-x" "M-:" "C-\\"
+                 "C-g" "C-l" "M-o" "M-w"
+                 "C-q" "C-z"
+                 "C-<tab>" "C-S-<tab>"))
+            ;; ghostel-max-scrollback は行数ではなく「バイト数」(既定 5MB)。
+            ;; 移行元の vterm-max-scrollback は行数 (10000 行) だったので、
+            ;; docstring の「5MB ≒ 5,000 行」の比率から 10MB にして
+            ;; 10000 行相当を確保する。行数だと思って 10000 を入れると
+            ;; 約 10KB = 十数行しか残らない。
+            (ghostel-max-scrollback . ,(* 10 1024 1024))
+            (ghostel-module-directory . ,(locate-user-emacs-file "ghostel/"))
+            ;; タイトルが変わったら端末一覧を描き直す (term-panel.el)。
+            ;; この変数の既定は nil (= 改名機構そのものが off) なので、これは
+            ;; 「改名を抑止する」設定ではなく「一覧の再描画という副作用のために
+            ;; 改名機構を on にする」設定。関数は現在のバッファ名を返し、
+            ;; ghostel--rename-managed が必ず no-op になるようにしてある。
+            ;; cd (OSC 7) でも呼ばれるので 1 コマンドにつき 2 回走る。
+            (ghostel-buffer-name-function . #'wamei/term--on-title-change))
   :preface
-  ;; kill-ring 連携とホイール転送。実体は term-input.el (init.el は symlink なので
-  ;; 実体の隣から読む)。
+  ;; kill-ring 連携とクリップボードの画像渡し。実体は term-input.el
+  ;; (init.el は symlink なので実体の隣から読む)。
   (load (expand-file-name "term-input"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
@@ -350,11 +364,6 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
   ;; 端末パネル (下部 side window) と端末一覧の管理は term-panel.el。
   ;; 端末・一覧ともプロジェクト (タブ) ごとにバッファを分ける。
   (load (expand-file-name "term-panel"
-                          (file-name-directory (file-truename user-init-file)))
-        nil t)
-
-  ;; libvterm が実装していない faint (SGR 2) を色に置き換える。実体は term-faint.el。
-  (load (expand-file-name "term-faint"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
@@ -369,7 +378,7 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
 
   (defun wamei/term--substitute-tall-glyphs ()
     "`wamei/term-glyph-substitutions' を現在のバッファの display table に登録する。
-vterm-mode は `buffer-display-table' を自前で用意するので、その表に追記する。
+ghostel-mode は `buffer-display-table' を使わないので、無ければ自分で作る。
 face を付けないので元の文字の色はそのまま引き継がれる。"
     (when (display-graphic-p)
       (let ((table (or buffer-display-table (make-display-table))))
@@ -378,53 +387,26 @@ face を付けないので元の文字の色はそのまま引き継がれる。
         (setq buffer-display-table table))))
   :init
   ;; 端末は下部 side window の slot 0、一覧は同じ side の slot 1 (右隣) へ。
-  ;; :config だと vterm がロードされるまで登録されないので :init で行う。
+  ;; :config だと ghostel がロードされるまで登録されないので :init で行う。
   (wamei/term-panel-setup)
   :config
-  ;; vterm は既定色のセルにも `default' face の色を文字列で貼る (vterm--get-color が
-  ;; index -1 で default の背景を返す)。背景が明示されると auto-dim-other-buffers の
-  ;; window ごとの remapping が透けず、非選択の端末だけ暗くならない。既定背景の
-  ;; セルでは nil を返して :background を付けさせない (vterm-module.c は nil なら
-  ;; 属性を省く)。反転表示 (:inverse-video) は vterm-color-inverse-video の色が要るので除く。
-  ;; 既に描かれた文字は次の再描画まで古い色のまま。
-  (defun wamei/vterm-omit-default-background (fn index &rest args)
-    "既定の背景色 (INDEX -1、前景でも反転でもない) なら nil、それ以外は FN に委ねる。"
-    (if (and (eql index -1)
-             (not (memq :foreground args))
-             (not (memq :inverse-video args)))
-        nil
-      (apply fn index args)))
-  (advice-add 'vterm--get-color :around #'wamei/vterm-omit-default-background)
-  ;; C-c は単発で SIGINT を送る。vterm は C-c C-t (copy-mode) などを定義して
-  ;; C-c を prefix にしているため、prefix ごと置き換える。C-c 配下 (C-c C-t /
-  ;; C-c C-l / C-c C-n / C-c C-p / C-c C-r とグローバルの C-c 系) は端末バッファ
-  ;; 内で使えなくなる。copy-mode は M-x vterm-copy-mode で。
-  (define-key vterm-mode-map (kbd "C-c") #'vterm--self-insert)
-  ;; C-h は Backspace。init.el 先頭の keyboard-translate で DEL になるが、
-  ;; その変換は端末 (kboard) ごとなので、届かない経路があっても効くよう直接束縛する。
-  (define-key vterm-mode-map (kbd "C-h") #'vterm-send-backspace)
+  ;; ここで貼るキーは ghostel-semi-char-mode-map (ghostel-keymap-exceptions の
+  ;; :set が作るマップ) に直接足しているだけなので、init 後に M-x customize で
+  ;; ghostel-keymap-exceptions を触ると ghostel--rebuild-semi-char-keymap が
+  ;; setcdr でマップをその場で作り直し、この C-k と s-v は黙って失われる。
+  ;; init 時の順序 (:custom → :config) では問題にならない。
+  ;;
   ;; C-k はそのまま端末へ送ると zsh の CUTBUFFER にしか残らないので、
   ;; 送る前に point から行末までを kill-ring に入れる (term-input.el)。
-  (define-key vterm-mode-map (kbd "C-k") #'wamei/term-input-kill-line)
-  ;; 貼り付けは vterm-yank を使う。yank はバッファに直接挿入するだけで
-  ;; 端末プロセスには届かない。コピー (M-w / s-c) は通常のリージョン操作で効く。
-  (define-key vterm-mode-map (kbd "s-v") #'vterm-yank)
-  (define-key vterm-mode-map (kbd "C-y") #'vterm-yank)
-  (define-key vterm-mode-map (kbd "M-y") #'vterm-yank-pop)
-  ;; 一覧に「最後に実行したコマンド」を出すため、端末が報告するタイトルを拾う
-  (advice-add 'vterm--set-title :before #'wamei/term--record-title)
-  ;; shell 起動時の stty が作成時の window サイズで pty を上書きするので、最初の
-  ;; 出力で一度だけ表示中の window に合わせ直す (term-panel.el)
-  (advice-add 'vterm--filter :after #'wamei/term--sync-size-on-first-output)
-  ;; libvterm は SGR 2 (faint) を実装しておらず、薄字の指定はセルへ届く前に落ちる。
-  ;; Claude Code は入力欄の推奨プロンプトを faint だけで描く (色は付けない) ため、
-  ;; そのままだと入力済みの文字と同じ色になる。libvterm へ渡る前に色へ置き換える
-  ;; (term-faint.el)。
-  (wamei/term-faint-enable)
+  (define-key ghostel-semi-char-mode-map (kbd "C-k") #'wamei/term-input-kill-line)
+  ;; Cmd+V は kill-ring から端末へ貼る (ghostel の既定では未束縛でグローバルの
+  ;; yank が効いてしまい、バッファに挿入されるだけで端末には届かない)。
+  ;; C-y / M-y は ghostel が ghostel-yank / ghostel-yank-pop を持っている。
+  (define-key ghostel-semi-char-mode-map (kbd "s-v") #'ghostel-yank)
 
-  (add-hook 'vterm-mode-hook #'wamei/term--substitute-tall-glyphs)
+  (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
-  (add-hook 'vterm-mode-hook #'wamei/term--setup-buffer))
+  (add-hook 'ghostel-mode-hook #'wamei/term--setup-buffer))
 
 (leaf claude-code-ide
   :doc "Claude Code の IDE 連携"
@@ -530,34 +512,18 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
          ("C-q a p" . wamei/claude-panel-previous)
          ("C-q a g" . wamei/claude-grid-tab))
   :custom
-  ;; 端末バックエンドは導入済みの vterm を使う (既定値だが意図として明示)
-  (claude-code-ide-terminal-backend . 'vterm)
+  ;; 端末バックエンドは既定の vterm から ghostel へ明示的に上書きする。
+  ;; claude-code-ide-terminal-backend の docstring が ghostel を推奨バックエンドと
+  ;; して挙げており、TUI の描画アーティファクトが最も少ないため。
+  (claude-code-ide-terminal-backend . 'ghostel)
   ;; sidebar が左、端末パネルが下なので右に出す
   (claude-code-ide-window-side . 'right)
-  ;; 高さだけのリサイズを Claude に通知しない workaround (upstream #1422 対策) を切る。
-  ;; この filter は vterm--set-size で libvterm 側だけ新しい行数にした後 nil を返し、
-  ;; pty (Claude) への set-process-window-size を握りつぶす。echo area が複数行に
-  ;; 伸びるたびに libvterm と Claude の行数が食い違い、Claude 2.1 系のセル差分描画は
-  ;; 自分の画面モデルとの差分しか書かないため、/clear 後などに古い文字がまばらに残る。
-  ;; 現行の Claude は alt-screen 上でリサイズ時に ESC[2J 全再描画するので、
-  ;; 通知させた方が整合する (再描画の一瞬のちらつきは許容)。
-  (claude-code-ide-prevent-reflow-glitch . nil)
   :config
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :filter-return #'wamei/claude-code-ide--no-other-window)
-  ;; Claude は tui fullscreen (alt-screen) で動くため libvterm の scrollback には
-  ;; 何も残らず、履歴は Claude 内蔵のスクロールで見るしかない。vterm はホイールを
-  ;; pty へ渡さないので、Claude のバッファでだけマウス報告として転送する (term-input.el)。
-  (advice-add 'claude-code-ide--configure-vterm-buffer
-              :after #'wamei/term-input-mouse-mode)
-  ;; Cmd+V は vterm-yank (kill-ring) なのでテキストしか送れない。Claude は C-v を
-  ;; 受けると自分でクリップボードの画像を読むので、画像のときだけキーを流す
-  ;; (term-input.el)。シェルでは C-v が quoted-insert なので Claude だけに付ける。
-  (advice-add 'claude-code-ide--configure-vterm-buffer
-              :after #'wamei/term-input-paste-mode)
   ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
-  ;; vterm は hide-mode-line で mode-line を消しているが、Claude のバッファだけは
+  ;; ghostel は hide-mode-line で mode-line を消しているが、Claude のバッファだけは
   ;; 戻して使用量のバーを出す (claude-usage.el)
   (wamei/claude-usage-enable)
   ;; xref や flymake などの Emacs 側の機能を Claude から使えるようにする
@@ -627,7 +593,7 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   ;; C-tab は端末の切り替えに使うため tab-bar からは外す。
   ;; tab-bar-mode は有効化のたびに tab-bar-mode-map へ [(control tab)] を
   ;; 定義し直すが、その処理は (unless (global-key-binding [(control tab)]) ...)
-  ;; で守られている。グローバル側 (vterm ブロックの :bind) に割り当てておけば
+  ;; で守られている。グローバル側 (ghostel ブロックの :bind) に割り当てておけば
   ;; 再有効化されても上書きされない。ここでは既存分を消すだけでよい。
   ;; タブの切り替えは C-q n / C-q p が残っている。
   (define-key tab-bar-mode-map [(control tab)] nil)
@@ -766,10 +732,10 @@ shadow に塗り替える。tabulated-list は行単位の face を持たない�
   ((docker-inspect-view-mode . 'json-ts-mode)
    ;; 対話が要るコマンド (exec / attach / image run) を出す端末。既定の auto は
    ;; eat > ghostel > vterm > shell の順に見つけたものを使うので、後で eat を
-   ;; 入れたときに黙って切り替わる。vterm に固定する。
+   ;; 入れたときに黙って切り替わる。ghostel に固定する。
    ;; ここで開く端末のバッファ名は "* docker ... *" で、端末パネルの
    ;; display-buffer-alist ("\\`\\*term: ") には当たらないのでパネルとは独立に出る。
-   (docker-terminal-backend . 'vterm)
+   (docker-terminal-backend . 'ghostel)
    ;; 既定から Id と Command を落とし、compose のプロジェクト名とサービス名を出す。
    ;; 操作対象の識別子は docker-container-id-template (.Names) が別に持つので Id 列は
    ;; 無くてよい。Status 列は docker-container-propertize-entry が名前で探すので消せない。
@@ -1032,8 +998,8 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (load (expand-file-name "desktop-side-windows"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
-  ;; 端末 (vterm) の数・作業ディレクトリ・タイトル・直前の出力は term-restore.el
-  ;; が desktop のグローバル変数として保存し、読み込み後に端末を作り直す。
+  ;; 端末バッファの保存・復元は ghostel-desktop.el が受け持つ。term-restore.el は
+  ;; スクロールバックの書き出しと、起動時に WAMEI_TERM_RESTORE で渡す部分だけを持つ。
   (load (expand-file-name "term-restore"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
@@ -1051,8 +1017,9 @@ desktop-side-windows が SPEC の :directory を default-directory に束縛し�
 
   (defun wamei/desktop--restore-term (spec)
     "端末パネルを開き直す。
-端末バッファは term-restore (desktop-after-read-hook の先頭) が記録どおりに
-作り直しているので、パネルに出ていたもの (SPEC の :buffer) をそのまま出す。
+端末バッファは ghostel-desktop が desktop-read 中に、取りこぼしは term-restore
+(desktop-after-read-hook の先頭) が復元しているので、パネルに出ていたもの
+(SPEC の :buffer) をそのまま出す。
 記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
 高さは display-buffer-alist の wamei/term--set-height が wamei/term-height
 (desktop に保存) から決める。一覧 (*terminals: <project>*) は端末が 2 つ以上のときだけ

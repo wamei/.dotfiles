@@ -133,15 +133,12 @@ show_env_mise() {
 }
 
 # prompt表示設定
-# 各行の末尾の $(_wamei_vterm_prompt_mark) は Emacs の vterm 内でだけ印を出す
-# (定義は下の vterm 連携ブロック)。vterm はその行の印より前をプロンプトとして
-# 扱うので、複数行のプロンプトでも行ごとに付ける。
-PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}%{\$(_wamei_vterm_prompt_mark)%}
+PROMPT="%B%F{white}%(?..%K{red}            status code -%?-            %{%k%}
 )%{%k%f%b%}%F{magenta}%~%f"
 PROMPT+=" %F{green}%1v%f%F{yellow}%2v%f%F{green}%3v%4v%f %F{red}%5v%f"
-PROMPT+='$(show_env)%{$(_wamei_vterm_prompt_mark)%}'
+PROMPT+='$(show_env)'
 PROMPT+="
-$ %{\$(_wamei_vterm_prompt_mark)%}"
+$ "
 
 PROMPT2='[%n]> '
 
@@ -173,7 +170,7 @@ alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 #      (direnv / mise の実体は brew 配下にあり、activate より前に brew が要る)
 #   2. 各種ツールの bin を足す
 #   3. mise (node / bun / ruby / python) は他のどの dir より前に来る必要があるので最後に activate する
-# 親 shell (vterm / tmux) から mise 入りの PATH を継いでいても、1 がその前に system dir や
+# 親 shell (ghostel / tmux) から mise 入りの PATH を継いでいても、1 がその前に system dir や
 # brew を割り込ませるので、「既に PATH にあるか」で activate を省いてはいけない。
 # 毎回 activate して先頭に付け直し、重複は typeset -U で除く (先に現れた方が残る)。
 setopt no_global_rcs
@@ -230,20 +227,17 @@ source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 # bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 # 端末タイトルに直前に実行したコマンドを流す。
-# Emacs (vterm) の端末一覧がこのタイトルを拾って表示する。
+# Emacs (ghostel) の端末一覧がこのタイトルを拾って表示する。
 # 既存の precmd() を壊さないよう add-zsh-hook を使う。
 # precmd 側では戻さないので、コマンド終了後も最後のコマンド名が残る。
 autoload -Uz add-zsh-hook
 _wamei_set_terminal_title() { printf '\033]0;%s\007' "$1" }
 add-zsh-hook preexec _wamei_set_terminal_title
 
-# Emacs の vterm 内でだけ効くセッション復元の連携 (term-restore.el)。
-# _wamei_vterm_prompt_mark は PROMPT の各行末から呼ばれ、vterm 独自の OSC 51;A を出す。
-# vterm はこれで (1) default-directory を追従させ、(2) その行の印より前を
-# プロンプトとして vterm-prompt プロパティを付ける。term-restore は保存時に
-# 末尾のプロンプト行をこのプロパティで見分けて落とす。vterm の外では何も出さない。
-if [[ $INSIDE_EMACS == *vterm* ]]; then
-  _wamei_vterm_prompt_mark() { printf '\033]51;A%s@%s:%s\033\\' "$USER" "$HOST" "$PWD" }
+# Emacs (ghostel) 内でだけ効くセッション復元の連携 (term-restore.el)。
+# プロンプトの位置は ghostel が OSC 133 のシェル統合を自動注入して拾うので、
+# ここでは何も出さない (vterm 時代は OSC 51;A を自前で出していた)。
+if [[ $INSIDE_EMACS == *ghostel* ]]; then
   # 復元された端末では前回の出力の末尾が WAMEI_TERM_RESTORE のファイルに入っている
   # (色は term-restore.el が SGR エスケープにして書いてある)。最初のプロンプトの前に
   # そのまま出し、子プロセスに引き継がないよう unset する。
@@ -251,6 +245,4 @@ if [[ $INSIDE_EMACS == *vterm* ]]; then
     cat -- "$WAMEI_TERM_RESTORE"
   fi
   unset WAMEI_TERM_RESTORE
-else
-  _wamei_vterm_prompt_mark() { : }
 fi

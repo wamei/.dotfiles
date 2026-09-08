@@ -74,10 +74,6 @@
   (when-let* ((project-dir (wamei/claude-panel--project-dir (current-buffer))))
     (wamei/claude-panel--buffers project-dir)))
 
-(defvar-local wamei/claude-panel--title nil
-  "Claude が端末タイトルに出した会話名。まだ無ければ nil。
-Claude Code は /rename や自動要約で付いた会話名を OSC タイトルで流してくる。")
-
 (defconst wamei/claude-panel--title-prefix "\\`[[:space:]✳✶✻✽✢·*]+"
   "端末タイトル先頭の状態表示 (✳ など) にマッチする正規表現。タブ名からは外す。")
 
@@ -87,17 +83,25 @@ Claude Code は /rename や自動要約で付いた会話名を OSC タイトル
                             wamei/claude-panel--title-prefix "" title))))
     (unless (string-empty-p name) name)))
 
-(defun wamei/claude-panel--record-title (title)
-  "カレントバッファが Claude セッションなら TITLE を会話名として覚える。
-`vterm--set-title' の :before advice (vterm 自身は
-`vterm-buffer-name-string' が nil だと何もしない)。"
-  (when (claude-code-ide--buffer-session (current-buffer))
-    (setq wamei/claude-panel--title (wamei/claude-panel--clean-title title))
-    (force-mode-line-update)))
+(defvar ghostel-title)                  ; ghostel.el (buffer-local)
+(declare-function wamei/term-input-paste "term-input")
+
+(defun wamei/claude-panel--title (buffer)
+  "BUFFER の会話名。端末が報告したタイトルから状態表示を外したもの。
+ghostel は OSC 0/2 のタイトルを `ghostel-title' に入れる。claude-code-ide は
+Claude のバッファでバッファ名の自動リネームを切るが、`ghostel-title' 自体は
+設定されるので値は読める。
+`boundp' で守るのは、上の `(defvar ghostel-title)' (値なし) が symbol を
+special にするだけで束縛はしないため。ghostel 未ロードのまま呼ばれると
+`buffer-local-value' が void-variable になる
+\(term-panel.el / term-restore.el の参照と同じ形に揃えている)。"
+  (when-let* (((boundp 'ghostel-title))
+              (title (buffer-local-value 'ghostel-title buffer)))
+    (wamei/claude-panel--clean-title title)))
 
 (defun wamei/claude-panel--tab-name (buffer &optional _buffers)
   "BUFFER のタブ名。Claude の会話名、無ければセッション名 (proj または proj:name)。"
-  (or (buffer-local-value 'wamei/claude-panel--title buffer)
+  (or (wamei/claude-panel--title buffer)
       (if-let* ((session (claude-code-ide--buffer-session buffer)))
           (claude-code-ide--session-display-name session)
         (buffer-name buffer))))
@@ -105,8 +109,7 @@ Claude Code は /rename や自動要約で付いた会話名を OSC タイトル
 (defun wamei/claude-panel--cache-key (tabs)
   "tab-line のキャッシュキー。会話名の変化でも描き直すよう既定のキーに加える。"
   (append (tab-line-cache-key-default tabs)
-          (mapcar (lambda (buffer) (buffer-local-value 'wamei/claude-panel--title buffer))
-                  tabs)))
+          (mapcar #'wamei/claude-panel--title tabs)))
 
 (defvar wamei/claude-panel-map
   (let ((map (make-sparse-keymap)))
@@ -114,9 +117,12 @@ Claude Code は /rename や自動要約で付いた会話名を OSC タイトル
     (define-key map (kbd "<C-S-tab>") #'wamei/claude-panel-previous)
     ;; 端末によっては Shift-Tab が iso-lefttab として報告される
     (define-key map (kbd "<C-S-iso-lefttab>") #'wamei/claude-panel-previous)
+    ;; Cmd+V でクリップボードの画像を Claude に渡す (term-input.el)。
+    ;; シェルでは C-v が quoted-insert になるので端末パネル全体には掛けない。
+    (define-key map (kbd "s-v") #'wamei/term-input-paste)
     map)
-  "Claude バッファでセッションを巡回するキーマップ。
-グローバルの C-tab (端末パネルの巡回) をバッファ内だけ上書きする。")
+  "Claude バッファでセッションを巡回し、Cmd+V を横取りするキーマップ。
+グローバルの C-tab (端末パネルの巡回) と Cmd+V をバッファ内だけ上書きする。")
 
 (defun wamei/claude-panel--setup (buffer)
   "BUFFER を一覧に登録し、tab-line と巡回キーを有効にする。何度呼んでもよい。"
@@ -129,7 +135,7 @@ Claude Code は /rename や自動要約で付いた会話名を OSC タイトル
                     tab-line-cache-key-function #'wamei/claude-panel--cache-key
                     tab-line-new-button-show nil
                     tab-line-close-button-show nil)
-        ;; vterm-mode-map は全端末で共有なので触らず、巡回キーを前に重ねた
+        ;; ghostel のキーマップは全端末で共有なので触らず、巡回キーを前に重ねた
         ;; 合成キーマップをこのバッファだけに付ける
         (use-local-map (make-composed-keymap wamei/claude-panel-map
                                              (current-local-map)))
@@ -235,8 +241,6 @@ switch-to-buffer が失敗するので、パッケージの表示処理に回す
               :before #'wamei/claude-panel--before-cleanup)
   (advice-add 'claude-code-ide--cleanup-session
               :after #'wamei/claude-panel--after-cleanup)
-  (with-eval-after-load 'vterm
-    (advice-add 'vterm--set-title :before #'wamei/claude-panel--record-title))
   ;; 読み込み前から動いているセッションにも tab-line と巡回キーを付ける
   (when (fboundp 'claude-code-ide-mcp--active-sessions)
     (dolist (session (claude-code-ide-mcp--active-sessions))
