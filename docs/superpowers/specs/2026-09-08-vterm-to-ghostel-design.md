@@ -173,7 +173,7 @@ ghostel-desktop は desktop の per-buffer 機構で `desktop-read` 中に端末
 
 - **`wamei/term-input-kill-line`**: 残す。C-k は ghostel でも端末へ素通しで kill-ring に入らない (実測 9)。送信を `(ghostel-send-key "k" "ctrl")` に変更。行末の空白を落とす処理はそのまま。
 - **`wamei/term-input-mouse-mode`**: **削除** (実測 8)。`mwheel` の require、SGR 生成、`vterm-copy-mode` 分岐、`vterm-timer-delay` の 0 束縛、`vterm--term` ガード回避の `with-current-buffer` も一緒に消える。
-- **`wamei/term-input-paste-mode`**: minor mode をやめ、`wamei/term-input-send-C-v` という 1 コマンドにする。中身は `(ghostel-send-key "v" "ctrl")`。Claude Code は C-v を受けると自分で osascript を叩いてクリップボードの画像を読むので、Emacs 側で画像を運ぶ必要はない。束縛は claude-panel.el のバッファローカルキーマップで行う (§5)。シェルでは C-v が quoted-insert になるため、端末パネル全体には掛けない。
+- **`wamei/term-input-paste`**: コマンドとしては残す (クリップボードに画像があれば C-v を端末へ送り、無ければ通常の貼り付け)。送信を `(ghostel-send-key "v" "ctrl")`、フォールバックを `ghostel-yank` に変更。Claude Code は C-v を受けると自分で osascript を叩いてクリップボードの画像を読むので、Emacs 側で画像を運ぶ必要はない。包んでいた `wamei/term-input-paste-mode` (minor mode とそのキーマップ) は削除し、`s-v` の束縛は claude-panel.el のバッファローカルキーマップで行う (§5)。シェルでは C-v が quoted-insert になるため、端末パネル全体には掛けない。
 
 `declare-function` / `defvar` は `ghostel-send-key` の 1 つだけになる。
 
@@ -185,7 +185,9 @@ ghostel-desktop は desktop の per-buffer 機構で `desktop-read` 中に端末
 
 `ghostel-mode` が `desktop-save-buffer` に `ghostel-desktop-save-buffer` を設定し、`desktop-buffer-mode-handlers` には load 時にハンドラが登録される。バッファ名・`default-directory`・identity の保存と、`desktop-read` 中の端末再生成はここに任せる。
 
-削除する: `wamei/term-restore--parse-name`、`--buffer-name` (バッファ名の生成・解析)、`--entry` / `--prune` の plist 構造、`WAMEI_TERM_RESTORE` を `process-environment` に積んで `vterm` を呼ぶ起動経路 (`:232-251`)。`wamei/term-restore-all` は「保存された端末を全部作り直す」から「取りこぼしだけ作る」に縮む (下記 4)。
+削除する: `wamei/term-restore--buffer-name` (記録にバッファ名をそのまま持つので不要)、`WAMEI_TERM_RESTORE` を `process-environment` に積んで `vterm` を呼ぶ起動経路 (`:232-251`)。`wamei/term-restore-all` は「保存された端末を全部作り直す」から「取りこぼしだけ作る」に縮む (下記 4)。
+
+`wamei/term-restore--parse-name` は残す。バッファ名からの端末生成には使わなくなるが、スクロールバックのファイル名 (`<project>-<index>.txt`) を決めるのに要る。
 
 これで `*term: <project>[ N]*` の生成・解析が term-panel.el と二重管理になっている問題も解消する (term-panel.el 側の 1 箇所に一本化)。
 
@@ -193,16 +195,18 @@ ghostel-desktop は desktop の per-buffer 機構で `desktop-read` 中に端末
 
 ```elisp
 (defvar wamei/term-restore-saved nil
-  "((BUFFER-NAME DIRECTORY SCROLLBACK-FILE TITLE) ...)。
+  "端末ごとの plist (:name :directory :title :scrollback) のリスト。
 `desktop-globals-to-save' 経由で desktop ファイルに書く。")
 ```
 
 1. **保存** (`desktop-save-hook`): `*term: ` で始まる `ghostel-mode` バッファごとに、スクロールバック末尾 `wamei/term-restore-scrollback-lines` 行を SGR エスケープに写してファイルへ書き、1 エントリを積む。現存しないバッファのファイルは消す (`--prune` 相当)。
-2. **注入** (`ghostel-pre-spawn-hook`): ホストバッファで走り `process-environment` が動的束縛されているので、`(buffer-name)` でエントリを引いて `(setenv "WAMEI_TERM_RESTORE" file)` する。復元経路が ghostel-desktop であっても、手動で開いた端末であっても同じフックを通る。
+2. **注入** (`ghostel-pre-spawn-hook`): ホストバッファで走り `process-environment` が動的束縛されているので、`(buffer-name)` でエントリを引いて `(setenv "WAMEI_TERM_RESTORE" file)` する。復元経路が ghostel-desktop であっても、`wamei/term-restore-ensure` であっても同じフックを通る。
 3. **再生** (`.zshrc`): 最初のプロンプトの前に `cat` する現状の仕組みをそのまま使う。
-4. **取りこぼしの補完** (`desktop-after-read-hook`、深さ -10): エントリのうちバッファが live でないものだけ `ghostel-create` で作り、`ghostel-title` を戻す。
+4. **仕上げ** (`desktop-after-read-hook`、深さ -10): エントリのうちバッファが無いものを `ghostel-create` で作り、全エントリの TITLE を `ghostel-title` に戻し、最後に `wamei/term-restore-saved` を空にする。
 
-4 が必要なのは `desktop-restore-eager` が 10 のため (実測 17)。desktop の per-buffer 復元は eager 分を超えると idle 復元に回るので、端末が `desktop-side-windows` の復元 (同じ `desktop-after-read-hook`) に間に合わない場合がある。現状は `wamei/term-restore-all` が端末を必ず先に作ることでこれを保証していた。ghostel-desktop が eager に復元していれば 4 は no-op になり、`desktop-restore-eager` を `t` にすれば常に no-op になる。ここを削ると「端末が 11 番目以降に来た desktop でだけパネルが空で復元される」という再現しにくい壊れ方をするので残す。
+記録を空にするのは、同じ名前で端末を開き直したときに前回の出力を再生しないため。**消す契機は「注入したとき」ではなく「desktop の復元が終わったとき」**にする。注入時に消すと、ghostel-desktop が `desktop-read` 中に復元した端末のエントリが 4 に到達する前に消え、TITLE を戻せなくなる。
+
+4 で端末を作り直す必要があるのは `desktop-restore-eager` が 10 のため (実測 17)。desktop の per-buffer 復元は eager 分を超えると idle 復元に回るので、端末が `desktop-side-windows` の復元 (同じ `desktop-after-read-hook`) に間に合わない場合がある。現状は `wamei/term-restore-all` が端末を必ず先に作ることでこれを保証していた。ghostel-desktop が eager に復元していれば 4 の生成部分は no-op になり、`desktop-restore-eager` を `t` にすれば常に no-op になる。ここを削ると「端末が 11 番目以降に来た desktop でだけパネルが空で復元される」という再現しにくい壊れ方をするので残す。
 
 ### face → SGR の変換
 
