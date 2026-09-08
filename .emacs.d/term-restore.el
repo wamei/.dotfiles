@@ -1,18 +1,30 @@
-;;; term-restore.el --- desktop で端末 (vterm) の状態を保存・復元する -*- lexical-binding: t; -*-
+;;; term-restore.el --- desktop で端末 (ghostel) のスクロールバックを復元する -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 
-;; vterm のバッファは desktop に保存されない。ここでは端末ごとに
-;;   プロジェクト名 / 番号 / 作業ディレクトリ / タイトル (最後のコマンド) /
+;; 端末バッファそのものの保存・復元は ghostel-desktop.el が受け持つ
+;; (`ghostel-mode' が `desktop-save-buffer' を設定し、復元ハンドラは ghostel の
+;; load 時に `desktop-buffer-mode-handlers' へ登録される)。ただし復元されるのは
+;; ディレクトリと identity だけで、スクロールバックは戻らない。
+;;
+;; ここでは端末ごとに
+;;   バッファ名 / 作業ディレクトリ / タイトル (最後のコマンド) /
 ;;   スクロールバックの末尾 N 行
 ;; を `wamei/term-restore-saved' に記録し、desktop のグローバル変数として
-;; 一緒に保存する。読み込み後は記録どおりの数の端末を作り直す。
+;; 一緒に保存する。
 ;;
 ;; スクロールバックは desktop ファイルを太らせないよう別ファイル
 ;; (`wamei/term-restore-directory' 配下) に置き、内容が変わったときだけ書く。
-;; 復元時はそのパスを環境変数 WAMEI_TERM_RESTORE に載せてシェルを起こし、
-;; .zshrc が起動時に cat する。色は vterm が付けた face を SGR エスケープに
-;; 写して書いておき、cat したときに端末が解釈する。
+;; 復元時は `ghostel-pre-spawn-hook' でそのパスを WAMEI_TERM_RESTORE に載せ、
+;; .zshrc が起動時に cat する。色は ghostel が付けた face を SGR エスケープに
+;; 写して書いておき、cat したときに端末が解釈する。記録は復元の仕上げ
+;; (`wamei/term-restore-ensure') で空にするので、同じ名前で開き直した端末に
+;; 古い出力は出ない。
+;;
+;; `desktop-restore-eager' (init.el では 10) を超えた端末は desktop が idle 復元に
+;; 回すため、side window の復元 (desktop-side-windows) に間に合わないことがある。
+;; `wamei/term-restore-ensure' が `desktop-after-read-hook' で取りこぼしを作り、
+;; タイトルを戻し、記録を空にする。
 
 ;;; Code:
 
@@ -29,7 +41,7 @@
 
 (defvar wamei/term-restore-saved nil
   "前回保存した端末の記録。plist のリストで、各要素は
-:project (プロジェクト名) :index (番号) :directory (作業ディレクトリ)
+:name (バッファ名) :directory (作業ディレクトリ)
 :title (最後に報告されたタイトル、無ければ nil) :scrollback (書き出したファイル)
 を持つ。`desktop-globals-to-save' 経由で desktop ファイルに書かれる。")
 
@@ -135,7 +147,9 @@ batch (端末なし) で tty の近似色に丸めるので当てにしない。
 
 ;;; 保存
 
-(defvar wamei/term--title)                  ; term-panel.el の buffer-local 変数
+(defvar ghostel-title)                  ; ghostel.el (buffer-local)
+(defvar ghostel-pre-spawn-hook)         ; ghostel.el
+(declare-function ghostel-create "ghostel" (&optional name display identity))
 
 (defun wamei/term-restore--prompt-line-p ()
   "現在行がプロンプトの行なら非 nil。
@@ -185,7 +199,8 @@ ghostel は OSC 133 のシェル統合 (bash/zsh/fish に自動注入される) 
             (string< (car a) (car b))))))
 
 (defun wamei/term-restore--entry (project index buffer)
-  "PROJECT の INDEX 番目の端末 BUFFER の記録を作り、スクロールバックを書き出す。"
+  "PROJECT の INDEX 番目の端末 BUFFER の記録を作り、スクロールバックを書き出す。
+PROJECT と INDEX はスクロールバックのファイル名にだけ使う。"
   (let ((file (wamei/term-restore--scrollback-file project index)))
     (with-current-buffer buffer
       (wamei/term-restore--write-scrollback
@@ -193,10 +208,9 @@ ghostel は OSC 133 のシェル統合 (bash/zsh/fish に自動注入される) 
        (wamei/term-restore--ansi
         (wamei/term-restore--tail (wamei/term-restore--content)
                                   wamei/term-restore-scrollback-lines)))
-      (list :project project
-            :index index
+      (list :name (buffer-name buffer)
             :directory default-directory
-            :title (and (boundp 'wamei/term--title) wamei/term--title)
+            :title (buffer-local-value 'ghostel-title buffer)
             :scrollback file))))
 
 (defun wamei/term-restore--prune (entries)
@@ -217,47 +231,54 @@ ghostel は OSC 133 のシェル統合 (bash/zsh/fish に自動注入される) 
 
 ;;; 復元
 
-(declare-function vterm "vterm")
+(defun wamei/term-restore--entry-for (name)
+  "バッファ名 NAME の記録。無ければ nil。"
+  (seq-find (lambda (entry) (equal (plist-get entry :name) name))
+            wamei/term-restore-saved))
 
-(defun wamei/term-restore--buffer-name (project index)
-  "PROJECT の INDEX 番目の端末バッファ名。1 は番号なし (init.el の命名規則と同じ)。"
-  (if (> index 1)
-      (format "*term: %s %d*" project index)
-    (format "*term: %s*" project)))
+(defun wamei/term-restore--inject-scrollback ()
+  "この端末に記録があれば WAMEI_TERM_RESTORE に載せる。
+`ghostel-pre-spawn-hook' から呼ぶ。このフックは端末バッファで
+`process-environment' を動的束縛した状態で呼ばれるので、`setenv' がそのまま
+子プロセスに届く。記録を消すのはここではなく `wamei/term-restore-ensure'
+\(desktop の復元が終わったとき)。ここで消すと、ghostel-desktop が
+`desktop-read' 中に復元した端末の記録が仕上げに届かず、タイトルを戻せない。"
+  (when-let* ((entry (wamei/term-restore--entry-for (buffer-name)))
+              (file (plist-get entry :scrollback)))
+    (when (file-readable-p file)
+      (setenv "WAMEI_TERM_RESTORE" file))))
 
-(defun wamei/term-restore--create (entry)
-  "記録 ENTRY の端末を作って返す。
-作業ディレクトリが無くなっていればホームで作る。スクロールバックのファイルが
-読めれば WAMEI_TERM_RESTORE に載せ、シェル (.zshrc) が起動時に表示する。
-vterm はバッファへ切り替えるので window 構成は戻す。"
-  (let* ((directory (plist-get entry :directory))
-         (default-directory (if (and directory (file-directory-p directory))
-                                (file-name-as-directory directory)
-                              (expand-file-name "~/")))
-         (scrollback (plist-get entry :scrollback))
-         (process-environment
-          (if (and scrollback (file-readable-p scrollback))
-              (cons (concat "WAMEI_TERM_RESTORE=" scrollback) process-environment)
-            process-environment))
-         (buffer (save-window-excursion
-                   (vterm (wamei/term-restore--buffer-name (plist-get entry :project)
-                                                           (plist-get entry :index))))))
-    (with-current-buffer buffer
-      (setq-local wamei/term--title (plist-get entry :title)))
-    buffer))
+(defun wamei/term-restore--entry-directory (entry)
+  "記録 ENTRY の作業ディレクトリ。無くなっていればホーム。
+変数 `wamei/term-restore-directory' (スクロールバックの置き場) とは別物。"
+  (let ((directory (plist-get entry :directory)))
+    (if (and directory (file-directory-p directory))
+        (file-name-as-directory directory)
+      (expand-file-name "~/"))))
 
-(defun wamei/term-restore-all ()
-  "`wamei/term-restore-saved' の記録どおりに端末を作り直す。既にある端末は触らない。
-`desktop-after-read-hook' から呼ぶ。side window の開き直し (desktop-side-windows)
-より先に走らせ、パネルに出すバッファを用意しておく。"
+(defun wamei/term-restore-ensure ()
+  "desktop の復元の仕上げ。取りこぼした端末を作り、タイトルを戻し、記録を空にする。
+`desktop-after-read-hook' から (深さ -10 で) 呼ぶ。side window の開き直し
+\(desktop-side-windows) より先に走らせ、パネルに出すバッファを用意しておく。
+
+端末の生成は `desktop-restore-eager' (init.el では 10) を超えて idle 復元に
+回されたものの取りこぼし。ghostel-desktop が `desktop-read' 中に復元していれば
+生成は起きず、タイトルの復元だけが効く。端末が既にタイトルを報告していれば
+そちらを残す。記録を最後に空にするのは、同じ名前で開き直した端末に前回の
+出力を再生しないため。"
   (dolist (entry wamei/term-restore-saved)
-    (unless (get-buffer (wamei/term-restore--buffer-name (plist-get entry :project)
-                                                         (plist-get entry :index)))
+    (let ((name (plist-get entry :name)))
       (condition-case err
-          (wamei/term-restore--create entry)
-        (error (message "term-restore: %s %d を作れません: %s"
-                        (plist-get entry :project) (plist-get entry :index)
-                        (error-message-string err)))))))
+          (let ((buffer (or (get-buffer name)
+                            (let ((default-directory
+                                   (wamei/term-restore--entry-directory entry)))
+                              (ghostel-create name)))))
+            (when-let* ((title (plist-get entry :title)))
+              (with-current-buffer buffer
+                (unless (bound-and-true-p ghostel-title) (setq-local ghostel-title title)))))
+        (error (message "term-restore: %s を復元できません: %s"
+                        name (error-message-string err))))))
+  (setq wamei/term-restore-saved nil))
 
 ;;; desktop への組み込み
 
@@ -265,8 +286,12 @@ vterm はバッファへ切り替えるので window 構成は戻す。"
   "desktop の保存・読み込みに組み込む。"
   (add-to-list 'desktop-globals-to-save 'wamei/term-restore-saved)
   (add-hook 'desktop-save-hook #'wamei/term-restore-save)
-  ;; desktop-side-windows の開き直しより先に端末を用意する
-  (add-hook 'desktop-after-read-hook #'wamei/term-restore-all -10))
+  ;; 端末の起動時にスクロールバックを環境変数で渡す
+  ;; (ghostel-desktop の復元経路でも wamei/term-restore-ensure でも通る)
+  (add-hook 'ghostel-pre-spawn-hook #'wamei/term-restore--inject-scrollback)
+  ;; desktop-side-windows の開き直しより先に、取りこぼした端末を用意して
+  ;; タイトルを戻し、記録を空にする
+  (add-hook 'desktop-after-read-hook #'wamei/term-restore-ensure -10))
 
 (provide 'term-restore)
 ;;; term-restore.el ends here

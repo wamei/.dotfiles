@@ -5,6 +5,19 @@
 
 (require 'ert)
 (require 'cl-lib)
+
+;; ghostel 本体の buffer-local 変数。ghostel を読まない batch でも
+;; setq-local / buffer-local-value できるよう special にしておく。
+(defvar-local ghostel-title nil
+  "端末が報告したタイトル (テスト用のスタブ定義)。")
+
+;; term-restore.el の `(defvar ghostel-pre-spawn-hook)' (値なし) は
+;; その file の lexical scope 内でしか special 化されないので、この test
+;; file 側で `let' 束縛しても dynamic binding にならない。値付きで
+;; 再宣言して、この file の中でも special にしておく (テスト用のスタブ定義)。
+(defvar ghostel-pre-spawn-hook nil
+  "端末プロセスを起こす直前に呼ばれるフック (テスト用のスタブ定義)。")
+
 (load (expand-file-name "term-restore.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
@@ -31,7 +44,7 @@
   (should (equal (wamei/term-restore--tail "a\nb\nc\nd\n" 2) "c\nd\n")))
 
 (ert-deftest wamei/term-restore-tail-drops-trailing-blank-lines ()
-  "vterm が画面下端まで埋める空行と行末の空白は落とす。"
+  "端末が画面下端まで埋める空行と行末の空白は落とす。"
   (should (equal (wamei/term-restore--tail "a  \nb \n\n   \n\n" 10) "a\nb\n")))
 
 (ert-deftest wamei/term-restore-tail-of-short-text ()
@@ -158,159 +171,192 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
 
 ;;; 保存
 
-(defmacro wamei/term-restore-test--with-terminals (buffers &rest body)
-  "BUFFERS ((NAME CONTENT TITLE) ...) の端末風バッファと一時ディレクトリを用意して BODY を評価する。
-`default-directory' は一時ディレクトリ配下の cwd/ になる。"
-  (declare (indent 1))
-  `(let* ((dir (file-name-as-directory (make-temp-file "wamei-term-restore-" t)))
-          (cwd (file-name-as-directory (expand-file-name "cwd" dir)))
-          (wamei/term-restore-directory (expand-file-name "scrollback/" dir))
-          (wamei/term-restore-saved nil)
-          (created nil))
-     (make-directory cwd)
-     (unwind-protect
-         (progn
-           (pcase-dolist (`(,name ,content ,title) ,buffers)
-             (with-current-buffer (get-buffer-create name)
-               (push (current-buffer) created)
-               (setq default-directory cwd)
-               (insert content)
-               (setq-local wamei/term--title title)))
-           ,@body)
-       (mapc #'kill-buffer created)
+(defmacro wamei/term-restore-test--with-saved-dir (&rest body)
+  "スクロールバックの出力先を一時ディレクトリにして BODY を評価する。"
+  (declare (indent 0))
+  `(let* ((dir (file-name-as-directory (make-temp-file "term-restore-" t)))
+          (wamei/term-restore-directory dir)
+          (wamei/term-restore-saved nil))
+     (unwind-protect (progn ,@body)
        (delete-directory dir t))))
 
-(ert-deftest wamei/term-restore-save-records-every-terminal ()
-  "端末バッファだけを番号順に記録し、それ以外は無視する。"
-  (wamei/term-restore-test--with-terminals
-      '(("*term: foo 2*" "two\n" "make")
-        ("*term: foo*" "one\n" nil)
-        ("*not a term*" "x\n" nil))
-    (wamei/term-restore-save)
-    (should (equal (mapcar (lambda (entry)
-                             (list (plist-get entry :project)
-                                   (plist-get entry :index)
-                                   (plist-get entry :directory)
-                                   (plist-get entry :title)))
-                           wamei/term-restore-saved)
-                   `(("foo" 1 ,cwd nil)
-                     ("foo" 2 ,cwd "make"))))))
+(ert-deftest wamei/term-restore-save-records-name-directory-and-title ()
+  "端末ごとにバッファ名・ディレクトリ・タイトル・スクロールバックのパスを記録する。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((buffer (get-buffer-create "*term: foo 2*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer buffer
+              (setq default-directory "/tmp/")
+              (setq-local ghostel-title "make test")
+              (insert "hello\n"))
+            (wamei/term-restore-save)
+            (let ((entry (car wamei/term-restore-saved)))
+              (should (equal (plist-get entry :name) "*term: foo 2*"))
+              (should (equal (plist-get entry :directory) "/tmp/"))
+              (should (equal (plist-get entry :title) "make test"))
+              (should (file-readable-p (plist-get entry :scrollback)))
+              (should (equal (with-temp-buffer
+                               (insert-file-contents (plist-get entry :scrollback))
+                               (buffer-string))
+                             "hello\n"))))
+        (kill-buffer buffer)))))
 
-(ert-deftest wamei/term-restore-save-writes-scrollback-tail ()
-  "スクロールバックの末尾 N 行をプロンプト行を除いて専用ディレクトリに書き、パスを記録する。"
-  (wamei/term-restore-test--with-terminals
-      '(("*term: foo*" "a\nb\nc\n" nil))
-    (with-current-buffer "*term: foo*"
-      (insert "$ ")
-      (wamei/term-restore-test--insert-marked "\n")
-      (insert "\n"))
-    (let ((wamei/term-restore-scrollback-lines 2))
-      (wamei/term-restore-save))
-    (let ((file (plist-get (car wamei/term-restore-saved) :scrollback)))
-      (should (string-prefix-p wamei/term-restore-directory file))
-      (should (equal (with-temp-buffer (insert-file-contents file) (buffer-string))
-                     "b\nc\n")))))
-
-(ert-deftest wamei/term-restore-save-writes-colors-as-sgr ()
-  "色は SGR エスケープに写して書く。行末の空白はその前に落とす。"
-  (wamei/term-restore-test--with-terminals
-      `(("*term: foo*" ,(concat (wamei/term-restore-test--colored "ok" :foreground "#00ff00")
-                                "   \n")
-         nil))
-    (wamei/term-restore-save)
-    (let ((file (plist-get (car wamei/term-restore-saved) :scrollback)))
-      (should (equal (with-temp-buffer (insert-file-contents file) (buffer-string))
-                     "\e[38;2;0;255;0mok\e[0m\n")))))
-
-(ert-deftest wamei/term-restore-save-prunes-stale-files ()
-  "記録に含まれないスクロールバックのファイルは消す。"
-  (wamei/term-restore-test--with-terminals
-      '(("*term: foo*" "a\n" nil))
-    (make-directory wamei/term-restore-directory t)
-    (let ((stale (expand-file-name "stale.txt" wamei/term-restore-directory)))
-      (write-region "old" nil stale nil 'silent)
+(ert-deftest wamei/term-restore-save-prunes-unreferenced-files ()
+  "記録されていないスクロールバックのファイルは消す。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((stale (expand-file-name "gone-1.txt" wamei/term-restore-directory)))
+      (write-region "old\n" nil stale nil 'silent)
       (wamei/term-restore-save)
-      (should-not (file-exists-p stale))
-      (should (file-exists-p (plist-get (car wamei/term-restore-saved) :scrollback))))))
+      (should-not (file-exists-p stale)))))
 
-;;; 復元
+;;; スクロールバックの注入
 
-(defmacro wamei/term-restore-test--with-fake-vterm (calls &rest body)
-  "`vterm' を、名前のバッファを作って呼び出し内容を CALLS に積む偽物に差し替えて BODY を評価する。
-CALLS の各要素は (NAME DEFAULT-DIRECTORY RESTORE-ENV)。作ったバッファは後で消す。"
-  (declare (indent 1))
-  `(let ((,calls nil)
-         (created nil))
-     (cl-letf (((symbol-function 'vterm)
-                (lambda (name)
-                  (push (list name default-directory (getenv "WAMEI_TERM_RESTORE")) ,calls)
-                  (with-current-buffer (get-buffer-create name)
-                    (push (current-buffer) created)
-                    (setq default-directory (file-name-as-directory default-directory))
-                    (current-buffer)))))
-       (unwind-protect
-           (progn ,@body)
-         (mapc #'kill-buffer created)))))
+(ert-deftest wamei/term-restore-inject-sets-env-for-saved-buffer ()
+  "記録のあるバッファ名で端末が起動するとき WAMEI_TERM_RESTORE を渡す。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory)))
+      (write-region "old output\n" nil file nil 'silent)
+      (setq wamei/term-restore-saved
+            (list (list :name "*term: foo*" :directory "/tmp/"
+                        :title nil :scrollback file)))
+      (with-current-buffer (get-buffer-create "*term: foo*")
+        (unwind-protect
+            ;; ghostel-pre-spawn-hook は process-environment を動的束縛した
+            ;; 状態で呼ぶので、それを模す
+            (let ((process-environment (copy-sequence process-environment)))
+              (wamei/term-restore--inject-scrollback)
+              (should (equal (getenv "WAMEI_TERM_RESTORE") file)))
+          (kill-buffer (current-buffer)))))))
 
-(ert-deftest wamei/term-restore-all-recreates-each-terminal ()
-  "記録の数だけ端末を作り、作業ディレクトリとタイトルを戻す。"
-  (let* ((dir (file-name-as-directory (make-temp-file "wamei-term-restore-" t)))
-         (wamei/term-restore-saved
-          `((:project "foo" :index 1 :directory ,dir :title "make" :scrollback nil)
-            (:project "foo" :index 2 :directory ,dir :title nil :scrollback nil))))
-    (unwind-protect
-        (wamei/term-restore-test--with-fake-vterm calls
-          (wamei/term-restore-all)
-          (should (equal (mapcar (lambda (call) (list (car call) (cadr call))) (reverse calls))
-                         `(("*term: foo*" ,dir) ("*term: foo 2*" ,dir))))
-          (should (equal (buffer-local-value 'wamei/term--title (get-buffer "*term: foo*"))
-                         "make"))
-          (should-not (buffer-local-value 'wamei/term--title (get-buffer "*term: foo 2*"))))
-      (delete-directory dir t))))
-
-(ert-deftest wamei/term-restore-all-passes-scrollback-through-environment ()
-  "読めるスクロールバックがあれば WAMEI_TERM_RESTORE にパスを載せる。無ければ載せない。"
-  (let* ((file (make-temp-file "wamei-term-restore-" nil ".txt" "old output\n"))
-         (wamei/term-restore-saved
-          `((:project "foo" :index 1 :directory "~/" :scrollback ,file)
-            (:project "bar" :index 1 :directory "~/" :scrollback "/nonexistent/x.txt"))))
-    (unwind-protect
-        (wamei/term-restore-test--with-fake-vterm calls
-          (wamei/term-restore-all)
-          (should (equal (nth 2 (assoc "*term: foo*" calls)) file))
-          (should-not (nth 2 (assoc "*term: bar*" calls)))
-          ;; 環境変数は呼び出しの間だけで、外には漏れない
-          (should-not (getenv "WAMEI_TERM_RESTORE")))
-      (delete-file file))))
-
-(ert-deftest wamei/term-restore-all-falls-back-when-directory-is-gone ()
-  "作業ディレクトリが無くなっていればホームで作る。"
-  (let ((wamei/term-restore-saved
-         '((:project "foo" :index 1 :directory "/nonexistent/dir/" :scrollback nil))))
-    (wamei/term-restore-test--with-fake-vterm calls
-      (wamei/term-restore-all)
-      (should (equal (cadr (car calls)) (expand-file-name "~/"))))))
-
-(ert-deftest wamei/term-restore-all-skips-existing-buffers ()
-  "同名の端末が既にあれば作り直さない。"
-  (let ((wamei/term-restore-saved
-         '((:project "foo" :index 1 :directory "~/" :scrollback nil))))
+(ert-deftest wamei/term-restore-inject-ignores-missing-file ()
+  "記録はあるがファイルが読めないときは環境変数を立てない。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title nil
+                      :scrollback (expand-file-name "gone.txt"
+                                                    wamei/term-restore-directory))))
     (with-current-buffer (get-buffer-create "*term: foo*")
       (unwind-protect
-          (wamei/term-restore-test--with-fake-vterm calls
-            (wamei/term-restore-all)
-            (should-not calls))
-        (kill-buffer)))))
+          (let ((process-environment (copy-sequence process-environment)))
+            (wamei/term-restore--inject-scrollback)
+            (should-not (getenv "WAMEI_TERM_RESTORE")))
+        (kill-buffer (current-buffer))))))
+
+(ert-deftest wamei/term-restore-inject-ignores-unknown-buffer ()
+  "記録の無いバッファでは何もしない。"
+  (wamei/term-restore-test--with-saved-dir
+    (with-current-buffer (get-buffer-create "*term: other*")
+      (unwind-protect
+          (let ((process-environment (copy-sequence process-environment)))
+            (wamei/term-restore--inject-scrollback)
+            (should-not (getenv "WAMEI_TERM_RESTORE")))
+        (kill-buffer (current-buffer))))))
+
+;;; 復元の仕上げ
+
+(defmacro wamei/term-restore-test--with-fake-create (&rest body)
+  "`ghostel-create' をバッファを作るだけの偽物にして BODY を評価する。
+`calls' に (NAME . DIRECTORY) が積まれる。"
+  (declare (indent 0))
+  `(let ((calls nil))
+     (cl-letf (((symbol-function 'ghostel-create)
+                (lambda (&optional name &rest _)
+                  (push (cons name default-directory) calls)
+                  (get-buffer-create name))))
+       ,@body)))
+
+(ert-deftest wamei/term-restore-ensure-creates-missing-terminals ()
+  "ghostel-desktop が復元しなかった端末だけを作り、タイトルを戻す。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title "make test" :scrollback nil)))
+    (wamei/term-restore-test--with-fake-create
+      (unwind-protect
+          (progn
+            (wamei/term-restore-ensure)
+            (should (equal calls '(("*term: foo*" . "/tmp/"))))
+            (should (equal (buffer-local-value 'ghostel-title (get-buffer "*term: foo*"))
+                           "make test")))
+        (kill-buffer "*term: foo*")))))
+
+(ert-deftest wamei/term-restore-ensure-leaves-live-terminals-alone ()
+  "既にあるバッファは作り直さないが、タイトルは戻す
+\(ghostel-desktop が desktop-read 中に復元した端末がこの経路に来る)。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title "make test" :scrollback nil)))
+    (let ((buffer (get-buffer-create "*term: foo*")))
+      (unwind-protect
+          (wamei/term-restore-test--with-fake-create
+            (wamei/term-restore-ensure)
+            (should-not calls)
+            (should (equal (buffer-local-value 'ghostel-title buffer) "make test")))
+        (kill-buffer buffer)))))
+
+(ert-deftest wamei/term-restore-ensure-keeps-reported-title ()
+  "端末が既にタイトルを報告していれば上書きしない。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/tmp/"
+                      :title "古いコマンド" :scrollback nil)))
+    (let ((buffer (get-buffer-create "*term: foo*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer buffer (setq-local ghostel-title "新しいコマンド"))
+            (wamei/term-restore-test--with-fake-create
+              (wamei/term-restore-ensure)
+              (should (equal (buffer-local-value 'ghostel-title buffer) "新しいコマンド"))))
+        (kill-buffer buffer)))))
+
+(ert-deftest wamei/term-restore-ensure-clears-records ()
+  "仕上げで記録を空にする。同じ名前で開き直した端末に前回の出力を再生しない。"
+  (wamei/term-restore-test--with-saved-dir
+    (let ((file (expand-file-name "foo-1.txt" wamei/term-restore-directory)))
+      (write-region "old output\n" nil file nil 'silent)
+      (setq wamei/term-restore-saved
+            (list (list :name "*term: foo*" :directory "/tmp/"
+                        :title nil :scrollback file)))
+      (let ((buffer (get-buffer-create "*term: foo*")))
+        (unwind-protect
+            (wamei/term-restore-test--with-fake-create
+              (wamei/term-restore-ensure)
+              (should-not wamei/term-restore-saved)
+              (with-current-buffer buffer
+                (let ((process-environment (copy-sequence process-environment)))
+                  (wamei/term-restore--inject-scrollback)
+                  (should-not (getenv "WAMEI_TERM_RESTORE")))))
+          (kill-buffer buffer))))))
+
+(ert-deftest wamei/term-restore-ensure-falls-back-to-home ()
+  "記録のディレクトリが無くなっていればホームで作る。"
+  (wamei/term-restore-test--with-saved-dir
+    (setq wamei/term-restore-saved
+          (list (list :name "*term: foo*" :directory "/nonexistent-dir-xyz/"
+                      :title nil :scrollback nil)))
+    (wamei/term-restore-test--with-fake-create
+      (unwind-protect
+          (progn
+            (wamei/term-restore-ensure)
+            (should (equal (cdar calls) (expand-file-name "~/"))))
+        (kill-buffer "*term: foo*")))))
+
+;;; desktop への組み込み
 
 (ert-deftest wamei/term-restore-setup-hooks-into-desktop ()
-  "desktop の保存・読み込みに組み込み、記録の変数を保存対象にする。"
+  "desktop の保存・読み込みと ghostel-pre-spawn-hook に組み込み、記録の変数を保存対象にする。"
   (let ((desktop-globals-to-save nil)
         (desktop-save-hook nil)
-        (desktop-after-read-hook nil))
+        (desktop-after-read-hook nil)
+        (ghostel-pre-spawn-hook nil))
     (wamei/term-restore-setup)
     (should (memq 'wamei/term-restore-saved desktop-globals-to-save))
     (should (memq #'wamei/term-restore-save desktop-save-hook))
-    (should (memq #'wamei/term-restore-all desktop-after-read-hook))))
+    (should (memq #'wamei/term-restore--inject-scrollback ghostel-pre-spawn-hook))
+    (should (memq #'wamei/term-restore-ensure desktop-after-read-hook))))
 
 (provide 'term-restore-test)
 ;;; term-restore-test.el ends here
