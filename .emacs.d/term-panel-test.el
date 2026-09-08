@@ -160,19 +160,35 @@
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
-      (let ((list-buffer (wamei/term--list-buffer)))
+      (let ((list-buffer (wamei/term--list-buffer))
+            (refresh (symbol-function 'wamei/term--list-refresh))
+            (calls 0))
         (with-current-buffer (get-buffer "*term: alpha*")
           (setq-local ghostel-title "make test")
-          (should-not (wamei/term--on-title-change "make test")))
+          (cl-letf (((symbol-function 'wamei/term--list-refresh)
+                     (lambda () (setq calls (1+ calls)) (funcall refresh))))
+            (should-not (wamei/term--on-title-change "make test"))))
+        (should (>= calls 1))
         (should (string-match-p "make test"
                                 (with-current-buffer list-buffer (buffer-string))))))))
 
 (ert-deftest wamei/term-panel-title-change-ignores-other-buffers ()
-  "端末以外のバッファでは一覧を触らない。"
+  "端末以外のバッファでは一覧を描き直さない。
+
+`wamei/term--on-title-change' の返り値は実装が何をしても一定なので、
+返り値ではなく `wamei/term--list-refresh' の呼び出し回数で見る
+\(そうしないとプレフィックスのガードを消しても通ってしまう)。
+一覧バッファは先に作っておき、ガードのうちバッファ名の判定だけを残す。"
   (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha (wamei/term--create 1))
-    (with-temp-buffer
-      (should-not (wamei/term--on-title-change "x")))))
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (wamei/term--list-buffer))
+    (let ((calls 0))
+      (cl-letf (((symbol-function 'wamei/term--list-refresh)
+                 (lambda () (setq calls (1+ calls)) nil)))
+        (wamei/term-panel-test--in alpha
+          (wamei/term--on-title-change "x"))
+        (should (= calls 0))))))
 
 (ert-deftest wamei/term-panel-list-hides-cursor-when-not-selected ()
   "一覧は選択していない window ではカーソルを出さない (sidebar と同じ)。"
