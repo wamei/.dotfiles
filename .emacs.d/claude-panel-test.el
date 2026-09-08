@@ -15,6 +15,15 @@
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
 
+;; ghostel 本体の buffer-local 変数 (テスト用のスタブ定義)。
+(defvar-local ghostel-title nil
+  "端末が報告したタイトル。")
+
+;; wamei/claude-panel-map が s-v に束縛するコマンドの実体。
+(load (expand-file-name "term-input.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
+
 ;;; フィクスチャ
 
 (defvar wamei/claude-panel-test--counter 0)
@@ -138,27 +147,25 @@
 
 ;;; タブ名: Claude が端末タイトルに出すセッション名
 
-(ert-deftest wamei/claude-panel-tab-name-prefers-terminal-title ()
+(ert-deftest wamei/claude-panel-tab-name-comes-from-ghostel-title ()
+  "タブ名は端末が報告したタイトルから状態表示を外したもの。"
   (wamei/claude-panel-test--with-env
     (let* ((a (wamei/claude-panel-test--session "/tmp/proj/" "a"))
            (buffer (claude-code-ide-mcp-session-buffer a)))
       (with-current-buffer buffer
-        (wamei/claude-panel--record-title "✳ tab-line を追加する"))
-      (should (equal (wamei/claude-panel--tab-name buffer) "tab-line を追加する")))))
+        (setq-local ghostel-title "✳ 会話の名前"))
+      (should (equal (wamei/claude-panel--tab-name buffer) "会話の名前")))))
 
-(ert-deftest wamei/claude-panel-record-title-ignores-non-claude-buffers ()
-  (wamei/claude-panel-test--with-env
-    (with-temp-buffer
-      (wamei/claude-panel--record-title "✳ something")
-      (should-not wamei/claude-panel--title))))
-
-(ert-deftest wamei/claude-panel-record-title-keeps-fallback-on-blank-title ()
+(ert-deftest wamei/claude-panel-tab-name-keeps-fallback-on-blank-title ()
+  "状態表示だけのタイトルや空のタイトルではセッション名に落とす。"
   (wamei/claude-panel-test--with-env
     (let* ((a (wamei/claude-panel-test--session "/tmp/proj/" "a"))
            (buffer (claude-code-ide-mcp-session-buffer a)))
       (with-current-buffer buffer
-        (wamei/claude-panel--record-title "✳ ")
-        (should-not wamei/claude-panel--title))
+        (setq-local ghostel-title "✳ "))
+      (should (equal (wamei/claude-panel--tab-name buffer) "proj:a"))
+      (with-current-buffer buffer
+        (setq-local ghostel-title nil))
       (should (equal (wamei/claude-panel--tab-name buffer) "proj:a")))))
 
 (ert-deftest wamei/claude-panel-cache-key-changes-with-title ()
@@ -170,15 +177,13 @@
       (with-current-buffer buffer
         (should (eq tab-line-cache-key-function #'wamei/claude-panel--cache-key))
         (let ((before (wamei/claude-panel--cache-key (list buffer))))
-          (wamei/claude-panel--record-title "✳ 新しい名前")
+          (with-current-buffer buffer (setq-local ghostel-title "✳ 新しい名前"))
           (should-not (equal before (wamei/claude-panel--cache-key (list buffer)))))))))
 
-(ert-deftest wamei/claude-panel-enable-hooks-vterm-title ()
-  (unless (fboundp 'vterm--set-title)
-    (defun vterm--set-title (_title) nil)
-    (provide 'vterm))
-  (wamei/claude-panel-test--with-env
-    (should (advice-member-p #'wamei/claude-panel--record-title #'vterm--set-title))))
+(ert-deftest wamei/claude-panel-map-binds-super-v-to-paste ()
+  "Claude のバッファでは Cmd+V がクリップボードの画像を端末へ渡す。"
+  (should (eq (lookup-key wamei/claude-panel-map (kbd "s-v"))
+              #'wamei/term-input-paste)))
 
 ;;; 表示: 1 つのパネルに差し替える
 
