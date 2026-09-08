@@ -10,6 +10,10 @@
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
 
+;; sql-connections.el の defvar は load 時にしか見えないので、コンパイラ向けに宣言する
+(defvar sql-connections-wrangler-root)
+(defvar sql-connections-wrangler-d1-dir)
+
 (defmacro sql-connections-test--with-files (my-cnf pg-service &rest body)
   "MY-CNF と PG-SERVICE (nil なら作らない) を一時ファイルに書いて BODY を実行する。"
   (declare (indent 2))
@@ -69,6 +73,54 @@ options=-csearch_path=platform
 [bare]
 dbname=onlydb
 ")
+
+(defconst sql-connections-test--d1-used
+  "d259df233bf85b454a4685929b7f24795976988f78163dcb293e4583e1fe5e9a.sqlite")
+
+(defconst sql-connections-test--d1-empty
+  "205b9e57c6584da89c2ed22b5c05c5109636abea5f366f057e0801610d64941e.sqlite")
+
+(defconst sql-connections-test--d1-files
+  `((,sql-connections-test--d1-used
+     "CREATE TABLE _cf_METADATA (key INTEGER PRIMARY KEY, value BLOB)"
+     "CREATE TABLE diagnoses (id INTEGER PRIMARY KEY)")
+    ;; 使われていない binding。_cf_ と sqlite_ しか無いものは接続先にしない
+    (,sql-connections-test--d1-empty
+     "CREATE TABLE _cf_METADATA (key INTEGER PRIMARY KEY, value BLOB)")
+    ;; miniflare 自身の台帳。中身によらずファイル名で外す
+    ("metadata.sqlite"
+     "CREATE TABLE alarms (id INTEGER PRIMARY KEY)"))
+  "wrangler dev が作るローカル D1 のファイル一式 ((ファイル名 SQL...) ...)。")
+
+(defmacro sql-connections-test--with-wrangler (files &rest body)
+  "FILES を持つ repo ietateru を一時ディレクトリに作って BODY を実行する。
+FILES は ((ファイル名 SQL...) ...)。nil なら .wrangler を作らない。"
+  (declare (indent 1))
+  `(progn
+     (skip-unless (sqlite-available-p))
+     (let* ((dir (file-name-as-directory (make-temp-file "sql-connections-test" t)))
+            (sql-connections-wrangler-root
+             (file-name-as-directory (expand-file-name "ietateru" dir))))
+       (unwind-protect
+           (progn
+             (make-directory sql-connections-wrangler-root t)
+             (when ,files
+               (let ((d1 (file-name-as-directory
+                          (expand-file-name sql-connections-wrangler-d1-dir
+                                            sql-connections-wrangler-root))))
+                 (make-directory d1 t)
+                 (dolist (file ,files)
+                   (let ((db (sqlite-open (expand-file-name (car file) d1))))
+                     (unwind-protect
+                         (dolist (statement (cdr file)) (sqlite-execute db statement))
+                       (sqlite-close db))))))
+             ,@body)
+         (delete-directory dir t)))))
+
+(defun sql-connections-test--d1-path (name)
+  "`sql-connections-wrangler-root' 内の D1 ファイル NAME の絶対パス。"
+  (expand-file-name name (expand-file-name sql-connections-wrangler-d1-dir
+                                           sql-connections-wrangler-root)))
 
 ;;; ini パーサ
 
@@ -155,16 +207,19 @@ dbname=onlydb
 
 (ert-deftest sql-connections-test-alist-covers-login-params ()
   "sql-connect が追加のプロンプトを出さないよう、login-params を全て束縛する。"
-  (sql-connections-test--with-files sql-connections-test--my-cnf
-      sql-connections-test--pg-service
-    (dolist (entry (sql-connections-alist))
-      (let ((bound (mapcar #'car (cdr entry)))
-            (product (if (string-prefix-p "mysql" (symbol-name (car entry)))
-                         'mysql 'postgres)))
-        (dolist (param (sql-get-product-feature product :sqli-login))
-          ;; login-params の要素は名前か (名前 :default ...) のどちらか
-          (let ((name (if (consp param) (car param) param)))
-            (should (memq (intern (format "sql-%s" name)) bound))))))))
+  (sql-connections-test--with-wrangler sql-connections-test--d1-files
+    (sql-connections-test--with-files sql-connections-test--my-cnf
+        sql-connections-test--pg-service
+      (let ((entries (sql-connections-alist)))
+        ;; mysql / postgres / sqlite が揃っていないと検査の意味がない
+        (should (equal (length entries) 5))
+        (dolist (entry entries)
+          (let* ((bound (mapcar #'car (cdr entry)))
+                 (product (car (sql-connections-test--bindings entry))))
+            (dolist (param (sql-get-product-feature product :sqli-login))
+              ;; login-params の要素は名前か (名前 :default ...) のどちらか
+              (let ((name (if (consp param) (car param) param)))
+                (should (memq (intern (format "sql-%s" name)) bound))))))))))
 
 ;;; sqls (言語サーバ) の設定
 
@@ -218,6 +273,53 @@ Scan error を出し続ける。SQLi (sql-connect) 側では DB 名が無くて�
   "設定ファイルが無ければ nil (eglot に何も渡さない)。"
   (sql-connections-test--with-files nil nil
     (should (null (sql-connections-sqls)))))
+
+;;; wrangler (ローカル D1)
+
+(ert-deftest sql-connections-test-wrangler-list ()
+  "中身のある D1 だけを <repo>/<ファイル名の先頭 8 桁> で拾う。"
+  (sql-connections-test--with-wrangler sql-connections-test--d1-files
+    (should (equal (sql-connections-wrangler-list)
+                   (list (cons "ietateru/d259df23"
+                               (sql-connections-test--d1-path
+                                sql-connections-test--d1-used)))))))
+
+(ert-deftest sql-connections-test-wrangler-list-no-state ()
+  ".wrangler の無い repo では何も返さない。"
+  (sql-connections-test--with-wrangler nil
+    (should (null (sql-connections-wrangler-list)))))
+
+(ert-deftest sql-connections-test-wrangler-list-no-root ()
+  "project の外 (root が決まらない) では何も返さない。"
+  (sql-connections-test--with-wrangler sql-connections-test--d1-files
+    (let ((sql-connections-wrangler-root nil)
+          (default-directory "/"))
+      (should (null (sql-connections-wrangler-list))))))
+
+(ert-deftest sql-connections-test-alist-sqlite ()
+  "ローカル D1 は sqlite 製品として、ファイルパスだけを渡す。"
+  (sql-connections-test--with-wrangler sql-connections-test--d1-files
+    (sql-connections-test--with-files nil nil
+      (let ((entry (assq 'sqlite:ietateru/d259df23 (sql-connections-alist))))
+        (should entry)
+        (pcase-let ((`(,product ,user ,password ,server ,port ,database ,_options)
+                     (sql-connections-test--bindings entry)))
+          (should (eq product 'sqlite))
+          (should (equal database (sql-connections-test--d1-path
+                                   sql-connections-test--d1-used)))
+          (should (equal user ""))
+          (should (equal password ""))
+          (should (equal server ""))
+          (should (equal port 0)))))))
+
+(ert-deftest sql-connections-test-sqls-sqlite ()
+  "sqls には sqlite3 driver としてファイルパスを渡す。"
+  (sql-connections-test--with-wrangler sql-connections-test--d1-files
+    (sql-connections-test--with-files nil nil
+      (should (equal (append (plist-get (sql-connections-sqls) :connections) nil)
+                     (list (list :driver "sqlite3"
+                                 :dataSourceName (sql-connections-test--d1-path
+                                                  sql-connections-test--d1-used))))))))
 
 ;;; refresh
 

@@ -6,6 +6,10 @@
 ;;   ~/.my.cnf          [client<名前>] グループ         → mysql --defaults-group-suffix=<名前>
 ;;   ~/.pg_service.conf [<名前>] セクション             → psql "service=<名前>"
 ;;
+;; これに加えて、カレント project の .wrangler にある wrangler dev のローカル D1
+;; (実体は SQLite ファイル) も接続先として拾う。こちらは設定ファイルではなく
+;; ディスク上のファイルそのものが情報源。
+;;
 ;; どちらも [client] や共通キーを継承する仕組みを持っているので、ホスト・ユーザ・
 ;; パスワードはそちらに 1 度書けばよい。Emacs は名前だけを渡し、認証情報は
 ;; コマンドラインに出さない (ps で見えてしまうため)。
@@ -19,6 +23,7 @@
 
 (require 'sql)
 (require 'subr-x)
+(require 'project)
 
 (defvar sql-connections-my-cnf "~/.my.cnf"
   "MySQL クライアントの設定ファイル。[client<名前>] を接続先として拾う。")
@@ -30,6 +35,16 @@
 (defconst sql-connections--mysql-group-prefix "client"
   "接続先として扱う my.cnf のグループ名の接頭辞。
 mysql は --defaults-group-suffix=X を付けると [client] に加えて [clientX] を読む。")
+
+(defvar sql-connections-wrangler-root nil
+  "ローカル D1 を探す repo。nil なら `project-current' の root を使う。")
+
+(defvar sql-connections-wrangler-d1-dir
+  ".wrangler/state/v3/d1/miniflare-D1DatabaseObject"
+  "repo からの相対で、wrangler dev がローカル D1 の SQLite を置くディレクトリ。")
+
+(defconst sql-connections--wrangler-name-length 8
+  "接続名に使うファイル名の先頭の桁数。")
 
 ;;; INI パーサ
 
@@ -101,6 +116,57 @@ FILE が無ければ nil。# と ; はコメント、! で始まる行 (my.cnf �
   (sort (sql-connections--parse-ini sql-connections-pg-service-file)
         (lambda (a b) (string< (car a) (car b)))))
 
+;;; wrangler のローカル D1
+
+(defun sql-connections--wrangler-root ()
+  "ローカル D1 を探す repo。無ければ nil。"
+  (or sql-connections-wrangler-root
+      (when-let* ((project (project-current)))
+        (project-root project))))
+
+(defun sql-connections--wrangler-used-p (file)
+  "FILE にユーザのテーブルがあれば非 nil。
+sqlite_ は SQLite、_cf_ は miniflare の内部テーブルなので数えない (LIKE の _ は
+1 文字のワイルドカードなので escape する)。wrangler.jsonc に書いただけで一度も
+使っていない binding のファイルもできるため、それを接続先の一覧から外す。
+組み込み sqlite の無い Emacs では判定できないので、その場合は全て採用する。"
+  (if (not (sqlite-available-p))
+      t
+    ;; sqlite-open は読み書きで開くので -wal / -shm ができるが、miniflare が
+    ;; 同じものを既に作っている (D1 は WAL) ので実害はない。
+    (let ((db (sqlite-open file)))
+      (unwind-protect
+          (> (caar (sqlite-select
+                    db (concat "select count(*) from sqlite_master"
+                               " where type = 'table'"
+                               " and name not like 'sqlite\\_%' escape '\\'"
+                               " and name not like '\\_cf\\_%' escape '\\'")))
+             0)
+        (sqlite-close db)))))
+
+(defun sql-connections-wrangler-list ()
+  "wrangler dev のローカル D1 を ((名前 . ファイル) ...) で返す。
+名前は <repo 名>/<ファイル名の先頭 8 桁>。ファイル名は miniflare が Durable Object
+の id から作るもので、binding 名や database_id からは復元できないため、
+ファイル名をそのまま識別子にする (どの DB かは中身を見て判断する)。"
+  (when-let* ((root (sql-connections--wrangler-root))
+              (dir (expand-file-name sql-connections-wrangler-d1-dir root))
+              ((file-directory-p dir))
+              (repo (file-name-nondirectory (directory-file-name root))))
+    (delq nil
+          (mapcar
+           (lambda (file)
+             (let ((base (file-name-base file)))
+               ;; metadata.sqlite は miniflare 自身の台帳で、D1 の中身ではない
+               (and (not (equal base "metadata"))
+                    (sql-connections--wrangler-used-p file)
+                    (cons (format "%s/%s" repo
+                                  (substring base 0
+                                             (min sql-connections--wrangler-name-length
+                                                  (length base))))
+                          file))))
+           (directory-files dir t "\\.sqlite\\'")))))
+
 ;;; sql-connection-alist (SQLi)
 
 (defun sql-connections-alist ()
@@ -125,7 +191,15 @@ FILE が無ければ nil。# と ; はコメント、! で始まる行 (my.cnf �
         (sql-user "") (sql-password "") (sql-server "") (sql-port 0)
         ;; psql は最後の引数を conninfo 文字列として解釈する
         (sql-database ,(format "service=%s" (car conn)))))
-    (sql-connections-postgres-list))))
+    (sql-connections-postgres-list))
+   (mapcar
+    (lambda (conn)
+      `(,(intern (concat "sqlite:" (car conn)))
+        (sql-product 'sqlite)
+        (sql-user "") (sql-password "") (sql-server "") (sql-port 0)
+        ;; sqlite3 は引数がファイルパスそのもの
+        (sql-database ,(cdr conn))))
+    (sql-connections-wrangler-list))))
 
 ;;;###autoload
 (defun sql-connections-refresh ()
@@ -189,7 +263,10 @@ Scan error を出し続ける。"
                           :dataSourceName (sql-connections--pg-dsn (cdr conn))))
                   (seq-filter (lambda (conn)
                                 (sql-connections--get (cdr conn) "dbname"))
-                              (sql-connections-postgres-list))))))
+                              (sql-connections-postgres-list)))
+          (mapcar (lambda (conn)
+                    (list :driver "sqlite3" :dataSourceName (cdr conn)))
+                  (sql-connections-wrangler-list)))))
     (when connections
       (list :connections (vconcat connections)))))
 
