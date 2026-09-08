@@ -62,7 +62,14 @@ symlink は `file-truename' で実体に解決する
   (format " *sidebar: %s*" (file-name-nondirectory (directory-file-name root))))
 
 (defun wamei/project-sidebar--hide-header-lines ()
-  "先頭のディレクトリ見出し行を overlay で隠す。total 行は dired-hide-details が隠す。
+  "先頭のディレクトリ見出し行を overlay で隠す。
+隠すのは見出し行 1 行だけ。使用量と空き容量は Emacs 29 以降 `dired-free-space' が
+既定で見出し行に畳むので、独立した total 行は無い。
+
+overlay の終端に `re-search-forward' の後の point をそのまま使う。
+`dired-subdir-regexp' は行末の改行まで含むので、この point は既に次の行の頭にある
+(ここから `line-beginning-position' を数えると 1 行余分に隠して先頭のファイルが消える)。
+
 `invisible' の値は専用シンボルを使う (dired-hide-details-mode が spec をリストにする
 ので t では効かないことがある)。`buffer-invisibility-spec' への登録は revert のたびに
 呼ばれるとここではなく minor-mode の enable 時に 1 回だけ行う
@@ -71,7 +78,7 @@ symlink は `file-truename' で実体に解決する
   (save-excursion
     (goto-char (point-min))
     (when (re-search-forward dired-subdir-regexp nil t)
-      (let ((ov (make-overlay (point-min) (line-beginning-position 2))))
+      (let ((ov (make-overlay (point-min) (point))))
         (overlay-put ov 'wamei/project-sidebar-header t)
         (overlay-put ov 'invisible 'wamei/project-sidebar-header)
         (overlay-put ov 'evaporate t)))))

@@ -81,6 +81,20 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
         (should (= 1 (seq-count (lambda (e) (eq e 'wamei/project-sidebar-header))
                                 buffer-invisibility-spec)))))))
 
+(ert-deftest wamei/project-sidebar-hides-only-the-header-line ()
+  "見出し行だけを隠し、先頭のエントリは表示に残すこと。
+`dired-subdir-regexp' は末尾の改行まで含むので、`re-search-forward' のあとの
+point は既に次の行の頭にある。ここから 1 行余分に取ると先頭のファイルが消える。"
+  (wamei/project-sidebar-test--with-project root
+    (let ((buf (wamei/project-sidebar-buffer root)))
+      (with-current-buffer buf
+        (goto-char (point-min))
+        (should (eq (get-char-property (point) 'invisible) 'wamei/project-sidebar-header))
+        (forward-line 1)
+        (should-not (eq (get-char-property (point) 'invisible)
+                        'wamei/project-sidebar-header))
+        (should (dired-utils-get-filename))))))
+
 (ert-deftest wamei/project-sidebar-buffer-is-reused ()
   (wamei/project-sidebar-test--with-project root
     (should (eq (wamei/project-sidebar-buffer root) (wamei/project-sidebar-buffer root)))))
