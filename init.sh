@@ -10,6 +10,9 @@ ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
 mkdir -p ~/.config/mise
 ln -sf ~/.dotfiles/.config/mise/config.toml ~/.config/mise/config.toml
 
+mkdir -p ~/.config/yamllint
+ln -sf ~/.dotfiles/.config/yamllint/config ~/.config/yamllint/config
+
 mkdir -p ~/.aws
 ln -sf ~/.dotfiles/.aws/update-mfa-profile ~/.aws/update-mfa-profile
 

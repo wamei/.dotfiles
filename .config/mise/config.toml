@@ -37,6 +37,11 @@ go = "1"
 # 依存の html-validate が bin を持つため PATH に漏れるが、既存コマンドと衝突しない。
 "npm:five-server" = "latest"
 
+# YAML の lint。Emacs の yaml-ts-mode 同梱の flymake backend が PATH の yamllint を
+# 起動する (見つからないと error を投げるので init.el 側にガードあり)。Python 製で
+# バイナリ配布が無いため pipx backend で入れる (実体の取得は /opt/homebrew/bin/pipx)。
+"pipx:yamllint" = "latest"
+
 # 他人の repo が pnpm / yarn 前提のときに使う。pnpm は aqua backend のネイティブ
 # バイナリで node を要らないのでそちらから入れる。yarn は既定 (vfox) と aqua が
 # berry (4 系) なので、classic を使い続けるため npm backend で 1 系を指定する。

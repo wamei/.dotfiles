@@ -1858,6 +1858,20 @@ sqls は workspace/didChangeConfiguration で接続一覧を作り直すので�
   ;; (派生モードのままだと eglot がモード名から作ってしまう。eglot ブロック参照)。
   ;; compose の schema は SchemaStore のカタログがファイル名で当てるので設定は要らない。
   :when (and (fboundp 'treesit-ready-p) (treesit-ready-p 'yaml t))
+  :preface
+  (defun wamei/yaml-ts-mode-disable-flymake-unless-yamllint ()
+    "yamllint が PATH に無ければ `yaml-ts-mode-flymake' を backend から外す。
+
+`yaml-ts-mode' は yamllint の有無を見ずに backend を登録するが、
+`yaml-ts-mode-flymake' は yamllint が見つからないと即 error を投げる。
+eglot が flymake-mode を有効にすると必ずそこを踏み、`debug-on-error' が t
+(この init.el の設定) だと `condition-case-unless-debug' をすり抜けて
+デバッガが開く。desktop の復元中に起きると復元がそこで止まる。
+yamllint は mise で入れてある (~/.config/mise/config.toml) ので通常は残るが、
+未導入のマシンでも黙って eglot の診断だけになるようにしておく。"
+    (unless (executable-find "yamllint")
+      (remove-hook 'flymake-diagnostic-functions #'yaml-ts-mode-flymake t)))
+  :hook (yaml-ts-mode-hook . wamei/yaml-ts-mode-disable-flymake-unless-yamllint)
   :init
   (define-derived-mode wamei/docker-compose-ts-mode yaml-ts-mode "Compose"
     "docker-compose ファイルのメジャーモード。
