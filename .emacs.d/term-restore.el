@@ -17,9 +17,11 @@
 ;; (`wamei/term-restore-directory' 配下) に置き、内容が変わったときだけ書く。
 ;; 復元時は `ghostel-pre-spawn-hook' でそのパスを WAMEI_TERM_RESTORE に載せ、
 ;; .zshrc が起動時に cat する。色は ghostel が付けた face を SGR エスケープに
-;; 写して書いておき、cat したときに端末が解釈する。記録は復元の仕上げ
-;; (`wamei/term-restore-ensure') で空にするので、同じ名前で開き直した端末に
-;; 古い出力は出ない。
+;; 写して書いておき、cat したときに端末が解釈する。注入が効くのは起動時の
+;; desktop 復元の間だけで、復元の仕上げ (`wamei/term-restore-ensure') が記録を
+;; 空にして `wamei/term-restore--restoring' を下ろす。以降は同じ名前で開き直した
+;; 端末に古い出力が出ることはない (記録は autosave が作り直すので、記録を
+;; 空にするだけでは足りない)。
 ;;
 ;; `desktop-restore-eager' (init.el では 10) を超えた端末は desktop が idle 復元に
 ;; 回すため、side window の復元 (desktop-side-windows) に間に合わないことがある。
@@ -47,6 +49,23 @@
 復元時に `wamei/term-restore--inject-scrollback' が :injected t を足し、
 同じ記録からの注入を 1 回に留める (`wamei/term-restore-save' が記録を
 作り直すときは付かない)。")
+
+(defvar wamei/term-restore--restoring t
+  "起動時の desktop 復元がまだ終わっていなければ非 nil。
+`wamei/term-restore--inject-scrollback' はこのフラグが立っている間だけ
+スクロールバックを注入し、`wamei/term-restore-ensure' が復元の仕上げで下ろす。
+
+意図的に**セッションスコープ**にしてある (`desktop-globals-to-save' には
+入れない)。記録 (`wamei/term-restore-saved') は desktop ファイルに永続化する
+必要があるが、「復元中かどうか」を永続化すると再起動なしで注入が復活し、
+kill した端末の出力が同じ名前で開き直した新しいシェルに再生されてしまう。
+記録は `desktop-save-mode' の autosave (30 秒アイドル) が何度でも作り直すので、
+記録ごとの印 (:injected) だけでは窓の外側を押さえられない。
+
+初期値が t なのは、`ghostel-desktop' が `desktop-read' の中で端末を復元する
+時点ではまだどのフックも走っていないため。desktop ファイルが無くて
+`desktop-after-read-hook' が走らない場合は t のままになるが、そのときは
+`wamei/term-restore-saved' が空なので注入は起きない。")
 
 ;;; バッファ名
 
@@ -253,20 +272,23 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
 記録を消すのはここではなく `wamei/term-restore-ensure'
 \(desktop の復元が終わったとき)。ここで消すと、ghostel-desktop が
 `desktop-read' 中に復元した端末の記録が仕上げに届かず、タイトルを戻せない。
-代わりに注入済みの印 (:injected) を付けて 2 回目以降は空振りさせる。
-このフックはグローバルなので記録が残っている間はすべての端末の spawn で
-走り、`desktop-save-mode' の autosave が記録を埋め直すため、印が無いと
-端末を kill して同じ名前で開き直すたびに死んだ端末の出力が再生されてしまう。
-\(autosave が記録を作り直した直後の 1 回は素通しになるが、復元経路の
-不変条件を壊さずに繰り返しの再生を止めるのがここの役目。)"
-  (when-let* ((entry (wamei/term-restore--entry-for (buffer-name)))
-              ((not (plist-get entry :injected)))
-              (file (plist-get entry :scrollback)))
-    (when (file-readable-p file)
-      ;; entry は非 nil なので plist-put はその場で書き換わる
-      ;; (`wamei/term-restore-saved' に入っている cons をそのまま触る)
-      (plist-put entry :injected t)
-      (setenv "WAMEI_TERM_RESTORE" file))))
+代わりに注入を 2 段で絞る。このフックはグローバルなので、記録が残っている間は
+すべての端末の spawn で走ってしまう:
+
+- `wamei/term-restore--restoring' (セッションスコープ): 注入が効くのは起動時の
+  desktop 復元の窓の中だけ。`wamei/term-restore-ensure' が窓を閉じるので、
+  その後 `desktop-save-mode' の autosave が記録を作り直しても、端末を kill して
+  同じ名前で開き直しても、死んだ端末の出力は再生されない。
+- 記録ごとの :injected の印: 窓の中で同じ記録から二重に注入しない。"
+  (when wamei/term-restore--restoring
+    (when-let* ((entry (wamei/term-restore--entry-for (buffer-name)))
+                ((not (plist-get entry :injected)))
+                (file (plist-get entry :scrollback)))
+      (when (file-readable-p file)
+        ;; entry は非 nil なので plist-put はその場で書き換わる
+        ;; (`wamei/term-restore-saved' に入っている cons をそのまま触る)
+        (plist-put entry :injected t)
+        (setenv "WAMEI_TERM_RESTORE" file)))))
 
 (defun wamei/term-restore--entry-directory (entry)
   "記録 ENTRY の作業ディレクトリ。無くなっていればホーム。
@@ -305,9 +327,11 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
 回されたものの取りこぼし。ghostel-desktop が `desktop-read' 中に復元していれば
 生成は起きず、タイトルの復元だけが効く。端末が既にタイトルを報告していれば
 そちらを残す。記録を最後に空にするのは、同じ名前で開き直した端末に前回の
-出力を再生しないため。`unwind-protect' で括るのは、desktop 復元中の C-g
-\(quit) でも記録が残らないようにするため (`condition-case' は error しか
-拾わない)。"
+出力を再生しないため。あわせて `wamei/term-restore--restoring' を下ろし、
+以降の spawn では注入そのものが起きないようにする (記録は autosave が何度でも
+作り直すので、記録を空にするだけでは足りない)。`unwind-protect' で括るのは、
+desktop 復元中の C-g (quit) でも記録とフラグが残らないようにするため
+\(`condition-case' は error しか拾わない)。"
   (unwind-protect
       (dolist (entry wamei/term-restore-saved)
         (let ((name (plist-get entry :name)))
@@ -323,12 +347,15 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
                       (setq-local ghostel-title title)))))
             (error (message "term-restore: %s を復元できません: %s"
                             name (error-message-string err))))))
-    (setq wamei/term-restore-saved nil)))
+    (setq wamei/term-restore-saved nil
+          wamei/term-restore--restoring nil)))
 
 ;;; desktop への組み込み
 
 (defun wamei/term-restore-setup ()
   "desktop の保存・読み込みと `ghostel-pre-spawn-hook' に組み込む。"
+  ;; 記録は desktop ファイルに永続化するが、`wamei/term-restore--restoring'
+  ;; (復元中かどうか) は意図的に永続化しない。詳しくは同変数の docstring。
   (add-to-list 'desktop-globals-to-save 'wamei/term-restore-saved)
   (add-hook 'desktop-save-hook #'wamei/term-restore-save)
   ;; 端末の起動時にスクロールバックを環境変数で渡す
