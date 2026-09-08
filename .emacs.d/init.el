@@ -1653,6 +1653,10 @@ C-c C-c で元ファイルへ書き戻し) で編集できるので wgrep は入
 ホスト・ユーザ・パスワードはそちらに書く (mysql / psql / sqls / 他のツールと共有できる)。
 Emacs は名前だけを渡すので、認証情報はプロセスの引数に出ない。設定ファイルの編集は
 接続先を選ぶ直前に自動で読み直す (Emacs で保存した場合は sqls にも即座に反映する)。
+カレント project の .wrangler にある wrangler dev のローカル D1 も
+sqlite:<repo>/<ファイル名の先頭 8 桁> として並ぶ。実体は SQLite ファイルなので
+wrangler dev を動かしたまま読めるが、miniflare が握っているので読む用途だけにする
+(書き込みとスキーマ変更は wrangler d1 execute / migrations 経由)。
 SQL バッファからの送信は C-c C-c (段落) / C-c C-r (リージョン) / C-c C-b (バッファ)。
 補完は sqls (eglot ブロック) が同じ設定ファイルを見る。"
   :ensure nil
