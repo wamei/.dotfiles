@@ -162,9 +162,9 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
     (should (string-match-p "W ██░░░░ +29%" line))
     (should (string-match-p "F ██░░░░ +40%" line))
     ;; JST での各リセット時刻。S は当日なので時刻だけ
-    (should (string-match-p "0% ↻14:50" line))
-    (should (string-match-p "29% ↻9/10 21:59" line))
-    (should (string-match-p "40% ↻9/10 22:00" line))
+    (should (string-match-p "0% ↻ 14:50" line))
+    (should (string-match-p "29% ↻ 9/10 21:59" line))
+    (should (string-match-p "40% ↻ 9/10 22:00" line))
     (should (equal 3 (cl-count ?↻ line)))))
 
 (ert-deftest wamei/claude-usage-test-render-without-state ()
@@ -309,4 +309,93 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
               'wamei/claude-usage-critical)))
 
 (provide 'claude-usage-test)
+;;; 取得の取り回し
+
+(defmacro wamei/claude-usage-test--with-stubbed-fetch (retrieve &rest body)
+  "`url-retrieve\' を RETRIEVE に、トークン取得を固定値に差し替えて BODY を実行する。
+ネットワークにも Keychain にも触らない。"
+  (declare (indent 1))
+  `(let ((wamei/claude-usage--request nil)
+         (wamei/claude-usage--request-id 0)
+         (wamei/claude-usage--state nil)
+         (wamei/claude-usage--generation 0))
+     (cl-letf (((symbol-function 'wamei/claude-usage--token) (lambda () "token"))
+               ((symbol-function 'url-retrieve) ,retrieve))
+       ,@body)))
+
+(defun wamei/claude-usage-test--expire ()
+  "取得中のリクエストの開始時刻を時間切れの側へ戻す。"
+  (setf (nth 2 wamei/claude-usage--request)
+        (time-subtract (current-time) (1+ wamei/claude-usage-timeout))))
+
+(ert-deftest wamei/claude-usage-test-fetch-skips-while-in-flight ()
+  "取得中は重ねて投げない。"
+  (let ((calls 0))
+    (wamei/claude-usage-test--with-stubbed-fetch
+        (lambda (&rest _) (cl-incf calls) (generate-new-buffer " *stub*"))
+      (wamei/claude-usage--fetch)
+      (wamei/claude-usage--fetch)
+      (should (equal calls 1)))))
+
+(ert-deftest wamei/claude-usage-test-fetch-retries-after-timeout ()
+  "応答が来ないまま時間切れになったら投げ直す。
+`url-retrieve\' はスリープ復帰で接続が切れるとコールバックを呼ばないまま
+終わることがあり、取得中の印が残ると表示が凍る。"
+  (let ((calls 0))
+    (wamei/claude-usage-test--with-stubbed-fetch
+        (lambda (&rest _) (cl-incf calls) (generate-new-buffer " *stub*"))
+      (wamei/claude-usage--fetch)
+      (wamei/claude-usage-test--expire)
+      (wamei/claude-usage--fetch)
+      (should (equal calls 2)))))
+
+(ert-deftest wamei/claude-usage-test-abandon-kills-buffer ()
+  "見切った取得のバッファは片付ける。"
+  (let ((buffer (generate-new-buffer " *stub*")))
+    (wamei/claude-usage-test--with-stubbed-fetch
+        (lambda (&rest _) buffer)
+      (wamei/claude-usage--fetch)
+      (wamei/claude-usage-test--expire)
+      (wamei/claude-usage--abandon)
+      (should-not wamei/claude-usage--request)
+      (should-not (buffer-live-p buffer)))))
+
+(ert-deftest wamei/claude-usage-test-fetch-clears-after-response ()
+  "応答が返ったら取得中の印を落とし、次を投げられる。
+コールバックがその場で走っても印が立ちっぱなしにならない。"
+  (let ((calls 0))
+    (wamei/claude-usage-test--with-stubbed-fetch
+        (lambda (_url callback cbargs &rest _)
+          (cl-incf calls)
+          (let ((buffer (generate-new-buffer " *stub*")))
+            (with-current-buffer buffer
+              (insert "HTTP/1.1 200 OK\n\n" wamei/claude-usage-test--json)
+              (apply callback nil cbargs))
+            buffer))
+      (wamei/claude-usage--fetch)
+      (should-not wamei/claude-usage--request)
+      (should (equal (plist-get (plist-get wamei/claude-usage--state :weekly) :percent) 29))
+      (wamei/claude-usage--fetch)
+      (should (equal calls 2)))))
+
+(ert-deftest wamei/claude-usage-test-late-response-keeps-new-request ()
+  "見切ったあとに遅れて返ってきた応答が、新しい取得の印を落とさない。
+リダイレクトなどでコールバックが別のバッファから来ると、片付けたはずの
+取得があとから返ることがある。"
+  (let (late)
+    (wamei/claude-usage-test--with-stubbed-fetch
+        (lambda (_url callback cbargs &rest _)
+          (setq late (lambda ()
+                       (with-current-buffer (generate-new-buffer " *late*")
+                         (apply callback '(:error (error http 500)) cbargs))))
+          (generate-new-buffer " *stub*"))
+      (wamei/claude-usage--fetch)
+      (let ((stale late))
+        (wamei/claude-usage-test--expire)
+        (wamei/claude-usage--fetch)
+        (let ((fresh wamei/claude-usage--request))
+          (should fresh)
+          (funcall stale)
+          (should (eq wamei/claude-usage--request fresh)))))))
+
 ;;; claude-usage-test.el ends here

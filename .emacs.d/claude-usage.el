@@ -51,6 +51,13 @@
   "取得する間隔 (秒)。セッションは 5 時間窓なので分単位で足りる。"
   :type 'integer)
 
+(defcustom wamei/claude-usage-timeout 30
+  "1 回の取得を諦めるまでの秒数。`wamei/claude-usage-interval' より短くする。
+`url-retrieve' は、スリープ復帰などで接続だけ切れるとコールバックを呼ばないまま
+終わることがある。取得中の印が残ったままだと以後の取得が全部素通りして表示が
+凍るので、時間切れで見切る。"
+  :type 'integer)
+
 (defcustom wamei/claude-usage-keychain-service "Claude Code-credentials"
   "アクセストークンが入っている Keychain のサービス名 (macOS)。"
   :type 'string)
@@ -269,8 +276,12 @@ NOW は当日かどうかの判定に使う (リセット時刻の出し方が�
 (defvar wamei/claude-usage--generation 0
   "取得のたびに増える番号。mode-line のキャッシュを捨てるのに使う。")
 
-(defvar wamei/claude-usage--fetching nil
-  "取得中なら非 nil。応答が遅いときに重ねて投げないようにする。")
+(defvar wamei/claude-usage--request nil
+  "取得中のリクエスト (ID BUFFER 開始時刻)。終わっていれば nil。
+応答が遅いときに重ねて投げないためと、返ってこない取得を見切るために持つ。")
+
+(defvar wamei/claude-usage--request-id 0
+  "リクエストごとに増える番号。見切ったあとに遅れて返った応答を見分ける。")
 
 (defun wamei/claude-usage--token-from-json (body)
   "認証情報の JSON 文字列 BODY からアクセストークンを取り出す。"
@@ -301,10 +312,28 @@ macOS では Keychain、無ければ `wamei/claude-usage-credentials-file' か�
       (decode-coding-string (buffer-substring-no-properties (point) (point-max))
                             'utf-8))))
 
-(defun wamei/claude-usage--receive (status)
-  "取得の応答を状態に取り込む。STATUS は `url-retrieve' のもの。
-失敗しても前回値は残す (非公開のエンドポイントなので黙って劣化させる)。"
-  (setq wamei/claude-usage--fetching nil)
+(defun wamei/claude-usage--abandon ()
+  "返ってこない取得を見切る。見切ったら非 nil。
+接続だけ切れてコールバックが来ないことがあるので、こちらから打ち切る。
+残った接続とバッファも片付ける (放っておくと空の \" *http ...*\" が残る)。"
+  (when-let* ((request wamei/claude-usage--request)
+              ((time-less-p wamei/claude-usage-timeout
+                            (time-since (nth 2 request)))))
+    (setq wamei/claude-usage--request nil)
+    (let ((buffer (nth 1 request)))
+      (when (buffer-live-p buffer)
+        (when-let* ((process (get-buffer-process buffer)))
+          (set-process-sentinel process #'ignore)
+          (ignore-errors (delete-process process)))
+        (kill-buffer buffer)))
+    t))
+
+(defun wamei/claude-usage--receive (status id)
+  "取得の応答を状態に取り込む。STATUS は `url-retrieve' のもの、ID は取得の番号。
+失敗しても前回値は残す (非公開のエンドポイントなので黙って劣化させる)。
+見切ったあとに遅れて返ってきた応答 (ID が古い) は、取得中の印を落とさない。"
+  (when (eq id (car wamei/claude-usage--request))
+    (setq wamei/claude-usage--request nil))
   (unwind-protect
       (unless (plist-get status :error)
         (when-let* ((parsed (wamei/claude-usage--parse (wamei/claude-usage--body))))
@@ -314,18 +343,25 @@ macOS では Keychain、無ければ `wamei/claude-usage-credentials-file' か�
     (kill-buffer (current-buffer))))
 
 (defun wamei/claude-usage--fetch ()
-  "使用量を非同期で取りに行く。トークンが取れなければ何もしない。"
-  (unless wamei/claude-usage--fetching
+  "使用量を非同期で取りに行く。トークンが取れなければ何もしない。
+前の取得が時間切れなら見切ってから投げ直す。"
+  (wamei/claude-usage--abandon)
+  (unless wamei/claude-usage--request
     (when-let* ((token (wamei/claude-usage--token)))
-      (setq wamei/claude-usage--fetching t)
-      (let ((url-request-method "GET")
+      (let ((id (cl-incf wamei/claude-usage--request-id))
+            (url-request-method "GET")
             (url-request-extra-headers
              `(("Authorization" . ,(concat "Bearer " token))
                ("anthropic-beta" . "oauth-2025-04-20"))))
+        ;; コールバックがその場で走ることがあるので、投げる前に印を立てる
+        (setq wamei/claude-usage--request (list id nil (current-time)))
         (condition-case nil
-            (url-retrieve wamei/claude-usage-endpoint
-                          #'wamei/claude-usage--receive nil t t)
-          (error (setq wamei/claude-usage--fetching nil)))))))
+            (let ((buffer (url-retrieve wamei/claude-usage-endpoint
+                                        #'wamei/claude-usage--receive (list id) t t)))
+              (when (eq id (car wamei/claude-usage--request))
+                (setf (nth 1 wamei/claude-usage--request) buffer)))
+          (error (when (eq id (car wamei/claude-usage--request))
+                   (setq wamei/claude-usage--request nil))))))))
 
 ;;; mode-line
 
