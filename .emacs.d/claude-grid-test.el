@@ -201,7 +201,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
       (should (equal (wamei/claude-grid-test--rows) (list (list a)))))))
 
 (ert-deftest wamei/claude-grid-build-removes-side-windows ()
-  "同じバッファを side window と両方に出すと vterm のサイズが競合するので消す。"
+  "同じバッファを side window と両方に出すと端末バッファの pty サイズが競合するので消す。"
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
       (display-buffer-in-side-window (get-buffer-create "*side*")
