@@ -1078,7 +1078,12 @@ Task 1-4 の結線を入れ替え、libvterm 向けの advice 3 本と `vterm-mo
                  "C-g" "C-l" "M-o" "M-w"
                  "C-q" "C-z"
                  "C-<tab>" "C-S-<tab>"))
-            (ghostel-max-scrollback . 10000)
+            ;; ghostel-max-scrollback は行数ではなく「バイト数」(既定 5MB)。
+            ;; 移行元の vterm-max-scrollback は行数 (10000 行) だったので、
+            ;; docstring の「5MB ≒ 5,000 行」の比率から 10MB にして
+            ;; 10000 行相当を確保する。行数だと思って 10000 を入れると
+            ;; 約 10KB = 十数行しか残らない。
+            (ghostel-max-scrollback . ,(* 10 1024 1024))
             (ghostel-module-directory . ,(locate-user-emacs-file "ghostel/"))
             ;; タイトルが変わったら端末一覧を描き直す (term-panel.el)。
             ;; nil を返す関数なのでバッファ名は変わらない。
