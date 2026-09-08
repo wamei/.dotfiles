@@ -296,7 +296,9 @@ NOW は当日かどうかの判定に使う (リセット時刻の出し方が�
                    (plist-get entry :resets-at) now)))
       (concat (propertize label 'face face) " "
               (wamei/claude-usage--bar percent face) " "
-              (propertize (format "%3d%%" percent) 'face face)
+              ;; 右揃えにすると 1 桁のときにバーとの間が 3 桁分空くので詰める。
+              ;; 桁数が変わると後ろ (↻ 以降) が 1〜2 桁ずれるが、そちらを採る。
+              (propertize (format "%d%%" percent) 'face face)
               (if reset
                   (propertize (concat " ↻ " reset) 'face 'wamei/claude-usage-dim)
                 "")))))

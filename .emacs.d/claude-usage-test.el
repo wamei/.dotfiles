@@ -202,14 +202,26 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
          (now (wamei/claude-usage-test--time "2026-09-07T09:00:00+09:00"))
          (line (substring-no-properties
                 (wamei/claude-usage--render (wamei/claude-usage-test--state) now))))
-    (should (string-match-p "S ────── +0%" line))
-    (should (string-match-p "W ━╸──── +29%" line))
-    (should (string-match-p "F ━━╸─── +40%" line))
+    ;; バーと割合の間は値の桁数によらず 1 スペース
+    (should (string-match-p "S ────── 0%" line))
+    (should (string-match-p "W ━╸──── 29%" line))
+    (should (string-match-p "F ━━╸─── 40%" line))
     ;; JST での各リセット時刻。S は当日なので時刻だけ
     (should (string-match-p "0% ↻ 14:50" line))
     (should (string-match-p "29% ↻ 9/10 21:59" line))
     (should (string-match-p "40% ↻ 9/10 22:00" line))
     (should (equal 3 (cl-count ?↻ line)))))
+
+(ert-deftest wamei/claude-usage-test-render-pads-nothing ()
+  "1 桁でも 3 桁でもバーと割合の間は 1 スペースのまま (右揃えの余白を出さない)。"
+  (let ((wamei/claude-usage-use-images nil))
+    (dolist (case '((2 . "S ╸───── 2%") (100 . "S ━━━━━━ 100%")))
+      (let ((line (substring-no-properties
+                   (wamei/claude-usage--render
+                    (list :session (list :percent (car case) :severity "normal"
+                                         :resets-at nil))
+                    (current-time)))))
+        (should (string-prefix-p (cdr case) line))))))
 
 (ert-deftest wamei/claude-usage-test-render-without-state ()
   "まだ取れていなければダッシュだけを出す。"
@@ -225,7 +237,7 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
          (line (substring-no-properties
                 (wamei/claude-usage--render state (current-time)))))
     (should (string-match-p "S —" line))
-    (should (string-match-p "W ╸───── +12%" line))
+    (should (string-match-p "W ╸───── 12%" line))
     (should (string-match-p "F —" line))))
 
 ;;; mode-line への受け渡し
