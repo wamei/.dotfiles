@@ -163,5 +163,36 @@ GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐
       (set-window-buffer window buffer)
       (select-window window))))
 
+;;; 自動保存
+
+(defun wamei/project-memo--auto-save-p ()
+  "`auto-save-visited-predicate' 用。メモバッファだけ実ファイルへ保存する。
+
+`auto-save-visited-mode' はグローバルなので、述語を置かないと全部の
+ファイルが勝手に保存されるようになる。"
+  (wamei/project-memo-buffer-p))
+
+(defun wamei/project-memo-save-all (&rest _)
+  "変更のあるメモバッファを全て保存する。
+
+`window-selection-change-functions' (frame を受け取る)、
+`after-focus-change-function'、`kill-emacs-hook' から呼ぶので引数は受け流す。
+アイドル中の保存は `auto-save-visited-mode' が見るため、ここは
+「メモから離れた瞬間」を埋めるためにある。"
+  (let ((save-silently t))
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when (and (wamei/project-memo-buffer-p) (buffer-modified-p))
+          (save-buffer)))))
+  nil)
+
+(defun wamei/project-memo-autosave-setup ()
+  "メモの自動保存を有効にする。init.el から 1 回呼ぶ。"
+  (setq auto-save-visited-predicate #'wamei/project-memo--auto-save-p)
+  (auto-save-visited-mode 1)
+  (add-hook 'window-selection-change-functions #'wamei/project-memo-save-all)
+  (add-function :after after-focus-change-function #'wamei/project-memo-save-all)
+  (add-hook 'kill-emacs-hook #'wamei/project-memo-save-all))
+
 (provide 'project-memo)
 ;;; project-memo.el ends here
