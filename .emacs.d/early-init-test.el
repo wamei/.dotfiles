@@ -77,5 +77,44 @@
   (should (wamei/frame-geometry--offscreen-p
            1512 0 wamei/frame-geometry-test--single)))
 
+;;; wamei/native-comp--library-options
+
+(ert-deftest wamei/native-comp--library-options-keeps-only-existing-dirs ()
+  "実在しないディレクトリは -L に含めない。
+存在しないパスを渡すと gcc が警告を出すだけで実害はないが、
+どこを見ているのかが分からなくなる。"
+  (let ((dir (file-name-as-directory temporary-file-directory)))
+    (should (equal (wamei/native-comp--library-options
+                    (list dir "/no/such/dir/for/sure"))
+                   (list (concat "-L" dir))))))
+
+(ert-deftest wamei/native-comp--library-options-drops-duplicates ()
+  "同じディレクトリが 2 つの glob から拾われても 1 つにする。"
+  (let ((dir (file-name-as-directory temporary-file-directory)))
+    (should (equal (wamei/native-comp--library-options (list dir dir))
+                   (list (concat "-L" dir))))))
+
+(ert-deftest wamei/native-comp--library-options-keeps-order ()
+  "並び順は渡された順のまま。リンカは先に見つけたものを使うので順序が意味を持つ。"
+  (let ((a (file-name-as-directory temporary-file-directory))
+        (b (file-name-as-directory (expand-file-name "." temporary-file-directory))))
+    (skip-unless (not (equal a b)))
+    (should (equal (wamei/native-comp--library-options (list a b))
+                   (list (concat "-L" a) (concat "-L" b))))))
+
+(ert-deftest wamei/native-comp--library-options-empty ()
+  (should-not (wamei/native-comp--library-options nil))
+  (should-not (wamei/native-comp--library-options '("/no/such/dir"))))
+
+(ert-deftest wamei/native-comp--library-dirs-finds-libemutls ()
+  "この機能が存在する理由は libemutls_w.a が見つからないことなので、
+実際にそれを含むディレクトリを拾えることを確かめる。
+gcc が入っていない環境ではスキップする。"
+  (let ((dirs (wamei/native-comp--library-dirs)))
+    (skip-unless dirs)
+    (should (seq-some (lambda (dir)
+                        (file-exists-p (expand-file-name "libemutls_w.a" dir)))
+                      dirs))))
+
 (provide 'early-init-test)
 ;;; early-init-test.el ends here

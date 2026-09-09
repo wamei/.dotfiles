@@ -10,6 +10,10 @@
 ;; なので、init.el で `initial-frame-alist' を設定しても効きはするが、
 ;; デフォルトサイズで表示された後にリサイズされて見える。フレーム生成前に
 ;; 読まれる early-init.el に置くことで、最初から目的のサイズで表示する。
+;;
+;; あわせて、ネイティブコンパイラがリンカに渡すオプションもここで決める。
+;; init.el で subr に advice を当てると trampoline のコンパイルが走るので、
+;; それより前に設定されている必要がある。
 
 ;;; Code:
 
@@ -59,6 +63,28 @@ WORKAREAS は (X Y WIDTH HEIGHT) のリスト。外部ディスプレイを外�
                  (and (<= x left) (< left (+ x width))
                       (<= y top)  (< top  (+ y height)))))
              workareas))))
+
+
+;;; ネイティブコンパイラのリンカ設定 (early-init-test.el でテストする)
+
+(defconst wamei/native-comp--library-globs
+  '("/opt/homebrew/lib/gcc/current"
+    "/opt/homebrew/Cellar/gcc/*/lib/gcc/current/gcc/*/*")
+  "gcc のランタイムライブラリを探すワイルドカード。
+Homebrew の gcc は libemutls_w.a を
+`.../lib/gcc/current/gcc/<target>/<version>/' に置く。target
+\(aarch64-apple-darwin24 など) と version は gcc の更新で変わるので、
+固定せずワイルドカードで拾う。")
+
+(defun wamei/native-comp--library-options (dirs)
+  "DIRS のうち実在するものを -L オプションのリストにして返す。
+重複は除き、順序は保つ (リンカは先に見つけたものを使う)。"
+  (mapcar (lambda (dir) (concat "-L" dir))
+          (seq-uniq (seq-filter #'file-directory-p dirs))))
+
+(defun wamei/native-comp--library-dirs ()
+  "gcc のランタイムライブラリがあるディレクトリを探す。"
+  (seq-mapcat #'file-expand-wildcards wamei/native-comp--library-globs))
 
 
 ;;; 入出力
@@ -126,6 +152,31 @@ WORKAREAS は (X Y WIDTH HEIGHT) のリスト。外部ディスプレイを外�
                   workareas))
         (pcase-let ((`(,x ,y ,_width ,_height) (car workareas)))
           (set-frame-position frame x y))))))
+
+(defun wamei/native-comp-setup-driver-options ()
+  "ネイティブコンパイラが gcc のランタイムライブラリを見つけられるようにする。
+
+libgccjit は `gcc' という名前でドライバを起動するが、macOS で PATH から引ける
+gcc は Apple clang なので、gcc 固有のライブラリ検索パスを持たない。その結果
+libemutls_w.a が見つからず
+
+  ld: library \='emutls_w\=' not found
+
+でネイティブコンパイルが失敗する。init.el が subr に advice を当てた時点で
+trampoline の生成が走るので、起動そのものが止まる。
+
+環境変数 LIBRARY_PATH が通っていれば動くが、GUI 起動 (Finder/Dock) でも
+tty 起動でも確実に効くよう、リンカオプションとして明示的に渡す。
+`native-comp-driver-options' は comp が読まれるまで未 bound だが、先に値を
+入れておけば後の `defcustom' には上書きされない。"
+  (when (eq system-type 'darwin)
+    (when-let* ((options (wamei/native-comp--library-options
+                          (wamei/native-comp--library-dirs))))
+      (setq native-comp-driver-options
+            (append options (and (boundp 'native-comp-driver-options)
+                                 native-comp-driver-options))))))
+
+(wamei/native-comp-setup-driver-options)
 
 ;; batch (テスト実行時など) では副作用を起こさない。
 (unless noninteractive
