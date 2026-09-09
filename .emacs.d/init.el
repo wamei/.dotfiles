@@ -215,11 +215,12 @@
     (set-fontset-font nil 'japanese-jisx0208
                       (font-spec :family font-family :height font-size))
     (add-to-list 'face-font-rescale-alist '("Menlo" . 0.9))
-    (dolist (range '((#x2190 . #x21FF)    ; Arrows
-                     (#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
-                     (#x2600 . #x26FF)    ; Misc Symbols (⚙ ⚠ ...)
+    (dolist (range '(;(#x2190 . #x21FF)    ; Arrows
+                     ;(#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
+                     ;(#x2600 . #x26FF)    ; Misc Symbols (⚙ ⚠ ...)
                      (#x2700 . #x27BF)    ; Dingbats (✢ ✳ ✶ ✻ ...)
-                     (#x2900 . #x2BFF)))  ; Supplemental Arrows / Misc Symbols and Arrows
+                     ;(#x2900 . #x2BFF)    ; Supplemental Arrows / Misc Symbols and Arrows
+                     ))
       (set-fontset-font t range (font-spec :family font-family))
       (set-fontset-font t range (font-spec :family "Menlo") nil 'append))))
 
