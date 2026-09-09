@@ -1397,6 +1397,19 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
           "\\` \\*sidebar: "))
   (wamei/desktop-side-setup)
   (wamei/term-restore-setup)
+  ;; child frame は desktop に保存しない。
+  ;; posframe / corfu / eldoc-box / tty-tip / dired のプレビューなどが作る child frame は
+  ;; ポップアップなので復元する意味がない。それどころか tty では致命的で、
+  ;; frameset-restore は frame を作ってから `parent-frame' を設定するため
+  ;; "Cannot make tty top frame a child frame" で after-init-hook が止まり、
+  ;; デバッガに落ちて起動できなくなる。
+  ;; `desktop-save-hook' は `desktop-save-frameset' より先に走るので、ここで印を付ける。
+  (defun wamei/desktop--skip-child-frames ()
+    "child frame に `desktop-dont-save' を立てて保存対象から外す。"
+    (dolist (frame (frame-list))
+      (when (frame-parameter frame 'parent-frame)
+        (set-frame-parameter frame 'desktop-dont-save t))))
+  (add-hook 'desktop-save-hook #'wamei/desktop--skip-child-frames)
   :global-minor-mode desktop-save-mode)
 
 (leaf exec-path-from-shell
