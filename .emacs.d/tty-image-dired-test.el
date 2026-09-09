@@ -353,5 +353,116 @@ image-dired と同じテキストプロパティを載せる。"
         ;; 箱は 4 桁。合成済みなので表示桁で 4 になっていること
         (should (= (string-width (buffer-substring (car region) (cdr region))) 4))))))
 
+;;; モード
+
+(ert-deftest wamei/tty-image-dired-mode-derives-from-image-dired-thumbnail-mode ()
+  "組み込みのコマンドは derived-mode-p のガードを持つので、派生していないと使えない。"
+  (with-temp-buffer
+    (wamei/tty-image-dired-mode)
+    (should (derived-mode-p 'image-dired-thumbnail-mode))))
+
+(ert-deftest wamei/tty-image-dired-mode-turns-off-line-numbers ()
+  "行番号が桁を食うと placeholder の桁数が合わなくなる。
+`global-display-line-numbers-mode' が有効だと major mode 変更後に t になるので、
+それを打ち消せているかを見る。"
+  (global-display-line-numbers-mode 1)
+  (unwind-protect
+      (with-temp-buffer
+        (wamei/tty-image-dired-mode)
+        (should-not display-line-numbers-mode)
+        (should truncate-lines))
+    (global-display-line-numbers-mode -1)))
+
+(ert-deftest wamei/tty-image-dired-mode-hooks-window-changes-and-cleanup ()
+  (with-temp-buffer
+    (wamei/tty-image-dired-mode)
+    (should (memq #'wamei/tty-image-dired--sync-visible
+                  (buffer-local-value 'window-configuration-change-hook (current-buffer))))
+    (should (memq #'wamei/tty-image-dired--scroll-sync
+                  (buffer-local-value 'window-scroll-functions (current-buffer))))
+    (should (memq #'wamei/tty-image-dired--release-all
+                  (buffer-local-value 'kill-buffer-hook (current-buffer))))))
+
+;;; 移動コマンド
+
+(ert-deftest wamei/tty-image-dired-forward-image-moves-the-selection ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 0)
+      (wamei/tty-image-dired-forward-image)
+      (should (= wamei/tty-image-dired--selected 1))
+      (should (equal (get-text-property (point) 'original-file-name) "/d/b.png")))))
+
+(ert-deftest wamei/tty-image-dired-forward-image-messages-at-the-end ()
+  "端では動かず、error も投げない。"
+  (let ((messages nil))
+    (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+        (wamei/tty-image-dired--goto-index 1)
+        (wamei/tty-image-dired-forward-image)
+        (should (= wamei/tty-image-dired--selected 1))
+        (should messages)))))
+
+(ert-deftest wamei/tty-image-dired-next-line-moves-a-band-down ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png" "/d/d.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 0)
+      (wamei/tty-image-dired-next-line)
+      (should (= wamei/tty-image-dired--selected 2))
+      (wamei/tty-image-dired-previous-line)
+      (should (= wamei/tty-image-dired--selected 0)))))
+
+(ert-deftest wamei/tty-image-dired-move-to-line-ends ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png" "/d/d.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 2)
+      (wamei/tty-image-dired-move-end-of-line)
+      (should (= wamei/tty-image-dired--selected 3))
+      (wamei/tty-image-dired-move-beginning-of-line)
+      (should (= wamei/tty-image-dired--selected 2)))))
+
+;;; RET
+
+(ert-deftest wamei/tty-image-dired-display-this-opens-the-original-file ()
+  "組み込みの image-dired-image-mode ではなく find-file で開き、
+auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
+  (let ((opened nil))
+    (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+              ((symbol-function 'find-file) (lambda (f) (setq opened f))))
+      (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+        (wamei/tty-image-dired--goto-index 1)
+        (wamei/tty-image-dired-display-this)
+        (should (equal opened "/d/b.png"))))))
+
+;;; マークの表示更新
+
+(ert-deftest wamei/tty-image-dired-update-marks-works-from-another-buffer ()
+  "組み込みは自分の中でサムネイルバッファへ切り替えるので、advice は呼び出し元
+\(dired バッファ) で走る。別のバッファから呼ばれてもキャプションが更新されること。
+`wamei/tty-image-dired-mode' に入ると `kill-all-local-variables' で --build の
+状態が消えるので、先にモードへ入ってから --build する。"
+  (let ((redrawn nil))
+    (cl-letf (((symbol-function 'wamei/tty-image-dired--redraw-caption)
+               (lambda (index) (push index redrawn))))
+      (let ((buf (generate-new-buffer " *tty-image-dired-test*")))
+        (unwind-protect
+            (let ((image-dired-thumbnail-buffer (buffer-name buf)))
+              (with-current-buffer buf
+                (wamei/tty-image-dired-mode)
+                (wamei/tty-image-dired--build
+                 (vconcat '("/d/a.png" "/d/b.png")) nil 2 '(4 . 2)))
+              ;; --build 自身も --redraw-caption を呼ぶので、その分は数えない
+              (setq redrawn nil)
+              ;; 別のバッファから呼ぶ
+              (with-temp-buffer
+                (wamei/tty-image-dired--update-marks))
+              (should (equal (sort redrawn #'<) '(0 1))))
+          (kill-buffer buf))))))
+
 (provide 'tty-image-dired-test)
 ;;; tty-image-dired-test.el ends here

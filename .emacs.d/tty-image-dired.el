@@ -323,5 +323,121 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
       (wamei/tty-image-dired--hide-box index)))
   (setq wamei/tty-image-dired--shown-range nil))
 
+;;;; 移動
+
+(defun wamei/tty-image-dired--move (direction)
+  "DIRECTION へ選択を動かす。端なら動かさずメッセージを出す。"
+  (let ((next (wamei/tty-image-dired--move-index
+               wamei/tty-image-dired--selected
+               (length wamei/tty-image-dired--files)
+               wamei/tty-image-dired--columns
+               direction)))
+    (if next
+        (progn (wamei/tty-image-dired--goto-index next)
+               (wamei/tty-image-dired--sync-visible))
+      (message "これ以上サムネイルがありません"))))
+
+(defun wamei/tty-image-dired-forward-image (&optional _n)
+  "次のサムネイルへ。"
+  (interactive "p" wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--move 'forward))
+
+(defun wamei/tty-image-dired-backward-image (&optional _n)
+  "前のサムネイルへ。"
+  (interactive "p" wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--move 'backward))
+
+(defun wamei/tty-image-dired-next-line ()
+  "1 段下のサムネイルへ。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--move 'down))
+
+(defun wamei/tty-image-dired-previous-line ()
+  "1 段上のサムネイルへ。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--move 'up))
+
+(defun wamei/tty-image-dired-move-beginning-of-line ()
+  "段の先頭のサムネイルへ。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--move 'line-beginning))
+
+(defun wamei/tty-image-dired-move-end-of-line ()
+  "段の末尾のサムネイルへ。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--move 'line-end))
+
+(defun wamei/tty-image-dired--scroll-sync (_window _start)
+  "スクロールしたときに可視範囲を送り直す。`window-scroll-functions' 用。
+匿名関数にすると `remove-hook' できず、モードに入り直すたびに溜まる。"
+  (wamei/tty-image-dired--sync-visible))
+
+;;;; 上書きするコマンド
+
+(defun wamei/tty-image-dired-display-this ()
+  "選択中の画像を開く。
+組み込みの `image-dired-display-this' は `image-dired-image-mode'
+\(`image-mode' 派生) を起こすが、それは Phase 1 の `image-mode' への advice と
+噛み合わない。`find-file' で auto-mode-alist → image-mode → advice の経路に載せる。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (let ((file (aref wamei/tty-image-dired--files wamei/tty-image-dired--selected)))
+    (find-file file)))
+
+(defun wamei/tty-image-dired-do-flagged-delete ()
+  "dired 側で削除フラグの付いたファイルを消し、一覧を組み直す。
+組み込みの `image-dired-do-flagged-delete' は 1 サムネ = 1 文字を前提に
+バッファを走査するので使えない。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (let ((dired-buffer wamei/tty-image-dired--dired-buffer))
+    (when (buffer-live-p dired-buffer)
+      (with-current-buffer dired-buffer (dired-do-flagged-delete))
+      (wamei/tty-image-dired--release-all)
+      (let ((files (cl-remove-if-not #'file-exists-p wamei/tty-image-dired--files)))
+        (wamei/tty-image-dired--build files dired-buffer
+                                      wamei/tty-image-dired--columns
+                                      wamei/tty-image-dired--box))
+      (wamei/tty-image-dired--goto-index 0)
+      (wamei/tty-image-dired--sync-visible))))
+
+(defun wamei/tty-image-dired--update-marks ()
+  "マークの表示を更新する。`image-dired--thumb-update-marks' の差し替え先。
+組み込みはサムネイルの枠の見た目で表すが、placeholder のセルには face を
+当てられないのでキャプションで表す。
+組み込みは自分の中でサムネイルバッファへ切り替えるので、advice として呼ばれる
+時点の current buffer は呼び出し元 (dired バッファ) である。ここで明示的に
+サムネイルバッファを見る。"
+  (when-let* ((buffer (get-buffer image-dired-thumbnail-buffer)))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'wamei/tty-image-dired-mode)
+        (dotimes (index (length wamei/tty-image-dired--files))
+          (wamei/tty-image-dired--redraw-caption index))))))
+
+;;;; モード
+
+(defvar-keymap wamei/tty-image-dired-mode-map
+  :doc "`wamei/tty-image-dired-mode' のキーマップ。
+組み込みの移動コマンドは 1 文字ずつ走査するので矩形の中で止まる。差し替える。"
+  :parent image-dired-thumbnail-mode-map
+  "f" #'wamei/tty-image-dired-forward-image
+  "b" #'wamei/tty-image-dired-backward-image
+  "n" #'wamei/tty-image-dired-next-line
+  "p" #'wamei/tty-image-dired-previous-line
+  "a" #'wamei/tty-image-dired-move-beginning-of-line
+  "e" #'wamei/tty-image-dired-move-end-of-line
+  "x" #'wamei/tty-image-dired-do-flagged-delete
+  "RET" #'wamei/tty-image-dired-display-this)
+
+(define-derived-mode wamei/tty-image-dired-mode image-dired-thumbnail-mode "TtyImageDired"
+  "tty の Emacs で image-dired のサムネイルをグリッド表示するモード。
+`image-dired-thumbnail-mode' から派生させることで、点ベースの組み込みコマンド
+\(マーク、dired 連動) をそのまま使う。"
+  (setq-local truncate-lines t
+              cursor-type nil)
+  ;; 行番号は見た目の問題ではない。桁を食われると placeholder の桁数が合わなくなる。
+  (display-line-numbers-mode 0)
+  (add-hook 'window-configuration-change-hook #'wamei/tty-image-dired--sync-visible nil t)
+  (add-hook 'window-scroll-functions #'wamei/tty-image-dired--scroll-sync nil t)
+  (add-hook 'kill-buffer-hook #'wamei/tty-image-dired--release-all nil t))
+
 (provide 'tty-image-dired)
 ;;; tty-image-dired.el ends here
