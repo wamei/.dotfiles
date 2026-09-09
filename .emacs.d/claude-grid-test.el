@@ -227,11 +227,11 @@ side window とミニバッファは除く。行は上から、各行は左か�
       (wamei/claude-grid--build (list a))
       (with-current-buffer a
         (should tab-line-mode)
-        ;; グローバルの C-tab を上書きするバッファローカルなキーマップが付く
+        ;; グローバルの C-tab を上書きするバッファローカルなマイナーモードが付く
         ;; (init.el は tab-bar-mode-map の C-tab を外しているので、実機では
         ;; これがそのまま効く)
-        (should (eq (lookup-key (current-local-map) (kbd "<C-tab>"))
-                    #'wamei/claude-panel-next))))))
+        (should wamei/claude-panel-keys-mode)
+        (should (eq (key-binding (kbd "<C-tab>")) #'wamei/claude-panel-next))))))
 
 (ert-deftest wamei/claude-grid-build-windows-are-usable ()
   "グリッドの window は side window ではなく、C-x o の巡回にも乗る。"
