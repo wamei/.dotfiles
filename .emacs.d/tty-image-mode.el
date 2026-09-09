@@ -63,8 +63,7 @@ WINDOW が nil か、FILE の大きさを測れなければ nil。"
          (window (get-buffer-window (current-buffer)))
          (cells (and file (wamei/tty-image--target-cells file window))))
     (when (and cells (not (equal cells wamei/tty-image--cells)))
-      (when wamei/tty-image--id
-        (wamei/tty-image--forget))
+      (wamei/tty-image--forget)
       (let ((id (wamei/kitty-graphics-put file (car cells) (cdr cells))))
         (if id
             (progn
@@ -72,6 +71,11 @@ WINDOW が nil か、FILE の大きさを測れなければ nil。"
                     wamei/tty-image--cells cells)
               (wamei/tty-image--show id cells))
           ;; `error' は投げない。tty で debug-on-error t だとデバッガに入って操作不能になる。
+          ;; 失敗した大きさも `--cells' に記憶しておく (`--id' は nil のまま)。
+          ;; そうしないと window が変わるたびに同じ大きさで再送を試みて message を
+          ;; 出し続けてしまう。手動での再試行は `--forget' が `--cells' を nil に
+          ;; 戻すので塞がらない。
+          (setq wamei/tty-image--cells cells)
           (message "画像を端末へ送れませんでした: %s" (file-name-nondirectory file)))))))
 
 (provide 'tty-image-mode)
