@@ -167,10 +167,22 @@ COLOR を省くと ID と端末の色数から決める。
 (defvar wamei/kitty-graphics--last-id 0
   "最後に使った画像 ID。")
 
+(defvar wamei/kitty-graphics--live-ids nil
+  "払い出し済みでまだ解放していない画像 ID のリスト (新しいものが先頭)。
+`--next-id' はここに載っている ID を飛ばす。既存 ID へ a=T を送ると端末側で
+置き換わってしまい、先に出していた画像の placeholder が壊れるため。")
+
 (defun wamei/kitty-graphics--next-id ()
-  "次の画像 ID。256 色モードでも前景色で表せるよう 1〜255 を巡回する。"
-  (setq wamei/kitty-graphics--last-id
-        (1+ (mod wamei/kitty-graphics--last-id 255))))
+  "次の画像 ID。256 色モードでも前景色で表せるよう 1〜255 を巡回する。
+`--live-ids' に載っている (まだ解放されていない) ID は飛ばす。255 個すべてが
+使用中のときは無限ループせず、いちばん古い ID を諦めて返す
+(255 枚の同時表示は spec の想定外)。"
+  (cl-loop repeat 255
+           do (setq wamei/kitty-graphics--last-id
+                    (1+ (mod wamei/kitty-graphics--last-id 255)))
+           unless (memq wamei/kitty-graphics--last-id wamei/kitty-graphics--live-ids)
+           return wamei/kitty-graphics--last-id
+           finally return (car (last wamei/kitty-graphics--live-ids))))
 
 ;;;; 画像の準備 (sips)
 
@@ -195,22 +207,23 @@ sips の -Z は小さい画像を拡大してしまうので、必要なとき�
      (call-process "sips" nil standard-output nil
                    "-g" "pixelWidth" "-g" "pixelHeight" (expand-file-name file)))))
 
-(defun wamei/kitty-graphics--prepare-png (file)
-  "FILE を長辺 `wamei/kitty-graphics-max-pixels' 以下の PNG にして
-\(一時ファイル . (幅 . 高さ)) を返す。失敗したら nil。呼び手が一時ファイルを消す。"
-  (when-let* ((size (wamei/kitty-graphics-image-size file))
+(defun wamei/kitty-graphics--prepare-png (file &optional size)
+  "FILE を長辺 `wamei/kitty-graphics-max-pixels' 以下の PNG にした一時ファイルの
+パスを返す。失敗したら nil。呼び手が一時ファイルを消す。
+SIZE (幅 . 高さ) が分かっていれば渡す。無ければここで測る。
+`put' は cols/rows を指定して転送し端末側で矩形に合わせて拡縮するので、
+縮小後の実サイズを測り直す必要はない (誰も使わない)。"
+  (when-let* ((size (or size (wamei/kitty-graphics-image-size file)))
               (resize (or (wamei/kitty-graphics--resize-args
                            size wamei/kitty-graphics-max-pixels)
                           'none))
-              (out (make-temp-file "dired-image-preview-" nil ".png")))
+              (out (make-temp-file "kitty-graphics-" nil ".png")))
     (if (and (zerop (apply #'call-process "sips" nil nil nil
                            `("-s" "format" "png"
                              ,@(unless (eq resize 'none) resize)
                              ,(expand-file-name file) "--out" ,out)))
              (> (file-attribute-size (file-attributes out)) 0))
-        (cons out (if (eq resize 'none)
-                      size
-                    (or (wamei/kitty-graphics-image-size out) size)))
+        out
       (delete-file out)
       nil)))
 
@@ -263,26 +276,29 @@ sips の -Z は小さい画像を拡大してしまうので、必要なとき�
 
 ;;;; 転送
 
-(defun wamei/kitty-graphics-put (file cols rows)
+(defun wamei/kitty-graphics-put (file cols rows &optional size)
   "FILE を端末へ送り COLS x ROWS のセルに描く配置を作る。画像 ID を返す。
 送れなければ nil。ID の解放は呼び手の責任 (`wamei/kitty-graphics-delete')。
 端末は画像を COLS x ROWS の矩形に合わせて拡縮するので、転送するピクセル数は
-`wamei/kitty-graphics-max-pixels' まで落としてよい。"
-  (when-let* ((prepared (wamei/kitty-graphics--prepare-png file)))
+`wamei/kitty-graphics-max-pixels' まで落としてよい。
+SIZE (幅 . 高さ) が分かっていれば渡す。`--prepare-png' が測り直さずに使う。"
+  (when-let* ((prepared (wamei/kitty-graphics--prepare-png file size)))
     (unwind-protect
         (let* ((id (wamei/kitty-graphics--next-id))
                (b64 (with-temp-buffer
                       (set-buffer-multibyte nil)
-                      (insert-file-contents-literally (car prepared))
+                      (insert-file-contents-literally prepared)
                       (base64-encode-string (buffer-string) t))))
           (dolist (seq (wamei/kitty-graphics--transmit-sequences b64 id cols rows))
             (wamei/kitty-graphics--send seq))
+          (push id wamei/kitty-graphics--live-ids)
           id)
-      (delete-file (car prepared)))))
+      (delete-file prepared))))
 
 (defun wamei/kitty-graphics-delete (id)
   "画像 ID の配置とデータを端末から解放する。ID が nil なら何もしない。"
   (when id
+    (setq wamei/kitty-graphics--live-ids (delq id wamei/kitty-graphics--live-ids))
     (wamei/kitty-graphics--send (wamei/kitty-graphics--delete-sequence id))))
 
 (provide 'kitty-graphics)

@@ -10,7 +10,6 @@
 ;;
 ;;; Code:
 
-(require 'cl-lib)
 (require 'dired-image-preview)
 (require 'kitty-graphics)
 
@@ -110,7 +109,7 @@ tty child frame が使え、端末が kitty graphics に対応していること
       (let* ((cells (wamei/kitty-graphics-cell-count
                      image-px (wamei/kitty-graphics-cell-size)
                      (wamei/dired-image-preview-kitty--max-cells frame)))
-             (id (wamei/kitty-graphics-put file (car cells) (cdr cells))))
+             (id (wamei/kitty-graphics-put file (car cells) (cdr cells) image-px)))
         (when id
           (let* ((anchor (window-absolute-pixel-position
                           (wamei/dired-image-preview--target-anchor target) window))

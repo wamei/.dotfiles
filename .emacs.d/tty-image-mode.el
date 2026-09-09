@@ -23,22 +23,30 @@
 (defvar-local wamei/tty-image--cells nil
   "最後に描いた大きさ (桁 . 行)。無ければ nil。")
 
+(defvar-local wamei/tty-image--px nil
+  "この画像のピクセル数 (幅 . 高さ)。ファイルごとに一定なので一度測ったら覚える。")
+
 ;;;; 大きさ
+
+(defun wamei/tty-image--image-px ()
+  "このバッファの画像のピクセル数 (幅 . 高さ)。一度測ったら覚える。測れなければ nil。
+`sips' の起動は redisplay 由来の hook から走るので、同じファイルで測り直さない。"
+  (or wamei/tty-image--px
+      (setq wamei/tty-image--px
+            (and buffer-file-name (wamei/kitty-graphics-image-size buffer-file-name)))))
 
 (defun wamei/tty-image--window-cells (window)
   "WINDOW に収まる上限の (桁 . 行)。0 は転送が壊れるので 1 を下回らない。"
   (cons (max 1 (window-body-width window))
         (max 1 (window-body-height window))))
 
-(defun wamei/tty-image--target-cells (file window)
-  "FILE を WINDOW いっぱいに出すときの (桁 . 行)。
-WINDOW が nil か、FILE の大きさを測れなければ nil。"
-  (when window
-    (let ((size (wamei/kitty-graphics-image-size file)))
-      (when size
-        (wamei/kitty-graphics-cell-count
-         size (wamei/kitty-graphics-cell-size)
-         (wamei/tty-image--window-cells window))))))
+(defun wamei/tty-image--target-cells (px window)
+  "PX (幅 . 高さ) の画像を WINDOW いっぱいに出すときの (桁 . 行)。
+WINDOW が nil か、PX が nil (大きさを測れない) なら nil。"
+  (when (and px window)
+    (wamei/kitty-graphics-cell-count
+     px (wamei/kitty-graphics-cell-size)
+     (wamei/tty-image--window-cells window))))
 
 ;;;; 表示
 
@@ -61,13 +69,15 @@ WINDOW が nil か、FILE の大きさを測れなければ nil。"
 
 (defun wamei/tty-image--render ()
   "今の window の大きさに合わせて画像を描き直す。
-大きさが前と同じなら何もしない (redisplay のたびに転送しないため)。"
+大きさが前と同じなら何もしない (redisplay のたびに転送しないため)。
+画像のピクセル数は `wamei/tty-image--image-px' の記憶を使い、測り直さない。"
   (let* ((file buffer-file-name)
          (window (get-buffer-window (current-buffer)))
-         (cells (and file (wamei/tty-image--target-cells file window))))
+         (px (wamei/tty-image--image-px))
+         (cells (wamei/tty-image--target-cells px window)))
     (when (and cells (not (equal cells wamei/tty-image--cells)))
       (wamei/tty-image--forget)
-      (let ((id (wamei/kitty-graphics-put file (car cells) (cdr cells))))
+      (let ((id (wamei/kitty-graphics-put file (car cells) (cdr cells) px)))
         (if id
             (progn
               (setq wamei/tty-image--id id
@@ -117,9 +127,13 @@ WINDOW が nil か、FILE の大きさを測れなければ nil。"
   (wamei/tty-image-next-file (- (or n 1))))
 
 (defun wamei/tty-image-refresh ()
-  "画像を送り直して描き直す。"
+  "画像を送り直して描き直す。
+ファイルがディスク上で差し替わっているかもしれないので、記憶していたピクセル数
+(`--px') も捨てて測り直す。`--forget' 自体はここを消さない (window の大きさが
+変わっただけの再描画では測り直したくないため)。"
   (interactive nil wamei/tty-image-mode)
   (wamei/tty-image--forget)
+  (setq wamei/tty-image--px nil)
   (wamei/tty-image--render))
 
 ;;;; モード
@@ -151,11 +165,13 @@ kitty graphics protocol の Unicode placeholder で端末に描く。"
 空ファイルや画像でないファイルは「大きさを測れない」に含まれる。"
   (cond
    ((not (wamei/kitty-graphics-available-p))
-    (message "この端末は kitty graphics に対応していないのでテキストとして開きます")
-    (wamei/tty-image--as-text))
+    (wamei/tty-image--as-text)
+    ;; `image-mode-as-text' が最後に自分の message で minibuffer を上書きするので、
+    ;; この診断を見せるには呼んだあとに message する
+    (message "この端末は kitty graphics に対応していないのでテキストとして開きます"))
    ((not (and buffer-file-name (wamei/kitty-graphics-image-size buffer-file-name)))
-    (message "画像として読めないのでテキストとして開きます")
-    (wamei/tty-image--as-text))
+    (wamei/tty-image--as-text)
+    (message "画像として読めないのでテキストとして開きます"))
    (t (wamei/tty-image-mode))))
 
 (defun wamei/tty-image--as-text ()
