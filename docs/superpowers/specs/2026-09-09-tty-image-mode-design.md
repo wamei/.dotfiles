@@ -112,8 +112,8 @@ GUI の `image-mode` で行番号を消すのは見た目の設定なので、in
 | 状況 | 振る舞い |
 |---|---|
 | 端末が kitty graphics 非対応 | メッセージを出して `image-mode-as-text` に落ちる (元の `image-mode` を呼ぶと `error` になるため) |
-| sips が失敗 / 画像として読めない | メッセージを出して `image-mode-as-text` に落ちる |
-| ファイルが空 | `image-mode` と同じくメッセージだけ |
+| sips が大きさを測れない (画像でない / 空ファイル / sips の失敗) | メッセージを出して `image-mode-as-text` に落ちる |
+| 端末への転送に失敗 | メッセージを出す。モードには入ったままで、同じ大きさでは再試行しない (`g` で再試行できる) |
 
 `image-mode-as-text` は `major-mode-restore` に `'(image-mode image-mode-as-text)` を渡すので、`auto-mode-alist` から `image-mode` を外した状態で `normal-mode` を呼ぶ。advice は `image-mode` に掛かっているため、ここから advice へ戻る再帰は起きない。
 
