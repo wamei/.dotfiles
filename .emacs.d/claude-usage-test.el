@@ -7,9 +7,11 @@
 ;;; Code:
 
 (require 'ert)
-(load (expand-file-name "claude-usage.el"
-                        (file-name-directory (or load-file-name buffer-file-name)))
-      nil t)
+;; claude-usage.el は mode-line の共通部品を term-modeline.el から取るので先に読む
+;; (init.el も ghostel ブロックで先に読んでいる)。
+(let ((dir (file-name-directory (or load-file-name buffer-file-name))))
+  (load (expand-file-name "term-modeline.el" dir) nil t)
+  (load (expand-file-name "claude-usage.el" dir) nil t))
 
 ;; タイムゾーンで表示が変わるので固定する
 (setenv "TZ" "JST-9")
@@ -242,21 +244,6 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
 
 ;;; mode-line への受け渡し
 
-(ert-deftest wamei/claude-usage-test-escape-doubles-percent ()
-  "mode-line は文字列中の %-construct を展開するので % を二重にする。"
-  (should (equal (wamei/claude-usage--escape "  3%") "  3%%")))
-
-(ert-deftest wamei/claude-usage-test-escape-keeps-properties ()
-  "エスケープしてもテキストプロパティ (バーの画像や face) を落とさない。"
-  (let* ((source (concat (propertize "b" 'display '(image :type svg))
-                         (propertize "9%" 'face 'bold)))
-         (escaped (wamei/claude-usage--escape source)))
-    (should (equal (substring-no-properties escaped) "b9%%"))
-    (should (equal (get-text-property 0 'display escaped) '(image :type svg)))
-    ;; 足した % にも元の % と同じ face が付く
-    (should (eq (get-text-property 2 'face escaped) 'bold))
-    (should (eq (get-text-property 3 'face escaped) 'bold))))
-
 (ert-deftest wamei/claude-usage-test-mode-line-keeps-percent-sign ()
   "mode-line として展開した後も % が残る。"
   ;; batch の `format-mode-line' は常に空文字列を返すので確かめられない。
@@ -270,29 +257,12 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
                 (format-mode-line wamei/claude-usage--mode-line-format))))
     (should (string-match-p "29%" line))))
 
-(ert-deftest wamei/claude-usage-test-align-without-tag ()
-  "タグが無ければ詰め物も要らない。"
-  (should (equal (wamei/claude-usage--mode-line-align 0) "")))
-
-(ert-deftest wamei/claude-usage-test-align-pushes-tag-to-right-edge ()
-  "タグの桁数だけ右端から戻した位置まで詰める。"
-  (let ((spacer (wamei/claude-usage--mode-line-align 5)))
-    (should (equal (substring-no-properties spacer) " "))
-    (should (equal (get-text-property 0 'display spacer)
-                   '(space :align-to (- right 5))))))
-
-(ert-deftest wamei/claude-usage-test-tag-width-counts-mode-line-process ()
-  "ghostel の入力モードタグは `mode-line-process' に入っている。"
-  (skip-unless (not (equal "" (format-mode-line "x"))))
-  (with-temp-buffer
-    (should (equal (wamei/claude-usage--mode-line-tag-width) 0))
-    (setq mode-line-process ":Copy")
-    (should (equal (wamei/claude-usage--mode-line-tag-width) 5))))
-
 (ert-deftest wamei/claude-usage-test-mode-line-format-ends-with-tag ()
-  "`mode-line-process' を最後に置いて、詰め物でその手前まで送る。"
+  "`mode-line-process' を最後に置いて、詰め物でその手前まで送る。
+詰め物は端末パネルと共通の `wamei/term-modeline-align' を使う。"
   (should (equal (last wamei/claude-usage--mode-line-format 2)
-                 '((:eval (wamei/claude-usage--mode-line-spacer))
+                 '((:eval (wamei/term-modeline-align
+                           (wamei/term-modeline-process-width)))
                    mode-line-process))))
 
 ;;; パネルの地色への馴染ませ
