@@ -32,6 +32,18 @@
 
 ;;; タブに紐づくプロジェクト
 
+(defun wamei/project-tabs-base-frame (&optional frame)
+  "FRAME (既定は選択フレーム) が属する最上位のフレーム。
+
+child frame (posframe など) にフォーカスがあると `selected-frame' は
+その child frame になる。child frame は tabs パラメータを持たないので、
+そのままタブを引くと「タブが無い」ことになってしまう。タブは常に
+最上位のフレームのものを見る。"
+  (let ((frame (or frame (selected-frame))))
+    (while-let ((parent (frame-parent frame)))
+      (setq frame parent))
+    frame))
+
 (defun wamei/project-tabs--normalize-root (root)
   "ROOT をタブに持たせる形 (末尾スラッシュ付きの絶対パス) にする。"
   (expand-file-name (file-name-as-directory root)))
@@ -46,32 +58,48 @@
 tab-bar-tabs (や tab-bar--current-tab-find) を通すとカレントタブ名の
 再計算が走り、その中で project-current が呼ばれる。この関数は
 project-current の advice から呼ぶので、それでは再帰する。
-独自パラメータは frame の tabs にそのまま入っているため直接読む。"
-  (wamei/project-tabs-root (assq 'current-tab (frame-parameter frame 'tabs))))
+独自パラメータは frame の tabs にそのまま入っているため直接読む。
+
+child frame にフォーカスがあるときのために `wamei/project-tabs-base-frame'
+を通す (child frame に tabs は無い)。"
+  (wamei/project-tabs-root
+   (assq 'current-tab (frame-parameter (wamei/project-tabs-base-frame frame) 'tabs))))
 
 (defun wamei/project-tabs-set-root (root)
   "カレントタブに ROOT を紐づける。
 
 タブは (current-tab (KEY . VALUE) ...) という構造で先頭がシンボルのため、
 setf alist-get だと局所変数へ push されるだけで実体に残らない。
-保存されているリストへ直接つなぐ必要がある。"
-  (tab-bar-tabs)                        ; frame の tabs パラメータを確実に用意する
-  (when-let* ((tab (tab-bar--current-tab-find))
-              (root (wamei/project-tabs--normalize-root root)))
-    (if-let* ((cell (assq 'wamei-project (cdr tab))))
-        (setcdr cell root)
-      (setcdr tab (cons (cons 'wamei-project root) (cdr tab))))
-    root))
+保存されているリストへ直接つなぐ必要がある。
+
+child frame から呼ばれても親フレームのタブに書くよう
+`wamei/project-tabs-base-frame' のフレームで実行する。"
+  (with-selected-frame (wamei/project-tabs-base-frame)
+    (tab-bar-tabs)                      ; frame の tabs パラメータを確実に用意する
+    (when-let* ((tab (tab-bar--current-tab-find))
+                (root (wamei/project-tabs--normalize-root root)))
+      (if-let* ((cell (assq 'wamei-project (cdr tab))))
+          (setcdr cell root)
+        (setcdr tab (cons (cons 'wamei-project root) (cdr tab))))
+      root)))
 
 ;;; タブ名
 
 (defun wamei/project-tabs-main-window ()
   "タブの本文とみなす window。
 選択 window が side window (no-other-window 付き) なら直近の通常 window。
-タブ名の根拠、サイドバーが従うバッファ、サイドバーからファイルを開く先に使う。"
-  (if (window-parameter (selected-window) 'no-other-window)
-      (or (get-mru-window nil nil t t) (selected-window))
-    (selected-window)))
+タブ名の根拠、サイドバーが従うバッファ、サイドバーからファイルを開く先に使う。
+
+child frame (メモの posframe など) にフォーカスがあるときは、その window を
+本文とみなしてはいけない。タブ名がメモバッファ名に化け、サイドバーの追従先も
+狂う。最上位フレームの選択 window に読み替えてから判定する。"
+  (let* ((base (wamei/project-tabs-base-frame))
+         (window (if (eq (window-frame (selected-window)) base)
+                     (selected-window)
+                   (frame-selected-window base))))
+    (if (window-parameter window 'no-other-window)
+        (or (get-mru-window base nil t t) window)
+      window)))
 
 (defalias 'wamei/project-tabs--name-window #'wamei/project-tabs-main-window)
 

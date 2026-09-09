@@ -4,6 +4,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'project)
 (require 'tab-bar)
 (package-initialize)
@@ -276,6 +277,45 @@
                        "/tmp/proj-b/"))
         (should-not (wamei/project-tabs-test--root-in
                      "/tmp/elsewhere/" 'project-find-file))))))
+
+;;; child frame からの解決
+
+(ert-deftest wamei/project-tabs-base-frame-returns-frame-itself-without-parent ()
+  (should (eq (wamei/project-tabs-base-frame (selected-frame)) (selected-frame))))
+
+(ert-deftest wamei/project-tabs-base-frame-walks-up-parent-frames ()
+  ;; 親子関係だけをスタブする。'child2 → 'child1 → selected-frame。
+  (let ((parents (list (cons 'child2 'child1)
+                       (cons 'child1 (selected-frame)))))
+    (cl-letf (((symbol-function 'frame-parent)
+               (lambda (frame) (alist-get frame parents))))
+      (should (eq (wamei/project-tabs-base-frame 'child2) (selected-frame)))
+      (should (eq (wamei/project-tabs-base-frame 'child1) (selected-frame))))))
+
+(ert-deftest wamei/project-tabs-current-root-reads-the-base-frame ()
+  ;; child frame には tabs が無い。親の tabs を読めていれば root が返る。
+  (let ((tabs '((current-tab (name . "proj") (wamei-project . "/tmp/proj/")))))
+    (cl-letf (((symbol-function 'frame-parent)
+               (lambda (frame) (when (eq frame 'child) (selected-frame))))
+              ((symbol-function 'frame-parameter)
+               (lambda (frame param)
+                 (cond ((eq frame 'child) nil)
+                       ((eq param 'tabs) tabs)
+                       (t nil)))))
+      (should (equal (wamei/project-tabs-current-root 'child) "/tmp/proj/")))))
+
+(ert-deftest wamei/project-tabs-main-window-ignores-child-frames ()
+  ;; child frame の window が選択されていても、親フレームの window を返す。
+  (let* ((main (selected-window)))
+    (cl-letf (((symbol-function 'selected-window) (lambda () 'child-window))
+              ((symbol-function 'window-frame)
+               (lambda (&optional _w) 'child-frame))
+              ((symbol-function 'frame-parent)
+               (lambda (frame) (when (eq frame 'child-frame) (selected-frame))))
+              ((symbol-function 'frame-selected-window)
+               (lambda (&optional frame)
+                 (if (eq frame (selected-frame)) main 'child-window))))
+      (should (eq (wamei/project-tabs-main-window) main)))))
 
 (provide 'project-tabs-test)
 ;;; project-tabs-test.el ends here
