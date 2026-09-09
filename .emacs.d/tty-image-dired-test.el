@@ -426,6 +426,71 @@ image-dired と同じテキストプロパティを載せる。"
       (wamei/tty-image-dired-move-beginning-of-line)
       (should (= wamei/tty-image-dired--selected 2)))))
 
+;;; キーマップ: 親の remap を潰しているか
+
+(ert-deftest wamei/tty-image-dired-mode-map-overrides-every-parent-remap ()
+  "親の <remap> が 1 つでも残っていると、そのキーで組み込みの 1 文字走査コマンドが動く。
+親のマップを走査して、こちらのマップ越しに image-dired-* へ解決するものが無いことを見る。"
+  (let ((leftovers nil))
+    (map-keymap
+     (lambda (key def)
+       (when (eq key 'remap)
+         (map-keymap
+          (lambda (command _target)
+            (let ((resolved (lookup-key wamei/tty-image-dired-mode-map
+                                        (vector 'remap command))))
+              (when (and (symbolp resolved)
+                         (string-prefix-p "image-dired-" (symbol-name resolved)))
+                (push (cons command resolved) leftovers))))
+          def)))
+     image-dired-thumbnail-mode-map)
+    (should-not leftovers)))
+
+;;; 先頭・末尾へ移動
+
+(ert-deftest wamei/tty-image-dired-first-image-moves-to-index-zero ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 2)
+      (wamei/tty-image-dired-first-image)
+      (should (= wamei/tty-image-dired--selected 0)))))
+
+(ert-deftest wamei/tty-image-dired-last-image-moves-to-the-last-index ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 0)
+      (wamei/tty-image-dired-last-image)
+      (should (= wamei/tty-image-dired--selected 2)))))
+
+(ert-deftest wamei/tty-image-dired-first-and-last-image-do-nothing-when-empty ()
+  "0 枚のときに error にならないこと。"
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid '() 2 '(4 . 2)
+      (should-not (wamei/tty-image-dired-first-image))
+      (should-not (wamei/tty-image-dired-last-image)))))
+
+;;; スクロール
+
+(ert-deftest wamei/tty-image-dired-scroll-up-does-not-move-the-selection ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+            ((symbol-function 'scroll-up-command) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 1)
+      (wamei/tty-image-dired-scroll-up)
+      (should (= wamei/tty-image-dired--selected 1)))))
+
+(ert-deftest wamei/tty-image-dired-scroll-down-does-not-move-the-selection ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+            ((symbol-function 'scroll-down-command) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png") 2 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 1)
+      (wamei/tty-image-dired-scroll-down)
+      (should (= wamei/tty-image-dired--selected 1)))))
+
 ;;; RET
 
 (ert-deftest wamei/tty-image-dired-display-this-opens-the-original-file ()
