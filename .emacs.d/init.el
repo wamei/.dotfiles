@@ -1088,6 +1088,16 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :hook
   (dired-mode-hook . wamei/dired-image-preview-mode))
 
+(leaf kitty-graphics
+  :doc "kitty graphics protocol (Unicode placeholder) で端末に画像を出す"
+  :ensure nil
+  ;; tty のときだけ読む。dired-image-preview-kitty と tty-image-mode の土台。
+  :if (not (display-graphic-p))
+  :preface
+  (load (expand-file-name "kitty-graphics"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t))
+
 (leaf dired-image-preview-kitty
   :doc "tty では kitty graphics protocol (Unicode placeholder) でプレビューを出す"
   :ensure nil
