@@ -6,7 +6,7 @@
 ;; kill-ring やクリップボードとは結びつかない。ここでは次の 3 つを補う。
 ;;
 ;; - `wamei/term-input-copy'
-;;   M-w。リージョンがあれば `kill-ring-save'、マークが一度も無いバッファでは
+;;   M-w と Cmd+C。リージョンがあれば `kill-ring-save'、マークが一度も無いバッファでは
 ;;   error にしない。Claude Code はマウス追跡を有効にしていてドラッグ選択を自分で
 ;;   クリップボードへコピーする (ドラッグは ghostel が Claude へ転送する) ので、
 ;;   その直後に習慣で M-w を押すと Emacs 側にはマークが無く、`kill-ring-save' が
@@ -66,7 +66,7 @@ Claude Code のパネルではドラッグが Claude へ転送され、Claude �
   (interactive)
   (if (mark t)
       (call-interactively #'kill-ring-save)
-    (message "コピーする選択がありません (Claude 上のドラッグ選択は Claude 側でコピー済み)")))
+    (message "No selection to copy (a drag inside Claude Code is copied by Claude itself)")))
 
 ;;; クリップボードの画像を端末へ渡す
 
