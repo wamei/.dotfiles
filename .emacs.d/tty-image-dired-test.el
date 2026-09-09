@@ -131,12 +131,25 @@
 
 (defvar wamei/tty-image-dired-test--tags-db
   (make-temp-file "tty-image-dired-test-tags-")
-  "テスト用のタグ DB。ユーザの `image-dired-tags-db-file' を読み書きしないため。")
+  "テスト用のタグ DB ファイル。ファイル全体で `image-dired-tags-db-file' を
+これに向け、実ユーザの `~/.emacs.d/image-dired/' を読み書きしないようにする。
+`--build' ヘルパの外で `--show-box' / `--mark' / `--redraw-caption' を直接呼ぶ
+テストもあるため、ヘルパ内だけの束縛では足りない (M5)。")
+
+(setq image-dired-tags-db-file wamei/tty-image-dired-test--tags-db)
+
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (ignore-errors (delete-file wamei/tty-image-dired-test--tags-db))))
+
+(ert-deftest wamei/tty-image-dired-test-tags-db-points-at-a-temp-file ()
+  "テストが実ユーザの `~/.emacs.d/image-dired/' を汚さないこと (M5)。"
+  (should (equal image-dired-tags-db-file wamei/tty-image-dired-test--tags-db))
+  (should (file-in-directory-p image-dired-tags-db-file temporary-file-directory)))
 
 (defun wamei/tty-image-dired-test--build (files columns box)
   "テスト用に FILES を COLUMNS 列・BOX の箱で組み立てたバッファを作る。"
-  (let ((buf (generate-new-buffer " *tty-image-dired-test*"))
-        (image-dired-tags-db-file wamei/tty-image-dired-test--tags-db))
+  (let ((buf (generate-new-buffer " *tty-image-dired-test*")))
     (with-current-buffer buf
       (wamei/tty-image-dired--build (vconcat files) nil columns box))
     buf))
@@ -192,6 +205,28 @@ image-dired と同じテキストプロパティを載せる。"
           (wamei/tty-image-dired--goto-index 2)
           (should (equal (get-text-property (point) 'original-file-name) "/d/c.png"))
           (should (= wamei/tty-image-dired--selected 2)))
+      (kill-buffer buf))))
+
+(ert-deftest wamei/tty-image-dired-goto-index-ignores-out-of-range-index ()
+  "範囲外の INDEX は無視して何もしないこと (T2-2)。呼び手が clamp 済みの
+値を渡す前提が I3 で破れた実例があるので、`--goto-index' 自身にもガードを
+入れて同じクラスの再発を止める。"
+  (let ((buf (wamei/tty-image-dired-test--build '("/d/a.png" "/d/b.png") 2 '(4 . 2))))
+    (unwind-protect
+        (with-current-buffer buf
+          (wamei/tty-image-dired--goto-index 0)
+          (should-not (wamei/tty-image-dired--goto-index 5))
+          (should (= wamei/tty-image-dired--selected 0))
+          (should-not (wamei/tty-image-dired--goto-index -1))
+          (should (= wamei/tty-image-dired--selected 0)))
+      (kill-buffer buf))))
+
+(ert-deftest wamei/tty-image-dired-goto-index-does-nothing-on-empty-grid ()
+  "0 枚のグリッドで `error' にならないこと。"
+  (let ((buf (wamei/tty-image-dired-test--build '() 2 '(4 . 2))))
+    (unwind-protect
+        (with-current-buffer buf
+          (should-not (wamei/tty-image-dired--goto-index 0)))
       (kill-buffer buf))))
 
 ;;; サムネイルの実体
@@ -353,6 +388,19 @@ image-dired と同じテキストプロパティを載せる。"
         ;; 箱は 4 桁。合成済みなので表示桁で 4 になっていること
         (should (= (string-width (buffer-substring (car region) (cdr region))) 4))))))
 
+(ert-deftest wamei/tty-image-dired-put-properties-uses-band-lines ()
+  "段の高さの定義を 2 箇所に持たない (T2-1)。`--band-lines' の代わりに
+`(1+ (cdr --box))' を直書きしていると、`--band-lines' を差し替えても
+反映されない。1 列のグリッドなら `--box-line-region' 自身の band 計算は
+0 * band-lines = 0 で影響を受けないので、row の走査範囲だけを見られる。"
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--band-lines) (lambda () 1)))
+    (wamei/tty-image-dired-test--with-grid '("/d/a.png") 1 '(4 . 3)
+      ;; --band-lines を 1 に差し替えると、キャプション行 (box の 3 行の
+      ;; あとの row 3) は put-properties の対象にならないはず
+      (let ((caption-region (wamei/tty-image-dired--box-line-region 0 3)))
+        (wamei/tty-image-dired--put-properties 0)
+        (should-not (get-text-property (car caption-region) 'image-dired-thumbnail))))))
+
 ;;; モード
 
 (ert-deftest wamei/tty-image-dired-mode-derives-from-image-dired-thumbnail-mode ()
@@ -383,6 +431,15 @@ image-dired と同じテキストプロパティを載せる。"
     (should (memq #'wamei/tty-image-dired--release-all
                   (buffer-local-value 'kill-buffer-hook (current-buffer))))))
 
+(ert-deftest wamei/tty-image-dired-mode-is-not-interactive ()
+  "組み込みの `image-dired-thumbnail-mode' と同じく `:interactive nil' と
+すること (M9)。`define-derived-mode' は `kill-all-local-variables' を通る
+ので、生きたグリッドバッファで `M-x wamei/tty-image-dired-mode' を再実行
+すると `--ids' が失われ、その時点で live だった画像 ID が
+`wamei/kitty-graphics--live-ids' に残り続ける (プールが恒久的に縮む)。
+呼び口を `--show-thumbs' の初回だけに絞るため、M-x からは呼べなくする。"
+  (should-not (commandp #'wamei/tty-image-dired-mode)))
+
 ;;; 移動コマンド
 
 (ert-deftest wamei/tty-image-dired-forward-image-moves-the-selection ()
@@ -403,6 +460,38 @@ image-dired と同じテキストプロパティを載せる。"
       (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
         (wamei/tty-image-dired--goto-index 1)
         (wamei/tty-image-dired-forward-image)
+        (should (= wamei/tty-image-dired--selected 1))
+        (should messages)))))
+
+(ert-deftest wamei/tty-image-dired-forward-image-honors-the-prefix-argument ()
+  "`C-u 3 f' 相当で 3 つ進むこと (T4-1)。`(interactive \"p\")' と宣言しながら
+中で使っていなかったので、宣言と実装が食い違っていた。"
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png" "/d/d.png") 4 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 0)
+      (wamei/tty-image-dired-forward-image 3)
+      (should (= wamei/tty-image-dired--selected 3)))))
+
+(ert-deftest wamei/tty-image-dired-backward-image-honors-the-prefix-argument ()
+  (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore))
+    (wamei/tty-image-dired-test--with-grid
+        '("/d/a.png" "/d/b.png" "/d/c.png" "/d/d.png") 4 '(4 . 2)
+      (wamei/tty-image-dired--goto-index 3)
+      (wamei/tty-image-dired-backward-image 3)
+      (should (= wamei/tty-image-dired--selected 0)))))
+
+(ert-deftest wamei/tty-image-dired-forward-image-stops-at-the-end-and-messages ()
+  "3 進める指示でも端で 1 つしか動けないときは、そこで止まってメッセージが
+出ること。"
+  (let ((messages nil))
+    (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-test--with-grid
+          '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+        (wamei/tty-image-dired--goto-index 0)
+        (wamei/tty-image-dired-forward-image 3)
         (should (= wamei/tty-image-dired--selected 1))
         (should messages)))))
 
@@ -445,6 +534,43 @@ image-dired と同じテキストプロパティを載せる。"
           def)))
      image-dired-thumbnail-mode-map)
     (should-not leftovers)))
+
+;;; キーマップ: 1 文字走査で壊れる組み込みコマンドを潰しているか
+
+(ert-deftest wamei/tty-image-dired-mode-map-disables-the-line-up-prefix ()
+  "`g' を nil で束縛すると、子マップでは `g' 自体が prefix key でなくなり、
+親の line-up 系 (`g f' / `g g' / `g i') に lookup-key で辿り着けなくなること
+(I1)。`image-dired-line-up' はバッファを 1 サムネ=1 文字前提で組み替え、
+矩形のグリッドを不可逆に壊す。"
+  (should-not (keymapp (lookup-key wamei/tty-image-dired-mode-map "g")))
+  (dolist (key '("gf" "gg" "gi"))
+    (should-not (commandp (lookup-key wamei/tty-image-dired-mode-map key)))))
+
+(ert-deftest wamei/tty-image-dired-mode-map-disables-the-tag-prefix ()
+  "`t' も同様に潰す (I2)。`image-dired-tag-thumbnail' / `-remove' は
+`image-dired--with-marked' でバッファを 1 サムネ=1 文字前提に走査する。"
+  (should-not (keymapp (lookup-key wamei/tty-image-dired-mode-map "t")))
+  (dolist (key '("tt" "tr"))
+    (should-not (commandp (lookup-key wamei/tty-image-dired-mode-map key)))))
+
+(ert-deftest wamei/tty-image-dired-mode-map-replaces-destructive-scanning-commands ()
+  "`C-d' (`image-dired-delete-char') / `L' / `R' (回転) は同じ 1 文字走査の
+前提でバッファを壊すか、jpegtran が無ければ `error' になる (I1 / I2)。
+潰した先の `wamei/tty-image-dired-unsupported' に置き換わっていること。"
+  (should (eq (lookup-key wamei/tty-image-dired-mode-map (kbd "C-d"))
+              #'wamei/tty-image-dired-unsupported))
+  (should (eq (lookup-key wamei/tty-image-dired-mode-map "L")
+              #'wamei/tty-image-dired-unsupported))
+  (should (eq (lookup-key wamei/tty-image-dired-mode-map "R")
+              #'wamei/tty-image-dired-unsupported)))
+
+(ert-deftest wamei/tty-image-dired-unsupported-messages-and-does-not-error ()
+  "非目標のキーは「押しても何も起きない」が正しい実装。メッセージだけ出す。"
+  (let ((messages nil))
+    (cl-letf (((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-unsupported)
+      (should messages))))
 
 ;;; 先頭・末尾へ移動
 
@@ -503,6 +629,31 @@ auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
         (wamei/tty-image-dired--goto-index 1)
         (wamei/tty-image-dired-display-this)
         (should (equal opened "/d/b.png"))))))
+
+(ert-deftest wamei/tty-image-dired-display-this-messages-on-empty-grid ()
+  "全部消えて 0 枚になったグリッドで RET を押しても `args-out-of-range' に
+ならず、メッセージだけ出ること (I3)。"
+  (let ((messages nil) (opened nil))
+    (cl-letf (((symbol-function 'find-file) (lambda (f) (setq opened f)))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-test--with-grid '() 2 '(4 . 2)
+        (wamei/tty-image-dired-display-this)
+        (should-not opened)
+        (should messages)))))
+
+(ert-deftest wamei/tty-image-dired-display-this-messages-when-not-built ()
+  "`--build' していないバッファ (`--files' が nil) でも `args-out-of-range' に
+ならないこと (I3)。"
+  (let ((messages nil) (opened nil))
+    (cl-letf (((symbol-function 'find-file) (lambda (f) (setq opened f)))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (with-temp-buffer
+        (wamei/tty-image-dired-mode)
+        (wamei/tty-image-dired-display-this))
+      (should-not opened)
+      (should messages))))
 
 ;;; マーク・削除フラグ
 
@@ -645,6 +796,63 @@ auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
       (wamei/tty-image-dired-test--with-grid '("/d/a.png") 1 '(4 . 2)
         (setq wamei/tty-image-dired--dired-buffer nil)
         (wamei/tty-image-dired-unmark-all-marks)
+        (should messages)))))
+
+;;; 削除フラグの回収
+
+(ert-deftest wamei/tty-image-dired-do-flagged-delete-rebuilds-with-remaining-files ()
+  "dired 側で消したファイルを除いて組み直すこと (T4-2)。"
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-flagged-delete-test-dired*"))
+        (dir (make-temp-file "tty-image-dired-flagged-delete-test-" t)))
+    (unwind-protect
+        (let* ((a (expand-file-name "a.png" dir))
+               (b (expand-file-name "b.png" dir)))
+          (write-region "a" nil a)
+          ;; b は書き込まない = 「dired 側で既に消えたファイル」を模す
+          (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                    ((symbol-function 'dired-do-flagged-delete) #'ignore)
+                    ((symbol-function 'dired-goto-file) (lambda (_f) nil)))
+            (wamei/tty-image-dired-test--with-grid (list a b) 2 '(4 . 2)
+              (setq wamei/tty-image-dired--dired-buffer dired-buf)
+              (wamei/tty-image-dired-do-flagged-delete)
+              (should (= (length wamei/tty-image-dired--files) 1))
+              (should (equal (aref wamei/tty-image-dired--files 0) a)))))
+      (kill-buffer dired-buf)
+      (delete-directory dir t))))
+
+(ert-deftest wamei/tty-image-dired-do-flagged-delete-empties-the-grid-and-ret-does-not-error ()
+  "全部消えたときは空のグリッドになり、その状態で RET を押しても `error' に
+ならないこと (T4-2)。ここにテストが無かったことが I3 の穴を隠していた。"
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-flagged-delete-test-dired*"))
+        (messages nil) (opened nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-do-flagged-delete) #'ignore)
+                  ((symbol-function 'dired-goto-file) (lambda (_f) nil))
+                  ((symbol-function 'find-file) (lambda (f) (setq opened f)))
+                  ((symbol-function 'message)
+                   (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+          ;; 存在しないファイルとして組み立てる = 削除後に全部消える状況を模す
+          (wamei/tty-image-dired-test--with-grid
+              '("/nonexistent/a.png" "/nonexistent/b.png") 2 '(4 . 2)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired-do-flagged-delete)
+            (should (= (length wamei/tty-image-dired--files) 0))
+            (setq messages nil)
+            (wamei/tty-image-dired-display-this)
+            (should-not opened)
+            (should messages)))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-do-flagged-delete-messages-when-dired-buffer-is-gone ()
+  "兄弟コマンド (`--mark' / `--unmark-all-marks') と同じく、dired バッファが
+無ければメッセージだけ出すこと (T4-3)。"
+  (let ((messages nil))
+    (cl-letf (((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-test--with-grid '("/d/a.png") 1 '(4 . 2)
+        (setq wamei/tty-image-dired--dired-buffer nil)
+        (wamei/tty-image-dired-do-flagged-delete)
         (should messages)))))
 
 ;;; マークの表示更新

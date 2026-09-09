@@ -136,13 +136,18 @@ placeholder のセルは前景色が画像 ID なので face を当てられな�
   (wamei/tty-image-dired--box-line-region index (cdr wamei/tty-image-dired--box)))
 
 (defun wamei/tty-image-dired--goto-index (index)
-  "サムネイル INDEX の箱の左上へ point を移し、選択を更新する。"
-  (let ((old wamei/tty-image-dired--selected))
-    (setq wamei/tty-image-dired--selected index)
-    (wamei/tty-image-dired--redraw-caption old)
-    (wamei/tty-image-dired--redraw-caption index))
-  (let ((region (wamei/tty-image-dired--box-line-region index 0)))
-    (goto-char (car region))))
+  "サムネイル INDEX の箱の左上へ point を移し、選択を更新する。
+INDEX が範囲外 (0 枚のグリッドを含む) なら何もせず nil を返す。呼び手が
+clamp 済みの値を渡す前提が `wamei/tty-image-dired-display-this' で破れた
+実例があるので、ここ自身にもガードを持たせて同じクラスの再発を防ぐ。"
+  (when (and (>= index 0)
+             (< index (length wamei/tty-image-dired--files)))
+    (let ((old wamei/tty-image-dired--selected))
+      (setq wamei/tty-image-dired--selected index)
+      (wamei/tty-image-dired--redraw-caption old)
+      (wamei/tty-image-dired--redraw-caption index))
+    (let ((region (wamei/tty-image-dired--box-line-region index 0)))
+      (goto-char (car region)))))
 
 ;;;; 組み立て
 
@@ -167,7 +172,7 @@ placeholder のセルは前景色が画像 ID なので face を当てられな�
                       'tags (image-dired-list-tags file)
                       'mouse-face 'highlight
                       'comment (image-dired-get-comment file))))
-    (dotimes (row (1+ (cdr wamei/tty-image-dired--box)))
+    (dotimes (row (wamei/tty-image-dired--band-lines))
       (let ((region (wamei/tty-image-dired--box-line-region index row)))
         (add-text-properties (car region) (cdr region) props)))))
 
@@ -325,27 +330,35 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
 
 ;;;; 移動
 
-(defun wamei/tty-image-dired--move (direction)
-  "DIRECTION へ選択を動かす。端なら動かさずメッセージを出す。"
-  (let ((next (wamei/tty-image-dired--move-index
-               wamei/tty-image-dired--selected
-               (length wamei/tty-image-dired--files)
-               wamei/tty-image-dired--columns
-               direction)))
-    (if next
-        (progn (wamei/tty-image-dired--goto-index next)
-               (wamei/tty-image-dired--sync-visible))
+(defun wamei/tty-image-dired--move (direction &optional n)
+  "DIRECTION へ選択を N 回 (既定 1) 動かす。
+途中で端に着いたらそこで止まる。指定した回数ぶん動かせなかったときは
+メッセージを出す。"
+  (let* ((n (or n 1))
+         (moved 0)
+         (next nil))
+    (while (and (< moved n)
+                (setq next (wamei/tty-image-dired--move-index
+                            wamei/tty-image-dired--selected
+                            (length wamei/tty-image-dired--files)
+                            wamei/tty-image-dired--columns
+                            direction)))
+      (wamei/tty-image-dired--goto-index next)
+      (setq moved (1+ moved)))
+    (when (> moved 0)
+      (wamei/tty-image-dired--sync-visible))
+    (when (< moved n)
       (message "これ以上サムネイルがありません"))))
 
-(defun wamei/tty-image-dired-forward-image (&optional _n)
-  "次のサムネイルへ。"
+(defun wamei/tty-image-dired-forward-image (&optional n)
+  "次のサムネイルへ N 枚 (既定 1) 進む。"
   (interactive "p" wamei/tty-image-dired-mode)
-  (wamei/tty-image-dired--move 'forward))
+  (wamei/tty-image-dired--move 'forward n))
 
-(defun wamei/tty-image-dired-backward-image (&optional _n)
-  "前のサムネイルへ。"
+(defun wamei/tty-image-dired-backward-image (&optional n)
+  "前のサムネイルへ N 枚 (既定 1) 戻る。"
   (interactive "p" wamei/tty-image-dired-mode)
-  (wamei/tty-image-dired--move 'backward))
+  (wamei/tty-image-dired--move 'backward n))
 
 (defun wamei/tty-image-dired-next-line ()
   "1 段下のサムネイルへ。"
@@ -407,8 +420,10 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
 \(`image-mode' 派生) を起こすが、それは Phase 1 の `image-mode' への advice と
 噛み合わない。`find-file' で auto-mode-alist → image-mode → advice の経路に載せる。"
   (interactive nil wamei/tty-image-dired-mode)
-  (let ((file (aref wamei/tty-image-dired--files wamei/tty-image-dired--selected)))
-    (find-file file)))
+  (if (or (null wamei/tty-image-dired--files)
+          (zerop (length wamei/tty-image-dired--files)))
+      (message "サムネイルがありません")
+    (find-file (aref wamei/tty-image-dired--files wamei/tty-image-dired--selected))))
 
 (defun wamei/tty-image-dired-do-flagged-delete ()
   "dired 側で削除フラグの付いたファイルを消し、一覧を組み直す。
@@ -416,7 +431,8 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
 バッファを走査するので使えない。"
   (interactive nil wamei/tty-image-dired-mode)
   (let ((dired-buffer wamei/tty-image-dired--dired-buffer))
-    (when (buffer-live-p dired-buffer)
+    (if (not (buffer-live-p dired-buffer))
+        (message "dired バッファがありません")
       (with-current-buffer dired-buffer (dired-do-flagged-delete))
       (wamei/tty-image-dired--release-all)
       (let ((files (cl-remove-if-not #'file-exists-p wamei/tty-image-dired--files)))
@@ -493,6 +509,17 @@ ACTION は `mark' / `unmark' / `flag'。処理のあとキャプションを描�
         (dotimes (index (length wamei/tty-image-dired--files))
           (wamei/tty-image-dired--redraw-caption index))))))
 
+;;;; 非目標のコマンド
+
+(defun wamei/tty-image-dired-unsupported ()
+  "tty のグリッドでは使えない組み込みコマンドの代わり。
+親の `image-dired-thumbnail-mode-map' から継承されるコマンドのうち、
+1 サムネ = 1 文字を前提にバッファを組み替えるものは、矩形のグリッドを
+不可逆に壊す。潰しておく。非目標のキーの正しい実装は「押しても何も
+起きない」なので、ここではメッセージを出すだけにする。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (message "tty のサムネイル一覧では使えません"))
+
 ;;;; モード
 
 (defvar-keymap wamei/tty-image-dired-mode-map
@@ -514,6 +541,23 @@ ACTION は `mark' / `unmark' / `flag'。処理のあとキャプションを描�
   "d" #'wamei/tty-image-dired-flag-thumb-original-file
   "<delete>" #'wamei/tty-image-dired-flag-thumb-original-file
   "U" #'wamei/tty-image-dired-unmark-all-marks
+  ;; C-d (image-dired-delete-char) は (delete-char 1) のあと line-up 系を
+  ;; 呼び、g f / g g / g i と同じ経路でグリッドを不可逆に壊す (I1)。
+  "C-d" #'wamei/tty-image-dired-unsupported
+  ;; g f / g g / g i (image-dired-line-up 系) は「image-dired-thumbnail
+  ;; プロパティが無い文字を全部削除し、残った 1 文字ごとに space を挿入する」
+  ;; 実装で、区切りの空白も改行も消える。g は親では line-up の 3 つしか
+  ;; 持たない prefix なので丸ごと無効化する (I1)。
+  "g" nil
+  ;; L / R (回転) は image-dired--with-marked でバッファを 1 サムネ = 1 文字
+  ;; + 空白 1 つの前提で走査し、マークされた箱の中の約 176 箇所で本体が
+  ;; 発火する。jpegtran が無ければ error にもなる。非目標なので押しても
+  ;; 何も起きないようにする (I2)。
+  "L" #'wamei/tty-image-dired-unsupported
+  "R" #'wamei/tty-image-dired-unsupported
+  ;; t t / t r (タグ) も同じ走査で約 176 回発火する。冪等だが同じ穴なので
+  ;; 丸ごと無効化する (I2)。
+  "t" nil
   "<remap> <forward-char>"           #'wamei/tty-image-dired-forward-image
   "<remap> <right-char>"             #'wamei/tty-image-dired-forward-image
   "<remap> <backward-char>"          #'wamei/tty-image-dired-backward-image
@@ -530,7 +574,14 @@ ACTION は `mark' / `unmark' / `flag'。処理のあとキャプションを描�
 (define-derived-mode wamei/tty-image-dired-mode image-dired-thumbnail-mode "TtyImageDired"
   "tty の Emacs で image-dired のサムネイルをグリッド表示するモード。
 `image-dired-thumbnail-mode' から派生させることで、点ベースの組み込みコマンド
-\(マーク、dired 連動) をそのまま使う。"
+\(マーク、dired 連動) をそのまま使う。
+組み込みの `image-dired-thumbnail-mode' と同じく `:interactive nil'。
+`define-derived-mode' は `kill-all-local-variables' を通るので、生きた
+グリッドバッファで `M-x' から再実行すると `--ids' が失われ、その時点で
+live だった画像 ID が `wamei/kitty-graphics--live-ids' に残り続ける
+\(プールが恒久的に縮む、M9)。呼び口を `--show-thumbs' の初回だけに絞るため、
+M-x からは呼べなくする。"
+  :interactive nil
   (setq-local truncate-lines t
               cursor-type nil)
   ;; 行番号は見た目の問題ではない。桁を食われると placeholder の桁数が合わなくなる。
