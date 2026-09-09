@@ -406,6 +406,12 @@ posframe は `no-accept-focus' しか付けないので、macOS では frame が
   (should (equal (cdr (assq 'no-focus-on-map wamei/dired-image-preview-posframe-parameters)) t))
   (should (equal (cdr (assq 'no-accept-focus wamei/dired-image-preview-posframe-parameters)) t)))
 
+(ert-deftest wamei/dired-image-preview-posframe-parameters-are-translucent ()
+  "frame ごと透過させる。NS の Emacs は `alpha-background' (画素ごとの背景透過) を
+実装していないので (`gui_set_alpha_background' が値を保持するだけ)、裏を透かす手は
+frame 全体の `alpha' しかない。"
+  (should (equal (cdr (assq 'alpha wamei/dired-image-preview-posframe-parameters)) 80)))
+
 (ert-deftest wamei/dired-image-preview-posframe-stale-p-detects-missing-parameter ()
   "posframe は引数が変わるまで child frame を作り直さないので、パラメータが
 欠けた frame が残ることがある。欠けていれば stale と判定する。"
@@ -472,6 +478,24 @@ posframe-show の :override-parameters に渡す。"
         (should (equal (plist-get captured :override-parameters)
                        wamei/dired-image-preview-posframe-parameters))))))
 
+(ert-deftest wamei/dired-image-preview-posframe-show-paints-frame-and-image-alike ()
+  "child frame の背景色と、画像の透明部分を焼き込む色は同じでなければならない。
+違うと透明部分だけが四角く浮く。"
+  (wamei/dired-image-preview-test--with-temp-dir dir
+    (wamei/dired-image-preview-test--with-dired dir _buf
+      (let ((pos (wamei/dired-image-preview-test--goto-file "a.png"))
+            captured)
+        (cl-letf (((symbol-function 'posframe-show)
+                   (lambda (_buffer &rest args) (setq captured args)))
+                  ((symbol-function 'face-attribute) (lambda (&rest _) "#525254")))
+          (let ((wamei/dired-image-preview-background "#313435"))
+            (wamei/dired-image-preview--posframe-show
+             (wamei/dired-image-preview--target-at (selected-window) pos))))
+        (should (equal (plist-get captured :background-color) "#313435"))
+        (should (equal (with-current-buffer wamei/dired-image-preview--buffer-name
+                         (image-property (get-text-property (point-min) 'display) :background))
+                       "#313435"))))))
+
 ;;; posframe backend
 
 (ert-deftest wamei/dired-image-preview-render-inserts-image ()
@@ -483,14 +507,6 @@ posframe-show の :override-parameters に渡す。"
       (kill-buffer buf))))
 
 ;;; サイズと位置
-
-(ert-deftest wamei/dired-image-preview-fit-size-shrinks-keeping-aspect ()
-  (should (equal (wamei/dired-image-preview--fit-size '(1600 . 400) '(360 . 280)) '(360 . 90)))
-  (should (equal (wamei/dired-image-preview--fit-size '(400 . 400) '(360 . 280)) '(280 . 280)))
-  (should (equal (wamei/dired-image-preview--fit-size '(300 . 1200) '(360 . 280)) '(70 . 280))))
-
-(ert-deftest wamei/dired-image-preview-fit-size-does-not-upscale ()
-  (should (equal (wamei/dired-image-preview--fit-size '(100 . 50) '(360 . 280)) '(100 . 50))))
 
 (ert-deftest wamei/dired-image-preview-max-image-size-is-absolute-from-parent-frame ()
   "posframe の child frame は最初 32px 程度で、`max-image-size' (frame の 10 倍) が
@@ -509,25 +525,18 @@ posframe-show の :override-parameters に渡す。"
               ((symbol-function 'frame-char-height) (lambda (&optional _) 20)))
       (should (equal (wamei/dired-image-preview--pixel-gap (selected-frame)) '(20 . 20))))))
 
-;;; 市松模様の下敷き
+;;; 画像
 
-(ert-deftest wamei/dired-image-preview-checkerboard-svg-embeds-image-over-pattern ()
+(ert-deftest wamei/dired-image-preview-image-burns-alpha-into-background ()
+  "透明部分は地の色に焼き込む。画素ごとの背景透過ができない以上、frame の地と
+同じ色に溶かすのが「裏が透けて見える」に一番近い。市松模様の SVG では包まない。"
   (wamei/dired-image-preview-test--with-temp-dir dir
-    (let* ((svg (wamei/dired-image-preview--checkerboard-svg
-                 (expand-file-name "a.png" dir) 'png '(120 . 90)))
-           (image (car (dom-by-tag svg 'image))))
-      (should (equal (dom-attr svg 'width) 120))
-      (should (equal (dom-attr svg 'height) 90))
-      (should (dom-by-tag svg 'pattern))
-      (should image)
-      (should (equal (dom-attr image 'width) 120))
-      (should (equal (dom-attr image 'height) 90))
-      (should (string-prefix-p "data:image/png;base64," (dom-attr image 'xlink:href))))))
-
-(ert-deftest wamei/dired-image-preview-alpha-type-p ()
-  (should (wamei/dired-image-preview--alpha-type-p 'png))
-  (should (wamei/dired-image-preview--alpha-type-p 'webp))
-  (should-not (wamei/dired-image-preview--alpha-type-p 'jpeg)))
+    (let ((image (wamei/dired-image-preview--image
+                  (expand-file-name "a.png" dir) '(120 . 90) "#222323")))
+      (should (eq (image-property image :type) 'png))
+      (should (equal (image-property image :background) "#222323"))
+      (should (equal (image-property image :max-width) 120))
+      (should (equal (image-property image :max-height) 90)))))
 
 (ert-deftest wamei/dired-image-preview-max-pixel-size-scales-frame ()
   (let ((wamei/dired-image-preview-max-size-ratio 0.5))
