@@ -367,6 +367,33 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
   (interactive nil wamei/tty-image-dired-mode)
   (wamei/tty-image-dired--move 'line-end))
 
+(defun wamei/tty-image-dired-first-image ()
+  "最初のサムネイルへ。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (when (> (length wamei/tty-image-dired--files) 0)
+    (wamei/tty-image-dired--goto-index 0)
+    (wamei/tty-image-dired--sync-visible)))
+
+(defun wamei/tty-image-dired-last-image ()
+  "最後のサムネイルへ。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (when (> (length wamei/tty-image-dired--files) 0)
+    (wamei/tty-image-dired--goto-index (1- (length wamei/tty-image-dired--files)))
+    (wamei/tty-image-dired--sync-visible)))
+
+(defun wamei/tty-image-dired-scroll-up ()
+  "1 画面ぶんスクロールし、見えているサムネイルを送り直す。
+選択 (`--selected') は動かさない。dired と同じで、選択は置いたまま画面だけ動く。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (scroll-up-command)
+  (wamei/tty-image-dired--sync-visible))
+
+(defun wamei/tty-image-dired-scroll-down ()
+  "1 画面ぶん戻り、見えているサムネイルを送り直す。選択は動かさない。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (scroll-down-command)
+  (wamei/tty-image-dired--sync-visible))
+
 (defun wamei/tty-image-dired--scroll-sync (_window _start)
   "スクロールしたときに可視範囲を送り直す。`window-scroll-functions' 用。
 匿名関数にすると `remove-hook' できず、モードに入り直すたびに溜まる。"
@@ -416,7 +443,9 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
 
 (defvar-keymap wamei/tty-image-dired-mode-map
   :doc "`wamei/tty-image-dired-mode' のキーマップ。
-組み込みの移動コマンドは 1 文字ずつ走査するので矩形の中で止まる。差し替える。"
+組み込みの移動コマンドは 1 文字ずつ走査するので矩形の中で止まる。差し替える。
+親の `image-dired-thumbnail-mode-map' は矢印キーや C-f / C-n / C-v を <remap> でも
+組み込みへ飛ばしているので、リテラルのキーだけでなく remap も上書きする。"
   :parent image-dired-thumbnail-mode-map
   "f" #'wamei/tty-image-dired-forward-image
   "b" #'wamei/tty-image-dired-backward-image
@@ -425,7 +454,19 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
   "a" #'wamei/tty-image-dired-move-beginning-of-line
   "e" #'wamei/tty-image-dired-move-end-of-line
   "x" #'wamei/tty-image-dired-do-flagged-delete
-  "RET" #'wamei/tty-image-dired-display-this)
+  "RET" #'wamei/tty-image-dired-display-this
+  "<remap> <forward-char>"           #'wamei/tty-image-dired-forward-image
+  "<remap> <right-char>"             #'wamei/tty-image-dired-forward-image
+  "<remap> <backward-char>"          #'wamei/tty-image-dired-backward-image
+  "<remap> <left-char>"              #'wamei/tty-image-dired-backward-image
+  "<remap> <next-line>"              #'wamei/tty-image-dired-next-line
+  "<remap> <previous-line>"          #'wamei/tty-image-dired-previous-line
+  "<remap> <move-beginning-of-line>" #'wamei/tty-image-dired-move-beginning-of-line
+  "<remap> <move-end-of-line>"       #'wamei/tty-image-dired-move-end-of-line
+  "<remap> <beginning-of-buffer>"    #'wamei/tty-image-dired-first-image
+  "<remap> <end-of-buffer>"          #'wamei/tty-image-dired-last-image
+  "<remap> <scroll-up-command>"      #'wamei/tty-image-dired-scroll-up
+  "<remap> <scroll-down-command>"    #'wamei/tty-image-dired-scroll-down)
 
 (define-derived-mode wamei/tty-image-dired-mode image-dired-thumbnail-mode "TtyImageDired"
   "tty の Emacs で image-dired のサムネイルをグリッド表示するモード。
