@@ -5,8 +5,11 @@
 ;;
 ;; - 実体は `wamei/project-memo-directory' (既定 ~/org/) 直下のフラットな
 ;;   org ファイル。プロジェクトメモは <project-name>.org、全体メモは global.org
-;; - 保存は意識しなくてよい。アイドル中は `auto-save-visited-mode' が、
-;;   メモから離れるときは `wamei/project-memo-save-all' が実ファイルへ書く
+;; - 保存は意識しなくてよい。アイドル中も、メモから離れるときも、
+;;   `wamei/project-memo-save-all' が実ファイルへ書く。アイドル分は
+;;   このモジュール専用の `run-with-idle-timer' で回す
+;;   (`auto-save-visited-mode' は使わない。理由は
+;;   `wamei/project-memo-autosave-setup' の docstring)
 ;; - 復元は desktop に任せる。メモは通常のファイルバッファなので専用処理は要らない
 ;; - プロジェクトタブを開いた直後の画面 (`wamei/project-memo-switch-setup') は
 ;;   左に sidebar、本文 window にそのプロジェクトのメモ
@@ -166,39 +169,74 @@ GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐
 
 ;;; 自動保存
 
-(defun wamei/project-memo--auto-save-p ()
-  "`auto-save-visited-predicate' 用。メモバッファだけ実ファイルへ保存する。
+(defcustom wamei/project-memo-autosave-idle-interval 5
+  "アイドル何秒でメモを実ファイルへ書くか。
 
-`auto-save-visited-mode' はグローバルなので、述語を置かないと全部の
-ファイルが勝手に保存されるようになる。"
-  (wamei/project-memo-buffer-p))
+`auto-save-visited-interval' の既定と同じ 5 秒。アイドルが続く間は
+この間隔で繰り返し走る。"
+  :type 'number
+  :group 'wamei/project-memo)
+
+(defvar wamei/project-memo--autosave-timer nil
+  "アイドル保存の繰り返しタイマー。`wamei/project-memo-autosave-setup' が持つ。
+
+この 1 つに限ることで、setup を何度呼んでもタイマーが積み上がらない。")
 
 (defun wamei/project-memo-save-all (&rest _)
   "変更のあるメモバッファを全て保存する。
 
-`window-selection-change-functions' (frame を受け取る)、
-`after-focus-change-function'、`kill-emacs-hook' から呼ぶので引数は受け流す。
-アイドル中の保存は `auto-save-visited-mode' が見るため、ここは
-「メモから離れた瞬間」を埋めるためにある。"
+アイドル時のタイマーと、`window-selection-change-functions' (frame を
+受け取る)、`after-focus-change-function'、`kill-emacs-hook' から呼ぶので
+引数は受け流す。
+
+`save-buffer' を安全に呼べない場面が 2 つあるので、それぞれ手当てする。
+
+1. modtime がずれているバッファは飛ばす。init.el は desktop を Emacs.app と
+   `emacs -nw' で分けているので、同じメモを 2 つのインスタンスが開ける。
+   片方が保存するともう片方の記録した modtime は古くなり、`basic-save-buffer'
+   が `yes-or-no-p' で「Save anyway?」を聞く。この関数の呼び出し元は
+   `window-selection-change-functions' = redisplay 中なので、そこで
+   プロンプトを出すわけにはいかない (`save-silently' が抑えるのは
+   メッセージだけでプロンプトではない)。飛ばしても編集はバッファに残り、
+   ユーザーが `C-x C-s' したときに通常どおり確認できる。
+2. エラーは握って `message' に落とす。redisplay hook で飛ばすと表示が壊れ、
+   `kill-emacs-hook' で飛ばすと Emacs が終了できなくなる。1 つのメモの
+   失敗で残りのメモの保存まで止めない。sidebar の
+   `wamei/project-sidebar--follow-soon' と同じ流儀。"
   (let ((save-silently t))
     (dolist (buffer (buffer-list))
-      (with-current-buffer buffer
-        (when (and (wamei/project-memo-buffer-p) (buffer-modified-p))
-          (save-buffer)))))
+      (with-demoted-errors "project-memo: save failed: %S"
+        (with-current-buffer buffer
+          (when (and (wamei/project-memo-buffer-p)
+                     (buffer-modified-p)
+                     (verify-visited-file-modtime))
+            (save-buffer))))))
   nil)
 
 (defun wamei/project-memo-autosave-setup ()
   "メモの自動保存を有効にする。init.el から 1 回呼ぶ。
 
-複数回呼んでも安全 (idempotent)。`add-hook' は同じ関数の重複追加を自分で
-弾いてくれる。`add-function' も同じ FUNCTION を渡す限りは内部で古い方を
-外してから積み直すだけで二重合成にはならないが、それを暗黙の前提にせず
-`advice-function-member-p' で「既に合成済みか」を明示的に見てから合成する
-(hook 側の `add-hook' と対称にして、この関数全体が idempotent だと
-読み取れるようにする意図)。init.el を対話的に再評価する運用なので、
-このガードで安心して再評価できる。"
-  (setq auto-save-visited-predicate #'wamei/project-memo--auto-save-p)
-  (auto-save-visited-mode 1)
+アイドル中の保存は専用の繰り返しタイマーで回す。`auto-save-visited-mode'
+は使わない。あれは `save-some-buffers' 経由で、`buffer-save-without-query'
+が非 nil のバッファを述語より先に無条件で保存してしまう (files.el)。
+magit の save-repository-buffers に `Y' で答えるとそのフラグが立つので、
+以後そのソースファイルが書きかけのまま 5 秒ごとにディスクへ書かれる。
+`save-some-buffers-functions' も走るため abbrev ファイルまで書かれる。
+`wamei/project-memo-save-all' は作りからしてメモしか触らないので、
+これに置き換えれば「メモ以外は書かない」が述語頼みでなく構造で保証される。
+
+複数回呼んでも安全 (idempotent)。タイマーは張り直す前に古いものを消す。
+`add-hook' は同じ関数の重複追加を自分で弾いてくれる。`add-function' も
+同じ FUNCTION を渡す限りは内部で古い方を外してから積み直すだけで二重合成に
+はならないが、それを暗黙の前提にせず `advice-function-member-p' で
+「既に合成済みか」を明示的に見てから合成する (hook 側の `add-hook' と
+対称にして、この関数全体が idempotent だと読み取れるようにする意図)。
+init.el を対話的に再評価する運用なので、このガードで安心して再評価できる。"
+  (when (timerp wamei/project-memo--autosave-timer)
+    (cancel-timer wamei/project-memo--autosave-timer))
+  (setq wamei/project-memo--autosave-timer
+        (run-with-idle-timer wamei/project-memo-autosave-idle-interval t
+                             #'wamei/project-memo-save-all))
   (add-hook 'window-selection-change-functions #'wamei/project-memo-save-all)
   (unless (advice-function-member-p #'wamei/project-memo-save-all
                                     after-focus-change-function)

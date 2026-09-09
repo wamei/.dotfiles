@@ -246,15 +246,29 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
 
 ;;; 自動保存
 
-(ert-deftest wamei/project-memo-auto-save-p-only-for-memo-buffers ()
-  (wamei/project-memo-test--with-project root
-    (let ((memo (wamei/project-memo-buffer nil))
-          (work (find-file-noselect (expand-file-name "main.el" root))))
-      (unwind-protect
-          (progn
-            (should (with-current-buffer memo (wamei/project-memo--auto-save-p)))
-            (should-not (with-current-buffer work (wamei/project-memo--auto-save-p))))
-        (kill-buffer work)))))
+(defmacro wamei/project-memo-test--with-autosave-env (&rest body)
+  "`wamei/project-memo-autosave-setup' の副作用をテスト内に閉じ込めて BODY を評価する。
+
+hook と advice はレキシカルな束縛で隔離できるが、アイドルタイマーは
+`timer-idle-list' というグローバルに載るので明示的に消す必要がある。
+消し忘れると batch セッションの残りのテストの最中に
+`wamei/project-memo-save-all' が走り、実ファイルへの書き込みが
+テストの外へ漏れる。"
+  (declare (indent 0))
+  `(let ((wamei/project-memo--autosave-timer nil)
+         (window-selection-change-functions nil)
+         (kill-emacs-hook nil)
+         (after-focus-change-function #'ignore))
+     (unwind-protect
+         (progn ,@body)
+       (when (timerp wamei/project-memo--autosave-timer)
+         (cancel-timer wamei/project-memo--autosave-timer)))))
+
+(defun wamei/project-memo-test--save-all-timers ()
+  "`timer-idle-list' にある `wamei/project-memo-save-all' のタイマー。"
+  (seq-filter (lambda (timer)
+                (eq (timer--function timer) #'wamei/project-memo-save-all))
+              timer-idle-list))
 
 (ert-deftest wamei/project-memo-save-all-writes-modified-memo ()
   (wamei/project-memo-test--with-project root
@@ -287,51 +301,119 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
     ;; window-selection-change-functions は frame を渡す。
     (should-not (wamei/project-memo-save-all (selected-frame)))))
 
-(ert-deftest wamei/project-memo-autosave-setup-installs-predicate-and-hooks ()
-  (let* ((auto-save-visited-predicate nil)
-         (window-selection-change-functions nil)
-         (kill-emacs-hook nil)
-         (base-calls 0)
-         ;; #'ignore だと「呼ばれたかどうか」を見られないので、素の focus-change
-         ;; 処理を模した副作用付きの関数にしておく。
-         (after-focus-change-function (lambda () (setq base-calls (1+ base-calls))))
-         (auto-save-visited-mode nil)
-         (save-all-calls 0))
-    (cl-letf (((symbol-function 'auto-save-visited-mode) (lambda (&rest _) t))
-              ((symbol-function 'wamei/project-memo-save-all)
-               (lambda (&rest _) (setq save-all-calls (1+ save-all-calls)))))
-      (wamei/project-memo-autosave-setup)
-      (should (eq auto-save-visited-predicate #'wamei/project-memo--auto-save-p))
-      (should (memq #'wamei/project-memo-save-all window-selection-change-functions))
-      (should (memq #'wamei/project-memo-save-all kill-emacs-hook))
-      ;; after-focus-change-function への合成が :after であることを確認する。
-      ;; advice-function-member-p は「含まれているか」しか見ないので、それだけだと
-      ;; :override 等への取り違えを見逃す。base (素の focus-change 処理) の副作用と
-      ;; wamei/project-memo-save-all の副作用が両方観測できることまで見て、
-      ;; base を消してしまう合成方法ではないことを確かめる。
-      (should (advice-function-member-p #'wamei/project-memo-save-all
-                                        after-focus-change-function))
-      (funcall after-focus-change-function)
-      (should (= base-calls 1))
-      (should (= save-all-calls 1)))))
+(ert-deftest wamei/project-memo-save-all-skips-buffer-with-stale-modtime ()
+  (wamei/project-memo-test--with-project root
+    ;; init.el は desktop を GUI と -nw で分けているので、同じメモを 2 つの
+    ;; インスタンスが開くことがある。片方が保存すると、もう片方の記録した
+    ;; modtime は古くなる。その状態で save-buffer を呼ぶと
+    ;; 「changed since visited or saved. Save anyway?」を聞かれるが、
+    ;; この関数は redisplay hook (window-selection-change-functions) から
+    ;; 呼ばれるので、そこでプロンプトを出させてはいけない。
+    (let ((memo (wamei/project-memo-buffer nil))
+          (prompts 0))
+      (wamei/project-memo-save-all)     ; 実ファイルを作る
+      (with-current-buffer memo
+        (goto-char (point-max))
+        (insert "こちらの編集\n")
+        ;; 他インスタンスが書いた後を模す (記録した modtime を実体とずらす)
+        (set-visited-file-modtime (time-convert 1 'list)))
+      (cl-letf (((symbol-function 'yes-or-no-p)
+                 (lambda (&rest _) (setq prompts (1+ prompts)) t)))
+        (wamei/project-memo-save-all))
+      (should (= prompts 0))
+      ;; 保存を見送るので、変更は失われずバッファに残る。
+      (should (buffer-modified-p memo)))))
+
+(ert-deftest wamei/project-memo-save-all-contains-errors ()
+  (wamei/project-memo-test--with-project root
+    ;; redisplay hook と kill-emacs-hook から呼ぶので、1 つのメモの保存が
+    ;; 失敗しても外へ飛ばさない (kill-emacs-hook で飛ぶと終了できなくなる)。
+    ;; 残りのメモの保存も続ける。
+    (let ((global-memo (wamei/project-memo-buffer nil))
+          (project-memo (wamei/project-memo-buffer
+                         (wamei/project-memo-test--project root))))
+      (with-current-buffer global-memo (goto-char (point-max)) (insert "g\n"))
+      (with-current-buffer project-memo (goto-char (point-max)) (insert "p\n"))
+      (cl-letf* ((real-save (symbol-function 'save-buffer))
+                 ((symbol-function 'save-buffer)
+                  (lambda (&rest args)
+                    (if (eq (current-buffer) global-memo)
+                        (error "書き込みに失敗した")
+                      (apply real-save args)))))
+        ;; エラーが漏れればこの時点でテストが失敗する。
+        (wamei/project-memo-save-all))
+      (should (buffer-modified-p global-memo))
+      (should-not (buffer-modified-p project-memo)))))
+
+(ert-deftest wamei/project-memo-autosave-setup-creates-idle-timer ()
+  (wamei/project-memo-test--with-autosave-env
+    (wamei/project-memo-autosave-setup)
+    (should (timerp wamei/project-memo--autosave-timer))
+    (should (memq wamei/project-memo--autosave-timer timer-idle-list))
+    (should (eq (timer--function wamei/project-memo--autosave-timer)
+                #'wamei/project-memo-save-all))
+    (should (equal (wamei/project-memo-test--save-all-timers)
+                   (list wamei/project-memo--autosave-timer)))))
+
+(ert-deftest wamei/project-memo-autosave-setup-leaves-exactly-one-idle-timer ()
+  (wamei/project-memo-test--with-autosave-env
+    ;; init.el を対話的に再評価すると 2 回呼ばれる。タイマーが積み上がって
+    ;; アイドルごとに何度も保存が走ることがないようにする。
+    (wamei/project-memo-autosave-setup)
+    (wamei/project-memo-autosave-setup)
+    (should (equal (wamei/project-memo-test--save-all-timers)
+                   (list wamei/project-memo--autosave-timer)))))
+
+(ert-deftest wamei/project-memo-autosave-setup-does-not-enable-auto-save-visited-mode ()
+  ;; auto-save-visited-mode は save-some-buffers 経由なので、
+  ;; buffer-save-without-query が立ったバッファ (magit の Y) を述語より先に
+  ;; 保存してしまう。メモ以外を書かないことを構造的に保証するため、この
+  ;; モジュールは auto-save-visited-mode を一切触らない。
+  (let ((auto-save-visited-predicate 'sentinel)
+        (enable-calls 0))
+    (wamei/project-memo-test--with-autosave-env
+      (cl-letf (((symbol-function 'auto-save-visited-mode)
+                 (lambda (&rest _) (setq enable-calls (1+ enable-calls)))))
+        (wamei/project-memo-autosave-setup))
+      (should (= enable-calls 0))
+      (should-not auto-save-visited-mode)
+      (should (eq auto-save-visited-predicate 'sentinel)))))
+
+(ert-deftest wamei/project-memo-autosave-setup-installs-hooks ()
+  (let ((base-calls 0)
+        (save-all-calls 0))
+    (wamei/project-memo-test--with-autosave-env
+      ;; #'ignore だと「呼ばれたかどうか」を見られないので、素の focus-change
+      ;; 処理を模した副作用付きの関数にしておく。
+      (setq after-focus-change-function (lambda () (setq base-calls (1+ base-calls))))
+      (cl-letf (((symbol-function 'wamei/project-memo-save-all)
+                 (lambda (&rest _) (setq save-all-calls (1+ save-all-calls)))))
+        (wamei/project-memo-autosave-setup)
+        (should (memq #'wamei/project-memo-save-all window-selection-change-functions))
+        (should (memq #'wamei/project-memo-save-all kill-emacs-hook))
+        ;; after-focus-change-function への合成が :after であることを確認する。
+        ;; advice-function-member-p は「含まれているか」しか見ないので、それだけだと
+        ;; :override 等への取り違えを見逃す。base (素の focus-change 処理) の副作用と
+        ;; wamei/project-memo-save-all の副作用が両方観測できることまで見て、
+        ;; base を消してしまう合成方法ではないことを確かめる。
+        (should (advice-function-member-p #'wamei/project-memo-save-all
+                                          after-focus-change-function))
+        (funcall after-focus-change-function)
+        (should (= base-calls 1))
+        (should (= save-all-calls 1))))))
 
 (ert-deftest wamei/project-memo-autosave-setup-does-not-double-compose-after-focus-change-function ()
-  (let* ((auto-save-visited-predicate nil)
-         (window-selection-change-functions nil)
-         (kill-emacs-hook nil)
-         (after-focus-change-function #'ignore)
-         (auto-save-visited-mode nil)
-         (save-all-calls 0))
-    (cl-letf (((symbol-function 'auto-save-visited-mode) (lambda (&rest _) t))
-              ((symbol-function 'wamei/project-memo-save-all)
-               (lambda (&rest _) (setq save-all-calls (1+ save-all-calls)))))
-      ;; init.el を再評価するなどして 2 回呼ばれても、フォーカス変化のたびに
-      ;; wamei/project-memo-save-all が 2 回走る (合成が二重になる) ことがない
-      ;; ように、実際に 1 回だけ発火することを確認する。
-      (wamei/project-memo-autosave-setup)
-      (wamei/project-memo-autosave-setup)
-      (funcall after-focus-change-function)
-      (should (= save-all-calls 1)))))
+  (let ((save-all-calls 0))
+    (wamei/project-memo-test--with-autosave-env
+      (cl-letf (((symbol-function 'wamei/project-memo-save-all)
+                 (lambda (&rest _) (setq save-all-calls (1+ save-all-calls)))))
+        ;; init.el を再評価するなどして 2 回呼ばれても、フォーカス変化のたびに
+        ;; wamei/project-memo-save-all が 2 回走る (合成が二重になる) ことがない
+        ;; ように、実際に 1 回だけ発火することを確認する。
+        (wamei/project-memo-autosave-setup)
+        (wamei/project-memo-autosave-setup)
+        (funcall after-focus-change-function)
+        (should (= save-all-calls 1))))))
 
 ;;; タブの初期画面
 

@@ -95,12 +95,20 @@ init.el 側は `leaf org` (新規・最小) と `leaf project-memo` (load と ke
 
 ### 4. 自動保存
 
-- **アイドル**: `auto-save-visited-mode` を有効にし、
-  `auto-save-visited-predicate` を「`wamei/project-memo-directory` 配下の
-  `.org` を訪れているバッファ」に限定する。他のファイルは従来どおり
-  (`#file#` への auto-save のみで、実ファイルは手動保存)。判定をバッファ
-  ローカルのフラグでなくパスで行うので、desktop 復元で開き直された
-  メモにもそのまま効く。間隔は既定の `auto-save-visited-interval` (5 秒)。
+- **アイドル**: このモジュール専用の `run-with-idle-timer` (繰り返し) で
+  `wamei/project-memo-save-all` を回す。間隔は
+  `wamei/project-memo-autosave-idle-interval` (既定 5 秒)。他のファイルは
+  従来どおり (`#file#` への auto-save のみで、実ファイルは手動保存)。
+  対象の判定はバッファローカルのフラグでなくパスで行うので、desktop 復元で
+  開き直されたメモにもそのまま効く。
+
+  `auto-save-visited-mode` + `auto-save-visited-predicate` は採らない。
+  あれは `save-some-buffers` 経由で、`buffer-save-without-query` が非 nil の
+  バッファを述語より先に無条件で保存する (files.el)。magit の
+  save-repository-buffers に `Y` と答えるとそのフラグが立つので、以後その
+  ソースファイルが書きかけのまま毎回ディスクへ書かれてしまう。
+  `save-some-buffers-functions` も走るので abbrev ファイルまで書かれる。
+  自前のタイマーなら「メモ以外は書かない」が述語頼みでなく構造で保証される。
 - **離れるとき**: 変更のあるメモバッファを `save-buffer` する関数を
   `window-selection-change-functions` / `after-focus-change-function` /
   `kill-emacs-hook` に足す。`save-silently` を束縛してエコーエリアを汚さない。
@@ -154,8 +162,9 @@ root の dired は開かなくなる。必要なときは既存の `C-x C-j`
   そのプロジェクトを返す、全体メモには設定されない
 - トグル: 本文 window にメモが出る / もう一度で元のバッファに戻る /
   プロジェクト外ではプレフィックス無しでも全体メモ
-- 自動保存: 述語が `~/org/*.org` にだけ t を返す、離脱時の関数が変更のある
-  メモだけを保存する
+- 自動保存: 保存関数が変更のあるメモだけを保存する (他のファイルは触らない)、
+  modtime がずれたメモは飛ばす、1 つの保存が失敗しても外へ飛ばさない、
+  setup がアイドルタイマーを 1 つだけ作る (2 回呼んでも増えない)
 - `wamei/project-memo-switch-setup` 後の window 構成: 左に sidebar、
   本文にメモ、フォーカスは本文
 
