@@ -420,8 +420,8 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
           ;; カーソルが見えないと編集できない
           (should (plist-get args :cursor))
           ;; mode-line を消させない (下の -does-not-clobber- のテスト参照)
-          (should (plist-get args :respect-mode-line)))))
-    (wamei/project-memo-posframe-hide)))
+          (should (plist-get args :respect-mode-line))))
+      (wamei/project-memo-posframe-hide))))
 
 (ert-deftest wamei/project-memo-popup-color-is-nil-for-an-undefined-face ()
   ;; init.el の *popup-appearance が定義する face はモジュール単体の batch には
@@ -437,6 +437,17 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
           (should (equal (wamei/project-memo--popup-color face :background) "#123456")))
       (put face 'face-defface-spec nil))))
 
+(ert-deftest wamei/project-memo-popup-color-is-nil-for-an-unspecified-attribute ()
+  ;; face 自体は定義されていても、その ATTRIBUTE を指定していなければ
+  ;; `face-attribute' は 'unspecified を返す。posframe にフレーム既定色を
+  ;; 使わせるため、その値も nil に変換する (未定義 face と同じ扱い)。
+  (let ((face 'wamei/project-memo-test--unspecified-face))
+    (unwind-protect
+        (progn
+          (custom-declare-face face '((t (:weight bold))) "test")
+          (should-not (wamei/project-memo--popup-color face :background)))
+      (put face 'face-defface-spec nil))))
+
 (ert-deftest wamei/project-memo-posframe-show-sizes-from-the-ratios ()
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
@@ -447,8 +458,8 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
         (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
         (let ((args (cddr (car calls))))
           (should (= (plist-get args :width) (round (* 0.5 (frame-width)))))
-          (should (= (plist-get args :height) (round (* 0.5 (frame-height))))))))
-    (wamei/project-memo-posframe-hide)))
+          (should (= (plist-get args :height) (round (* 0.5 (frame-height)))))))
+      (wamei/project-memo-posframe-hide))))
 
 (ert-deftest wamei/project-memo-posframe-show-respects-the-minimums ()
   (wamei/project-memo-test--with-project root
@@ -460,8 +471,27 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
         (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
         (let ((args (cddr (car calls))))
           (should (= (plist-get args :width) 40))
-          (should (= (plist-get args :height) 10)))))
-    (wamei/project-memo-posframe-hide)))
+          (should (= (plist-get args :height) 10))))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-show-hides-the-previous-buffer-first ()
+  ;; posframe.el の `posframe--frame' はバッファローカルなキャッシュなので、
+  ;; 隠さずに別バッファへ `posframe-show' すると古いフレームは追跡から外れた
+  ;; まま画面上に残ってしまう (leak)。2 回目の show の前に 1 回目の
+  ;; バッファを hide していることを確認する。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer-a (wamei/project-memo-buffer nil))
+            (buffer-b (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+        (wamei/project-memo-posframe-show buffer-a)
+        (wamei/project-memo-posframe-show buffer-b)
+        ;; calls は新しい順に積まれるので、古い順に戻して並びを確認する。
+        (should (equal (mapcar (lambda (call) (cons (car call) (cadr call)))
+                               (reverse calls))
+                       (list (cons 'show buffer-a)
+                             (cons 'hide buffer-a)
+                             (cons 'show buffer-b)))))
+      (wamei/project-memo-posframe-hide))))
 
 (ert-deftest wamei/project-memo-posframe-frame-tracks-visibility ()
   (wamei/project-memo-test--with-project root
