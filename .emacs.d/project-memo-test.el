@@ -244,5 +244,60 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
             (should-not (wamei/project-memo-buffer-p (window-buffer main))))
         (kill-buffer other)))))
 
+;;; 自動保存
+
+(ert-deftest wamei/project-memo-auto-save-p-only-for-memo-buffers ()
+  (wamei/project-memo-test--with-project root
+    (let ((memo (wamei/project-memo-buffer nil))
+          (work (find-file-noselect (expand-file-name "main.el" root))))
+      (unwind-protect
+          (progn
+            (should (with-current-buffer memo (wamei/project-memo--auto-save-p)))
+            (should-not (with-current-buffer work (wamei/project-memo--auto-save-p))))
+        (kill-buffer work)))))
+
+(ert-deftest wamei/project-memo-save-all-writes-modified-memo ()
+  (wamei/project-memo-test--with-project root
+    (let ((memo (wamei/project-memo-buffer nil)))
+      (with-current-buffer memo
+        (goto-char (point-max))
+        (insert "書きかけ\n")
+        (should (buffer-modified-p)))
+      (wamei/project-memo-save-all)
+      (should-not (buffer-modified-p memo))
+      (should (file-exists-p (wamei/project-memo-global-file)))
+      (with-temp-buffer
+        (insert-file-contents (wamei/project-memo-global-file))
+        (should (string-match-p "書きかけ" (buffer-string)))))))
+
+(ert-deftest wamei/project-memo-save-all-leaves-other-buffers-alone ()
+  (wamei/project-memo-test--with-project root
+    (let ((work (find-file-noselect (expand-file-name "main.el" root))))
+      (unwind-protect
+          (progn
+            (with-current-buffer work (insert ";; 未保存\n"))
+            (wamei/project-memo-save-all)
+            (should (buffer-modified-p work))
+            (should-not (file-exists-p (expand-file-name "main.el" root))))
+        (with-current-buffer work (set-buffer-modified-p nil))
+        (kill-buffer work)))))
+
+(ert-deftest wamei/project-memo-save-all-accepts-hook-arguments ()
+  (wamei/project-memo-test--with-project root
+    ;; window-selection-change-functions は frame を渡す。
+    (should-not (wamei/project-memo-save-all (selected-frame)))))
+
+(ert-deftest wamei/project-memo-autosave-setup-installs-predicate-and-hooks ()
+  (let ((auto-save-visited-predicate nil)
+        (window-selection-change-functions nil)
+        (kill-emacs-hook nil)
+        (after-focus-change-function #'ignore)
+        (auto-save-visited-mode nil))
+    (cl-letf (((symbol-function 'auto-save-visited-mode) (lambda (&rest _) t)))
+      (wamei/project-memo-autosave-setup)
+      (should (eq auto-save-visited-predicate #'wamei/project-memo--auto-save-p))
+      (should (memq #'wamei/project-memo-save-all window-selection-change-functions))
+      (should (memq #'wamei/project-memo-save-all kill-emacs-hook)))))
+
 (provide 'project-memo-test)
 ;;; project-memo-test.el ends here
