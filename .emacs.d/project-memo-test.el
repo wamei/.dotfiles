@@ -105,6 +105,44 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
                  (concat "#+title: " (file-name-nondirectory (directory-file-name root)))
                  (buffer-string)))))))
 
+(ert-deftest wamei/project-memo-buffer-inserts-title-for-existing-empty-file ()
+  (wamei/project-memo-test--with-project root
+    ;; 「新規」を file-exists-p で見ると、0 バイトのファイルが既にあるとき
+    ;; 二度と title が入らない。実体が 0 バイトになるのは珍しくない
+    ;; (title を undo した直後に自動保存が走った後など)。
+    (let ((file (wamei/project-memo-global-file)))
+      (with-temp-file file)
+      (should (= 0 (file-attribute-size (file-attributes file))))
+      (with-current-buffer (wamei/project-memo-buffer nil)
+        (should (string-prefix-p "#+title: " (buffer-string)))))))
+
+(ert-deftest wamei/project-memo-buffer-does-not-put-title-on-undo-list ()
+  (wamei/project-memo-test--with-project root
+    ;; 新規メモで 1 回 undo すると #+title: 行が消え、そのまま放置すると
+    ;; 自動保存が 0 バイトで書いてしまう。title は undo の対象にしない。
+    (with-current-buffer (wamei/project-memo-buffer nil)
+      (let ((before (buffer-string)))
+        (should (string-prefix-p "#+title: " before))
+        (should (null buffer-undo-list))
+        (ignore-errors (undo))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest wamei/project-memo-buffer-keeps-undo-history-of-existing-buffer ()
+  (wamei/project-memo-test--with-project root
+    ;; title を入れるときの undo 抑止が、既にあるバッファの undo 履歴まで
+    ;; 巻き添えにしないこと。C-x C-m のたびにこの関数を通るので、
+    ;; buffer-undo-list を無条件に潰すと編集中の履歴が消える。
+    (let ((memo (wamei/project-memo-buffer nil)))
+      (with-current-buffer memo
+        (goto-char (point-max))
+        (insert "編集した\n")
+        (undo-boundary)
+        (should buffer-undo-list))
+      ;; 2 回目の呼び出し (もう空ではない)
+      (wamei/project-memo-buffer nil)
+      (with-current-buffer memo
+        (should buffer-undo-list)))))
+
 (ert-deftest wamei/project-memo-buffer-keeps-existing-content ()
   (wamei/project-memo-test--with-project root
     (let ((file (wamei/project-memo-file (wamei/project-memo-test--project root))))
