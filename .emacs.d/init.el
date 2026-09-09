@@ -1242,8 +1242,21 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :bind (("C-x C-m" . wamei/project-memo-toggle)
          ;; 全体メモ。C-x C-M と書くと C-x C-m と同じキー列になってしまうので
          ;; (kbd の "C-M" は Control 文字の C-m そのもの)、Shift を明示する。
-         ;; GUI では確実に届く。端末では modifyOtherKeys で送られる場合だけ届く。
-         ("C-x C-S-m" . wamei/project-memo-toggle-global))
+         ;; GUI では確実に届くが、端末では届かない: 端末の modifyOtherKeys
+         ;; decode 表 (input-decode-map) は Return/Tab/記号だけを収録し、
+         ;; 文字キーの entry を持たないため、端末が CSI 27;6;109~ を正しく
+         ;; 送っても Emacs 側が C-S-m として認識できない (tmux + 手動注入で
+         ;; 確認済み、GOT メッセージが出ず生シーケンスの断片が self-insert
+         ;; された)。なので GUI 専用というつもりで残し、下の C-q m を
+         ;; 端末でも届く保険キーにしている。重複に見えても片方だけに
+         ;; まとめない
+         ("C-x C-S-m" . wamei/project-memo-toggle-global)
+         ;; 上と同じコマンドへの保険キー。C-q はこの config 自前のプレフィクス
+         ;; (C-q n/p/c/k/r がタブ、C-q t … が端末、C-q a … が claude) で、
+         ;; ただの ASCII 2 打鍵なのでどの端末からでも届く。emacs -nw も
+         ;; Emacs.app も両方常用するので、GUI だけで届く C-x C-S-m 単独では
+         ;; 全体メモが端末から触れなくなる。C-q m はその保険
+         ("C-q m" . wamei/project-memo-toggle-global))
   :preface
   ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
   (load (expand-file-name "project-memo"
