@@ -285,6 +285,40 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
             (should-not (wamei/project-memo-buffer-p (window-buffer main))))
         (kill-buffer other)))))
 
+(ert-deftest wamei/project-memo-toggle-skips-internal-buffers-when-no-back-recorded ()
+  (wamei/project-memo-test--with-project root
+    ;; フォールバックの seq-find は生の `buffer-list' を走るので、
+    ;; " *Minibuf-0*" や " *sidebar: foo*" のような先頭空白のバッファまで
+    ;; 候補になる。これらは `switch-to-prev-buffer' が意図して飛ばすもので、
+    ;; 本文 window に出してよいものではない (`set-window-buffer' は黙って
+    ;; 受け付けてしまう)。back パラメータは window-persistent-parameters に
+    ;; 無いので desktop 復元や magit の q で落ちる = この経路は日常的に通る。
+    (let* ((main (selected-window))
+           (project-memo (wamei/project-memo-buffer
+                          (wamei/project-memo-test--project root)))
+           (global-memo (wamei/project-memo-buffer nil))
+           (internal (get-buffer-create " *memo-test-internal*"))
+           (work (find-file-noselect (expand-file-name "main.el" root))))
+      (unwind-protect
+          (progn
+            (set-window-buffer main project-memo)
+            (set-window-parameter main 'wamei/project-memo-back nil)
+            ;; switch-to-prev-buffer が別のメモを返すようにして、
+            ;; フォールバックの seq-find を必ず通す。
+            (set-window-prev-buffers main (list (list global-memo (point-min) (point-min))))
+            ;; 先頭空白のバッファを非メモの先頭に据える。実セッションの
+            ;; buffer-list の並びは運任せなので、ここで固定して常に同じ
+            ;; 経路を踏ませる。
+            (cl-letf (((symbol-function 'buffer-list)
+                       (lambda (&rest _) (list global-memo project-memo internal work))))
+              (wamei/project-memo-toggle))
+            (should-not (wamei/project-memo-buffer-p (window-buffer main)))
+            (should-not (string-prefix-p " " (buffer-name (window-buffer main))))
+            (should (eq (window-buffer main) work)))
+        (with-current-buffer work (set-buffer-modified-p nil))
+        (kill-buffer work)
+        (kill-buffer internal)))))
+
 ;;; 自動保存
 
 (defmacro wamei/project-memo-test--with-autosave-env (&rest body)

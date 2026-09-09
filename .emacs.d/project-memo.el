@@ -143,7 +143,13 @@ project-find-file などの起点もメモのディレクトリになってし�
 (desktop 復元直後など、メモは普通のファイルバッファなので普通に復元
 される)。その状態での `switch-to-prev-buffer' の候補は別のメモのこと
 があり、それだと「メモから抜ける」はずの操作がメモに留まってしまう。
-非メモのバッファが見つかるまで探し、無ければ *scratch* に逃がす。"
+非メモのバッファが見つかるまで探し、無ければ *scratch* に逃がす。
+
+探すのは生の `buffer-list' なので、名前が空白で始まる内部バッファ
+(\" *Minibuf-0*\"、\" *sidebar: foo*\"、\" *load*\" など) も候補に混ざる。
+これらは `switch-to-prev-buffer' が意図して飛ばすもので、本文 window に
+出してよいものではない。`set-window-buffer' は黙って受け付けてしまうので
+ここで弾く。"
   (let ((back (window-parameter window 'wamei/project-memo-back)))
     (set-window-parameter window 'wamei/project-memo-back nil)
     (if (buffer-live-p back)
@@ -152,8 +158,10 @@ project-find-file などの起点もメモのディレクトリになってし�
       (when (wamei/project-memo-buffer-p (window-buffer window))
         (set-window-buffer
          window
-         (or (seq-find (lambda (buf) (not (wamei/project-memo-buffer-p buf)))
-                        (buffer-list))
+         (or (seq-find (lambda (buf)
+                         (and (not (string-prefix-p " " (buffer-name buf)))
+                              (not (wamei/project-memo-buffer-p buf))))
+                       (buffer-list))
              (get-buffer-create "*scratch*")))))
     (select-window window)))
 
