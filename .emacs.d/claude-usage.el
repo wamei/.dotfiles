@@ -18,9 +18,9 @@
 ;;   投げると、後から起動した方は 429 を引き続けたまま前回値も持たないので
 ;;   ダッシュのままになる。取れた値は `wamei/claude-usage-cache-file' に置き、
 ;;   起動直後はそこから出す / interval 内に誰かが取っていれば自分は投げない。
-;; - 表示: 端末バッファは init.el が `ghostel-mode-hook' に `hide-mode-line-mode' を
-;;   掛けて mode-line を消しているので、Claude のバッファだけそれを外して自前の
-;;   mode-line を入れる。window を増やさないので desktop の復元
+;; - 表示: ghostel バッファの mode-line は term-modeline.el が振り分けており、
+;;   端末パネル以外 (= Claude のパネル) は `hide-mode-line-mode' で消えている。
+;;   Claude のバッファだけそれを外して自前の mode-line を入れる。window を増やさないので desktop の復元
 ;;   (desktop-side-windows.el) や slot 管理には影響しない。
 ;;   mode-line は改行できない (Emacs 31 でも "a\nb" は 1 行に ^J で出る) ため 1 行。
 ;; - バー: SVG の角丸 + グラデーション。画像が使えない端末では ░/█ の文字に落とす。
@@ -37,6 +37,9 @@
 (require 'subr-x)
 (require 'svg)
 (require 'url)
+
+;; mode-line の右寄せと %-エスケープは端末パネルと共通 (init.el が先に読む)。
+(require 'term-modeline)
 
 (declare-function claude-code-ide--buffer-session "claude-code-ide")
 (declare-function claude-code-ide-mcp--active-sessions "claude-code-ide-mcp")
@@ -464,19 +467,6 @@ macOS では Keychain、無ければ `wamei/claude-usage-credentials-file' か�
 (defvar wamei/claude-usage--cache nil
   "描いた 1 行のキャッシュ。(KEY . STRING)。")
 
-(defun wamei/claude-usage--escape (string)
-  "STRING の % を二重にする。テキストプロパティは保つ。
-mode-line は (:eval ...) が返した文字列の中の %-construct も展開するので、
-そのままだと \"29%\" の % が消える。"
-  (with-temp-buffer
-    (insert string)
-    (goto-char (point-min))
-    (while (search-forward "%" nil t)
-      (let ((props (text-properties-at (1- (point)))))
-        (insert "%")
-        (set-text-properties (1- (point)) (point) props)))
-    (buffer-string)))
-
 (defun wamei/claude-usage--invalidate (&rest _)
   "キャッシュを捨て、地色への馴染ませを引き直す。テーマを変えたときなど。
 remap には色を直接入れてあるので、テーマが変わったら入れ直さないと
@@ -497,28 +487,9 @@ remap には色を直接入れてあるので、テーマが変わったら入�
                     (wamei/claude-usage--images-p))))
     (unless (equal (car wamei/claude-usage--cache) key)
       (setq wamei/claude-usage--cache
-            (cons key (wamei/claude-usage--escape
+            (cons key (wamei/term-modeline-escape
                        (wamei/claude-usage--render wamei/claude-usage--state now)))))
     (cdr wamei/claude-usage--cache)))
-
-(defun wamei/claude-usage--mode-line-tag-width ()
-  "ghostel の入力モードタグを描いたときの桁数。無ければ 0。
-タグ (\":Copy\" / \":Emacs\" / \":Char\" など) は ghostel が
-`mode-line-process' に入れる。文字列とは限らず、進捗表示やスピナーと
-合成された mode-line construct のこともあるので `format-mode-line' で測る。"
-  (if mode-line-process
-      (string-width (format-mode-line mode-line-process))
-    0))
-
-(defun wamei/claude-usage--mode-line-align (width)
-  "WIDTH 桁のものを右端に寄せるための詰め物を返す。WIDTH が 0 なら空文字列。"
-  (if (zerop width)
-      ""
-    (propertize " " 'display `(space :align-to (- right ,width)))))
-
-(defun wamei/claude-usage--mode-line-spacer ()
-  "使用量の行と入力モードタグの間を埋めて、タグを右端に寄せる。"
-  (wamei/claude-usage--mode-line-align (wamei/claude-usage--mode-line-tag-width)))
 
 (defconst wamei/claude-usage--mode-line-format
   '(" " (:eval (wamei/claude-usage-mode-line))
@@ -526,7 +497,7 @@ remap には色を直接入れてあるので、テーマが変わったら入�
     ;; `mode-line-format' を丸ごと置き換えているので、足さないと
     ;; copy mode に入って端末が止まっていることに気づけない。
     ;; タグには ghostel が mouse-1 で抜けるキーマップを付けてある。
-    (:eval (wamei/claude-usage--mode-line-spacer))
+    (:eval (wamei/term-modeline-align (wamei/term-modeline-process-width)))
     mode-line-process)
   "Claude のバッファに入れる `mode-line-format'。")
 

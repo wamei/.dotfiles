@@ -338,8 +338,10 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
   :doc "モードラインを隠す"
   :ensure t
   :leaf-defer nil
+  ;; ghostel バッファは term-modeline.el の `wamei/term-modeline-setup' が
+  ;; 振り分ける (端末パネルには mode-line を出し、それ以外は隠す)。ここで
+  ;; 無条件に掛けると、先に入れた mode-line-format を後から nil にしてしまう。
   :hook
-  ((ghostel-mode-hook) . hide-mode-line-mode)
   ((dired-mode-hook ghostel-mode-hook wamei/term-list-mode-hook image-mode-hook)
    . (lambda() (display-line-numbers-mode 0))))
 
@@ -410,6 +412,11 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
             ;; spinner-types に一覧がある。ASCII の型なら端末パネルの
             ;; フォールバックフォント問題を踏まない。
             (ghostel-progress-function . #'ghostel-spinner-progress)
+            ;; スピナーの形。`spinner-create' は型シンボルの代わりに文字列の
+            ;; ベクタも受け取るので、spinner-types に無い形も spinner.el に
+            ;; 手を入れず渡せる。ブレイルは Apple Braille にフォールバックする
+            ;; (既定フォントより背は低いので行高は揺れない)。
+            (ghostel-spinner-type . ["⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"])
             ;; copy mode は端末を凍らせるので、意図せず入ると Claude の
             ;; パネルが更新されなくなる。自動で読み取り専用モードへ移る経路
             ;; (マウスのクリックとドラッグ / mark の活性化 / isearch・ミニバッファ
@@ -430,6 +437,12 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
   ;; kill-ring 連携とクリップボードの画像渡し。実体は term-input.el
   ;; (init.el は symlink なので実体の隣から読む)。
   (load (expand-file-name "term-input"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+
+  ;; 端末パネルの mode-line は term-modeline.el。claude-usage.el が
+  ;; 右寄せと %-エスケープをここから取るので、先に読む。
+  (load (expand-file-name "term-modeline"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
@@ -510,7 +523,11 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
-  (add-hook 'ghostel-mode-hook #'wamei/term--setup-buffer))
+  (add-hook 'ghostel-mode-hook #'wamei/term--setup-buffer)
+  ;; mode-line の振り分け (端末パネルには出す / それ以外の ghostel バッファは
+  ;; 隠す) と、直前のコマンドの終了ステータスの追従 (term-modeline.el)
+  (add-hook 'ghostel-mode-hook #'wamei/term-modeline-setup)
+  (wamei/term-modeline-enable))
 
 (leaf claude-code-ide
   :doc "Claude Code の IDE 連携"
