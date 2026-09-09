@@ -162,3 +162,71 @@ run = [
   # 更新は `mise run update` (brew upgrade) 側の明示操作に委ねる。
   "command -v brew >/dev/null 2>&1 && { brew list --cask emacs-plus-app >/dev/null 2>&1 || brew install --cask emacs-plus-app; } || true",
 ]
+
+# ---------------------------------------------------------------------------
+# 設定の妥当性検証 (非破壊)
+#   mise run verify
+#
+# [dotfiles] のエントリ内の未知キーは警告なしに無視されるため、目視レビューでは
+# 誤りを検出できない。dry-run が唯一の検証手段になる。
+# ---------------------------------------------------------------------------
+[tasks.verify]
+description = "設定の妥当性を検証する (非破壊)"
+run = [
+  # bootstrap 全体の dry-run。パッケージトークンの解決、[dotfiles] の source 存在、
+  # defaults の妥当性、login shell、tools の解決までを一括で検証する。
+  # 不正な設定があれば非ゼロで終了する。
+  #
+  # --force-dotfiles を付けるのは「既存ファイルを壊す」検査を黙らせるためではなく、
+  # その検査が環境依存で偽陽性になるため。~/.config などは実ディレクトリとして
+  # 存在しがちで、素の環境では必ず衝突として報告される。ここで検証したいのは設定の
+  # 妥当性であって実行環境の状態ではない。dry-run なので何も書き換わらない。
+  "mise bootstrap -n --force-dotfiles",
+]
+
+# ---------------------------------------------------------------------------
+# 日常の更新
+#   mise run update
+#
+# 更新経路が 3 系統に分かれており、どれか 1 つでは全部は上がらない:
+#   1. brew   [bootstrap.packages] の formula / cask と mise 本体。
+#             mise bootstrap は導入済みならスキップするだけでアップグレードしない
+#             ので、これらを上げられるのは brew だけ。
+#   2. mise upgrade
+#             .config/mise/config.toml の [tools]。"latest" 指定なので最新へ上がる。
+#   3. mise run bootstrap
+#             brew backend で扱えず退避したものの導入。冪等。
+#
+# 注: 対話的に (自分のシェルから) 実行すること。自己更新機構を持つ cask
+# (Slack / Google Chrome) は /Applications 配下が root:wheel になっており
+# chown に sudo が要る。先に `sudo -v` を済ませ、対象アプリは終了しておく。
+#
+# --greedy は付けない。--greedy は auto_updates 済み cask も対象にするが、それは
+# 「アプリ自身が更新機構を持つので brew は手を出さない」という cask 側の宣言を
+# 上書きすることに他ならない。実測: karabiner-elements は brew の Caskroom には
+# 14.12.0 のままだが、実体は自己更新で 16.3.0 まで進んでいる。auto_updates な
+# ので --greedy 無しの brew upgrade --cask はこれをスキップし続け、その食い違いは
+# 無害なまま放置される。ここで --greedy を付けると brew が
+# /Applications/Karabiner-Elements.app を丸ごと差し替え、[bootstrap.hooks] や
+# emacs-plus-app のコメントに書いたのと同じ TCC リセット (Accessibility 等の
+# 許可が失効し、再許可が要る) をこのアプリにも起こす。この計画は
+# /Applications/Emacs.app で同じ事故を一度起こしている。--greedy を付けないのは
+# スタイルの問題ではなく、この再発を防ぐための明示的な選択。
+# ---------------------------------------------------------------------------
+[tasks.update]
+description = "brew と mise の管理下をまとめて最新化する"
+run = [
+  '''
+if command -v brew >/dev/null 2>&1; then
+  brew update
+  # cask は対象アプリが起動していると chown に失敗し、その 1 本のために brew 全体が
+  # 非ゼロで終わる。ここで止めると後続の mise upgrade まで巻き添えになるので、案内
+  # だけ出して先へ進める。
+  brew upgrade || echo "brew upgrade: 一部失敗。起動中のアプリを終了してから brew upgrade を流し直すこと。"
+else
+  echo "brew not found; skipping system packages"
+fi
+''',
+  "mise upgrade",
+  "mise run bootstrap",
+]
