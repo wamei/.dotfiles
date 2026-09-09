@@ -120,6 +120,11 @@ adopt = true
 [bootstrap.macos.defaults]
 # ApplePressAndHold を切るのは、長押しでアクセント候補を出さずキーリピートさせるため
 # (Emacs で必須)。fnState は F1-F12 をファンクションキーとして扱う。
+# KeyRepeat/InitialKeyRepeat と tilesize は実機で plist 型が float (System Settings の
+# スライダー経由で書かれたため) だが、mise は -int で書く。数値は同一で下の
+# AppleShowAllFiles と同じ型だけの実害無い差分。ただしスライダーを再度動かすと float に
+# 戻り、以降の bootstrap/status/-n が毎回差分として報告する。この版の dry-run/status は
+# 最初の conflict で打ち切るため、この見かけ上の差分が後続の本当の差分を隠しうる点に注意。
 "NSGlobalDomain" = { KeyRepeat = 2, InitialKeyRepeat = 30, ApplePressAndHoldEnabled = false, NSAutomaticCapitalizationEnabled = false, "com.apple.keyboard.fnState" = true }
 "com.apple.dock" = { autohide = true, tilesize = 64 }
 # AppleShowAllFiles は旧 README が `defaults write ... True` と文字列で書いていた
