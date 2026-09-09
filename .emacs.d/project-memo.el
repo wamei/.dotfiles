@@ -269,8 +269,7 @@ posframe が使えない環境 (`posframe-workable-p' が nil、batch や child 
          (use-posframe (and (not main-window) (posframe-workable-p))))
     (cond
      (use-posframe
-      (if (and (wamei/project-memo-posframe-frame)
-               (eq wamei/project-memo--posframe-buffer buffer))
+      (if (eq (wamei/project-memo-posframe-buffer) buffer)
           (wamei/project-memo-posframe-hide)
         (wamei/project-memo-posframe-show buffer)))
      (t
@@ -328,6 +327,17 @@ posframe が使えない環境では `C-u' 無しでも本文 window に出る�
   (and wamei/project-memo--posframe-frame
        (frame-live-p wamei/project-memo--posframe-frame)
        wamei/project-memo--posframe-frame))
+
+(defun wamei/project-memo-posframe-buffer ()
+  "posframe に出しているメモバッファ。出ていなければ nil。
+
+表示先を選ぶ層 (`wamei/project-memo--toggle') はこれを見る。内部変数を
+直接読ませないのは、あちらが posframe 層より前に書かれていて前方参照に
+なる (byte-compile が free variable を警告する) のと、表示先の判断に
+posframe 層の内部を覗かせないため。フレームが死んでいるときに nil を
+返すのは `wamei/project-memo-posframe-frame' と同じ扱い。"
+  (and (wamei/project-memo-posframe-frame)
+       wamei/project-memo--posframe-buffer))
 
 (defun wamei/project-memo--posframe-size (ratio total minimum)
   "RATIO (親フレームの TOTAL に対する比率) から posframe の大きさを出す。
@@ -432,13 +442,13 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 - `hide'   … 隠す (フォーカスが Emacs 内の別の場所へ移った)
 - `handoff'… 隠して中身を本文 window へ渡す (メモ以外のバッファが入った)
 
-'handoff は実際にはまず通らない保険。posframe.el は posframe の window を
+\='handoff は実際にはまず通らない保険。posframe.el は posframe の window を
 強い dedicated にする (`set-window-dedicated-p' に t、posframe.el の
 `posframe-show')。強い dedicated の window は `set-window-buffer' がエラーに
 なり、`switch-to-buffer' も `display-buffer' も避けるので、メモ以外のバッファ
 がここに入ることは事実上ない。メモにフォーカスがあるまま `find-file' や
 `magit-status' を実行すると、そのバッファは `display-buffer' が親フレームへ
-出し、posframe は下の 'hide (フォーカスが外れた) で閉じる。spec の 3 つ目の
+出し、posframe は下の \='hide (フォーカスが外れた) で閉じる。spec の 3 つ目の
 閉じる条件はそれで満たされている。この枝は、何かが dedicated を外して
 しまった場合にメモ以外のバッファが child frame に取り残されないようにする
 ためだけに残してある。
@@ -447,10 +457,10 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 返す。posframe の child frame は自分のミニバッファを持たず親フレームのもの
 を使う (posframe.el)。そのためメモにフォーカスがあるまま `C-x C-f' や
 `M-x' を始めると、コマンドの途中で `selected-frame' が親に変わってしまう。
-これを 'hide と読むと、モジュールは追跡変数も hook も捨てるのに Emacs は
+これを \='hide と読むと、モジュールは追跡変数も hook も捨てるのに Emacs は
 ミニバッファを抜けた後で child frame の window を選択し直すので、閉じ方の
 分からないフレームが画面に残る。ミニバッファを抜けたあと本当に別の場所へ
-フォーカスが移っていれば、次のコマンド境界で通常どおり 'hide になる。"
+フォーカスが移っていれば、次のコマンド境界で通常どおり \='hide になる。"
   (when-let* ((frame (wamei/project-memo-posframe-frame)))
     (cond
      ((active-minibuffer-window) nil)
@@ -465,9 +475,9 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 閉じる条件のうち「フォーカスが外れた」と「メモ以外のバッファが入った」を
 ここで見る (トグルで閉じるのは `wamei/project-memo-toggle' 側)。
 
-日常的に通るのは 'hide の方。`find-file' や `magit-status' をメモから実行
+日常的に通るのは \='hide の方。`find-file' や `magit-status' をメモから実行
 した場合も、そのバッファは posframe ではなく親フレームに出て、posframe は
-フォーカスが外れたものとして閉じる。'handoff はそれが成り立たなくなった
+フォーカスが外れたものとして閉じる。\='handoff はそれが成り立たなくなった
 ときの保険で、なぜ実際には通らないかは `wamei/project-memo--posframe-action'
 の docstring に書いた。通ったときは、取り残されたバッファを本文 window へ
 引き取る。`post-command-hook' は再描画の前に走るので、別バッファが posframe
