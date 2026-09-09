@@ -412,7 +412,7 @@ ghostel 自身のグリフ縮小 (ghostel-glyph-scale-floor) は元の文字の�
   ;; ここで貼るキーは ghostel-semi-char-mode-map (ghostel-keymap-exceptions の
   ;; :set が作るマップ) に直接足しているだけなので、init 後に M-x customize で
   ;; ghostel-keymap-exceptions を触ると ghostel--rebuild-semi-char-keymap が
-  ;; setcdr でマップをその場で作り直し、この C-k と s-v は黙って失われる。
+  ;; setcdr でマップをその場で作り直し、この C-k / s-v / M-w は黙って失われる。
   ;; init 時の順序 (:custom → :config) では問題にならない。
   ;;
   ;; C-k はそのまま端末へ送ると zsh の CUTBUFFER にしか残らないので、
@@ -422,6 +422,13 @@ ghostel 自身のグリフ縮小 (ghostel-glyph-scale-floor) は元の文字の�
   ;; yank が効いてしまい、バッファに挿入されるだけで端末には届かない)。
   ;; C-y / M-y は ghostel が ghostel-yank / ghostel-yank-pop を持っている。
   (define-key ghostel-semi-char-mode-map (kbd "s-v") #'ghostel-yank)
+  ;; M-w は例外 (Emacs 側) にしてあるが、素の kill-ring-save はマークが一度も無い
+  ;; バッファで error になる。Claude のパネルではドラッグが Claude へ転送され、
+  ;; Claude が選択を自分でクリップボードへコピーするので Emacs 側にマークが
+  ;; できず、その直後の M-w で毎回デバッガが開いていた。マークが無いときは
+  ;; メッセージだけ出す (term-input.el)。copy mode では ghostel の
+  ;; ghostel-readonly-copy が優先されるので、そちらの挙動は変わらない。
+  (define-key ghostel-semi-char-mode-map (kbd "M-w") #'wamei/term-input-copy)
 
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
