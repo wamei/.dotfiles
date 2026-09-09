@@ -103,12 +103,45 @@
       (should (= (string-width line) 3)))))
 
 (ert-deftest wamei/kitty-graphics-next-id-cycles-in-8-bits ()
-  "256 色モードでも使えるよう ID は 1〜255 を巡回する。"
-  (let ((wamei/kitty-graphics--last-id 0))
+  "256 色モードでも使えるよう ID は 1〜255 を巡回する。
+`--live-ids' は process global なので、他のテストへ漏らさないよう let で nil に束縛する。"
+  (let ((wamei/kitty-graphics--live-ids nil))
+    (let ((wamei/kitty-graphics--last-id 0))
+      (should (= (wamei/kitty-graphics--next-id) 1))
+      (should (= (wamei/kitty-graphics--next-id) 2)))
+    (let ((wamei/kitty-graphics--last-id 255))
+      (should (= (wamei/kitty-graphics--next-id) 1)))))
+
+(ert-deftest wamei/kitty-graphics-next-id-skips-live-ids ()
+  "既に生きている (まだ解放していない) ID は飛ばす。
+既存 ID へ a=T を送ると端末側で置き換わり、先に出していた画像が壊れるため。"
+  (let ((wamei/kitty-graphics--last-id 0)
+        (wamei/kitty-graphics--live-ids '(2 3)))
     (should (= (wamei/kitty-graphics--next-id) 1))
-    (should (= (wamei/kitty-graphics--next-id) 2)))
-  (let ((wamei/kitty-graphics--last-id 255))
-    (should (= (wamei/kitty-graphics--next-id) 1))))
+    (should (= (wamei/kitty-graphics--next-id) 4))))
+
+(ert-deftest wamei/kitty-graphics-next-id-does-not-loop-forever-when-all-live ()
+  "255 個すべてが使用中でも無限ループせず、いちばん古い ID を諦めて返す。"
+  (let* ((wamei/kitty-graphics--last-id 0)
+         (wamei/kitty-graphics--live-ids (number-sequence 1 255)))
+    (should (= (wamei/kitty-graphics--next-id) 255))))
+
+(ert-deftest wamei/kitty-graphics-put-tracks-live-id-and-delete-releases-it ()
+  "put が成功すると ID を `--live-ids' に載せ、delete で外れる。"
+  (let ((wamei/kitty-graphics--last-id 0)
+        (wamei/kitty-graphics--live-ids nil)
+        (tmp (make-temp-file "kitty-graphics-test-" nil ".png")))
+    (unwind-protect
+        (progn
+          (write-region "fake-png-bytes" nil tmp nil 'silent)
+          (cl-letf (((symbol-function 'wamei/kitty-graphics--prepare-png) (lambda (&rest _) tmp))
+                    ((symbol-function 'wamei/kitty-graphics--send) #'ignore))
+            (let ((id (wamei/kitty-graphics-put "/tmp/a.png" 4 2)))
+              (should (= id 1))
+              (should (equal wamei/kitty-graphics--live-ids '(1)))
+              (wamei/kitty-graphics-delete id)
+              (should-not wamei/kitty-graphics--live-ids))))
+      (when (file-exists-p tmp) (delete-file tmp)))))
 
 ;;; sips
 
