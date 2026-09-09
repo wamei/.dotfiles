@@ -15,6 +15,12 @@
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
 
+;; タブに紐づいたプロジェクト (wamei/project-tabs-current-root) を使うため。
+;; init.el では tab-bar ブロックで読まれる。
+(load (expand-file-name "project-tabs.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
+
 (wamei/term-panel-setup)
 
 ;;; フィクスチャ
@@ -62,6 +68,15 @@
        (delete-other-windows)
        (delete-directory base t))))
 
+(defmacro wamei/term-panel-test--with-tab-root (root &rest body)
+  "カレントタブに ROOT を紐づけて BODY を評価する (project-tabs.el)。
+`wamei/project-tabs-set-root' は frame の tabs パラメータを直接書き換えるので、
+後始末はパラメータごと捨てる (batch では tab-bar が作り直す)。"
+  (declare (indent 1))
+  `(unwind-protect
+       (progn (wamei/project-tabs-set-root ,root) ,@body)
+     (set-frame-parameter nil 'tabs nil)))
+
 (defmacro wamei/term-panel-test--in (root &rest body)
   "ROOT のバッファにいるつもりで BODY を評価する。"
   (declare (indent 1))
@@ -80,6 +95,44 @@
             (push (buffer-name buffer) names))
           (forward-line 1))
         (nreverse names)))))
+
+;;; 起点になるプロジェクト
+
+(ert-deftest wamei/term-panel-root-uses-tab-project-outside-project ()
+  "プロジェクト外のバッファ (*scratch* など) から呼んでもタブのプロジェクトを起点にする。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--with-tab-root alpha
+      (wamei/term-panel-test--in base
+        (should (equal (wamei/term--root) alpha))
+        (should (equal (wamei/term--buffer-name 1) "*term: alpha*"))))))
+
+(ert-deftest wamei/term-panel-root-prefers-tab-over-buffer-project ()
+  "別プロジェクトのファイルを開いていても、タブのプロジェクトの端末を出す。"
+  (wamei/term-panel-test--with-projects (alpha beta)
+    (wamei/term-panel-test--with-tab-root alpha
+      (wamei/term-panel-test--in beta
+        (should (equal (wamei/term--root) alpha))))))
+
+(ert-deftest wamei/term-panel-root-in-panel-buffers-keeps-their-project ()
+  "端末と一覧の中では、タブが別プロジェクトでもそのバッファのプロジェクトを見る。
+一覧の再描画やタイトル変更 (プロセスフィルタ) はパネルに出ている端末を基準に
+動くので、ここでタブに引っぱられると別プロジェクトの一覧を描いてしまう。"
+  (wamei/term-panel-test--with-projects (alpha beta)
+    (wamei/term-panel-test--in beta (wamei/term--create 1) (wamei/term--create 2))
+    (let ((list-b (wamei/term-panel-test--in beta (wamei/term--list-buffer))))
+      (wamei/term-panel-test--with-tab-root alpha
+        (with-current-buffer "*term: beta*"
+          (should (equal (wamei/term--root) beta))
+          (should (equal (mapcar #'buffer-name (wamei/term--buffers))
+                         '("*term: beta*" "*term: beta 2*"))))
+        (with-current-buffer list-b
+          (should (equal (wamei/term--root) beta)))))))
+
+(ert-deftest wamei/term-panel-root-falls-back-to-buffer-project-without-tab ()
+  "タブにプロジェクトが紐づいていなければ、従来どおりバッファ基準。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (should (equal (wamei/term--root) alpha)))))
 
 ;;; バッファ名
 
