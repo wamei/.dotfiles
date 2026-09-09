@@ -1,31 +1,37 @@
-#! /bin/bash
+#!/bin/bash
+set -euo pipefail
 
-# make symbolic links
-ln -sf ~/.dotfiles/.inputrc ~/.inputrc
-ln -sf ~/.dotfiles/.zshenv ~/.zshenv
-ln -sf ~/.dotfiles/.zshrc ~/.zshrc
-#ln -sf ~/.dotfiles/.gitconfig ~/.gitconfig
-ln -sf ~/.dotfiles/.tmux.conf ~/.tmux.conf
+# 新規マシンの seed。symlink や brew パッケージの導入は mise.toml の宣言が持つ
+# ので、ここでは `mise bootstrap` を動かすのに最低限必要なものだけを入れる。
+#
+#   curl -fsSL https://raw.githubusercontent.com/wamei/.dotfiles/master/init.sh | bash
+#
+# 既にこのリポジトリを clone してあるなら、リポジトリ直下で
+# `mise trust && mise bootstrap` を叩くだけでよい。
 
-mkdir -p ~/.config/mise
-ln -sf ~/.dotfiles/.config/mise/config.toml ~/.config/mise/config.toml
+DOTFILES_ROOT="$HOME/projects/github.com/wamei/.dotfiles"
 
-mkdir -p ~/.config/yamllint
-ln -sf ~/.dotfiles/.config/yamllint/config ~/.config/yamllint/config
+# Xcode Command Line Tools (git が入る)。導入済みなら何もしない。
+xcode-select -p >/dev/null 2>&1 || xcode-select --install
 
-mkdir -p ~/.aws
-ln -sf ~/.dotfiles/.aws/update-mfa-profile ~/.aws/update-mfa-profile
+# Homebrew。mise と ghq の入手経路であり、cask の導入にも要る。
+if ! command -v brew >/dev/null 2>&1; then
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+eval "$(/opt/homebrew/bin/brew shellenv)"
 
-mkdir -p ~/.emacs.d/
-ln -sf ~/.dotfiles/.emacs.d/init.el ~/.emacs.d/init.el
-ln -sf ~/.dotfiles/.emacs.d/early-init.el ~/.emacs.d/early-init.el
+# mise と ghq。どちらも [tools] / [bootstrap.packages] でも宣言しているが、
+# clone の時点ではまだ mise が動いていないのでここでは brew から入れる。
+brew install mise ghq
 
-# copy bin
-mkdir -p ~/bin
-cp -f ~/.dotfiles/bin/rpbcopy ~/bin
+# ghq.root は git config ではなく環境変数で渡す。~/.gitconfig は [dotfiles] が
+# symlink で管理するため、ここで git config --global を叩くと実ファイルが作られ、
+# 直後の mise bootstrap が symlink を張れずに衝突する。恒久的な設定は
+# リポジトリの .gitconfig が持っている。
+if [ ! -d "$DOTFILES_ROOT" ]; then
+  GHQ_ROOT="$HOME/projects" ghq get git@github.com:wamei/.dotfiles.git
+fi
 
-# setting git config
-git config --global user.name "wamei"
-git config --global user.email "wamei.cho@gmail.com"
-git config --global color.ui auto
-git config --global core.excludesfile "~/.gitignore"
+cd "$DOTFILES_ROOT"
+mise trust
+mise bootstrap
