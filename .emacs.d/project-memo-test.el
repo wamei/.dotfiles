@@ -120,12 +120,53 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
         (should (local-variable-p 'project-current-directory-override))
         (should (equal (project-root (project-current nil)) root))))))
 
+(ert-deftest wamei/project-memo-buffer-sets-default-directory-to-project-root ()
+  (wamei/project-memo-test--with-project root
+    ;; project-current-directory-override はバッファローカルなので、それを
+    ;; 見ない default-directory の利用者 (project-sidebar の toggle、
+    ;; dired-jump など) には届かない。それらにも同じ答えを返させる。
+    (let ((buffer (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+      (with-current-buffer buffer
+        (should (equal (file-truename default-directory) root))))))
+
 (ert-deftest wamei/project-memo-buffer-does-not-override-project-for-global ()
   (wamei/project-memo-test--with-project root
     (let ((buffer (wamei/project-memo-buffer nil)))
       (with-current-buffer buffer
         (should-not (local-variable-p 'project-current-directory-override))
-        (should (equal (buffer-file-name) (wamei/project-memo-global-file)))))))
+        (should (equal (buffer-file-name) (wamei/project-memo-global-file)))
+        ;; 全体メモはプロジェクトに属さないので default-directory も触らない
+        ;; (メモの実体がある場所のまま)。
+        (should (equal (file-truename default-directory)
+                       (file-truename wamei/project-memo-directory)))))))
+
+(ert-deftest wamei/project-memo-sidebar-reopens-at-project-root ()
+  (wamei/project-memo-test--with-project root
+    ;; C-x C-p でプロジェクトを開き、sidebar を q で閉じ、端末パネル等から
+    ;; C-x C-n で開き直す経路。`wamei/project-sidebar-toggle' の「非表示」枝は
+    ;; 本文 window のバッファの default-directory を生で読むので、そこにメモが
+    ;; いるとメモディレクトリの dired (" *sidebar: org*") が出てしまう。
+    ;;
+    ;; カレントバッファをメモ以外にしておくのが再現の条件。メモ自身が
+    ;; カレントだと、そのバッファローカルな
+    ;; `project-current-directory-override' が
+    ;; `wamei/project-sidebar--root-for' の中の `project-current' に効いて
+    ;; しまい、default-directory が間違っていても正しい root に化ける。
+    (let ((main (selected-window))
+          (memo (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+      (unwind-protect
+          (progn
+            (set-window-buffer main memo)
+            (should-not (local-variable-p 'project-current-directory-override))
+            (wamei/project-sidebar-toggle)
+            (let ((side (wamei/project-sidebar-window)))
+              (should side)
+              (should (equal (file-truename
+                              (with-current-buffer (window-buffer side) default-directory))
+                             root))))
+        (when-let* ((side (wamei/project-sidebar-window)))
+          (delete-window side))
+        (select-window main)))))
 
 (ert-deftest wamei/project-memo-buffer-is-org-mode ()
   (wamei/project-memo-test--with-project root

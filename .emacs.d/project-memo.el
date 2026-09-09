@@ -84,7 +84,18 @@
 プロジェクトメモには `project-current-directory-override' をバッファ
 ローカルで持たせる。メモの実体は ~/org/ にあってプロジェクト外なので、
 これが無いとタブ名の判定 (`wamei/tab-bar-tab-name-project') が外れ、
-project-find-file などの起点もメモのディレクトリになってしまう。"
+project-find-file などの起点もメモのディレクトリになってしまう。
+
+`default-directory' も同じ root に向ける。override はバッファローカルで
+`project-current' 越しにしか見えないので、default-directory を生で読む
+利用者には届かない。たとえば `wamei/project-sidebar-toggle' の「sidebar が
+出ていない」枝は本文 window のバッファの default-directory をそのまま
+使うため、メモが本文にいると ~/org/ の dired が開いてしまう
+(カレントバッファがメモ自身なら override が効いて隠れるが、端末パネル等に
+フォーカスがあるときに露呈する)。1 行で default-directory の利用者を
+まとめて正しくする。
+
+全体メモは (プロジェクトに属さないので) どちらも設定しない。"
   (let* ((file (if project
                    (wamei/project-memo-file project)
                  (wamei/project-memo-global-file)))
@@ -94,8 +105,9 @@ project-find-file などの起点もメモのディレクトリになってし�
       (when (and new (zerop (buffer-size)))
         (insert "#+title: " (if project (project-name project) (file-name-base file)) "\n\n"))
       (if project
-          (setq-local project-current-directory-override
-                      (file-name-as-directory (expand-file-name (project-root project))))
+          (let ((root (file-name-as-directory (expand-file-name (project-root project)))))
+            (setq-local project-current-directory-override root)
+            (setq-local default-directory root))
         (kill-local-variable 'project-current-directory-override)))
     buffer))
 
