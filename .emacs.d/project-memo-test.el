@@ -211,6 +211,35 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
     (with-current-buffer (wamei/project-memo-buffer nil)
       (should (derived-mode-p 'org-mode)))))
 
+;;; posframe のスタブ
+
+;; 下の「表示トグル」からも「posframe」からも使うので、どちらより前に置く。
+;; マクロの定義が最初の使用より後ろにあると byte-compile が
+;; "macro ... defined too late" を出す。ert の本体は遅延展開されるので
+;; 解釈実行では動いてしまい、テストを走らせるだけでは気づけない。
+
+(defmacro wamei/project-memo-test--with-posframe-stub (calls &rest body)
+  "`posframe-show' / `posframe-hide' をスタブして BODY を評価する。
+
+CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新しい順に
+積まれる。`posframe-show' はダミーのシンボル \\='memo-posframe-frame を返し、
+`frame-live-p' もそれを生きているものとして扱う (batch では child frame を
+作れないため)。"
+  (declare (indent 1))
+  `(let ((,calls nil))
+     (cl-letf (((symbol-function 'posframe-show)
+                (lambda (buffer &rest args)
+                  (push (cons 'show (cons buffer args)) ,calls)
+                  'memo-posframe-frame))
+               ((symbol-function 'posframe-hide)
+                (lambda (buffer) (push (list 'hide buffer) ,calls) nil))
+               ((symbol-function 'frame-live-p)
+                (lambda (frame) (eq frame 'memo-posframe-frame)))
+               ((symbol-function 'select-frame-set-input-focus)
+                (lambda (frame &optional _norecord) frame))
+               ((symbol-function 'posframe-workable-p) (lambda () t)))
+       ,@body)))
+
 ;;; 表示トグル
 
 (ert-deftest wamei/project-memo-toggle-shows-project-memo-in-main-window ()
@@ -412,23 +441,32 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
         (wamei/project-memo-posframe-hide)))))
 
 (ert-deftest wamei/project-memo-toggle-closes-the-posframe-when-shown ()
+  ;; hide は unwind-protect で必ず走らせる (隣の posframe テストと同じ理由)。
+  ;; 途中の should が落ちたまま抜けると post-command-hook と posframe 変数が
+  ;; 汚れたまま残り、後続テストへ漏れる。
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
-      (wamei/project-memo-toggle-global)
-      (should (wamei/project-memo-posframe-frame))
-      (wamei/project-memo-toggle-global)
-      (should-not (wamei/project-memo-posframe-frame)))))
+      (unwind-protect
+          (progn
+            (wamei/project-memo-toggle-global)
+            (should (wamei/project-memo-posframe-frame))
+            (wamei/project-memo-toggle-global)
+            (should-not (wamei/project-memo-posframe-frame)))
+        (wamei/project-memo-posframe-hide)))))
 
 (ert-deftest wamei/project-memo-toggle-with-prefix-closes-the-posframe-first ()
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
       (let ((main (selected-window)))
-        (wamei/project-memo-toggle-global)          ; posframe
-        (should (wamei/project-memo-posframe-frame))
-        (wamei/project-memo-toggle-global '(4))     ; 本文 window
-        (should-not (wamei/project-memo-posframe-frame))
-        (should (equal (buffer-file-name (window-buffer main))
-                       (wamei/project-memo-global-file)))))))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-toggle-global)          ; posframe
+              (should (wamei/project-memo-posframe-frame))
+              (wamei/project-memo-toggle-global '(4))     ; 本文 window
+              (should-not (wamei/project-memo-posframe-frame))
+              (should (equal (buffer-file-name (window-buffer main))
+                             (wamei/project-memo-global-file))))
+          (wamei/project-memo-posframe-hide))))))
 
 (ert-deftest wamei/project-memo-toggle-falls-back-to-the-main-window ()
   ;; posframe-workable-p が nil のときは prefix 無しでも本文 window。
@@ -479,28 +517,6 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
           (wamei/project-memo-posframe-hide))))))
 
 ;;; posframe
-
-(defmacro wamei/project-memo-test--with-posframe-stub (calls &rest body)
-  "`posframe-show' / `posframe-hide' をスタブして BODY を評価する。
-
-CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新しい順に
-積まれる。`posframe-show' はダミーのシンボル 'memo-posframe-frame を返し、
-`frame-live-p' もそれを生きているものとして扱う (batch では child frame を
-作れないため)。"
-  (declare (indent 1))
-  `(let ((,calls nil))
-     (cl-letf (((symbol-function 'posframe-show)
-                (lambda (buffer &rest args)
-                  (push (cons 'show (cons buffer args)) ,calls)
-                  'memo-posframe-frame))
-               ((symbol-function 'posframe-hide)
-                (lambda (buffer) (push (list 'hide buffer) ,calls) nil))
-               ((symbol-function 'frame-live-p)
-                (lambda (frame) (eq frame 'memo-posframe-frame)))
-               ((symbol-function 'select-frame-set-input-focus)
-                (lambda (frame &optional _norecord) frame))
-               ((symbol-function 'posframe-workable-p) (lambda () t)))
-       ,@body)))
 
 (ert-deftest wamei/project-memo-posframe-show-passes-buffer-and-center-poshandler ()
   (wamei/project-memo-test--with-project root
@@ -684,8 +700,10 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
         (cl-letf (((symbol-function 'frame-live-p) (lambda (_frame) nil)))
           (wamei/project-memo-posframe-hide))
         (should-not (memq #'wamei/project-memo--posframe-post-command post-command-hook))
-        (should-not wamei/project-memo--posframe-frame)
-        (should-not wamei/project-memo--posframe-buffer)))))
+        ;; ここでは frame-live-p はスタブの「'memo-posframe-frame は生きている」
+        ;; に戻っている。追跡変数が残っていれば下の 2 つは非 nil になる。
+        (should-not (wamei/project-memo-posframe-frame))
+        (should-not (wamei/project-memo-posframe-buffer))))))
 
 ;;; posframe の自動クローズ
 
