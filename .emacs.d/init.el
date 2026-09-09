@@ -355,7 +355,8 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
 
 (leaf ghostel
   :doc "フレーム下部に固定する端末パネル"
-  :ensure t
+  ;; spinner は ghostel-spinner-progress (OSC 9;4 の進捗表示) が要求する。
+  :ensure t spinner
   :bind (("C-z" . wamei/term-toggle)
          ("C-S-z" . wamei/term-new)
          ("C-q t c" . wamei/term-new)
@@ -400,6 +401,15 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
             ;; (wamei/term-glyph-substitutions) で同形の記号に置き換えて行高を守る。
             ;; 置換に無い背の高い記号が出た行だけ数 px 伸びる (vterm 時代と同じ)。
             (ghostel-glyph-scale-floor . 1.0)
+            ;; Claude は作業中に OSC 9;4;3 (進捗率不明) を送ってくる。既定の
+            ;; ghostel-default-progress はこれを " [...]" という固定文字で出すので、
+            ;; spinner.el のアニメーションに替える。この defcustom の既定値は
+            ;; ghostel のロード時に (locate-library "spinner") を見て決まる
+            ;; 条件付きなので、ロード順に依存しないよう明示しておく。
+            ;; 形は ghostel-spinner-type (既定 progress-bar = "[=== ]") で、
+            ;; spinner-types に一覧がある。ASCII の型なら端末パネルの
+            ;; フォールバックフォント問題を踏まない。
+            (ghostel-progress-function . #'ghostel-spinner-progress)
             ;; copy mode は端末を凍らせるので、意図せず入ると Claude の
             ;; パネルが更新されなくなる。自動で読み取り専用モードへ移る経路
             ;; (マウスのクリックとドラッグ / mark の活性化 / isearch・ミニバッファ
