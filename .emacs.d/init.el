@@ -1149,7 +1149,9 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
                           (file-name-directory (file-truename user-init-file)))
         nil t)
   :config
-  ;; アイドル中の保存 (auto-save-visited-mode) と、メモから離れたときの保存。
+  ;; メモ専用のアイドルタイマーによる保存と、メモから離れたときの保存。
+  ;; auto-save-visited-mode は使わない (save-some-buffers 経由なので
+  ;; buffer-save-without-query の立ったバッファまで書いてしまう)。
   (wamei/project-memo-autosave-setup))
 
 (leaf dired-toggle-sudo
