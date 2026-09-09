@@ -408,15 +408,8 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
             ;; spinner.el のアニメーションに替える。この defcustom の既定値は
             ;; ghostel のロード時に (locate-library "spinner") を見て決まる
             ;; 条件付きなので、ロード順に依存しないよう明示しておく。
-            ;; 形は ghostel-spinner-type (既定 progress-bar = "[=== ]") で、
-            ;; spinner-types に一覧がある。ASCII の型なら端末パネルの
-            ;; フォールバックフォント問題を踏まない。
+            ;; 形は ghostel-spinner-type で決まる (:config で入れている)。
             (ghostel-progress-function . #'ghostel-spinner-progress)
-            ;; スピナーの形。`spinner-create' は型シンボルの代わりに文字列の
-            ;; ベクタも受け取るので、spinner-types に無い形も spinner.el に
-            ;; 手を入れず渡せる。ブレイルは Apple Braille にフォールバックする
-            ;; (既定フォントより背は低いので行高は揺れない)。
-            (ghostel-spinner-type . ["⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"])
             ;; copy mode は端末を凍らせるので、意図せず入ると Claude の
             ;; パネルが更新されなくなる。自動で読み取り専用モードへ移る経路
             ;; (マウスのクリックとドラッグ / mark の活性化 / isearch・ミニバッファ
@@ -491,6 +484,16 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; :config だと ghostel がロードされるまで登録されないので :init で行う。
   (wamei/term-panel-setup)
   :config
+  ;; スピナーの形。`spinner-create' は型シンボルの代わりに文字列のベクタも
+  ;; 受け取る (spinner.el が「自前のアニメーションを渡す」ために用意している道)
+  ;; ので、spinner-types に無い形も spinner.el に手を入れず渡せる。ただし
+  ;; ghostel-spinner-type の defcustom は :type 'symbol なので、:custom
+  ;; (= customize-set-variable) 経由だと型検査に引っかかって警告が出る。
+  ;; この defcustom に :set は無いので setq で入れて等価。
+  ;; ブレイルは Apple Braille にフォールバックする (既定フォントより背は低いので
+  ;; 行高は揺れない)。
+  (setq ghostel-spinner-type ["⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"])
+
   ;; ここで貼るキーは ghostel-semi-char-mode-map (ghostel-keymap-exceptions の
   ;; :set が作るマップ) に直接足しているだけなので、init 後に M-x customize で
   ;; ghostel-keymap-exceptions を触ると ghostel--rebuild-semi-char-keymap が
