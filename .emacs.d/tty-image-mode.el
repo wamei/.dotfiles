@@ -36,8 +36,12 @@
             (and buffer-file-name (wamei/kitty-graphics-image-size buffer-file-name)))))
 
 (defun wamei/tty-image--window-cells (window)
-  "WINDOW に収まる上限の (桁 . 行)。0 は転送が壊れるので 1 を下回らない。"
-  (cons (max 1 (window-body-width window))
+  "WINDOW に収まる上限の (桁 . 行)。0 は転送が壊れるので 1 を下回らない。
+桁は `window-body-width' より 1 少なくする。tty には fringe が無いので、
+`truncate-lines' が t でも行の長さが window-body-width ちょうどのときは
+最終桁が truncation glyph に取られてしまい、画像の右端 1 列が描かれなくなる。
+それを避けるためにあらかじめ 1 桁分空けておく (行数はこの問題の対象外)。"
+  (cons (max 1 (1- (window-body-width window)))
         (max 1 (window-body-height window))))
 
 (defun wamei/tty-image--target-cells (px window)
