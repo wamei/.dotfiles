@@ -595,6 +595,10 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   (load (expand-file-name "project-extra-files"
                           (file-name-directory (file-truename user-init-file)))
         nil t))
+  :custom
+  ;; 切り替え先で何をするかをミニバッファで選ばせず、ルートを dired で開く。
+  ;; シンボルを入れるとその command を即実行する (dispatch メニューを出さない)。
+  (project-switch-commands . #'project-dired)
 
 (leaf tab-bar
   :doc "プロジェクトごとのタブ"
