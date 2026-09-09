@@ -226,27 +226,57 @@ git repo にしても ~/org のプロジェクトとは判定されない」を�
              (get-buffer-create "*scratch*")))))
     (select-window window)))
 
-(defun wamei/project-memo-toggle (&optional global)
-  "本文 window にメモを出す。既に出ていれば元のバッファに戻る。
-
-GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐づいて
-いないときは GLOBAL 無しでも全体メモになる。
-
-出す先は `wamei/project-tabs-main-window'。sidebar や端末パネルに
-フォーカスがあっても本文 window に出す。
+(defun wamei/project-memo--show-in-main-window (buffer)
+  "BUFFER を本文 window に出す。既に出ていれば元のバッファに戻る。
 
 戻り先は window パラメータに退避する。メモから別のメモへ切り替えた
 ときは上書きせず、最初にメモを出す前のバッファを保つ。"
-  (interactive "P")
-  (let* ((project (unless global (wamei/project-memo--project)))
-         (buffer (wamei/project-memo-buffer project))
-         (window (wamei/project-tabs-main-window)))
+  (let ((window (wamei/project-tabs-main-window)))
     (if (eq (window-buffer window) buffer)
         (wamei/project-memo--restore window)
       (unless (wamei/project-memo-buffer-p (window-buffer window))
         (set-window-parameter window 'wamei/project-memo-back (window-buffer window)))
       (set-window-buffer window buffer)
       (select-window window))))
+
+(defun wamei/project-memo--toggle (global main-window)
+  "メモを出す。GLOBAL が非 nil なら全体メモ、nil ならプロジェクトメモ。
+
+MAIN-WINDOW が非 nil なら本文 window、nil なら画面中央の posframe に出す。
+posframe が使えない環境 (`posframe-workable-p' が nil、batch や child frame
+非対応の端末) では MAIN-WINDOW によらず本文 window に落とす。
+
+同じ表示先を続けて求められたら閉じる (トグル)。表示先を変えるときは先に
+posframe を閉じ、表示先が 2 つに増えないようにする。"
+  (let* ((project (unless global (wamei/project-memo--project)))
+         (buffer (wamei/project-memo-buffer project))
+         (use-posframe (and (not main-window) (posframe-workable-p))))
+    (cond
+     (use-posframe
+      (if (wamei/project-memo-posframe-frame)
+          (wamei/project-memo-posframe-hide)
+        (wamei/project-memo-posframe-show buffer)))
+     (t
+      (wamei/project-memo-posframe-hide)
+      (wamei/project-memo--show-in-main-window buffer)))))
+
+(defun wamei/project-memo-toggle (&optional main-window)
+  "プロジェクトメモを画面中央の posframe に出す。出ていれば閉じる。
+
+MAIN-WINDOW (`C-u') が非 nil なら posframe ではなく本文 window に出す。
+タブがプロジェクトに紐づいていないときは全体メモになる。
+
+posframe が使えない環境では `C-u' 無しでも本文 window に出る。"
+  (interactive "P")
+  (wamei/project-memo--toggle nil main-window))
+
+(defun wamei/project-memo-toggle-global (&optional main-window)
+  "全体メモを画面中央の posframe に出す。出ていれば閉じる。
+
+MAIN-WINDOW (`C-u') が非 nil なら posframe ではなく本文 window に出す。
+posframe が使えない環境では `C-u' 無しでも本文 window に出る。"
+  (interactive "P")
+  (wamei/project-memo--toggle t main-window))
 
 ;;; posframe
 

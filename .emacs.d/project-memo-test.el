@@ -214,6 +214,7 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
 ;;; 表示トグル
 
 (ert-deftest wamei/project-memo-toggle-shows-project-memo-in-main-window ()
+  ;; batch は posframe-workable-p が nil なので、prefix 無しでも本文 window。
   (wamei/project-memo-test--with-project root
     (let ((main (selected-window)))
       (with-current-buffer (window-buffer main)
@@ -230,18 +231,18 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
       (unwind-protect
           (progn
             (set-window-buffer main work)
-            (wamei/project-memo-toggle)
+            (wamei/project-memo-toggle '(4))
             (should (wamei/project-memo-buffer-p (window-buffer main)))
-            (wamei/project-memo-toggle)
+            (wamei/project-memo-toggle '(4))
             (should (eq (window-buffer main) work)))
         (kill-buffer work)))))
 
-(ert-deftest wamei/project-memo-toggle-with-prefix-shows-global-memo ()
+(ert-deftest wamei/project-memo-toggle-global-shows-the-global-memo ()
   (wamei/project-memo-test--with-project root
     (let ((main (selected-window)))
       (with-current-buffer (window-buffer main)
         (setq default-directory root))
-      (wamei/project-memo-toggle '(4))
+      (wamei/project-memo-toggle-global '(4))
       (should (equal (buffer-file-name (window-buffer main))
                      (wamei/project-memo-global-file))))))
 
@@ -253,7 +254,7 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
           (progn
             (with-current-buffer scratch (setq default-directory temporary-file-directory))
             (set-window-buffer main scratch)
-            (wamei/project-memo-toggle)
+            (wamei/project-memo-toggle '(4))
             (should (equal (buffer-file-name (window-buffer main))
                            (wamei/project-memo-global-file))))
         (kill-buffer scratch)))))
@@ -265,11 +266,11 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
       (unwind-protect
           (progn
             (set-window-buffer main work)
-            (wamei/project-memo-toggle '(4))   ; 全体メモ
-            (wamei/project-memo-toggle)        ; プロジェクトメモ (メモ → メモ)
+            (wamei/project-memo-toggle-global '(4))   ; 全体メモ
+            (wamei/project-memo-toggle '(4))          ; プロジェクトメモ (メモ → メモ)
             (should (equal (buffer-file-name (window-buffer main))
                            (wamei/project-memo-file (wamei/project-memo-test--project root))))
-            (wamei/project-memo-toggle)        ; 戻り先は work のまま
+            (wamei/project-memo-toggle '(4))          ; 戻り先は work のまま
             (should (eq (window-buffer main) work)))
         (kill-buffer work)))))
 
@@ -380,6 +381,58 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
         (with-current-buffer work (set-buffer-modified-p nil))
         (kill-buffer work)
         (kill-buffer internal)))))
+
+(ert-deftest wamei/project-memo-toggle-uses-the-posframe-by-default ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((main (selected-window)))
+        (with-current-buffer (window-buffer main)
+          (setq default-directory root))
+        (wamei/project-memo-toggle)
+        (should (eq (car (car calls)) 'show))
+        (should (equal (buffer-file-name (cadr (car calls)))
+                       (wamei/project-memo-file (wamei/project-memo-test--project root))))
+        ;; 本文 window は触らない
+        (should-not (wamei/project-memo-buffer-p (window-buffer main)))
+        (wamei/project-memo-posframe-hide)))))
+
+(ert-deftest wamei/project-memo-toggle-global-uses-the-posframe-by-default ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-toggle-global)
+      (should (equal (buffer-file-name (cadr (car calls)))
+                     (wamei/project-memo-global-file)))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-toggle-closes-the-posframe-when-shown ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-toggle-global)
+      (should (wamei/project-memo-posframe-frame))
+      (wamei/project-memo-toggle-global)
+      (should-not (wamei/project-memo-posframe-frame)))))
+
+(ert-deftest wamei/project-memo-toggle-with-prefix-closes-the-posframe-first ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((main (selected-window)))
+        (wamei/project-memo-toggle-global)          ; posframe
+        (should (wamei/project-memo-posframe-frame))
+        (wamei/project-memo-toggle-global '(4))     ; 本文 window
+        (should-not (wamei/project-memo-posframe-frame))
+        (should (equal (buffer-file-name (window-buffer main))
+                       (wamei/project-memo-global-file)))))))
+
+(ert-deftest wamei/project-memo-toggle-falls-back-to-the-main-window ()
+  ;; posframe-workable-p が nil のときは prefix 無しでも本文 window。
+  (wamei/project-memo-test--with-project root
+    (let ((main (selected-window)))
+      (cl-letf (((symbol-function 'posframe-workable-p) (lambda () nil))
+                ((symbol-function 'posframe-show)
+                 (lambda (&rest _) (error "posframe should not be shown"))))
+        (wamei/project-memo-toggle-global)
+        (should (equal (buffer-file-name (window-buffer main))
+                       (wamei/project-memo-global-file)))))))
 
 ;;; posframe
 
