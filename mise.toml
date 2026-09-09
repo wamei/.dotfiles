@@ -49,9 +49,6 @@ adopt = true
 "brew:laishulu/homebrew/macism" = "latest"
 # 以下 4 本は aqua registry にエントリが無い
 "brew:timg" = "latest"      # ghostel に kitty graphics で画像を出す
-"brew:wget" = "latest"
-"brew:nkf" = "latest"
-"brew:screen" = "latest"
 
 # --- cask ---
 # emacs-plus-app は d12frosted/emacs-plus tap の cask。mise の brew backend は
@@ -61,18 +58,12 @@ adopt = true
 "brew-cask:ghostty" = "latest"
 "brew-cask:karabiner-elements" = "latest"
 "brew-cask:google-japanese-ime" = "latest"
-"brew-cask:1password" = "latest"
 "brew-cask:claude" = "latest"
-"brew-cask:visual-studio-code" = "latest"
 "brew-cask:google-chrome" = "latest"
 "brew-cask:google-chrome@canary" = "latest"
 "brew-cask:slack" = "latest"
-"brew-cask:microsoft-teams" = "latest"
-"brew-cask:chatwork" = "latest"
 "brew-cask:orbstack" = "latest"
 "brew-cask:postman" = "latest"
-"brew-cask:mysqlworkbench" = "latest"
-"brew-cask:nordlayer" = "latest"
 # フォント
 "brew-cask:font-blex-mono-nerd-font" = "latest"
 "brew-cask:font-hackgen" = "latest"
@@ -95,17 +86,9 @@ adopt = true
 "~/.aws/update-mfa-profile" = { source = ".aws/update-mfa-profile", mode = "symlink" }
 "~/.emacs.d/init.el" = { source = ".emacs.d/init.el", mode = "symlink" }
 "~/.emacs.d/early-init.el" = { source = ".emacs.d/early-init.el", mode = "symlink" }
-# ここから下は旧 init.sh が管理できていなかったもの。
-# rpbcopy は cp でコピーされていたためリポジトリを編集しても反映されなかった。
-# karabiner の ja.json はどこにもリンクされていなかった。
 "~/bin/rpbcopy" = { source = "bin/rpbcopy", mode = "symlink" }
 "~/.config/karabiner/assets/complex_modifications/ja.json" = { source = ".config/karabiner/assets/complex_modifications/ja.json", mode = "symlink" }
-# .gitconfig は init.sh で ln -sf がコメントアウトされ、代わりに
-# git config --global が 4 行走っていた。そのためリポジトリの alias 群と
-# push.default = nothing が一度も有効になっていなかった。
 "~/.gitconfig" = { source = ".gitconfig", mode = "symlink" }
-# core.excludesfile が指す ~/.gitignore はリポジトリ管理外の実ファイルだった。
-# リポジトリの .gitignore はリポジトリ自身の除外なので別ファイルにする。
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }
 
 # ---------------------------------------------------------------------------
