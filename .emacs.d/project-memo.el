@@ -315,7 +315,17 @@ box グリフがそのまま効く。
 `:respect-mode-line' が nil だと表示するバッファに `mode-line-format' を
 nil で setq-local する。これは posframe を隠しても残るので、そのメモを
 あとから `C-u' で本文 window に出したときモードラインが消えたままになる。
-バッファを壊さないために残す。"
+バッファを壊さないために残す。
+
+すでに別の BUFFER を出している posframe があれば、先にそれを隠す
+(`wamei/project-memo-posframe-hide' 経由で保存も伴う)。`posframe--frame' は
+バッファローカル (posframe.el) なので、隠さずに別バッファへ `posframe-show'
+すると古いフレームは追跡から外れたまま画面に残ってしまう。トグルや
+自動クローズなど `show' の呼び出し元が複数になる後続タスクのために、
+「show の前に自分で hide する」という前提を呼び出し側に負わせない。"
+  (when (and (wamei/project-memo-posframe-frame)
+             (not (eq wamei/project-memo--posframe-buffer buffer)))
+    (wamei/project-memo-posframe-hide))
   (setq wamei/project-memo--posframe-buffer buffer)
   (setq wamei/project-memo--posframe-frame
         (posframe-show
