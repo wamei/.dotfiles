@@ -484,29 +484,29 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
 
 (defun wamei/tty-image-dired--show-thumbs (&optional arg _append _do-not-pop)
   "dired でマークされているファイルのサムネイルをグリッド表示する。
-ARG があれば point のファイル 1 枚だけ。
+ARG があれば point のファイル 1 枚だけ。画像が無ければバッファは作らない。
 段あたりの枚数は、表示先の window の実幅で決める。組み立ててから表示すると、
 表示先が現在の window より狭いときにグリッドが壊れる。"
   (let* ((dired-buffer (current-buffer))
-         (files (vconcat (dired-get-marked-files nil (and arg 1))))
-         (buffer (get-buffer-create image-dired-thumbnail-buffer)))
+         (files (vconcat (dired-get-marked-files nil (and arg 1)))))
     (if (zerop (length files))
         (message "画像ファイルがありません")
-      (with-current-buffer buffer
-        (unless (derived-mode-p 'wamei/tty-image-dired-mode)
-          (wamei/tty-image-dired-mode))
-        (wamei/tty-image-dired--release-all))
-      (let ((window (display-buffer buffer)))
+      (let ((buffer (get-buffer-create image-dired-thumbnail-buffer)))
         (with-current-buffer buffer
-          (let* ((box (or wamei/tty-image-dired-box-size
-                          (wamei/tty-image-dired--box-size
-                           image-dired-thumb-size (wamei/kitty-graphics-cell-size))))
-                 (columns (wamei/tty-image-dired--columns
-                           (window-body-width (or window (selected-window)))
-                           (car box))))
-            (wamei/tty-image-dired--build files dired-buffer columns box)
-            (wamei/tty-image-dired--goto-index 0)
-            (wamei/tty-image-dired--sync-visible)))))))
+          (unless (derived-mode-p 'wamei/tty-image-dired-mode)
+            (wamei/tty-image-dired-mode))
+          (wamei/tty-image-dired--release-all))
+        (let ((window (display-buffer buffer)))
+          (with-current-buffer buffer
+            (let* ((box (or wamei/tty-image-dired-box-size
+                            (wamei/tty-image-dired--box-size
+                             image-dired-thumb-size (wamei/kitty-graphics-cell-size))))
+                   (columns (wamei/tty-image-dired--columns
+                             (window-body-width (or window (selected-window)))
+                             (car box))))
+              (wamei/tty-image-dired--build files dired-buffer columns box)
+              (wamei/tty-image-dired--goto-index 0)
+              (wamei/tty-image-dired--sync-visible))))))))
 
 (defun wamei/tty-image-dired--display-thumbs-around (orig &rest args)
   "tty で `image-dired-display-thumbs' の代わりに呼ばれる。

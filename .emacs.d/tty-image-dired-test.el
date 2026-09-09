@@ -557,17 +557,22 @@ auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
 
 (ert-deftest wamei/tty-image-dired-show-thumbs-messages-when-there-are-no-images ()
   "画像が 1 枚も無ければメッセージだけ。バッファは作らず error も投げない。"
-  (let ((messages nil) (built nil))
-    (cl-letf (((symbol-function 'dired-get-marked-files) (lambda (&rest _) nil))
-              ((symbol-function 'wamei/kitty-graphics-cell-size) (lambda () '(8 . 16)))
-              ((symbol-function 'wamei/tty-image-dired--build)
-               (lambda (&rest _) (setq built t)))
-              ((symbol-function 'message)
-               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
-      (with-temp-buffer
-        (wamei/tty-image-dired--show-thumbs))
-      (should messages)
-      (should-not built))))
+  (let* ((messages nil) (built nil)
+         (name " *tty-image-dired-empty-test*")
+         (image-dired-thumbnail-buffer name))
+    (unwind-protect
+        (cl-letf (((symbol-function 'dired-get-marked-files) (lambda (&rest _) nil))
+                  ((symbol-function 'wamei/tty-image-dired--build)
+                   (lambda (&rest _) (setq built t)))
+                  ((symbol-function 'message)
+                   (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+          (with-temp-buffer
+            (wamei/tty-image-dired--show-thumbs))
+          (should messages)
+          (should-not built)
+          ;; ここが今回の本題。バッファができていないこと
+          (should-not (get-buffer name)))
+      (when (get-buffer name) (kill-buffer name)))))
 
 (ert-deftest wamei/tty-image-dired-setup-adds-the-advice ()
   (unwind-protect
