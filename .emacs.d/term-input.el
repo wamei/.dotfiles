@@ -3,7 +3,14 @@
 ;;; Commentary:
 
 ;; ghostel は semi-char モードでほとんどのキーを端末へ流すので、Emacs 側の
-;; kill-ring やクリップボードとは結びつかない。ここでは次の 2 つを補う。
+;; kill-ring やクリップボードとは結びつかない。ここでは次の 3 つを補う。
+;;
+;; - `wamei/term-input-copy'
+;;   M-w。リージョンがあれば `kill-ring-save'、マークが一度も無いバッファでは
+;;   error にしない。Claude Code はマウス追跡を有効にしていてドラッグ選択を自分で
+;;   クリップボードへコピーする (ドラッグは ghostel が Claude へ転送する) ので、
+;;   その直後に習慣で M-w を押すと Emacs 側にはマークが無く、`kill-ring-save' が
+;;   "The mark is not set now" で error になり debug-on-error でデバッガが開く。
 ;;
 ;; - `wamei/term-input-kill-line'
 ;;   C-k を送る前に point から行末までを kill-ring に入れる。行の削除自体は
@@ -46,6 +53,20 @@
           (kill-append text nil)
         (kill-new text))))
   (ghostel-send-key "k" "ctrl"))
+
+;;; コピー
+
+(defun wamei/term-input-copy ()
+  "リージョンがあれば `kill-ring-save'。マークが無ければ error にせずメッセージだけ出す。
+`kill-ring-save' はマークが一度も設定されていないバッファで error を signal する。
+Claude Code のパネルではドラッグが Claude へ転送され、Claude が選択を自分で
+クリップボードへコピーするため、Emacs 側にマークができない。その直後の M-w は
+余計な操作なので、コピー済みであることを伝えて終わる。マークがあるときは
+非アクティブでも `kill-ring-save' と同じ (mark-even-if-inactive) に振る舞う。"
+  (interactive)
+  (if (mark t)
+      (call-interactively #'kill-ring-save)
+    (message "コピーする選択がありません (Claude 上のドラッグ選択は Claude 側でコピー済み)")))
 
 ;;; クリップボードの画像を端末へ渡す
 

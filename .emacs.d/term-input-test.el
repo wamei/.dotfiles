@@ -133,5 +133,49 @@ TARGETS が `error' なら選択が取れない環境 (tty など) を模す。"
       (call-interactively #'wamei/term-input-paste))
     (should (equal wamei/term-input-test--sent '(yank)))))
 
+;;; コピー (M-w)
+
+(ert-deftest wamei/term-input-copy-without-mark-does-not-error ()
+  "マークが一度も設定されていないバッファでも error にしない。
+Claude Code はドラッグ選択を自分でクリップボードへコピーするので、その直後の
+M-w には Emacs 側のリージョンもマークも無い。`kill-ring-save' の標準エラー
+\(The mark is not set now) でデバッガに落ちないようにする。"
+  (wamei/term-input-test--with-ghostel
+    (with-temp-buffer
+      (insert "$ echo hello\n")
+      (should-not (mark t))
+      (should-not (condition-case err
+                      (progn (call-interactively #'wamei/term-input-copy) nil)
+                    (error err)))
+      (should-not kill-ring))))
+
+(ert-deftest wamei/term-input-copy-with-region-saves-it ()
+  "リージョンがあれば `kill-ring-save' と同じくコピーする。"
+  (wamei/term-input-test--with-ghostel
+    (with-temp-buffer
+      (insert "$ echo hello world\n")
+      (goto-char (point-min))
+      (search-forward "hello")
+      (push-mark (match-beginning 0) t t)
+      (goto-char (match-end 0))
+      (call-interactively #'wamei/term-input-copy)
+      (should (equal (car kill-ring) "hello")))))
+
+(ert-deftest wamei/term-input-copy-with-inactive-mark-copies-mark-to-point ()
+  "マークが非アクティブでも `kill-ring-save' と同じく mark と point の間をコピーする。
+copy mode で M-w した後は ghostel がマークを非アクティブにするので、その状態で
+もう一度 M-w を押しても従来と同じ結果になることを固定する。"
+  (wamei/term-input-test--with-ghostel
+    (with-temp-buffer
+      (insert "$ echo hello world\n")
+      (goto-char (point-min))
+      (search-forward "world")
+      (push-mark (match-beginning 0) t nil)
+      (goto-char (match-end 0))
+      (deactivate-mark)
+      (let ((mark-even-if-inactive t))
+        (call-interactively #'wamei/term-input-copy))
+      (should (equal (car kill-ring) "world")))))
+
 (provide 'term-input-test)
 ;;; term-input-test.el ends here
