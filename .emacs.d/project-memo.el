@@ -246,14 +246,19 @@ MAIN-WINDOW が非 nil なら本文 window、nil なら画面中央の posframe 
 posframe が使えない環境 (`posframe-workable-p' が nil、batch や child frame
 非対応の端末) では MAIN-WINDOW によらず本文 window に落とす。
 
-同じ表示先を続けて求められたら閉じる (トグル)。表示先を変えるときは先に
-posframe を閉じ、表示先が 2 つに増えないようにする。"
+同じ posframe 対象 (同じ BUFFER) を続けて求められたら閉じる (トグル)。
+別の対象を posframe で求められたときは、閉じずに `wamei/project-memo-posframe-show'
+へそのまま渡す。BUFFER の切り替えは同関数が既に持っている「先に古い方を
+隠す」処理 (Task 2) に任せる — ここで無条件に閉じると、閉じるだけで
+新しい対象を出さない動作になってしまう。表示先を本文 window に変えるとき
+だけ、ここで posframe を閉じる。"
   (let* ((project (unless global (wamei/project-memo--project)))
          (buffer (wamei/project-memo-buffer project))
          (use-posframe (and (not main-window) (posframe-workable-p))))
     (cond
      (use-posframe
-      (if (wamei/project-memo-posframe-frame)
+      (if (and (wamei/project-memo-posframe-frame)
+               (eq wamei/project-memo--posframe-buffer buffer))
           (wamei/project-memo-posframe-hide)
         (wamei/project-memo-posframe-show buffer)))
      (t
