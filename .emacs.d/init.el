@@ -1146,6 +1146,19 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :config
   (wamei/tty-image-setup))
 
+(leaf tty-image-dired
+  :doc "tty では kitty graphics protocol で image-dired のサムネイルを出す"
+  :ensure nil
+  ;; 組み込みの image-dired は tty でも error にならず空白が並ぶだけなので、
+  ;; tty のときだけ入口を横取りする。
+  :if (not (display-graphic-p))
+  :preface
+  (load (expand-file-name "tty-image-dired"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :config
+  (wamei/tty-image-dired-setup))
+
 (leaf project-sidebar
   :doc "dired ベースのプロジェクトサイドバー (treemacs の代替)"
   :ensure nil

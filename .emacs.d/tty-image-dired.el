@@ -480,5 +480,62 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
   (add-hook 'window-scroll-functions #'wamei/tty-image-dired--scroll-sync nil t)
   (add-hook 'kill-buffer-hook #'wamei/tty-image-dired--release-all nil t))
 
+;;;; 入口
+
+(defun wamei/tty-image-dired--show-thumbs (&optional arg _append _do-not-pop)
+  "dired でマークされているファイルのサムネイルをグリッド表示する。
+ARG があれば point のファイル 1 枚だけ。
+段あたりの枚数は、表示先の window の実幅で決める。組み立ててから表示すると、
+表示先が現在の window より狭いときにグリッドが壊れる。"
+  (let* ((dired-buffer (current-buffer))
+         (files (vconcat (dired-get-marked-files nil (and arg 1))))
+         (buffer (get-buffer-create image-dired-thumbnail-buffer)))
+    (if (zerop (length files))
+        (message "画像ファイルがありません")
+      (with-current-buffer buffer
+        (unless (derived-mode-p 'wamei/tty-image-dired-mode)
+          (wamei/tty-image-dired-mode))
+        (wamei/tty-image-dired--release-all))
+      (let ((window (display-buffer buffer)))
+        (with-current-buffer buffer
+          (let* ((box (or wamei/tty-image-dired-box-size
+                          (wamei/tty-image-dired--box-size
+                           image-dired-thumb-size (wamei/kitty-graphics-cell-size))))
+                 (columns (wamei/tty-image-dired--columns
+                           (window-body-width (or window (selected-window)))
+                           (car box))))
+            (wamei/tty-image-dired--build files dired-buffer columns box)
+            (wamei/tty-image-dired--goto-index 0)
+            (wamei/tty-image-dired--sync-visible)))))))
+
+(defun wamei/tty-image-dired--display-thumbs-around (orig &rest args)
+  "tty で `image-dired-display-thumbs' の代わりに呼ばれる。
+端末が kitty graphics に対応していれば自分のグリッド、していなければ
+元の実装をそのまま呼ぶ (空白が並ぶだけで害はない)。`error' は投げない。"
+  (if (wamei/kitty-graphics-available-p)
+      (apply #'wamei/tty-image-dired--show-thumbs args)
+    (message "この端末は kitty graphics に対応していないのでサムネイルは出ません")
+    (apply orig args)))
+
+(defun wamei/tty-image-dired--update-marks-around (orig &rest args)
+  "tty のグリッドでは、組み込みのマーク表示を走らせない。
+組み込みは `image-dired-thumbnail-buffer' を 1 文字ずつ歩いて
+`add-face-text-property' で face を貼るが、placeholder のセルは前景色が画像 ID
+なので face を重ねると画像が壊れる。自分のモードのときはキャプションだけ更新する。"
+  (let ((buffer (get-buffer image-dired-thumbnail-buffer)))
+    (if (and buffer
+             (with-current-buffer buffer
+               (derived-mode-p 'wamei/tty-image-dired-mode)))
+        (wamei/tty-image-dired--update-marks)
+      (apply orig args))))
+
+(defun wamei/tty-image-dired-setup ()
+  "tty で image-dired のサムネイルがグリッド表示されるようにする。
+`M-x image-dired' も dired からの呼び出しも `image-dired-display-thumbs' を通る。"
+  (advice-add 'image-dired-display-thumbs :around
+              #'wamei/tty-image-dired--display-thumbs-around)
+  (advice-add 'image-dired--thumb-update-marks :around
+              #'wamei/tty-image-dired--update-marks-around))
+
 (provide 'tty-image-dired)
 ;;; tty-image-dired.el ends here

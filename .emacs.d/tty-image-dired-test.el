@@ -529,5 +529,85 @@ auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
               (should (equal (sort redrawn #'<) '(0 1))))
           (kill-buffer buf))))))
 
+;;; 入口
+
+(ert-deftest wamei/tty-image-dired-around-builds-the-grid-when-available ()
+  "端末が対応していれば自分のグリッドを組む。"
+  (let ((built nil) (orig-called nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p) (lambda () t))
+              ((symbol-function 'wamei/tty-image-dired--show-thumbs)
+               (lambda (&rest _) (setq built t))))
+      (wamei/tty-image-dired--display-thumbs-around
+       (lambda (&rest _) (setq orig-called t)))
+      (should built)
+      (should-not orig-called))))
+
+(ert-deftest wamei/tty-image-dired-around-falls-back-to-the-original ()
+  "非対応端末では error を投げず、元の実装をそのまま呼ぶ (今日と同じ挙動)。"
+  (let ((orig-args nil) (messages nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p) (lambda () nil))
+              ((symbol-function 'wamei/tty-image-dired--show-thumbs)
+               (lambda (&rest _) (error "呼ばれてはいけない")))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired--display-thumbs-around
+       (lambda (&rest args) (setq orig-args args)) 'arg 'append 'do-not-pop)
+      (should (equal orig-args '(arg append do-not-pop)))
+      (should messages))))
+
+(ert-deftest wamei/tty-image-dired-show-thumbs-messages-when-there-are-no-images ()
+  "画像が 1 枚も無ければメッセージだけ。バッファは作らず error も投げない。"
+  (let ((messages nil) (built nil))
+    (cl-letf (((symbol-function 'dired-get-marked-files) (lambda (&rest _) nil))
+              ((symbol-function 'wamei/kitty-graphics-cell-size) (lambda () '(8 . 16)))
+              ((symbol-function 'wamei/tty-image-dired--build)
+               (lambda (&rest _) (setq built t)))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (with-temp-buffer
+        (wamei/tty-image-dired--show-thumbs))
+      (should messages)
+      (should-not built))))
+
+(ert-deftest wamei/tty-image-dired-setup-adds-the-advice ()
+  (unwind-protect
+      (progn
+        (wamei/tty-image-dired-setup)
+        (should (advice-member-p #'wamei/tty-image-dired--display-thumbs-around
+                                 'image-dired-display-thumbs))
+        (should (advice-member-p #'wamei/tty-image-dired--update-marks-around
+                                 'image-dired--thumb-update-marks)))
+    (advice-remove 'image-dired-display-thumbs
+                   #'wamei/tty-image-dired--display-thumbs-around)
+    (advice-remove 'image-dired--thumb-update-marks
+                   #'wamei/tty-image-dired--update-marks-around)))
+
+(ert-deftest wamei/tty-image-dired-update-marks-around-skips-the-builtin-for-our-mode ()
+  "組み込みは placeholder のセルに face を貼って画像を壊すので、自分のモードのときは
+元を呼ばない。"
+  (let ((orig-called nil) (ours-called nil))
+    (cl-letf (((symbol-function 'wamei/tty-image-dired--update-marks)
+               (lambda () (setq ours-called t))))
+      (let ((buf (generate-new-buffer " *tty-image-dired-marks-test*")))
+        (unwind-protect
+            (let ((image-dired-thumbnail-buffer (buffer-name buf)))
+              (with-current-buffer buf (wamei/tty-image-dired-mode))
+              (wamei/tty-image-dired--update-marks-around
+               (lambda (&rest _) (setq orig-called t)))
+              (should ours-called)
+              (should-not orig-called))
+          (kill-buffer buf))))))
+
+(ert-deftest wamei/tty-image-dired-update-marks-around-calls-the-builtin-otherwise ()
+  "自分のモードでなければ組み込みをそのまま呼ぶ (GUI や非対応端末のため)。"
+  (let ((orig-args nil))
+    (let ((buf (generate-new-buffer " *tty-image-dired-marks-test*")))
+      (unwind-protect
+          (let ((image-dired-thumbnail-buffer (buffer-name buf)))
+            (wamei/tty-image-dired--update-marks-around
+             (lambda (&rest args) (setq orig-args (or args 'called))))
+            (should orig-args))
+        (kill-buffer buf)))))
+
 (provide 'tty-image-dired-test)
 ;;; tty-image-dired-test.el ends here
