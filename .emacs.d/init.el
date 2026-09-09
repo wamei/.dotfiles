@@ -258,6 +258,63 @@
   (load-theme 'doom-molokai t)
   (set-frame-parameter nil 'alpha 90))
 
+(leaf tty-transparency
+  :doc "ターミナル(-nw)で端末側の背景透過を通す"
+  ;; 端末の背景透過 (Ghostty の background-opacity など) が効くのは「端末の既定背景」で
+  ;; 描かれたセルだけ。Emacs は face の :background が実色だとその範囲を SGR 48 で塗る
+  ;; ため、テーマの背景色 (doom-molokai なら #1c1e1f) がほぼ全セルに出て透過が完全に
+  ;; 潰れる。画面の地になる face だけ "unspecified-bg" (= SGR 49) に戻して端末に塗らせる。
+  ;; GUI は frame の alpha (doom-themes の :config) で透過するのでここでは扱わない。
+  :preface
+  (defvar wamei/tty-unspecified-bg-faces
+    '(default fringe line-number margin special-glyphs git-gutter:separator
+      ;; 選択中のタブは本文と地続きに見せるためテーマが本文と同色にしている。
+      ;; 本文が透過するとここだけ塗り残るので一緒に落とす (タブ列そのものの
+      ;; tab-bar / tab-line は bg-alt なので塗ったまま残す)。
+      tab-bar-tab tab-bar-tab-group-current
+      tab-line-tab tab-line-tab-current tab-line-highlight)
+    "tty フレームで :background を端末の既定背景に戻す face。
+
+テーマの背景色をそのまま持ち、画面の地として広い面積を占めるものだけを挙げる。
+ansi-color-black や custom-button も同じ色を持つが、あちらは意図した塗りなので
+対象にしない。line-number-current-line や hl-line のような強調も残す。")
+
+  (defun wamei/tty-transparency-apply (frame)
+    "FRAME が tty なら地の face の背景を落として端末の背景透過を通す。
+
+face 属性は FRAME ローカルに設定する。グローバルに変えると同じ Emacs の GUI
+フレームまで背景を失う (emacsclient で GUI と tty が混在する)。
+
+`auto-dim-other-buffers' は非選択 window の背景をベタ塗りして透過を潰すので、
+背景の代わりに前景を落として暗転を表現する。remap されるのは `default' なので、
+default の前景で描かれる文字だけが暗くなり構文強調の色はそのまま残る。
+org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) のままなので、背景を
+外すだけで透過した地に沈む。"
+    (when (and (frame-live-p frame) (not (display-graphic-p frame)))
+      (dolist (face (append wamei/tty-unspecified-bg-faces
+                            '(auto-dim-other-buffers auto-dim-other-buffers-hide)))
+        (when (facep face)
+          (set-face-background face "unspecified-bg" frame)))
+      (when (facep 'auto-dim-other-buffers)
+        (set-face-foreground 'auto-dim-other-buffers
+                             (doom-darken (face-attribute 'default :foreground frame t)
+                                          0.4)
+                             frame))))
+
+  (defun wamei/tty-transparency-apply-all (&rest _)
+    "全ての tty フレームに `wamei/tty-transparency-apply' をかけ直す。"
+    (mapc #'wamei/tty-transparency-apply (frame-list)))
+  :config
+  ;; after-init-hook では間に合わない。startup は init ファイルを読んだ後に
+  ;; `frame-notice-user-settings' → `face-set-after-frame-default' で初期フレームの
+  ;; face をフレーム単位で再計算するため、そこで frame ローカルの設定が捨てられる。
+  ;; `window-setup-hook' はその後に走る。
+  (add-hook 'window-setup-hook #'wamei/tty-transparency-apply-all)
+  ;; emacsclient -nw で後から生えるフレーム (make-frame も同じ再計算を通る) と
+  ;; テーマ切替で face が塗り直されるケースに追随させる。
+  (add-hook 'after-make-frame-functions #'wamei/tty-transparency-apply)
+  (add-hook 'enable-theme-functions #'wamei/tty-transparency-apply-all))
+
 (leaf doom-modeline
   :doc "モードライン"
   :ensure t
