@@ -426,6 +426,60 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
       (wamei/tty-image-dired--goto-index 0)
       (wamei/tty-image-dired--sync-visible))))
 
+(defun wamei/tty-image-dired--mark (action)
+  "選択中のサムネイルの元ファイルを dired 側で ACTION する。
+ACTION は `mark' / `unmark' / `flag'。処理のあとキャプションを描き直し、
+次のサムネイルへ移る。
+組み込みの `image-dired--do-mark-command' は使えない。あれはマークのあとに
+`image-dired--thumb-update-mark-at-point' で placeholder のセルに face を貼り
+\(画像が壊れる)、`image-dired-display-next' で 1 文字走査の移動をしたうえ画像まで
+開いてしまう。どちらも関数呼び出しなので remap では止められない。"
+  (let ((file (and wamei/tty-image-dired--files
+                   (> (length wamei/tty-image-dired--files) 0)
+                   (aref wamei/tty-image-dired--files
+                         wamei/tty-image-dired--selected)))
+        (dired-buffer wamei/tty-image-dired--dired-buffer))
+    (cond
+     ((not file) (message "サムネイルがありません"))
+     ((not (buffer-live-p dired-buffer)) (message "dired バッファがありません"))
+     (t
+      (with-current-buffer dired-buffer
+        (save-excursion
+          (when (dired-goto-file file)
+            (pcase action
+              ('mark (dired-mark 1))
+              ('unmark (dired-unmark 1))
+              ('flag (dired-flag-file-deletion 1))))))
+      (wamei/tty-image-dired--redraw-caption wamei/tty-image-dired--selected)
+      ;; 組み込みは `image-dired-marking-shows-next' で毎回画像を開くが、
+      ;; tty では全画面になって邪魔なので、次へ移るだけにする。
+      (wamei/tty-image-dired--move 'forward)))))
+
+(defun wamei/tty-image-dired-mark-thumb-original-file ()
+  "選択中のサムネイルの元ファイルを dired でマークし、次へ移る。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--mark 'mark))
+
+(defun wamei/tty-image-dired-unmark-thumb-original-file ()
+  "選択中のサムネイルの元ファイルの dired のマークを外し、次へ移る。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--mark 'unmark))
+
+(defun wamei/tty-image-dired-flag-thumb-original-file ()
+  "選択中のサムネイルの元ファイルに dired で削除フラグを立て、次へ移る。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (wamei/tty-image-dired--mark 'flag))
+
+(defun wamei/tty-image-dired-unmark-all-marks ()
+  "dired 側のマークを全部外し、キャプションを描き直す。選択は動かさない。"
+  (interactive nil wamei/tty-image-dired-mode)
+  (let ((dired-buffer wamei/tty-image-dired--dired-buffer))
+    (if (not (buffer-live-p dired-buffer))
+        (message "dired バッファがありません")
+      (with-current-buffer dired-buffer (dired-unmark-all-marks))
+      (dotimes (index (length wamei/tty-image-dired--files))
+        (wamei/tty-image-dired--redraw-caption index)))))
+
 (defun wamei/tty-image-dired--update-marks ()
   "マークの表示を更新する。`image-dired--thumb-update-marks' の差し替え先。
 組み込みはサムネイルの枠の見た目で表すが、placeholder のセルには face を
@@ -455,6 +509,11 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
   "e" #'wamei/tty-image-dired-move-end-of-line
   "x" #'wamei/tty-image-dired-do-flagged-delete
   "RET" #'wamei/tty-image-dired-display-this
+  "m" #'wamei/tty-image-dired-mark-thumb-original-file
+  "u" #'wamei/tty-image-dired-unmark-thumb-original-file
+  "d" #'wamei/tty-image-dired-flag-thumb-original-file
+  "<delete>" #'wamei/tty-image-dired-flag-thumb-original-file
+  "U" #'wamei/tty-image-dired-unmark-all-marks
   "<remap> <forward-char>"           #'wamei/tty-image-dired-forward-image
   "<remap> <right-char>"             #'wamei/tty-image-dired-forward-image
   "<remap> <backward-char>"          #'wamei/tty-image-dired-backward-image
@@ -529,13 +588,23 @@ ARG があれば point のファイル 1 枚だけ。画像が無ければバッ
         (wamei/tty-image-dired--update-marks)
       (apply orig args))))
 
+(defun wamei/tty-image-dired--update-mark-at-point-around (orig &rest args)
+  "自分のモードでは組み込みのマーク描画を走らせない。
+`add-face-text-property' で placeholder のセルに face を貼ると、前景色が画像 ID
+なので画像が壊れる。自前のマークコマンド (`m'/`u'/`d'/`U') からはもう呼ばれないが、
+組み込みの他のコマンド経由で呼ばれても壊さないようにする。"
+  (unless (derived-mode-p 'wamei/tty-image-dired-mode)
+    (apply orig args)))
+
 (defun wamei/tty-image-dired-setup ()
   "tty で image-dired のサムネイルがグリッド表示されるようにする。
 `M-x image-dired' も dired からの呼び出しも `image-dired-display-thumbs' を通る。"
   (advice-add 'image-dired-display-thumbs :around
               #'wamei/tty-image-dired--display-thumbs-around)
   (advice-add 'image-dired--thumb-update-marks :around
-              #'wamei/tty-image-dired--update-marks-around))
+              #'wamei/tty-image-dired--update-marks-around)
+  (advice-add 'image-dired--thumb-update-mark-at-point :around
+              #'wamei/tty-image-dired--update-mark-at-point-around))
 
 (provide 'tty-image-dired)
 ;;; tty-image-dired.el ends here
