@@ -16,9 +16,15 @@
 ;; - 既定の表示先は画面中央の posframe (`wamei/project-memo-toggle')。
 ;;   `C-u' を付けると本文 window に出す。posframe が使えない環境
 ;;   (`posframe-workable-p' が nil) では `C-u' 無しでも本文 window に落とす
-;; - posframe はフォーカスが外れたとき、メモ以外のバッファが入ったとき、
-;;   もう一度トグルしたときに閉じる。いずれも閉じる前に保存する。
-;;   ESC / C-g では閉じない (どちらも org の編集中に使う)
+;; - posframe はフォーカスが外れたときと、もう一度トグルしたときに閉じる。
+;;   いずれも閉じる前に保存する。ESC / C-g では閉じない (どちらも org の
+;;   編集中に使う)。posframe にフォーカスがあるまま find-file や
+;;   magit-status を実行しても、posframe の window は posframe.el が強い
+;;   dedicated にしている (`set-window-dedicated-p' に t) ので、そのバッファ
+;;   は posframe には入らず display-buffer が親フレームに出す。つまり実際に
+;;   通る経路はどちらも「フォーカスが外れた」側になる。メモ以外が入った
+;;   ときの経路 (`wamei/project-memo--posframe-action' の 'handoff) は、
+;;   その dedicated が何かの拍子に外れた場合の保険として残してある
 ;;
 ;; 置き場をフラットにしたので、同名の repo が複数あると同じメモを共有する。
 ;; 「どこにある repo でも扱えること」を優先した結果として受け入れている。
@@ -426,6 +432,17 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 - `hide'   … 隠す (フォーカスが Emacs 内の別の場所へ移った)
 - `handoff'… 隠して中身を本文 window へ渡す (メモ以外のバッファが入った)
 
+'handoff は実際にはまず通らない保険。posframe.el は posframe の window を
+強い dedicated にする (`set-window-dedicated-p' に t、posframe.el の
+`posframe-show')。強い dedicated の window は `set-window-buffer' がエラーに
+なり、`switch-to-buffer' も `display-buffer' も避けるので、メモ以外のバッファ
+がここに入ることは事実上ない。メモにフォーカスがあるまま `find-file' や
+`magit-status' を実行すると、そのバッファは `display-buffer' が親フレームへ
+出し、posframe は下の 'hide (フォーカスが外れた) で閉じる。spec の 3 つ目の
+閉じる条件はそれで満たされている。この枝は、何かが dedicated を外して
+しまった場合にメモ以外のバッファが child frame に取り残されないようにする
+ためだけに残してある。
+
 ミニバッファが立っている間は「フォーカスはまだ外れていない」と見て nil を
 返す。posframe の child frame は自分のミニバッファを持たず親フレームのもの
 を使う (posframe.el)。そのためメモにフォーカスがあるまま `C-x C-f' や
@@ -448,10 +465,13 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 閉じる条件のうち「フォーカスが外れた」と「メモ以外のバッファが入った」を
 ここで見る (トグルで閉じるのは `wamei/project-memo-toggle' 側)。
 
-メモ以外が入るのは、posframe にフォーカスがあるまま `find-file' や
-`magit-status' を実行した場合。禁止キーの一覧を持つ代わりに、入ってしまった
-ものを本文 window へ引き取る。`post-command-hook' は再描画の前に走るので、
-別バッファが posframe に見える瞬間は基本的に出ない。"
+日常的に通るのは 'hide の方。`find-file' や `magit-status' をメモから実行
+した場合も、そのバッファは posframe ではなく親フレームに出て、posframe は
+フォーカスが外れたものとして閉じる。'handoff はそれが成り立たなくなった
+ときの保険で、なぜ実際には通らないかは `wamei/project-memo--posframe-action'
+の docstring に書いた。通ったときは、取り残されたバッファを本文 window へ
+引き取る。`post-command-hook' は再描画の前に走るので、別バッファが posframe
+に見える瞬間は基本的に出ない。"
   (pcase (wamei/project-memo--posframe-action)
     ('hide (wamei/project-memo-posframe-hide))
     ('handoff

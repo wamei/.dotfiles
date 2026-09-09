@@ -722,6 +722,10 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
         (wamei/project-memo-posframe-hide)))))
 
 (ert-deftest wamei/project-memo-posframe-action-is-handoff-for-a-foreign-buffer ()
+  ;; 'handoff は保険の枝。posframe の window は強い dedicated なので実運用で
+  ;; メモ以外が入ることは事実上ない (`wamei/project-memo--posframe-action' の
+  ;; docstring)。dedicated が外れた場合に備えて判定だけは押さえておく。
+  ;;
   ;; `window-buffer' を丸ごとスタブすると cl-letf が関数セルを差し替えるため、
   ;; 実装側 (`wamei/project-memo--posframe-buffer-shown') の呼び出しまで
   ;; 巻き込んでしまう。切り出した `--posframe-buffer-shown' 自体をスタブして
@@ -749,6 +753,8 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
       (should (eq (car (car calls)) 'hide)))))
 
 (ert-deftest wamei/project-memo-posframe-post-command-hands-the-buffer-to-the-main-window ()
+  ;; 上と同じく保険の枝。判定が 'handoff になったときの処理だけを見る。
+  ;;
   ;; `selected-frame' をダミーの posframe フレーム (シンボル) にすり替えると、
   ;; `wamei/project-tabs-main-window' 経由で本物の `frame-parent' に渡って
   ;; wrong-type-argument になる (posframe を実フレームで持たない batch の
