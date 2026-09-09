@@ -1,0 +1,31 @@
+# dotfiles のセットアップを mise の native bootstrap に寄せる。
+#
+# `mise bootstrap` が宣言を順に、冪等に適用する。実行はこのファイルのある
+# ディレクトリ (リポジトリ直下) で行うこと。mise は cwd の設定階層をマージ
+# するので、リポジトリ外から実行すると [bootstrap.*] が見えない。
+#
+#   mise bootstrap        適用
+#   mise bootstrap -n     dry-run (適用せず差分だけ表示)
+#   mise bootstrap status 収束状態の確認
+#   mise run update       brew と mise の管理下をまとめて最新化
+#
+# ランタイム定義 ([tools] / [settings]) はこのファイルではなく
+# .config/mise/config.toml にある。あちらは ~/.config/mise/config.toml へ
+# symlink されるグローバル設定で、どのディレクトリでもツールが解決する。
+# .zshrc の show_env_mise がそのパスを基準に「global 由来か」を判定している
+# ため、[tools] をこちらへ移すとプロンプトの表示が壊れる。
+
+# ---------------------------------------------------------------------------
+# $HOME への symlink (旧 init.sh の ln -sf)
+# source はこのファイルのあるディレクトリからの相対
+# ---------------------------------------------------------------------------
+[dotfiles]
+"~/.inputrc" = { source = ".inputrc", mode = "symlink" }
+"~/.zshenv" = { source = ".zshenv", mode = "symlink" }
+"~/.zshrc" = { source = ".zshrc", mode = "symlink" }
+"~/.tmux.conf" = { source = ".tmux.conf", mode = "symlink" }
+"~/.config/mise/config.toml" = { source = ".config/mise/config.toml", mode = "symlink" }
+"~/.config/yamllint/config" = { source = ".config/yamllint/config", mode = "symlink" }
+"~/.aws/update-mfa-profile" = { source = ".aws/update-mfa-profile", mode = "symlink" }
+"~/.emacs.d/init.el" = { source = ".emacs.d/init.el", mode = "symlink" }
+"~/.emacs.d/early-init.el" = { source = ".emacs.d/early-init.el", mode = "symlink" }
