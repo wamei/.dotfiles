@@ -1,47 +1,67 @@
-## Init
+# dotfiles
+
+macOS の環境構築を [mise](https://mise.jdx.dev/) の `bootstrap` に寄せてある。
+
+## 新規マシン
 
 ```sh
-./init.sh
+curl -fsSL https://raw.githubusercontent.com/wamei/.dotfiles/master/init.sh | bash
 ```
 
-## Homebrew (Mac)
+Xcode Command Line Tools、Homebrew、mise、ghq を入れ、このリポジトリを ghq
+レイアウト (`~/projects/github.com/wamei/.dotfiles`) へ clone して
+`mise bootstrap` に渡す。以降は宣言が面倒を見る。
+
+## 既に clone してある場合
+
+リポジトリ直下で実行する。mise は cwd の設定階層をマージするので、
+リポジトリ外から実行すると `[bootstrap.*]` が見えない。
 
 ```sh
-defaults write com.apple.finder AppleShowAllFiles True
-
-ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
-brew update
-brew tap homebrew/cask-versions
-
-brew install coreutils
-brew install zsh-completions
-brew install timg  # Emacs の端末 (ghostel) に Kitty graphics で画像を出す
-
-brew tap homebrew/cask-fonts
-brew install --cask font-hackgen
-brew install --cask font-hackgen-nerd
-
-brew install --cask google-japanese-ime
-brew install laishulu/homebrew/macism  # Emacs の minibuffer で IME を off にする
-brew install --cask karabiner-elements
-brew install --cask 1password
-brew install --cask nordlayer
-
-brew install --cask google-chrome
-brew install --cask google-chrome-canary
-
-brew install --cask slack
-brew install --cask microsoft-teams
-brew install --cask gather
-
-brew install --cask visual-studio-code
-brew install --cask postman
-brew install --cask mysqlworkbench
-brew install --cask orbstack
-brew install --cask warp
-
-brew install awscli
-brew install copilot
-
-brew install mise
+mise bootstrap        # 適用
+mise bootstrap -n     # dry-run (適用せず差分だけ表示)
+mise bootstrap status # 収束状態の確認
+mise run verify       # 設定の妥当性を非破壊で検証
+mise run update       # brew と mise の管理下をまとめて最新化
 ```
+
+`mise bootstrap` が宣言的・冪等に適用するもの:
+
+| 宣言 | 内容 |
+|---|---|
+| `[bootstrap.packages]` | brew の formula と cask |
+| `[dotfiles]` | `$HOME` への symlink |
+| `[bootstrap.macos.defaults]` | macOS のシステム設定 |
+| `[bootstrap.user]` | ログインシェル |
+| `[tools]` | ランタイムと単体 CLI (`.config/mise/config.toml`) |
+| `[tasks.bootstrap]` | 宣言で表せない補助 |
+
+## 設定ファイルの置き場
+
+| ファイル | 内容 |
+|---|---|
+| `mise.toml` | `[dotfiles]` `[bootstrap.*]` `[tasks.*]` |
+| `.config/mise/config.toml` | `[tools]` `[settings]`。`~/.config/mise/config.toml` へ symlink されるグローバル設定 |
+
+`[tools]` を `mise.toml` へ移していないのは、グローバル設定としてどのディレクトリ
+でもランタイムを解決させるためと、`.zshrc` の `show_env_mise` がそのパスを基準に
+「global 由来か」を判定しているため。
+
+## リポジトリの置き場
+
+`ghq.root` は `~/projects`。GitHub のリポジトリは
+`~/projects/github.com/<owner>/<repo>` に落ちる。
+
+```sh
+ghq get <url>
+```
+
+## 注記
+
+- mise は 2026.9.1 を前提にしている。公開ドキュメントはこれより新しい版を記述
+  しており、`[dotfiles]` の `mode = "track"` や `[bootstrap.macos.defaults]` の
+  配列値はこの版では動かない
+- `[dotfiles]` のエントリ内の未知キーは警告なしに無視される。編集したら必ず
+  `mise run verify` で確認すること
+- cask は `[bootstrap.brew] adopt = true` で扱っている。入れ直すと
+  `/Applications/*.app` が置き換わり macOS の TCC 権限がリセットされるため
