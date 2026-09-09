@@ -13,6 +13,8 @@
 ;;; Code:
 
 (require 'kitty-graphics)
+(require 'image-file)
+(require 'seq)
 
 (defvar-local wamei/tty-image--id nil
   "端末に置いている画像の ID。無ければ nil。")
@@ -77,6 +79,67 @@ WINDOW が nil か、FILE の大きさを測れなければ nil。"
           ;; 戻すので塞がらない。
           (setq wamei/tty-image--cells cells)
           (message "画像を端末へ送れませんでした: %s" (file-name-nondirectory file)))))))
+
+;;;; 次/前のファイル
+
+(defun wamei/tty-image--image-files (dir)
+  "DIR の中の画像ファイルの絶対パスを名前順に返す。"
+  (let ((re (image-file-name-regexp)))
+    (seq-filter (lambda (file)
+                  (and (not (file-directory-p file))
+                       (string-match-p re file)))
+                (directory-files dir t))))
+
+(defun wamei/tty-image--sibling (file files n)
+  "FILES の中で FILE から N 個ずれた要素。端をはみ出すか FILE が無ければ nil。"
+  (let ((i (seq-position files file #'equal)))
+    (when i
+      (let ((j (+ i n)))
+        (when (and (>= j 0) (< j (length files)))
+          (nth j files))))))
+
+(defun wamei/tty-image-next-file (&optional n)
+  "同じディレクトリの N 個あと (既定 1) の画像を開く。端なら何もしない。"
+  (interactive "p" wamei/tty-image-mode)
+  (let* ((file buffer-file-name)
+         (next (and file
+                    (wamei/tty-image--sibling
+                     file (wamei/tty-image--image-files (file-name-directory file))
+                     (or n 1)))))
+    (if next
+        (find-alternate-file next)
+      (message "これ以上画像がありません"))))
+
+(defun wamei/tty-image-previous-file (&optional n)
+  "同じディレクトリの N 個まえ (既定 1) の画像を開く。端なら何もしない。"
+  (interactive "p" wamei/tty-image-mode)
+  (wamei/tty-image-next-file (- (or n 1))))
+
+(defun wamei/tty-image-refresh ()
+  "画像を送り直して描き直す。"
+  (interactive nil wamei/tty-image-mode)
+  (wamei/tty-image--forget)
+  (wamei/tty-image--render))
+
+;;;; モード
+
+(defvar-keymap wamei/tty-image-mode-map
+  :doc "`wamei/tty-image-mode' のキーマップ。"
+  :parent special-mode-map
+  "n" #'wamei/tty-image-next-file
+  "p" #'wamei/tty-image-previous-file
+  "g" #'wamei/tty-image-refresh)
+
+(define-derived-mode wamei/tty-image-mode special-mode "TtyImage"
+  "tty の Emacs で画像ファイルを見るためのモード。
+kitty graphics protocol の Unicode placeholder で端末に描く。"
+  (setq-local truncate-lines t
+              cursor-type nil)
+  ;; 行番号は見た目の問題ではない。桁を食われると placeholder の桁数が合わなくなる。
+  (display-line-numbers-mode 0)
+  (add-hook 'window-configuration-change-hook #'wamei/tty-image--render nil t)
+  (add-hook 'kill-buffer-hook #'wamei/tty-image--forget nil t)
+  (wamei/tty-image--render))
 
 (provide 'tty-image-mode)
 ;;; tty-image-mode.el ends here
