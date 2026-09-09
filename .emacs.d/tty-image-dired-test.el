@@ -504,6 +504,149 @@ auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
         (wamei/tty-image-dired-display-this)
         (should (equal opened "/d/b.png"))))))
 
+;;; マーク・削除フラグ
+
+(ert-deftest wamei/tty-image-dired-mark-thumb-calls-dired-mark-on-the-selected-file ()
+  "選択中のファイルに対して dired-goto-file → dired-mark を呼ぶこと。
+`--mark' はマークのあと次のサムネイルへ移り、そこでも `--marked-p' 経由で
+`dired-goto-file' が呼ばれるので、最初の呼び出しだけを捕まえる (dired-buffer は
+位置決めが終わってから live にする、という手も考えたが、両方やっておくと
+将来 `--goto-index' の実装が変わっても頑丈)。"
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*"))
+        (goto-file nil) (marked nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-goto-file)
+                   (lambda (f) (unless goto-file (setq goto-file f)) t))
+                  ((symbol-function 'dired-mark) (lambda (&rest _) (setq marked t))))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+            (wamei/tty-image-dired--goto-index 1)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired-mark-thumb-original-file)
+            (should (equal goto-file "/d/b.png"))
+            (should marked)))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-unmark-thumb-calls-dired-unmark-on-the-selected-file ()
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*"))
+        (goto-file nil) (unmarked nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-goto-file)
+                   (lambda (f) (unless goto-file (setq goto-file f)) t))
+                  ((symbol-function 'dired-unmark) (lambda (&rest _) (setq unmarked t))))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+            (wamei/tty-image-dired--goto-index 0)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired-unmark-thumb-original-file)
+            (should (equal goto-file "/d/a.png"))
+            (should unmarked)))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-flag-thumb-calls-dired-flag-file-deletion-on-the-selected-file ()
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*"))
+        (goto-file nil) (flagged nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-goto-file)
+                   (lambda (f) (unless goto-file (setq goto-file f)) t))
+                  ((symbol-function 'dired-flag-file-deletion)
+                   (lambda (&rest _) (setq flagged t))))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+            (wamei/tty-image-dired--goto-index 0)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired-flag-thumb-original-file)
+            (should (equal goto-file "/d/a.png"))
+            (should flagged)))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-mark-thumb-moves-to-the-next-image ()
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-goto-file) (lambda (_f) t))
+                  ((symbol-function 'dired-mark) #'ignore))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired--goto-index 0)
+            (wamei/tty-image-dired-mark-thumb-original-file)
+            (should (= wamei/tty-image-dired--selected 1))))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-mark-thumb-does-not-open-the-image ()
+  "組み込みの `image-dired-marking-shows-next' に相当する副作用 (画像を開く) を
+起こさないこと。"
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*"))
+        (opened nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-goto-file) (lambda (_f) t))
+                  ((symbol-function 'dired-mark) #'ignore)
+                  ((symbol-function 'find-file) (lambda (&rest _) (setq opened t)))
+                  ((symbol-function 'image-dired-display-this)
+                   (lambda (&rest _) (setq opened t))))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired--goto-index 0)
+            (wamei/tty-image-dired-mark-thumb-original-file)
+            (should-not opened)))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-mark-thumb-does-not-put-face-on-the-placeholder ()
+  "placeholder のセルは前景色が画像 ID なので、face を貼ると画像が壊れる。
+組み込みの `image-dired--thumb-update-mark-at-point' は point (箱) に face を
+貼るが、自前のマークコマンドはそこを経由しない。"
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-goto-file) (lambda (_f) t))
+                  ((symbol-function 'dired-mark) #'ignore))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png") 2 '(4 . 2)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired--goto-index 0)
+            (wamei/tty-image-dired-mark-thumb-original-file)
+            (let ((region (wamei/tty-image-dired--box-line-region 0 0)))
+              (should-not (get-text-property (car region) 'face)))))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-mark-thumb-messages-when-dired-buffer-is-gone ()
+  "dired バッファが無ければ error にせずメッセージだけ出す。"
+  (let ((messages nil))
+    (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-test--with-grid '("/d/a.png") 1 '(4 . 2)
+        (setq wamei/tty-image-dired--dired-buffer nil)
+        (wamei/tty-image-dired-mark-thumb-original-file)
+        (should messages)))))
+
+(ert-deftest wamei/tty-image-dired-unmark-all-marks-redraws-without-moving-selection ()
+  "全キャプションを描き直し、選択は動かさない。"
+  (let ((dired-buf (generate-new-buffer " *tty-image-dired-mark-test-dired*"))
+        (redrawn nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/tty-image-dired--sync-visible) #'ignore)
+                  ((symbol-function 'dired-unmark-all-marks) #'ignore)
+                  ((symbol-function 'wamei/tty-image-dired--redraw-caption)
+                   (lambda (index) (push index redrawn))))
+          (wamei/tty-image-dired-test--with-grid '("/d/a.png" "/d/b.png" "/d/c.png") 2 '(4 . 2)
+            (setq wamei/tty-image-dired--dired-buffer dired-buf)
+            (wamei/tty-image-dired--goto-index 1)
+            (setq redrawn nil)
+            (wamei/tty-image-dired-unmark-all-marks)
+            (should (equal (sort redrawn #'<) '(0 1 2)))
+            (should (= wamei/tty-image-dired--selected 1))))
+      (kill-buffer dired-buf))))
+
+(ert-deftest wamei/tty-image-dired-unmark-all-marks-messages-when-dired-buffer-is-gone ()
+  (let ((messages nil))
+    (cl-letf (((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (wamei/tty-image-dired-test--with-grid '("/d/a.png") 1 '(4 . 2)
+        (setq wamei/tty-image-dired--dired-buffer nil)
+        (wamei/tty-image-dired-unmark-all-marks)
+        (should messages)))))
+
 ;;; マークの表示更新
 
 (ert-deftest wamei/tty-image-dired-update-marks-works-from-another-buffer ()
@@ -581,11 +724,36 @@ auto-mode-alist → image-mode → Phase 1 の advice の経路に載せる。"
         (should (advice-member-p #'wamei/tty-image-dired--display-thumbs-around
                                  'image-dired-display-thumbs))
         (should (advice-member-p #'wamei/tty-image-dired--update-marks-around
-                                 'image-dired--thumb-update-marks)))
+                                 'image-dired--thumb-update-marks))
+        (should (advice-member-p #'wamei/tty-image-dired--update-mark-at-point-around
+                                 'image-dired--thumb-update-mark-at-point)))
     (advice-remove 'image-dired-display-thumbs
                    #'wamei/tty-image-dired--display-thumbs-around)
     (advice-remove 'image-dired--thumb-update-marks
-                   #'wamei/tty-image-dired--update-marks-around)))
+                   #'wamei/tty-image-dired--update-marks-around)
+    (advice-remove 'image-dired--thumb-update-mark-at-point
+                   #'wamei/tty-image-dired--update-mark-at-point-around)))
+
+(ert-deftest wamei/tty-image-dired-update-mark-at-point-around-skips-the-builtin-for-our-mode ()
+  "組み込みは point (箱) に `add-face-text-property' で face を貼り、placeholder の
+セルを壊す。自分のモードでは元を呼ばない。"
+  (let ((orig-called nil))
+    (let ((buf (generate-new-buffer " *tty-image-dired-mark-at-point-test*")))
+      (unwind-protect
+          (with-current-buffer buf
+            (wamei/tty-image-dired-mode)
+            (wamei/tty-image-dired--update-mark-at-point-around
+             (lambda (&rest _) (setq orig-called t)))
+            (should-not orig-called))
+        (kill-buffer buf)))))
+
+(ert-deftest wamei/tty-image-dired-update-mark-at-point-around-calls-the-builtin-otherwise ()
+  "自分のモードでなければ組み込みをそのまま呼ぶ (GUI や非対応端末のため)。"
+  (let ((orig-called nil))
+    (with-temp-buffer
+      (wamei/tty-image-dired--update-mark-at-point-around
+       (lambda (&rest _) (setq orig-called t)))
+      (should orig-called))))
 
 (ert-deftest wamei/tty-image-dired-update-marks-around-skips-the-builtin-for-our-mode ()
   "組み込みは placeholder のセルに face を貼って画像を壊すので、自分のモードのときは
