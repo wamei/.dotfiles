@@ -26,6 +26,8 @@
 (declare-function posframe-show "posframe")
 (declare-function posframe-hide "posframe")
 (declare-function posframe-poshandler-point-bottom-left-corner "posframe")
+(declare-function posframe-delete-frame "posframe" (buffer-or-name))
+(defvar posframe--frame)
 
 (defgroup wamei/dired-image-preview nil
   "dired の画像ファイルのプレビューをポップアップ表示する。"
@@ -40,7 +42,7 @@
   "マウスが画像の行で止まってから表示するまでの秒数。"
   :type 'number)
 
-(defcustom wamei/dired-image-preview-point-delay 0.3
+(defcustom wamei/dired-image-preview-point-delay 0.0
   "point が画像の行に乗ってから表示するまでの秒数。
 行を連続で送っている間に点滅しないよう、少し待つ。"
   :type 'number)
@@ -49,9 +51,9 @@
   "プレビューの最大の大きさ。フレームの幅・高さに対する比。"
   :type 'number)
 
-(defcustom wamei/dired-image-preview-gap '(2 . 1)
+(defcustom wamei/dired-image-preview-gap '(24 . 1)
   "プレビューをマウス/point の文字から離す距離 (桁 . 行)。
-文字の右下にこの分だけ空けて置く。eldoc-box の `wamei/eldoc-box-at-point-gap' と揃える。"
+文字の右下にこの分だけ空けて置く。"
   :type '(cons integer integer))
 
 (defcustom wamei/dired-image-preview-checkerboard-colors '("#808080" . "#c0c0c0")
@@ -65,6 +67,18 @@
 (defvar wamei/dired-image-preview-hide-function
   #'wamei/dired-image-preview--posframe-hide
   "表示中のプレビューを消す関数。引数なし。")
+
+(defvar wamei/dired-image-preview-posframe-parameters
+  '((no-accept-focus . t)
+    (no-focus-on-map . t)
+    (no-other-frame . t)
+    (cursor-type . nil))
+  "プレビューの child frame に渡す frame パラメータ。
+posframe は `:accept-focus' から `no-accept-focus' しか付けないので、macOS では
+frame が map された時点でウィンドウマネージャがそこへキーボードフォーカスを移す
+\(posframe 側の `posframe--redirect-posframe-focus' は posframe バッファが
+current のときしか働かない)。corfu / eldoc-box と同じく `no-focus-on-map' も渡して、
+表示だけしてフォーカスは動かさない。")
 
 (defvar wamei/dired-image-preview-available-predicate #'display-images-p
   "この環境でプレビューを出せるなら非 nil を返す関数。
@@ -167,6 +181,12 @@ DELAY 秒後に表示を予約する。"
 
 ;;;; ハンドラ
 
+(defun wamei/dired-image-preview--own-frame-window-p (window)
+  "WINDOW が child frame のもの (プレビュー自身や他のポップアップ) なら非 nil。"
+  (and (window-live-p window)
+       (frame-parent (window-frame window))
+       t))
+
 (defun wamei/dired-image-preview--handle-motion (event)
   "マウス移動 EVENT を受けて追跡する。モードが有効なバッファの上だけ対象にする。"
   (interactive "e")
@@ -176,10 +196,14 @@ DELAY 秒後に表示を予約する。"
   (let* ((posn (event-end event))
          (window (posn-window posn))
          (pos (posn-point posn)))
-    (when (and (windowp window) (integerp pos))
-      (if (buffer-local-value 'wamei/dired-image-preview-mode (window-buffer window))
-          (wamei/dired-image-preview--track window pos wamei/dired-image-preview-mouse-delay)
-        (wamei/dired-image-preview--reset)))))
+    ;; プレビューはポインタのすぐ右下に出るので、少し動かすとポインタが
+    ;; child frame に入る。そこで消すと出す・消すを繰り返して点滅するため、
+    ;; child frame からの移動イベントは無視して今の表示を保つ。
+    (unless (wamei/dired-image-preview--own-frame-window-p window)
+      (when (and (windowp window) (integerp pos))
+        (if (buffer-local-value 'wamei/dired-image-preview-mode (window-buffer window))
+            (wamei/dired-image-preview--track window pos wamei/dired-image-preview-mouse-delay)
+          (wamei/dired-image-preview--reset))))))
 
 (defun wamei/dired-image-preview--post-command ()
   "point の行を追跡する。モードが有効なバッファの post-command-hook (ローカル) 用。
@@ -291,8 +315,31 @@ macOS の Emacs は child frame の背景だけを透明にできない (alpha-b
 
 ;;;; posframe backend
 
+(defun wamei/dired-image-preview--posframe-frame ()
+  "プレビューの child frame。まだ無ければ nil。"
+  ;; posframe をまだ読み込んでいなければ frame は無い (`posframe--frame' も void)。
+  (when-let* (((boundp 'posframe--frame))
+              (buffer (get-buffer wamei/dired-image-preview--buffer-name)))
+    (buffer-local-value 'posframe--frame buffer)))
+
+(defun wamei/dired-image-preview--posframe-stale-p (frame)
+  "FRAME に `wamei/dired-image-preview-posframe-parameters' が揃っていなければ非 nil。
+posframe は引数が変わったときだけ child frame を作り直すので、パラメータを足す前に
+作られた frame がそのまま使われ続けることがある (フォーカスを奪う frame が残る)。"
+  (and (frame-live-p frame)
+       (cl-some (lambda (parameter)
+                  (not (equal (frame-parameter frame (car parameter)) (cdr parameter))))
+                wamei/dired-image-preview-posframe-parameters)
+       t))
+
 (defun wamei/dired-image-preview--posframe-show (target)
   "TARGET の画像を posframe でアンカー文字の右下に表示する。"
+  ;; パラメータが欠けた child frame が残っていたら捨てて、posframe に作り直させる。
+  ;; frame の作成時に渡さないと効かないパラメータ (no-focus-on-map など) があるので、
+  ;; set-frame-parameter で後付けはしない。
+  (when-let* ((existing (wamei/dired-image-preview--posframe-frame))
+              ((wamei/dired-image-preview--posframe-stale-p existing)))
+    (posframe-delete-frame wamei/dired-image-preview--buffer-name))
   (let* ((window (wamei/dired-image-preview--target-window target))
          (frame (window-frame window))
          (gap (wamei/dired-image-preview--pixel-gap frame))
@@ -314,7 +361,8 @@ macOS の Emacs は child frame の背景だけを透明にできない (alpha-b
                      :y-pixel-offset (cdr gap)
                      :border-width 1
                      :border-color (face-attribute 'wamei/popup-border :background nil t)
-                     :accept-focus nil))))
+                     :accept-focus nil
+                     :override-parameters wamei/dired-image-preview-posframe-parameters))))
 
 (defun wamei/dired-image-preview--posframe-hide ()
   "posframe のプレビューを消す。"
