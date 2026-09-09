@@ -92,11 +92,11 @@ child frame から呼ばれても親フレームのタブに書くよう
 
 child frame (メモの posframe など) にフォーカスがあるときは、その window を
 本文とみなしてはいけない。タブ名がメモバッファ名に化け、サイドバーの追従先も
-狂う。最上位フレームの選択 window に読み替えてから判定する。"
+狂う。最上位フレームの選択 window に読み替えてから判定する。選択 window が
+最上位フレームにいる通常のときは、それがそのフレームの選択 window そのもの
+なので `frame-selected-window' 1 本で足りる。"
   (let* ((base (wamei/project-tabs-base-frame))
-         (window (if (eq (window-frame (selected-window)) base)
-                     (selected-window)
-                   (frame-selected-window base))))
+         (window (frame-selected-window base)))
     (if (window-parameter window 'no-other-window)
         (or (get-mru-window base nil t t) window)
       window)))
@@ -134,8 +134,15 @@ root の紐づけは名前の固定より条件が緩い。名前が既に固定
 持たせたいが、そこでカレントバッファのプロジェクトを無条件に採ると、
 別プロジェクトのファイルを一度開いただけで紐づけ先が変わってしまう。
 固定済みのタブはタブ名が紐づけ先の宣言なので、名前が一致するときだけ
-記録する。既に root があれば触らない。"
-  (with-selected-frame (or frame (selected-frame))
+記録する。既に root があれば触らない。
+
+FRAME は `wamei/project-tabs-base-frame' に通してから選択する。この関数は
+`wamei/project-tabs--pin-name-soon' 経由で `window-buffer-change-functions'
+から呼ばれ、メモの posframe が出るたびに child frame を渡してくる。child
+frame をそのまま選択すると `tab-bar--current-tab' がそこに幻の tabs
+パラメータを生やし、親のタブの代わりにその幻を rename してしまう
+(`wamei/project-tabs-set-root' と同じ扱い)。"
+  (with-selected-frame (wamei/project-tabs-base-frame frame)
     (when tab-bar-mode
       (when-let* ((project (wamei/project-tabs--main-project))
                   (name (project-name project))

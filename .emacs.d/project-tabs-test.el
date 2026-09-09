@@ -305,17 +305,40 @@
       (should (equal (wamei/project-tabs-current-root 'child) "/tmp/proj/")))))
 
 (ert-deftest wamei/project-tabs-main-window-ignores-child-frames ()
-  ;; child frame の window が選択されていても、親フレームの window を返す。
-  (let* ((main (selected-window)))
-    (cl-letf (((symbol-function 'selected-window) (lambda () 'child-window))
-              ((symbol-function 'window-frame)
-               (lambda (&optional _w) 'child-frame))
+  ;; child frame にフォーカスがあっても、親フレームの選択 window を返す。
+  ;; `selected-frame' まで child frame にすり替えて実際の状況を作る
+  ;; (posframe にフォーカスがあるとき `selected-frame' は child frame)。
+  ;; child frame の window (`child-window') を返す実装なら落ちる。
+  (let ((parent (selected-frame))
+        (main (selected-window)))
+    (cl-letf (((symbol-function 'selected-frame) (lambda () 'child-frame))
+              ((symbol-function 'selected-window) (lambda () 'child-window))
               ((symbol-function 'frame-parent)
-               (lambda (frame) (when (eq frame 'child-frame) (selected-frame))))
+               (lambda (frame) (when (eq frame 'child-frame) parent)))
               ((symbol-function 'frame-selected-window)
                (lambda (&optional frame)
-                 (if (eq frame (selected-frame)) main 'child-window))))
+                 (if (eq frame parent) main 'child-window))))
       (should (eq (wamei/project-tabs-main-window) main)))))
+
+(ert-deftest wamei/project-tabs-pin-name-uses-the-base-frame ()
+  ;; `wamei/project-tabs--pin-name-soon' は `window-buffer-change-functions'
+  ;; 経由なので、メモの posframe が出るたびに child frame を FRAME として
+  ;; 渡してくる。child frame をそのまま選択すると、そこに幻の tabs パラメータ
+  ;; が生えて親のタブの代わりに rename されてしまう。タブは常に最上位の
+  ;; フレームのものを触る。
+  (wamei/project-tabs-test--with-project "/tmp/proj-a/"
+    (wamei/project-tabs-test--with-tab-bar
+      (let ((parent (selected-frame)))
+        (with-temp-buffer
+          (wamei/project-tabs-test--show (current-buffer) "/tmp/proj-a/")
+          (cl-letf (((symbol-function 'frame-parent)
+                     (lambda (frame) (when (eq frame 'child-frame) parent))))
+            (should (equal (wamei/project-tabs-pin-name 'child-frame) "proj-a")))
+          ;; 名前も root も親フレームのタブに入る。
+          (let ((tab (tab-bar--current-tab)))
+            (should (equal (alist-get 'name tab) "proj-a"))
+            (should (alist-get 'explicit-name tab)))
+          (should (equal (wamei/project-tabs-current-root parent) "/tmp/proj-a/")))))))
 
 (provide 'project-tabs-test)
 ;;; project-tabs-test.el ends here
