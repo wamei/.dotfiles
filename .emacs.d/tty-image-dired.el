@@ -73,5 +73,146 @@ FIRST-LINE は window の先頭がバッファの何行目か (0 起点)、WINDO
       (when (< first-index total)
         (cons first-index last-index)))))
 
+;;;; バッファの状態
+
+(defvar-local wamei/tty-image-dired--files nil
+  "グリッド順に並べたファイルのベクタ。")
+
+(defvar-local wamei/tty-image-dired--ids nil
+  "各サムネイルの画像 ID のベクタ。端末に置いていなければその要素は nil。")
+
+(defvar-local wamei/tty-image-dired--columns 1
+  "段あたりの枚数。")
+
+(defvar-local wamei/tty-image-dired--box '(1 . 1)
+  "箱の (桁 . 行)。")
+
+(defvar-local wamei/tty-image-dired--selected 0
+  "選択中のサムネイルの添字。")
+
+(defvar-local wamei/tty-image-dired--dired-buffer nil
+  "元の dired バッファ。")
+
+(defun wamei/tty-image-dired--band-lines ()
+  "段の高さ (箱の行数 + キャプション 1 行)。"
+  (1+ (cdr wamei/tty-image-dired--box)))
+
+;;;; キャプション
+
+(defun wamei/tty-image-dired--caption (file width selected marked)
+  "FILE のキャプションを WIDTH 桁で返す。
+SELECTED なら `highlight' face、MARKED なら頭に `*'。
+placeholder のセルは前景色が画像 ID なので face を当てられない。選択と
+マークの表示はこの行が担う。
+日本語のファイル名では文字数と表示桁が食い違うので、`string-width' で数える。"
+  (let* ((name (concat (if marked "*" "") (file-name-nondirectory file)))
+         (text (truncate-string-to-width name width 0 ?\s)))
+    (when selected
+      (add-face-text-property 0 (length text) 'highlight nil text))
+    text))
+
+;;;; 位置
+
+(defun wamei/tty-image-dired--goto-line (line)
+  "バッファの LINE 行目 (0 起点) の先頭へ。"
+  (goto-char (point-min))
+  (forward-line line))
+
+(defun wamei/tty-image-dired--box-line-region (index row)
+  "サムネイル INDEX の箱の ROW 行目の領域 (開始 . 終了)。"
+  (let* ((columns wamei/tty-image-dired--columns)
+         (box-cols (car wamei/tty-image-dired--box))
+         (band (/ index columns))
+         (col (mod index columns)))
+    (save-excursion
+      (wamei/tty-image-dired--goto-line (+ (* band (wamei/tty-image-dired--band-lines)) row))
+      (move-to-column (* col (1+ box-cols)))
+      (let ((start (point)))
+        (move-to-column (+ (* col (1+ box-cols)) box-cols))
+        (cons start (point))))))
+
+(defun wamei/tty-image-dired--caption-region (index)
+  "サムネイル INDEX のキャプション行の領域 (開始 . 終了)。"
+  (wamei/tty-image-dired--box-line-region index (cdr wamei/tty-image-dired--box)))
+
+(defun wamei/tty-image-dired--goto-index (index)
+  "サムネイル INDEX の箱の左上へ point を移し、選択を更新する。"
+  (let ((old wamei/tty-image-dired--selected))
+    (setq wamei/tty-image-dired--selected index)
+    (wamei/tty-image-dired--redraw-caption old)
+    (wamei/tty-image-dired--redraw-caption index))
+  (let ((region (wamei/tty-image-dired--box-line-region index 0)))
+    (goto-char (car region))))
+
+;;;; 組み立て
+
+(defun wamei/tty-image-dired--marked-p (file)
+  "FILE が元の dired バッファでマークされていれば非 nil。"
+  (let ((buffer wamei/tty-image-dired--dired-buffer))
+    (and (buffer-live-p buffer)
+         (with-current-buffer buffer
+           (save-excursion
+             (and (dired-goto-file file)
+                  (image-dired-dired-file-marked-p)))))))
+
+(defun wamei/tty-image-dired--put-properties (index)
+  "サムネイル INDEX の箱とキャプションに image-dired と同じプロパティを載せる。"
+  (let* ((file (aref wamei/tty-image-dired--files index))
+         (props (list 'image-dired-thumbnail t
+                      ;; 組み込みは 1 サムネ = 1 文字を前提にしたキーマップを
+                      ;; 無効にしている。こちらも同じにする。
+                      'keymap nil
+                      'original-file-name file
+                      'associated-dired-buffer wamei/tty-image-dired--dired-buffer
+                      'tags (image-dired-list-tags file)
+                      'mouse-face 'highlight
+                      'comment (image-dired-get-comment file))))
+    (dotimes (row (1+ (cdr wamei/tty-image-dired--box)))
+      (let ((region (wamei/tty-image-dired--box-line-region index row)))
+        (add-text-properties (car region) (cdr region) props)))))
+
+(defun wamei/tty-image-dired--redraw-caption (index)
+  "サムネイル INDEX のキャプションを描き直す。"
+  (when (and wamei/tty-image-dired--files
+             (< index (length wamei/tty-image-dired--files)))
+    (let* ((file (aref wamei/tty-image-dired--files index))
+           (region (wamei/tty-image-dired--caption-region index))
+           (inhibit-read-only t)
+           (text (wamei/tty-image-dired--caption
+                  file (car wamei/tty-image-dired--box)
+                  (= index wamei/tty-image-dired--selected)
+                  (wamei/tty-image-dired--marked-p file))))
+      (save-excursion
+        (delete-region (car region) (cdr region))
+        (goto-char (car region))
+        (insert text))
+      (wamei/tty-image-dired--put-properties index))))
+
+(defun wamei/tty-image-dired--build (files dired-buffer columns box)
+  "現在のバッファに FILES のグリッドを組み立てる。
+COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白のままにし、
+画像は可視範囲だけ後から送る (画像 ID は 1〜255 しかないため)。"
+  (setq wamei/tty-image-dired--files files
+        wamei/tty-image-dired--ids (make-vector (length files) nil)
+        wamei/tty-image-dired--columns columns
+        wamei/tty-image-dired--box box
+        wamei/tty-image-dired--selected 0
+        wamei/tty-image-dired--dired-buffer dired-buffer)
+  (let* ((inhibit-read-only t)
+         (box-cols (car box))
+         (box-rows (cdr box))
+         (total (length files))
+         (bands (ceiling total columns))
+         ;; 段の 1 行ぶんの幅。箱の間の 1 桁を含める
+         (line-width (* columns (1+ box-cols))))
+    (erase-buffer)
+    (dotimes (_band bands)
+      (dotimes (_row box-rows)
+        (insert (make-string line-width ?\s) "\n"))
+      (insert (make-string line-width ?\s) "\n"))
+    (dotimes (index total)
+      (wamei/tty-image-dired--redraw-caption index))
+    (goto-char (point-min))))
+
 (provide 'tty-image-dired)
 ;;; tty-image-dired.el ends here
