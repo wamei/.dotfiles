@@ -214,7 +214,7 @@
     (set-face-attribute 'tooltip nil :family font-family :height font-size)
     (set-fontset-font nil 'japanese-jisx0208
                       (font-spec :family font-family :height font-size))
-    (add-to-list 'face-font-rescale-alist '("Menlo" . 0.95))
+    (add-to-list 'face-font-rescale-alist '("Menlo" . 0.9))
     (dolist (range '((#x2190 . #x21FF)    ; Arrows
                      (#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
                      (#x2600 . #x26FF)    ; Misc Symbols (⚙ ⚠ ...)
@@ -940,6 +940,18 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
         nil t)
   :hook
   (dired-mode-hook . wamei/dired-git-status-mode))
+
+(leaf dired-image-preview
+  :doc "dired の画像ファイルにマウス/カーソルを当てるとプレビューをポップアップ表示する"
+  :ensure nil
+  ;; posframe は表示時に autoload で読まれるので :after は付けない (:hook が
+  ;; eval-after-load に包まれて黙って効かなくなるのを避ける)。
+  :preface
+  (load (expand-file-name "dired-image-preview"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :hook
+  (dired-mode-hook . wamei/dired-image-preview-mode))
 
 (leaf project-sidebar
   :doc "dired ベースのプロジェクトサイドバー (treemacs の代替)"
