@@ -24,12 +24,23 @@
 ;;; 段あたりの枚数
 
 (ert-deftest wamei/tty-image-dired-columns-reserves-a-column-for-the-truncation-glyph ()
-  "tty には fringe が無いので最終桁が truncation glyph に取られる。その 1 桁を引く。
-箱と箱の間は 1 桁空ける。"
-  ;; (80 - 1) / (16 + 1) = 4.6 → 4 枚
+  "箱と箱の間は 1 桁空ける。tty には fringe が無く最終桁は truncation glyph に
+取られるが、この区切りの空きがちょうどその 1 桁を兼ねる。"
+  ;; 80 / (16 + 1) = 4.7 → 4 枚
   (should (= (wamei/tty-image-dired--columns 80 16) 4))
-  ;; (35 - 1) / (16 + 1) = 2 → 2 枚
+  ;; 35 / (16 + 1) = 2.05 → 2 枚
   (should (= (wamei/tty-image-dired--columns 35 16) 2)))
+
+(ert-deftest wamei/tty-image-dired-columns-fits-an-exact-multiple ()
+  "width が (箱の桁数 + 1) で割り切れるときも、入るだけ並べる。
+箱 i は桁 [i*(b+1), i*(b+1)+b-1] を占め、最後の 1 桁は truncation glyph に
+取られるだけなので、n*(b+1) <= width なら n 枚入る。"
+  ;; 33 = 3 * 11。箱は 桁 0-9 / 11-20 / 22-31 を占め、桁 32 が glyph
+  (should (= (wamei/tty-image-dired--columns 33 10) 3))
+  ;; 34 = 2 * 17。箱は 桁 0-15 / 17-32 を占め、桁 33 が glyph
+  (should (= (wamei/tty-image-dired--columns 34 16) 2))
+  ;; 9 = 3 * 3
+  (should (= (wamei/tty-image-dired--columns 9 2) 3)))
 
 (ert-deftest wamei/tty-image-dired-columns-is-at-least-one ()
   "箱が入りきらない細い window でも 1 枚は並べる (0 だと段が作れない)。"

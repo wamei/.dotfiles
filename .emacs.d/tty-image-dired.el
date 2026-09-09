@@ -41,9 +41,12 @@
 
 (defun wamei/tty-image-dired--columns (width box-cols)
   "本文 WIDTH 桁に BOX-COLS 桁の箱を何枚並べられるか。最低 1 枚。
-箱と箱の間は 1 桁空ける。tty には fringe が無いので、行が `window-body-width'
-ちょうどでも最終桁が truncation glyph に取られる。その 1 桁を引く。"
-  (max 1 (/ (1- width) (1+ box-cols))))
+箱 i は桁 [i*(box-cols+1), i*(box-cols+1)+box-cols-1] を占める (箱と箱の間の
+1 桁は次の箱との区切りで、n 枚目のあとには置かない)。tty には fringe が無く
+最終桁は truncation glyph に取られるが、この区切り分の空きがちょうどその 1 桁を
+兼ねるので、WIDTH からあらためて引く必要はない。n*(box-cols+1) <= WIDTH を
+満たす最大の n。"
+  (max 1 (/ width (1+ box-cols))))
 
 (defun wamei/tty-image-dired--move-index (index total columns direction)
   "INDEX から DIRECTION へ動いた添字。動けなければ nil (巡回しない)。
