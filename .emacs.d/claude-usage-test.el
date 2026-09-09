@@ -270,6 +270,31 @@ SVG (rsvg) は 12 桁の #rrrrggggbbbb を色として読めない。"
                 (format-mode-line wamei/claude-usage--mode-line-format))))
     (should (string-match-p "29%" line))))
 
+(ert-deftest wamei/claude-usage-test-align-without-tag ()
+  "タグが無ければ詰め物も要らない。"
+  (should (equal (wamei/claude-usage--mode-line-align 0) "")))
+
+(ert-deftest wamei/claude-usage-test-align-pushes-tag-to-right-edge ()
+  "タグの桁数だけ右端から戻した位置まで詰める。"
+  (let ((spacer (wamei/claude-usage--mode-line-align 5)))
+    (should (equal (substring-no-properties spacer) " "))
+    (should (equal (get-text-property 0 'display spacer)
+                   '(space :align-to (- right 5))))))
+
+(ert-deftest wamei/claude-usage-test-tag-width-counts-mode-line-process ()
+  "ghostel の入力モードタグは `mode-line-process' に入っている。"
+  (skip-unless (not (equal "" (format-mode-line "x"))))
+  (with-temp-buffer
+    (should (equal (wamei/claude-usage--mode-line-tag-width) 0))
+    (setq mode-line-process ":Copy")
+    (should (equal (wamei/claude-usage--mode-line-tag-width) 5))))
+
+(ert-deftest wamei/claude-usage-test-mode-line-format-ends-with-tag ()
+  "`mode-line-process' を最後に置いて、詰め物でその手前まで送る。"
+  (should (equal (last wamei/claude-usage--mode-line-format 2)
+                 '((:eval (wamei/claude-usage--mode-line-spacer))
+                   mode-line-process))))
+
 ;;; パネルの地色への馴染ませ
 
 (ert-deftest wamei/claude-usage-test-remap-specs-order ()

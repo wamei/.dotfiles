@@ -501,8 +501,33 @@ remap には色を直接入れてあるので、テーマが変わったら入�
                        (wamei/claude-usage--render wamei/claude-usage--state now)))))
     (cdr wamei/claude-usage--cache)))
 
+(defun wamei/claude-usage--mode-line-tag-width ()
+  "ghostel の入力モードタグを描いたときの桁数。無ければ 0。
+タグ (\":Copy\" / \":Emacs\" / \":Char\" など) は ghostel が
+`mode-line-process' に入れる。文字列とは限らず、進捗表示やスピナーと
+合成された mode-line construct のこともあるので `format-mode-line' で測る。"
+  (if mode-line-process
+      (string-width (format-mode-line mode-line-process))
+    0))
+
+(defun wamei/claude-usage--mode-line-align (width)
+  "WIDTH 桁のものを右端に寄せるための詰め物を返す。WIDTH が 0 なら空文字列。"
+  (if (zerop width)
+      ""
+    (propertize " " 'display `(space :align-to (- right ,width)))))
+
+(defun wamei/claude-usage--mode-line-spacer ()
+  "使用量の行と入力モードタグの間を埋めて、タグを右端に寄せる。"
+  (wamei/claude-usage--mode-line-align (wamei/claude-usage--mode-line-tag-width)))
+
 (defconst wamei/claude-usage--mode-line-format
-  '(" " (:eval (wamei/claude-usage-mode-line)))
+  '(" " (:eval (wamei/claude-usage-mode-line))
+    ;; ghostel の入力モードタグ (":Copy" など) を右端に出す。既定の
+    ;; `mode-line-format' を丸ごと置き換えているので、足さないと
+    ;; copy mode に入って端末が止まっていることに気づけない。
+    ;; タグには ghostel が mouse-1 で抜けるキーマップを付けてある。
+    (:eval (wamei/claude-usage--mode-line-spacer))
+    mode-line-process)
   "Claude のバッファに入れる `mode-line-format'。")
 
 (defconst wamei/claude-usage--mode-line-faces

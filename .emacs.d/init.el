@@ -400,6 +400,15 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
             ;; (wamei/term-glyph-substitutions) で同形の記号に置き換えて行高を守る。
             ;; 置換に無い背の高い記号が出た行だけ数 px 伸びる (vterm 時代と同じ)。
             (ghostel-glyph-scale-floor . 1.0)
+            ;; copy mode は端末を凍らせるので、意図せず入ると Claude の
+            ;; パネルが更新されなくなる。自動で読み取り専用モードへ移る経路
+            ;; (マウスのクリックとドラッグ / mark の活性化 / isearch・ミニバッファ
+            ;; から戻ったときの point 離脱 / プロンプト移動 / ハイパーリンク移動 /
+            ;; C-x C-q) は全部この変数を見るので、まとめて emacs mode に振り替える。
+            ;; read-only なのは同じで、端末は動き続ける (point が端末カーソルの
+            ;; 上にある間は window も追従する)。個別に変えたければ
+            ;; ghostel-mouse-drag-input-mode などを直接指定する。
+            (ghostel-readonly-default-mode . 'emacs)
             ;; タイトルが変わったら端末一覧を描き直す (term-panel.el)。
             ;; この変数の既定は nil (= 改名機構そのものが off) なので、これは
             ;; 「改名を抑止する」設定ではなく「一覧の再描画という副作用のために
