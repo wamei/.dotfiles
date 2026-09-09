@@ -14,6 +14,7 @@
 
 (require 'kitty-graphics)
 (require 'image-file)
+(require 'image-mode)
 (require 'seq)
 
 (defvar-local wamei/tty-image--id nil
@@ -140,6 +141,35 @@ kitty graphics protocol の Unicode placeholder で端末に描く。"
   (add-hook 'window-configuration-change-hook #'wamei/tty-image--render nil t)
   (add-hook 'kill-buffer-hook #'wamei/tty-image--forget nil t)
   (wamei/tty-image--render))
+
+;;;; image-mode の乗っ取り
+
+(defun wamei/tty-image--image-mode-override (&rest _)
+  "tty で `image-mode' の代わりに呼ばれる。
+端末が kitty graphics に対応していて、かつファイルの大きさを測れれば
+`wamei/tty-image-mode'。どちらかが駄目ならテキスト表示に落ちる。`error' は投げない。
+空ファイルや画像でないファイルは「大きさを測れない」に含まれる。"
+  (cond
+   ((not (wamei/kitty-graphics-available-p))
+    (message "この端末は kitty graphics に対応していないのでテキストとして開きます")
+    (wamei/tty-image--as-text))
+   ((not (and buffer-file-name (wamei/kitty-graphics-image-size buffer-file-name)))
+    (message "画像として読めないのでテキストとして開きます")
+    (wamei/tty-image--as-text))
+   (t (wamei/tty-image-mode))))
+
+(defun wamei/tty-image--as-text ()
+  "画像を出せないときにテキスト表示へ落ちる。
+`image-mode-as-text' は `major-mode-restore' に \='(image-mode image-mode-as-text)
+を渡すので、auto-mode-alist から image-mode を外した状態で normal-mode を呼ぶ。
+advice は image-mode に掛かっているため、ここから戻ってくる再帰は起きない。"
+  (image-mode-as-text))
+
+(defun wamei/tty-image-setup ()
+  "tty で画像ファイルを開いたときに `wamei/tty-image-mode' が使われるようにする。
+`auto-mode-alist' の拡張子エントリ、`M-x image-mode'、dired の RET、bookmark 復元は
+すべて `image-mode' を通るので、ここ 1 箇所で足りる。"
+  (advice-add 'image-mode :override #'wamei/tty-image--image-mode-override))
 
 (provide 'tty-image-mode)
 ;;; tty-image-mode.el ends here
