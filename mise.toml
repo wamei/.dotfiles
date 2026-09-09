@@ -16,6 +16,72 @@
 # ため、[tools] をこちらへ移すとプロンプトの表示が壊れる。
 
 # ---------------------------------------------------------------------------
+# system packages (旧 README の brew install 手順)
+#
+# 注: mise の brew backend は brew CLI を呼ばず Homebrew API から直接メタデータを
+# 取り bottle を展開する。cask は artifact 種別のカバー範囲が狭く、扱えないものは
+# 下の [tasks.bootstrap] で brew install に退避してある。
+#
+# adopt = true は必須。mise が cask を入れ直すと /Applications/*.app が置き換わり、
+# macOS の TCC 権限 (アクセシビリティ・画面収録・フルディスクアクセス) がリセット
+# される。karabiner-elements・ghostty・1password が直撃する。adopt は既存バンドルを
+# 差し替えず所有権だけ記録する。
+# ---------------------------------------------------------------------------
+[bootstrap.brew]
+adopt = true
+
+[bootstrap.brew.taps]
+"laishulu/homebrew" = "https://github.com/laishulu/homebrew-homebrew"
+"d12frosted/emacs-plus" = "https://github.com/d12frosted/homebrew-emacs-plus"
+
+[bootstrap.packages]
+# --- formula: mise に移せなかったもの ---
+# mise 本体 (自己参照なので mise では入れられない)
+"brew:mise" = "latest"
+# zsh プラグイン。バイナリでなく .zshrc が $HOMEBREW_PREFIX/share/ を source する
+"brew:zsh-autosuggestions" = "latest"
+"brew:zsh-autocomplete" = "latest"
+"brew:zsh-completions" = "latest"
+# ライブラリ + psql。aqua registry に無い。.zshrc が PATH に入れ、Emacs の
+# sql-mode が psql を引く
+"brew:libpq" = "latest"
+# Emacs の minibuffer で IME を off にする。tap のソースビルド
+"brew:laishulu/homebrew/macism" = "latest"
+# 以下 4 本は aqua registry にエントリが無い
+"brew:timg" = "latest"      # ghostel に kitty graphics で画像を出す
+"brew:wget" = "latest"
+"brew:nkf" = "latest"
+"brew:screen" = "latest"
+
+# --- cask ---
+# emacs-plus-app は d12frosted/emacs-plus tap の cask。mise の brew backend は
+# formulae.brew.sh の API しか見ないため、tap が api/cask/<token>.json を出して
+# いない cask は 404 で解決できない。brew install --cask に退避。
+# "brew-cask:emacs-plus-app" = "latest"
+"brew-cask:ghostty" = "latest"
+"brew-cask:karabiner-elements" = "latest"
+"brew-cask:google-japanese-ime" = "latest"
+"brew-cask:1password" = "latest"
+"brew-cask:claude" = "latest"
+"brew-cask:visual-studio-code" = "latest"
+"brew-cask:google-chrome" = "latest"
+"brew-cask:google-chrome@canary" = "latest"
+"brew-cask:slack" = "latest"
+"brew-cask:microsoft-teams" = "latest"
+"brew-cask:chatwork" = "latest"
+"brew-cask:orbstack" = "latest"
+"brew-cask:postman" = "latest"
+"brew-cask:mysqlworkbench" = "latest"
+"brew-cask:nordlayer" = "latest"
+# フォント
+"brew-cask:font-blex-mono-nerd-font" = "latest"
+"brew-cask:font-hackgen" = "latest"
+"brew-cask:font-hackgen-nerd" = "latest"
+"brew-cask:font-source-han-code-jp" = "latest"
+"brew-cask:font-udev-gothic" = "latest"
+"brew-cask:font-udev-gothic-nf" = "latest"
+
+# ---------------------------------------------------------------------------
 # $HOME への symlink (旧 init.sh の ln -sf)
 # source はこのファイルのあるディレクトリからの相対
 # ---------------------------------------------------------------------------
@@ -41,3 +107,25 @@
 # core.excludesfile が指す ~/.gitignore はリポジトリ管理外の実ファイルだった。
 # リポジトリの .gitignore はリポジトリ自身の除外なので別ファイルにする。
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }
+
+# ---------------------------------------------------------------------------
+# 宣言で表せない補助 (bootstrap の step 15 で自動実行される escape hatch)
+# 冪等に保つこと。毎回実行される。
+# ---------------------------------------------------------------------------
+[tasks.bootstrap]
+description = "mise の brew backend で扱えないパッケージを brew から入れる"
+run = [
+  # emacs-plus-app: d12frosted/emacs-plus tap の cask。mise の brew backend は
+  # formulae.brew.sh の API しか参照せず、tap 側が api/cask/<token>.json を
+  # 公開していないため 404 で解決できない (dry-run で実測)。tap 自体は上の
+  # [bootstrap.brew.taps] が先に済ませるので、ここは token 指定で足りる。
+  #
+  # brew list --cask で先に存在を見てから install する。`brew install --cask` は
+  # 「導入済みなら何もしない」ではなく、導入済みでも版が古ければその場で
+  # アップグレードする (実測: 31.1-319 → 31.1-327 に入れ替わった)。cask の
+  # アップグレードは /Applications/Emacs.app を丸ごと差し替えるので、この
+  # ファイル冒頭に書いたのと同じ TCC リセットが Emacs.app にも起きる。
+  # bootstrap は毎回走る以上、ここは「無ければ入れる」だけに留める。
+  # 更新は `mise run update` (brew upgrade) 側の明示操作に委ねる。
+  "command -v brew >/dev/null 2>&1 && { brew list --cask emacs-plus-app >/dev/null 2>&1 || brew install --cask emacs-plus-app; } || true",
+]
