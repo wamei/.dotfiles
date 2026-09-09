@@ -103,29 +103,42 @@ project-find-file などの起点もメモのディレクトリになってし�
 タブに紐づいた root (project-tabs.el) を先に見る。本文 window に別
 プロジェクトのファイルや *scratch* が出ていても、タブの宣言に従わせる。
 
-タブに root が無いときは本文 window のバッファで判定するが、そこに
-既にメモが出ているなら退避してある元のバッファを見る。メモの実体は
-`wamei/project-memo-directory' 直下でプロジェクト外にあるため、メモ
-自身を基準にすると (全体メモ表示中の 2 回目の toggle のように) 常に
-「プロジェクト外」判定になってしまう。"
+タブに root が無いときは本文 window のバッファで直接判定する。プロ
+ジェクトメモは `project-current-directory-override' を持つので、既に
+メモが出ていてもそれ自身で正しく自己判定できる (`wamei/project-memo-buffer'
+参照)。back を先に見てしまうと、window に別プロジェクトの toggle 連鎖の
+残骸や、toggle を経由しない window-buffer の差し替えで古い back が残って
+いたときに、表示中のメモとは無関係な判定に化けてしまう。back を見るのは
+直接判定が失敗したとき (override を持たない全体メモが出ているとき) だけ
+でよい。"
   (if-let* ((root (wamei/project-tabs-current-root)))
       (project-current nil root)
     (let* ((window (wamei/project-tabs-main-window))
            (buffer (window-buffer window)))
-      (when (wamei/project-memo-buffer-p buffer)
-        (let ((back (window-parameter window 'wamei/project-memo-back)))
-          (when (buffer-live-p back)
-            (setq buffer back))))
-      (with-current-buffer buffer
-        (project-current nil)))))
+      (or (with-current-buffer buffer (project-current nil))
+          (when-let* ((back (window-parameter window 'wamei/project-memo-back)))
+            (and (buffer-live-p back)
+                 (with-current-buffer back (project-current nil))))))))
 
 (defun wamei/project-memo--restore (window)
-  "WINDOW をメモを出す前のバッファに戻す。記録が無ければ直前のバッファ。"
+  "WINDOW をメモを出す前のバッファに戻す。記録が無ければ直前の非メモバッファ。
+
+記録が無いのは、toggle を経由せず WINDOW に最初からメモが出ていた場合
+(desktop 復元直後など、メモは普通のファイルバッファなので普通に復元
+される)。その状態での `switch-to-prev-buffer' の候補は別のメモのこと
+があり、それだと「メモから抜ける」はずの操作がメモに留まってしまう。
+非メモのバッファが見つかるまで探し、無ければ *scratch* に逃がす。"
   (let ((back (window-parameter window 'wamei/project-memo-back)))
     (set-window-parameter window 'wamei/project-memo-back nil)
     (if (buffer-live-p back)
         (set-window-buffer window back)
-      (switch-to-prev-buffer window))
+      (switch-to-prev-buffer window)
+      (when (wamei/project-memo-buffer-p (window-buffer window))
+        (set-window-buffer
+         window
+         (or (seq-find (lambda (buf) (not (wamei/project-memo-buffer-p buf)))
+                        (buffer-list))
+             (get-buffer-create "*scratch*")))))
     (select-window window)))
 
 (defun wamei/project-memo-toggle (&optional global)
