@@ -1011,6 +1011,20 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :hook
   (dired-mode-hook . wamei/dired-image-preview-mode))
 
+(leaf dired-image-preview-kitty
+  :doc "tty では kitty graphics protocol (Unicode placeholder) でプレビューを出す"
+  :ensure nil
+  ;; Ghostty 直下でも tmux の中でも使える。端末が対応しているかは最初の表示時に
+  ;; a=q で訊いて端末ごとに記憶する (非対応ならモードは有効にならない)。
+  ;; tmux の中では allow-passthrough on が要る (.tmux.conf)。
+  :if (not (display-graphic-p))
+  :preface
+  (load (expand-file-name "dired-image-preview-kitty"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :config
+  (wamei/dired-image-preview-kitty-setup))
+
 (leaf project-sidebar
   :doc "dired ベースのプロジェクトサイドバー (treemacs の代替)"
   :ensure nil
