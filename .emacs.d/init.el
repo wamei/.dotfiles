@@ -556,6 +556,28 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   (defalias 'wamei/claude--window #'wamei/claude-panel--window
     "claude を表示している window。実体は claude-panel.el。")
 
+  (defun wamei/claude--tab-working-directory (orig)
+    "`claude-code-ide--get-working-directory' (ORIG) の起点をタブに合わせる。
+
+タブ 1 つにプロジェクト 1 つの運用なので、claude のバッファの外から
+呼ばれたとき (C-x C-a / C-q a c / C-c c) はカレントバッファではなく
+タブに紐づいたプロジェクトを起点にする。プロジェクト外の *scratch* や
+端末パネル、別プロジェクトのファイルにいても、そのタブのセッションが出る。
+端末パネルの `wamei/term--root' と同じ考え方。
+
+claude のバッファの中から呼ばれたときはそのセッションの起点を使う。
+パッケージ側はセッションの後始末や MCP の解決でもこの関数を通るので、
+ここでタブに引っぱられると別プロジェクトのセッションを触ってしまう
+\(セッションのバッファは `default-directory' が起点なので orig で足りる)。
+
+タブに紐づけが無ければ従来どおりバッファ基準。init.el は project-tabs.el を
+後の tab-bar ブロックで読むので `fboundp' で守る (claude が動くのは init を
+読み終えた後なので、実際には常に定義済み)。"
+    (or (and (not (claude-code-ide--buffer-session))
+             (fboundp 'wamei/project-tabs-current-root)
+             (wamei/project-tabs-current-root))
+        (funcall orig)))
+
   (defun wamei/claude-toggle (&optional arg)
     "claude-code-ide のパネルへ出入りする。
 
@@ -606,6 +628,10 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   :config
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :filter-return #'wamei/claude-code-ide--no-other-window)
+  ;; 起動と切り替えの起点を、開いているバッファではなくタブに紐づいた
+  ;; プロジェクトにする (project-tabs.el)
+  (advice-add 'claude-code-ide--get-working-directory
+              :around #'wamei/claude--tab-working-directory)
   ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
   ;; ghostel は hide-mode-line で mode-line を消しているが、Claude のバッファだけは
