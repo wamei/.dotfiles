@@ -1,0 +1,126 @@
+;;; tty-image-mode-test.el --- tests for tty-image-mode -*- lexical-binding: t; -*-
+;;; Commentary:
+;; emacs -Q --batch -l tty-image-mode-test.el -f ert-run-tests-batch-and-exit
+;;; Code:
+
+(require 'ert)
+(require 'cl-lib)
+(let ((dir (file-name-directory (or load-file-name buffer-file-name))))
+  (load (expand-file-name "kitty-graphics.el" dir) nil t)
+  (load (expand-file-name "tty-image-mode.el" dir) nil t))
+
+;;; 大きさ
+
+(ert-deftest wamei/tty-image-window-cells-uses-body-size ()
+  "上限は window の本文の桁数・行数。"
+  (cl-letf (((symbol-function 'window-body-width) (lambda (&optional _w) 80))
+            ((symbol-function 'window-body-height) (lambda (&optional _w) 24)))
+    (should (equal (wamei/tty-image--window-cells 'window) '(80 . 24)))))
+
+(ert-deftest wamei/tty-image-window-cells-is-at-least-one ()
+  "0 桁・0 行の window でも 1 を下回らない (0 を渡すと転送が壊れる)。"
+  (cl-letf (((symbol-function 'window-body-width) (lambda (&optional _w) 0))
+            ((symbol-function 'window-body-height) (lambda (&optional _w) 0)))
+    (should (equal (wamei/tty-image--window-cells 'window) '(1 . 1)))))
+
+(ert-deftest wamei/tty-image-target-cells-fits-image-into-window ()
+  "画像のピクセル数とセルのピクセル数から、window に収まる (桁 . 行) を出す。"
+  (cl-letf (((symbol-function 'wamei/kitty-graphics-image-size) (lambda (_f) '(800 . 400)))
+            ((symbol-function 'wamei/kitty-graphics-cell-size) (lambda () '(8 . 16)))
+            ((symbol-function 'window-body-width) (lambda (&optional _w) 40))
+            ((symbol-function 'window-body-height) (lambda (&optional _w) 40)))
+    ;; 800/8 = 100 桁、400/16 = 25 行。40 桁に収めるので 0.4 倍 → 40 x 10
+    (should (equal (wamei/tty-image--target-cells "a.png" 'window) '(40 . 10)))))
+
+(ert-deftest wamei/tty-image-target-cells-nil-without-window ()
+  "window に出ていなければ nil。"
+  (should-not (wamei/tty-image--target-cells "a.png" nil)))
+
+(ert-deftest wamei/tty-image-target-cells-nil-when-size-unknown ()
+  "大きさが測れない (画像でない) なら nil。"
+  (cl-letf (((symbol-function 'wamei/kitty-graphics-image-size) (lambda (_f) nil))
+            ((symbol-function 'window-body-width) (lambda (&optional _w) 40))
+            ((symbol-function 'window-body-height) (lambda (&optional _w) 40)))
+    (should-not (wamei/tty-image--target-cells "a.txt" 'window))))
+
+;;; バッファへの被せ方
+
+(ert-deftest wamei/tty-image-show-covers-buffer-without-modifying-it ()
+  "バッファのテキストは残したまま display プロパティで placeholder を被せ、
+変更フラグを立てない (ファイル訪問バッファを壊さないため)。"
+  (cl-letf (((symbol-function 'wamei/kitty-graphics-placeholder-string)
+             (lambda (_id _cols _rows) "PLACEHOLDER")))
+    (with-temp-buffer
+      (insert "\x89PNG\r\n\x1a\n")
+      (set-buffer-modified-p nil)
+      (let ((text (buffer-string)))
+        (wamei/tty-image--show 7 '(4 . 2))
+        (should (equal (buffer-string) text))
+        (should-not (buffer-modified-p))
+        (should (equal (get-text-property (point-min) 'display) "PLACEHOLDER"))
+        (should (equal (get-text-property (1- (point-max)) 'display) "PLACEHOLDER"))))))
+
+;;; 再描画
+
+(ert-deftest wamei/tty-image-render-transmits-once-when-size-unchanged ()
+  "大きさが変わらなければ 2 回目は転送しない。"
+  (let ((puts 0) (deletes 0))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-image-size) (lambda (_f) '(80 . 80)))
+              ((symbol-function 'wamei/kitty-graphics-cell-size) (lambda () '(8 . 16)))
+              ((symbol-function 'wamei/kitty-graphics-placeholder-string) (lambda (&rest _) "P"))
+              ((symbol-function 'wamei/kitty-graphics-put)
+               (lambda (&rest _) (setq puts (1+ puts)) 7))
+              ((symbol-function 'wamei/kitty-graphics-delete)
+               (lambda (&rest _) (setq deletes (1+ deletes))))
+              ((symbol-function 'get-buffer-window) (lambda (&rest _) 'window))
+              ((symbol-function 'window-body-width) (lambda (&optional _w) 40))
+              ((symbol-function 'window-body-height) (lambda (&optional _w) 40)))
+      (with-temp-buffer
+        (insert "data")
+        (setq buffer-file-name "/tmp/a.png")
+        (wamei/tty-image--render)
+        (wamei/tty-image--render)
+        (should (= puts 1))
+        (should (= deletes 0))
+        (should (= wamei/tty-image--id 7))
+        (setq buffer-file-name nil)))))
+
+(ert-deftest wamei/tty-image-render-retransmits-when-size-changes ()
+  "大きさが変わったら古い画像を解放してから送り直す。"
+  (let ((puts 0) (deleted nil) (width 40))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-image-size) (lambda (_f) '(800 . 400)))
+              ((symbol-function 'wamei/kitty-graphics-cell-size) (lambda () '(8 . 16)))
+              ((symbol-function 'wamei/kitty-graphics-placeholder-string) (lambda (&rest _) "P"))
+              ((symbol-function 'wamei/kitty-graphics-put)
+               (lambda (&rest _) (setq puts (1+ puts)) puts))
+              ((symbol-function 'wamei/kitty-graphics-delete)
+               (lambda (id) (push id deleted)))
+              ((symbol-function 'get-buffer-window) (lambda (&rest _) 'window))
+              ((symbol-function 'window-body-width) (lambda (&optional _w) width))
+              ((symbol-function 'window-body-height) (lambda (&optional _w) 40)))
+      (with-temp-buffer
+        (insert "data")
+        (setq buffer-file-name "/tmp/a.png")
+        (wamei/tty-image--render)
+        (setq width 20)
+        (wamei/tty-image--render)
+        (should (= puts 2))
+        (should (equal deleted '(1)))
+        (should (= wamei/tty-image--id 2))
+        (setq buffer-file-name nil)))))
+
+(ert-deftest wamei/tty-image-forget-releases-the-image ()
+  "解放すると ID と大きさの記憶を捨てる。"
+  (let ((deleted nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-delete)
+               (lambda (id) (push id deleted))))
+      (with-temp-buffer
+        (setq wamei/tty-image--id 9
+              wamei/tty-image--cells '(4 . 2))
+        (wamei/tty-image--forget)
+        (should (equal deleted '(9)))
+        (should-not wamei/tty-image--id)
+        (should-not wamei/tty-image--cells)))))
+
+(provide 'tty-image-mode-test)
+;;; tty-image-mode-test.el ends here
