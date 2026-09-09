@@ -188,12 +188,8 @@
   (setq interprogram-cut-function #'wamei/tty-clipboard-cut
         interprogram-paste-function #'wamei/tty-clipboard-paste))
 
-(defvar font-size 180)
-(defvar font-family "HackGen Console NF"
-  "既定フォント。
-Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角字形で持つ。
-無印の HackGen はこれらが全角字形なので、端末 (ghostel) の TUI が 1 セル
-前提で描いた図形が 2 倍幅になって崩れる。")
+(defvar font-size 160)
+(defvar font-family "UDEV Gothic NF")
 
 (leaf font
   :doc "フォント"
@@ -218,23 +214,6 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
     (set-face-attribute 'tooltip nil :family font-family :height font-size)
     (set-fontset-font nil 'japanese-jisx0208
                       (font-spec :family font-family :height font-size))
-    ;; 記号ブロックの fallback を行高の合うフォントに固定する。
-    ;; HackGen が持たない記号 (claude のスピナー ✢✳✶✻ や ⚙ ⌃ など) は既定だと
-    ;; STIX Two Math / Arial Unicode MS に fallback し、ascent/descent が HackGen
-    ;; (20px = 16+4) より大きいためその行だけ 23〜28px に伸びる。端末の TUI は
-    ;; 行高固定を前提にしているので、スピナーが回るたびに内容が押し下げられて
-    ;; window から溢れ、Emacs が 1 行スクロールして画面全体が上下に揺れる。
-    ;; Menlo は 17px にすると 20px = 16+4 で HackGen と一致し、これらの記号を
-    ;; 広く持つ。fontset に HackGen → Menlo の順で登録し、HackGen が持つ字形は
-    ;; そのまま使う (default fontset の指定は既定フォントより優先されるため、
-    ;; HackGen を先頭に明示しないと HackGen の ● や ─ まで置き換わる)。
-    ;;
-    ;; これは vterm 都合ではなくフォントの寸法の問題で、ghostel でも同じ。
-    ;; ghostel は収まらないグリフを縮める機能 (ghostel-glyph-scale-floor 0.0)
-    ;; を持つので、この fallback と ghostel ブロックの display table を消しても
-    ;; 行高は 20px に固定できるが、記号が縮む (2026-09-09 実測: スピナー 78%、
-    ;; ⚙ 89%、⏺⏵⧉ 44%)。等倍で出すために fallback と置換を残し、縮小は切っている。
-    ;; fallback だけ消すとスピナーの行が 28px に伸びるので、片方だけは残せない。
     (add-to-list 'face-font-rescale-alist '("Menlo" . 0.95))
     (dolist (range '((#x2190 . #x21FF)    ; Arrows
                      (#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
@@ -594,16 +573,16 @@ claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響�
   :bind (("C-x C-f" . project-find-file)
          ("C-x C-p" . project-switch-project)
          ([remap project-switch-project] . wamei/project-switch-project-in-tab))
+  :custom
+  ;; 切り替え先で何をするかをミニバッファで選ばせず、ルートを dired で開く。
+  ;; シンボルを入れるとその command を即実行する (dispatch メニューを出さない)。
+  (project-switch-commands . #'project-dired)
   :config
   ;; 未訪問・ignore 済みファイルを project-find-file と consult-project-buffer の
   ;; 候補に足す。init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
   (load (expand-file-name "project-extra-files"
                           (file-name-directory (file-truename user-init-file)))
         nil t))
-  :custom
-  ;; 切り替え先で何をするかをミニバッファで選ばせず、ルートを dired で開く。
-  ;; シンボルを入れるとその command を即実行する (dispatch メニューを出さない)。
-  (project-switch-commands . #'project-dired)
 
 (leaf tab-bar
   :doc "プロジェクトごとのタブ"
@@ -1231,10 +1210,6 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
 (leaf nerd-icons
   :doc "アイコンを表示する"
   :ensure t
-  ;; nerd-icons-font-family は既定の "Symbols Nerd Font Mono" (NFM.ttf) のまま。
-  ;; HackGen Console NF はアイコンの advance が 0.527em (半角1セル) しかなく、
-  ;; 端末では正しいが GUI では潰れる。NFM は 1.000em で崩れない。
-  ;; 大きさはフォントを変えずに scale-factor で詰める。
   ;; TTY は face の :family を無視するので、この設定は端末表示に影響しない。
   :custom (nerd-icons-scale-factor . 0.9)
   :require t)
