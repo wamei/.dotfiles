@@ -522,6 +522,93 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
       (wamei/project-memo-posframe-hide)
       (should-not calls))))
 
+;;; posframe の自動クローズ
+
+(ert-deftest wamei/project-memo-posframe-action-is-nil-when-not-shown ()
+  (wamei/project-memo-test--with-project root
+    (should-not (wamei/project-memo--posframe-action))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-nil-while-focused-on-the-memo ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer (wamei/project-memo-buffer nil)))
+        (wamei/project-memo-posframe-show buffer)
+        (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame))
+                  ((symbol-function 'frame-selected-window)
+                   (lambda (&optional _f) (selected-window)))
+                  ((symbol-function 'window-buffer)
+                   (lambda (&optional _w) buffer)))
+          (should-not (wamei/project-memo--posframe-action))))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-hide-when-focus-left ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      ;; selected-frame は素のまま = posframe のフレームではない
+      (should (eq (wamei/project-memo--posframe-action) 'hide))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-handoff-for-a-foreign-buffer ()
+  ;; `window-buffer' を丸ごとスタブすると cl-letf が関数セルを差し替えるため、
+  ;; 実装側 (`wamei/project-memo--posframe-buffer-shown') の呼び出しまで
+  ;; 巻き込んでしまう。切り出した `--posframe-buffer-shown' 自体をスタブして
+  ;; 「posframe に映っているバッファ」だけを差し替える。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((foreign (find-file-noselect (expand-file-name "main.el" root))))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+              (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame))
+                        ((symbol-function 'wamei/project-memo--posframe-buffer-shown)
+                         (lambda () foreign)))
+                (should (eq (wamei/project-memo--posframe-action) 'handoff)))
+              (wamei/project-memo-posframe-hide))
+          (with-current-buffer foreign (set-buffer-modified-p nil))
+          (kill-buffer foreign))))))
+
+(ert-deftest wamei/project-memo-posframe-post-command-hides-when-focus-left ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (wamei/project-memo--posframe-post-command)
+      (should-not (wamei/project-memo-posframe-frame))
+      (should (eq (car (car calls)) 'hide)))))
+
+(ert-deftest wamei/project-memo-posframe-post-command-hands-the-buffer-to-the-main-window ()
+  ;; `selected-frame' をダミーの posframe フレーム (シンボル) にすり替えると、
+  ;; `wamei/project-tabs-main-window' 経由で本物の `frame-parent' に渡って
+  ;; wrong-type-argument になる (posframe を実フレームで持たない batch の
+  ;; 制約)。ここで検証したいのは「post-command が handoff をどう処理するか」
+  ;; だけなので、判定そのもの (`--posframe-action') は別テストに任せて直接
+  ;; スタブし、`--posframe-buffer-shown' だけ差し替える。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((foreign (find-file-noselect (expand-file-name "main.el" root)))
+            (main (selected-window)))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+              (cl-letf (((symbol-function 'wamei/project-memo--posframe-action)
+                         (lambda () 'handoff))
+                        ((symbol-function 'wamei/project-memo--posframe-buffer-shown)
+                         (lambda () foreign)))
+                (wamei/project-memo--posframe-post-command))
+              (should-not (wamei/project-memo-posframe-frame))
+              (should (eq (window-buffer main) foreign)))
+          (with-current-buffer foreign (set-buffer-modified-p nil))
+          (kill-buffer foreign))))))
+
+(ert-deftest wamei/project-memo-posframe-registers-and-removes-the-post-command-hook ()
+  (wamei/project-memo-test--with-project root
+    (let ((post-command-hook nil))
+      (wamei/project-memo-test--with-posframe-stub calls
+        (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+        (should (memq #'wamei/project-memo--posframe-post-command post-command-hook))
+        (wamei/project-memo-posframe-hide)
+        (should-not (memq #'wamei/project-memo--posframe-post-command post-command-hook))))))
+
 ;;; 自動保存
 
 (defmacro wamei/project-memo-test--with-autosave-env (&rest body)
