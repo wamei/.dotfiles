@@ -13,6 +13,12 @@
 ;; - 復元は desktop に任せる。メモは通常のファイルバッファなので専用処理は要らない
 ;; - プロジェクトタブを開いた直後の画面 (`wamei/project-memo-switch-setup') は
 ;;   左に sidebar、本文 window にそのプロジェクトのメモ
+;; - 既定の表示先は画面中央の posframe (`wamei/project-memo-toggle')。
+;;   `C-u' を付けると本文 window に出す。posframe が使えない環境
+;;   (`posframe-workable-p' が nil) では `C-u' 無しでも本文 window に落とす
+;; - posframe はフォーカスが外れたとき、メモ以外のバッファが入ったとき、
+;;   もう一度トグルしたときに閉じる。いずれも閉じる前に保存する。
+;;   ESC / C-g では閉じない (どちらも org の編集中に使う)
 ;;
 ;; 置き場をフラットにしたので、同名の repo が複数あると同じメモを共有する。
 ;; 「どこにある repo でも扱えること」を優先した結果として受け入れている。

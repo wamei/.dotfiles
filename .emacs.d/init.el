@@ -1239,7 +1239,11 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   ;; 逃げ道のキーは無い: GUI でも C-x <return> は local-function-key-map で
   ;; C-x RET に翻訳されてこのバインドに来るので、mule-keymap へ届く打ち方は
   ;; 残らない。必要になったら M-x から個別コマンドを呼ぶ (それだけが手段)。
-  :bind (("C-x C-m" . wamei/project-memo-toggle))
+  :bind (("C-x C-m" . wamei/project-memo-toggle)
+         ;; 全体メモ。C-x C-M と書くと C-x C-m と同じキー列になってしまうので
+         ;; (kbd の "C-M" は Control 文字の C-m そのもの)、Shift を明示する。
+         ;; GUI では確実に届く。端末では modifyOtherKeys で送られる場合だけ届く。
+         ("C-x C-S-m" . wamei/project-memo-toggle-global))
   :preface
   ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
   (load (expand-file-name "project-memo"
