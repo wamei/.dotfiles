@@ -194,5 +194,55 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
             (should (eq (window-buffer main) work)))
         (kill-buffer work)))))
 
+(ert-deftest wamei/project-memo-toggle-follows-displayed-memo-despite-stale-back-buffer ()
+  (wamei/project-memo-test--with-project root
+    (let* ((root-b (file-name-as-directory (file-truename (make-temp-file "memo-proj-b-" t))))
+           (project-find-functions
+            (cons (lambda (dir)
+                    (when (string-prefix-p root-b (file-truename (expand-file-name dir)))
+                      (cons 'transient root-b)))
+                  project-find-functions))
+           (main (selected-window))
+           (memo-a (wamei/project-memo-buffer (wamei/project-memo-test--project root)))
+           (work-b (find-file-noselect (expand-file-name "other.el" root-b))))
+      (unwind-protect
+          (progn
+            ;; window に root の project memo を出した状態で、back には別
+            ;; プロジェクト (root-b) の普通のバッファが残っている、という
+            ;; toggle を経由しない (find-file 等での) 差し替えを模す。
+            (set-window-buffer main memo-a)
+            (set-window-parameter main 'wamei/project-memo-back work-b)
+            (wamei/project-memo-toggle)
+            ;; 表示中の memo-a 自身が root のメモだと正しく自己判定され、
+            ;; back の別プロジェクトに惑わされず「戻る」動作 (work-b へ)
+            ;; になる。back を無条件に信用すると root-b のメモへ誤って
+            ;; 切り替わってしまう。
+            (should (eq (window-buffer main) work-b)))
+        (kill-buffer work-b)
+        (delete-directory root-b t)))))
+
+(ert-deftest wamei/project-memo-toggle-skips-other-memo-buffers-when-no-back-recorded ()
+  (wamei/project-memo-test--with-project root
+    (let* ((main (selected-window))
+           (project (wamei/project-memo-test--project root))
+           (project-memo (wamei/project-memo-buffer project))
+           (global-memo (wamei/project-memo-buffer nil))
+           (other (find-file-noselect (expand-file-name "main.el" root))))
+      (unwind-protect
+          (progn
+            ;; toggle を経由せず window に直接メモを出した状態 (desktop 復元
+            ;; 直後など) を模す。back は明示的に未記録にする (この window は
+            ;; 1 つの batch セッションを全テストで使い回すので、他のテスト
+            ;; の toggle が残した値が残っていることがある)。window の履歴
+            ;; (window-prev-buffers) を別のメモだけにしておき、
+            ;; `switch-to-prev-buffer' 任せだとメモに留まってしまうことを
+            ;; 確認する。
+            (set-window-buffer main project-memo)
+            (set-window-parameter main 'wamei/project-memo-back nil)
+            (set-window-prev-buffers main (list (list global-memo (point-min) (point-min))))
+            (wamei/project-memo-toggle)
+            (should-not (wamei/project-memo-buffer-p (window-buffer main))))
+        (kill-buffer other)))))
+
 (provide 'project-memo-test)
 ;;; project-memo-test.el ends here
