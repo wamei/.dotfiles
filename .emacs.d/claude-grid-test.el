@@ -168,6 +168,29 @@ side window とミニバッファは除く。行は上から、各行は左か�
 
 ;;; 組み立て
 
+(ert-deftest wamei/claude-grid-grid-window-avoids-the-minibuffer ()
+  "土台にミニバッファの window を選ばない (`delete-other-windows' が失敗する)。
+組み直しはタイマから走るので、ミニバッファ入力中に呼ばれることがある。"
+  (wamei/claude-grid-test--with-env
+    (select-window (minibuffer-window))
+    (unwind-protect
+        (let ((window (wamei/claude-grid--grid-window)))
+          (should (window-live-p window))
+          (should-not (window-minibuffer-p window)))
+      (select-window (frame-first-window)))))
+
+(ert-deftest wamei/claude-grid-build-works-from-the-minibuffer ()
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
+      (select-window (minibuffer-window))
+      (unwind-protect
+          (progn
+            (wamei/claude-grid--build (list a))
+            (should (equal (wamei/claude-grid-test--rows) (list (list a)))))
+        (unless (window-live-p (selected-window))
+          (select-window (frame-first-window)))))))
+
+
 (ert-deftest wamei/claude-grid-build-fills-one-row ()
   (wamei/claude-grid-test--with-env
     (let* ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
@@ -301,6 +324,200 @@ side window とミニバッファは除く。行は上から、各行は左か�
     (let ((before (wamei/claude-grid-test--tab-names)))
       (wamei/claude-grid-tab)
       (should (equal before (wamei/claude-grid-test--tab-names))))))
+
+;;; タブの範囲
+
+(ert-deftest wamei/claude-grid-tab-scope-reads-the-tab-name ()
+  "グリッドタブかどうかと対象はタブ名から決まる。"
+  (should (eq (wamei/claude-grid--tab-scope "Claude Code") t))
+  (should (equal (wamei/claude-grid--tab-scope "Claude Code - proj") "proj")))
+
+(ert-deftest wamei/claude-grid-tab-scope-rejects-other-tabs ()
+  (should-not (wamei/claude-grid--tab-scope nil))
+  (should-not (wamei/claude-grid--tab-scope "proj"))
+  (should-not (wamei/claude-grid--tab-scope "Claude Code X")))
+
+(ert-deftest wamei/claude-grid-scope-buffers-takes-everything-for-the-plain-tab ()
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (other (wamei/claude-grid-test--session "/tmp/other/")))
+      (should (equal (wamei/claude-grid--scope-buffers t) (list other a))))))
+
+(ert-deftest wamei/claude-grid-scope-buffers-limits-to-the-tab-project ()
+  "プロジェクト名だけでも対象を絞れる (タブ名に残っているのは名前だけ)。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (other (wamei/claude-grid-test--session "/tmp/other/")))
+      (ignore other)
+      (should (equal (wamei/claude-grid--scope-buffers "proj") (list a)))
+      (should-not (wamei/claude-grid--scope-buffers "none")))))
+
+;;; 組み直し
+
+(ert-deftest wamei/claude-grid-rearrange-drops-a-dead-session ()
+  "セッションが終わったらその window も消える。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
+          (c (wamei/claude-grid-test--session "/tmp/proj/" "c")))
+      (wamei/claude-grid-tab)
+      (should (equal (wamei/claude-grid-test--rows) (list (list a b c))))
+      (let ((kill-buffer-hook nil)) (kill-buffer b))
+      (wamei/claude-grid-rearrange)
+      (should (equal (wamei/claude-grid-test--rows) (list (list a c)))))))
+
+(ert-deftest wamei/claude-grid-rearrange-adds-a-new-session ()
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
+      (wamei/claude-grid-tab)
+      (let ((b (wamei/claude-grid-test--session "/tmp/proj/" "b")))
+        (wamei/claude-grid-rearrange)
+        (should (equal (wamei/claude-grid-test--rows) (list (list a b))))))))
+
+(ert-deftest wamei/claude-grid-rearrange-keeps-the-focused-session ()
+  "組み直しでも見ていたセッションから離れない (`--build' 単体は先頭を選ぶ)。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
+          (c (wamei/claude-grid-test--session "/tmp/proj/" "c")))
+      (wamei/claude-grid-tab)
+      (select-window (get-buffer-window c))
+      (let ((kill-buffer-hook nil)) (kill-buffer a))
+      (wamei/claude-grid-rearrange)
+      (should (eq (window-buffer (selected-window)) c)))))
+
+(ert-deftest wamei/claude-grid-rearrange-keeps-a-project-tab-to-its-project ()
+  "プロジェクト指定のタブは他のプロジェクトのセッションを取り込まない。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
+      (with-temp-buffer
+        (setq default-directory "/tmp/proj/")
+        (wamei/claude-grid-tab t))
+      (wamei/claude-grid-test--session "/tmp/other/")
+      (wamei/claude-grid-rearrange)
+      (should (equal (wamei/claude-grid-test--rows) (list (list a))))
+      (let ((b (wamei/claude-grid-test--session "/tmp/proj/" "b")))
+        (wamei/claude-grid-rearrange)
+        (should (equal (wamei/claude-grid-test--rows) (list (list a b))))))))
+
+(ert-deftest wamei/claude-grid-rearrange-ignores-other-tabs ()
+  "グリッドタブ以外の window 構成は触らない。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
+      (ignore a)
+      (split-window (selected-window) nil 'below)
+      (let ((windows (length (window-list nil 'no-mini))))
+        (wamei/claude-grid-rearrange)
+        (should (= windows (length (window-list nil 'no-mini))))))))
+
+(ert-deftest wamei/claude-grid-rearrange-closes-the-emptied-tab ()
+  "最後のセッションが終わったらタブごと閉じる。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
+      (wamei/claude-grid-tab)
+      (should (member "Claude Code" (wamei/claude-grid-test--tab-names)))
+      (let ((kill-buffer-hook nil)) (kill-buffer a))
+      (wamei/claude-grid-rearrange)
+      (should-not (member "Claude Code" (wamei/claude-grid-test--tab-names))))))
+
+(ert-deftest wamei/claude-grid-rearrange-keeps-the-sole-tab ()
+  "フレームに 1 枚しかないタブは閉じられないので、window を畳むだけにする。"
+  (wamei/claude-grid-test--with-env
+    (should (= 1 (length (funcall tab-bar-tabs-function))))
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (b (wamei/claude-grid-test--session "/tmp/proj/" "b")))
+      (unwind-protect
+          (progn
+            (wamei/claude-grid--build (list a b))
+            (tab-bar-rename-tab wamei/claude-grid-tab-name)
+            (let ((kill-buffer-hook nil))
+              (kill-buffer a)
+              (kill-buffer b))
+            (wamei/claude-grid-rearrange)
+            (should (= 1 (length (funcall tab-bar-tabs-function))))
+            (should (= 1 (length (window-list nil 'no-mini)))))
+        ;; 自動のタブ名に戻す
+        (tab-bar-rename-tab "")))))
+
+;;; 予約
+
+(ert-deftest wamei/claude-grid-schedule-coalesces-into-one-rearrange ()
+  "増減が重なっても組み直しは 1 回にまとめる。"
+  (let ((wamei/claude-grid--rearrange-timer nil))
+    (unwind-protect
+        (progn
+          (wamei/claude-grid--schedule-rearrange)
+          (let ((timer wamei/claude-grid--rearrange-timer))
+            (should (timerp timer))
+            (wamei/claude-grid--schedule-rearrange)
+            (should (eq timer wamei/claude-grid--rearrange-timer))))
+      (when (timerp wamei/claude-grid--rearrange-timer)
+        (cancel-timer wamei/claude-grid--rearrange-timer)))))
+
+(ert-deftest wamei/claude-grid-schedule-runs-the-rearrange-later ()
+  "予約は次の機会に走り、タイマは 1 回で外れる。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
+          (wamei/claude-grid--rearrange-timer nil))
+      (wamei/claude-grid-tab)
+      (let ((kill-buffer-hook nil)) (kill-buffer b))
+      (wamei/claude-grid--schedule-rearrange)
+      ;; バッファを消した直後は組み直していない (sentinel の中では動かさない)
+      (should (= 2 (length (window-list nil 'no-mini))))
+      (sleep-for 0.2)
+      (should-not wamei/claude-grid--rearrange-timer)
+      (should (equal (wamei/claude-grid-test--rows) (list (list a)))))))
+
+(ert-deftest wamei/claude-grid-schedule-waits-for-the-minibuffer ()
+  "ミニバッファ入力中は組み直さず、少し後に出直す。
+入力を出しているコマンドが `save-window-excursion' で元に戻すと、
+組み直した構成もろとも消える。"
+  (wamei/claude-grid-test--with-env
+    (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
+          (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
+          (wamei/claude-grid--rearrange-timer nil))
+      (wamei/claude-grid-tab)
+      (let ((kill-buffer-hook nil)) (kill-buffer b))
+      (unwind-protect
+          (progn
+            (select-window (minibuffer-window))
+            (wamei/claude-grid--run-rearrange)
+            ;; 組み直さずに予約し直す
+            (should (timerp wamei/claude-grid--rearrange-timer))
+            (should (= 2 (length (window-list nil 'no-mini))))
+            ;; 出直しの予約は後続のテストに漏らさない
+            (cancel-timer wamei/claude-grid--rearrange-timer)
+            (setq wamei/claude-grid--rearrange-timer nil)
+            ;; ミニバッファから出れば組み直す
+            (select-window (frame-first-window))
+            (wamei/claude-grid--run-rearrange)
+            (should (equal (wamei/claude-grid-test--rows) (list (list a)))))
+        (when (timerp wamei/claude-grid--rearrange-timer)
+          (cancel-timer wamei/claude-grid--rearrange-timer))))))
+
+(ert-deftest wamei/claude-grid-enable-schedules-on-session-change ()
+  "セッションの終了と表示で組み直しを予約する。"
+  (wamei/claude-grid-test--with-env
+    (let ((wamei/claude-grid--rearrange-timer nil))
+      (unwind-protect
+          (progn
+            (wamei/claude-grid-enable)
+            (should (advice-member-p #'wamei/claude-grid--schedule-rearrange
+                                     'claude-code-ide--cleanup-session))
+            (should (advice-member-p #'wamei/claude-grid--schedule-rearrange
+                                     'claude-code-ide--display-buffer-in-side-window))
+            ;; パッケージの後始末を実際に通して予約されることを確かめる
+            (let ((buffer (wamei/claude-grid-test--session "/tmp/proj/" "a")))
+              (claude-code-ide--cleanup-session
+               (claude-code-ide--buffer-session buffer))
+              (should (timerp wamei/claude-grid--rearrange-timer))))
+        (when (timerp wamei/claude-grid--rearrange-timer)
+          (cancel-timer wamei/claude-grid--rearrange-timer))
+        (advice-remove 'claude-code-ide--cleanup-session
+                       #'wamei/claude-grid--schedule-rearrange)
+        (advice-remove 'claude-code-ide--display-buffer-in-side-window
+                       #'wamei/claude-grid--schedule-rearrange)))))
 
 (provide 'claude-grid-test)
 ;;; claude-grid-test.el ends here

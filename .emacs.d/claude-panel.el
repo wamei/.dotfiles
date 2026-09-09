@@ -21,6 +21,8 @@
 ;; - 終了: `claude-code-ide--cleanup-session' の前で、消えるセッションがパネルに
 ;;   出ていれば同じプロジェクトの別セッションに差し替え、パネルを残す。後で
 ;;   tab-line を描き直す (バッファが消えるだけでは redisplay が走らない)。
+;;   差し替えるのは side window に出ているときだけで、グリッド (claude-grid.el)
+;;   の window はあちらの組み直しに任せる。
 
 ;;; Code:
 
@@ -221,9 +223,17 @@ switch-to-buffer が失敗するので、パッケージの表示処理に回す
 
 (defun wamei/claude-panel--hand-over (session)
   "SESSION のバッファがパネルに出ていれば、同じプロジェクトの別セッションに差し替える。
-他に無ければ何もしない (従来どおりパネルは閉じる)。フォーカスは動かさない。"
+他に無ければ何もしない (従来どおりパネルは閉じる)。フォーカスは動かさない。
+
+差し替え先はパネル、つまり side window に限る。グリッド (claude-grid.el) の
+window は side window ではなく、あちらはセッションの増減で全体を組み直す。
+そこで別セッションを side window に出すと、同じ端末バッファが 2 つの window に
+出て pty のサイズが競合する。"
   (let* ((dying (claude-code-ide-mcp-session-buffer session))
-         (window (and (buffer-live-p dying) (get-buffer-window dying 'visible)))
+         (window (and (buffer-live-p dying)
+                      (seq-find (lambda (window)
+                                  (window-parameter window 'window-side))
+                                (get-buffer-window-list dying nil 'visible))))
          (others (remq dying (wamei/claude-panel--buffers
                               (claude-code-ide-mcp-session-project-dir session)))))
     (when (and window others)

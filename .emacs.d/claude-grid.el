@@ -12,6 +12,11 @@
 ;;   "Claude Code - <project>") なのでタブも別に持てる。
 ;; - タブ: 名前で探して使い回す。移動のたびに今のセッションで組み直すので、
 ;;   セッションが増減してもタブは増えない。
+;; - 追従: セッションが増減したらタブを開き直さなくても組み直す
+;;   (`wamei/claude-grid-enable')。/exit で終わったセッションの window は消え、
+;;   残りが組み直される。最後のセッションが終わったらタブごと閉じる。
+;;   組み直す対象はタブ名から引くので、どのタブがどのプロジェクトのグリッドかを
+;;   モジュール側に持たない。
 ;; - 並べ方: 基本は左右に 1 行。1 個あたりが `wamei/claude-grid-min-window-width'
 ;;   を切るなら行を足してグリッドにする (Claude の TUI は幅が狭いと崩れる)。
 ;; - side window: 組む前に消す。同じ端末バッファを side window とグリッドの
@@ -54,6 +59,11 @@
 
 ;;; 対象
 
+(defun wamei/claude-grid--project-name (project-dir)
+  "PROJECT-DIR のプロジェクト名 (末尾の要素)。PROJECT-DIR が nil なら nil。"
+  (and project-dir
+       (file-name-nondirectory (directory-file-name project-dir))))
+
 (defun wamei/claude-grid--project-dir ()
   "C-u のときに対象にするプロジェクト。
 Claude バッファにいればそのセッションのプロジェクト (グリッドの中から
@@ -82,6 +92,38 @@ C-u を叩いたときに、見ているセッションのプロジェクトが�
                                        (claude-code-ide-mcp-session-buffer session)))
                                     (wamei/claude-grid--sessions project-dir)))
                 :key #'car :lessp #'string<)))
+
+;;; タブの範囲
+
+(defconst wamei/claude-grid--tab-name-separator " - "
+  "タブ名にプロジェクト名を繋ぐ区切り。")
+
+(defun wamei/claude-grid--tab-scope (name)
+  "タブ名 NAME のグリッドが並べる対象。グリッドのタブでなければ nil。
+t なら全プロジェクト、文字列ならそのプロジェクト名のセッションだけ。
+
+タブ名から引くので、どのタブがどのプロジェクトのグリッドかという対応を
+モジュール側に持たない (desktop の復元や再起動でタブだけ残っていても
+判定できる)。"
+  (let ((prefix (concat wamei/claude-grid-tab-name
+                        wamei/claude-grid--tab-name-separator)))
+    (cond ((not (stringp name)) nil)
+          ((equal name wamei/claude-grid-tab-name) t)
+          ((and (string-prefix-p prefix name)
+                (> (length name) (length prefix)))
+           (substring name (length prefix))))))
+
+(defun wamei/claude-grid--scope-buffers (scope)
+  "SCOPE (`wamei/claude-grid--tab-scope' の値) が並べる Claude バッファ。
+絞り込みはプロジェクト名なので、名前が同じ別プロジェクトは同じタブに入る
+\(タブ名の付け方が元から持っている制約)。"
+  (let ((buffers (wamei/claude-grid--buffers nil)))
+    (if (stringp scope)
+        (seq-filter (lambda (buffer)
+                      (equal scope (wamei/claude-grid--project-name
+                                    (wamei/claude-panel--project-dir buffer))))
+                    buffers)
+      buffers)))
 
 ;;; レイアウト
 
@@ -117,10 +159,16 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
       (delete-window window))))
 
 (defun wamei/claude-grid--grid-window ()
-  "グリッドを作る土台にする window。side window は避ける。"
-  (or (seq-find (lambda (window) (not (window-parameter window 'window-side)))
-                (cons (selected-window) (window-list nil 'no-mini)))
-      (selected-window)))
+  "グリッドを作る土台にする window。side window とミニバッファは避ける。
+`window-list' は選択中の window から並ぶので、選択中の window が使えれば
+それが土台になる。ミニバッファを外すのは、組み直しがタイマから走る
+\(ミニバッファ入力中にも呼ばれ得る) ため。ミニバッファの window では
+`delete-other-windows' が通らない。"
+  (let ((windows (window-list nil 'no-mini)))
+    (or (seq-find (lambda (window) (not (window-parameter window 'window-side)))
+                  windows)
+        (car windows)
+        (selected-window))))
 
 (defun wamei/claude-grid--split (window count side)
   "WINDOW を SIDE (`below' か `right') 方向に COUNT 個へ分ける。
@@ -159,8 +207,9 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
 (defun wamei/claude-grid--tab-name (&optional project-dir)
   "グリッドを置くタブの名前。PROJECT-DIR があればその名前を付ける。"
   (if project-dir
-      (format "%s - %s" wamei/claude-grid-tab-name
-              (file-name-nondirectory (directory-file-name project-dir)))
+      (concat wamei/claude-grid-tab-name
+              wamei/claude-grid--tab-name-separator
+              (wamei/claude-grid--project-name project-dir))
     wamei/claude-grid-tab-name))
 
 (defun wamei/claude-grid--select-tab (name)
@@ -173,6 +222,102 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
       (tab-bar-select-tab (1+ index))
     (tab-new)
     (tab-rename name)))
+
+;;; 組み直し
+
+(defun wamei/claude-grid--close-tab ()
+  "空になったグリッドのタブを閉じる。
+フレームに 1 枚しかないタブは閉じられない (`tab-bar-close-last-tab-choice'
+の既定) ので、その場合は window を 1 つに畳むだけにする。"
+  (if (> (length (funcall tab-bar-tabs-function)) 1)
+      (tab-bar-close-tab)
+    (wamei/claude-grid--delete-side-windows)
+    (delete-other-windows (wamei/claude-grid--grid-window))))
+
+(defun wamei/claude-grid--rearrange-tab (scope)
+  "選択フレームのグリッドを SCOPE の今のセッションで組み直す。
+組み直しの前に見ていたバッファが残っていれば、その window を選び直す
+\(`wamei/claude-grid--build' は単体では先頭の window を選ぶ)。
+対象が無くなったらタブを閉じる。"
+  (let ((buffers (wamei/claude-grid--scope-buffers scope)))
+    (if (null buffers)
+        (wamei/claude-grid--close-tab)
+      (let* ((current (window-buffer (selected-window)))
+             (windows (wamei/claude-grid--build buffers)))
+        (when-let* ((window (seq-find (lambda (window)
+                                        (eq (window-buffer window) current))
+                                      windows)))
+          (select-window window))))))
+
+(defun wamei/claude-grid-rearrange ()
+  "グリッドのタブを開いているフレームを、今のセッションで組み直す。
+
+window 構成は選択中のタブにしか無いので、グリッドのタブを選択中の
+フレームだけを組み直す。裏に回っているタブは `wamei/claude-grid-tab' で
+開き直したときに組み直される (別のタブでセッションを始めたときに
+グリッドへフォーカスが飛ばない)。"
+  (dolist (frame (frame-list))
+    (when (frame-live-p frame)
+      (with-selected-frame frame
+        (when-let* ((scope (wamei/claude-grid--tab-scope
+                            (alist-get 'name (tab-bar--current-tab-find)))))
+          (wamei/claude-grid--rearrange-tab scope))))))
+
+;;; 増減の検知
+
+(defvar wamei/claude-grid--rearrange-timer nil
+  "予約済みの組み直しのタイマ。走るまでは 1 本しか持たない。")
+
+(defconst wamei/claude-grid--rearrange-retry-delay 1
+  "ミニバッファ入力中に組み直しを見送るときの、出直しまでの秒数。")
+
+(defun wamei/claude-grid--minibuffer-busy-p ()
+  "ミニバッファを使っている最中か。組み直しを見送る条件。
+別フレームで読み取り中の場合も含めるため `active-minibuffer-window' を見て、
+ミニバッファの window が選択中なら (`delete-other-windows' が通らない)
+それも待つ。"
+  (or (active-minibuffer-window)
+      (window-minibuffer-p (selected-window))))
+
+(defun wamei/claude-grid--run-rearrange ()
+  "予約された組み直しを実行する。
+ミニバッファ入力中は window 構成を触らずに出直す。入力を出している
+コマンドが `save-window-excursion' で構成を戻すと、組み直しも消える。"
+  (setq wamei/claude-grid--rearrange-timer nil)
+  (if (wamei/claude-grid--minibuffer-busy-p)
+      (setq wamei/claude-grid--rearrange-timer
+            (run-at-time wamei/claude-grid--rearrange-retry-delay nil
+                         #'wamei/claude-grid--run-rearrange))
+    (wamei/claude-grid-rearrange)))
+
+(defun wamei/claude-grid--schedule-rearrange (&rest _)
+  "組み直しを次の機会に 1 回だけ予約する。
+
+その場で組み直さない理由:
+- `claude-code-ide--cleanup-session' はプロセスの sentinel から来る経路と
+  バッファの `kill-buffer-hook' から来る経路がある。後者はバッファがまだ
+  生きているうちに走るので、同期に組み直すと死にかけのバッファを並べる。
+- 複数のセッションが同時に増減しても組み直しは 1 回で済む。
+- sentinel の中で window を分割・balance すると、端末バッファの pty サイズの
+  同期がその場で走る。コマンドループに戻してから動かす。"
+  (unless (timerp wamei/claude-grid--rearrange-timer)
+    (setq wamei/claude-grid--rearrange-timer
+          (run-at-time 0 nil #'wamei/claude-grid--run-rearrange))))
+
+;;; 有効化
+
+(defun wamei/claude-grid-enable ()
+  "セッションの増減でグリッドのタブを組み直す advice を入れる。何度呼んでもよい。
+
+終了は `claude-code-ide--cleanup-session'、追加は
+`claude-code-ide--display-buffer-in-side-window' (新しいセッションは必ず
+ここを通る) で拾う。追加を `:around' で乗っ取らず `:after' にしているのは
+claude-panel の advice との重なり順に依存しないため。パッケージは一瞬
+side window を作るが、組み直しは side window を消してから組む。"
+  (advice-add 'claude-code-ide--cleanup-session
+              :after #'wamei/claude-grid--schedule-rearrange)
+  (advice-add 'claude-code-ide--display-buffer-in-side-window
+              :after #'wamei/claude-grid--schedule-rearrange))
 
 ;;; コマンド
 
