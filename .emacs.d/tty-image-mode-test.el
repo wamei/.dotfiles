@@ -158,5 +158,66 @@
         (should-not wamei/tty-image--id)
         (should-not wamei/tty-image--cells)))))
 
+;;; 次/前のファイル
+
+(ert-deftest wamei/tty-image-sibling-moves-within-the-list ()
+  (let ((files '("/d/a.png" "/d/b.png" "/d/c.png")))
+    (should (equal (wamei/tty-image--sibling "/d/a.png" files 1) "/d/b.png"))
+    (should (equal (wamei/tty-image--sibling "/d/c.png" files -1) "/d/b.png"))))
+
+(ert-deftest wamei/tty-image-sibling-stops-at-the-ends ()
+  "端では nil を返す (巡回しない)。"
+  (let ((files '("/d/a.png" "/d/b.png")))
+    (should-not (wamei/tty-image--sibling "/d/b.png" files 1))
+    (should-not (wamei/tty-image--sibling "/d/a.png" files -1))))
+
+(ert-deftest wamei/tty-image-sibling-nil-when-file-not-listed ()
+  (should-not (wamei/tty-image--sibling "/d/z.png" '("/d/a.png") 1)))
+
+(ert-deftest wamei/tty-image-sibling-nil-for-single-file ()
+  (should-not (wamei/tty-image--sibling "/d/a.png" '("/d/a.png") 1)))
+
+(ert-deftest wamei/tty-image-image-files-filters-and-sorts ()
+  "ディレクトリの中の画像だけを名前順に返す。"
+  (let ((dir (make-temp-file "tty-image-test-" t)))
+    (unwind-protect
+        (progn
+          (dolist (name '("b.png" "a.jpg" "notes.txt" "c.gif"))
+            (write-region "" nil (expand-file-name name dir)))
+          (should (equal (mapcar #'file-name-nondirectory
+                                 (wamei/tty-image--image-files dir))
+                         '("a.jpg" "b.png" "c.gif"))))
+      (delete-directory dir t))))
+
+;;; モード
+
+(ert-deftest wamei/tty-image-mode-turns-off-line-numbers ()
+  "行番号が桁を食うと placeholder の桁数が合わなくなるので必ず切る。
+`global-display-line-numbers-mode' が有効だと major mode を変えた直後に
+`display-line-numbers-mode' が t になるので、それを打ち消せているかを見る。"
+  (cl-letf (((symbol-function 'wamei/tty-image--render) #'ignore))
+    (global-display-line-numbers-mode 1)
+    (unwind-protect
+        (with-temp-buffer
+          (wamei/tty-image-mode)
+          (should-not display-line-numbers-mode)
+          (should truncate-lines)
+          (should-not cursor-type))
+      (global-display-line-numbers-mode -1))))
+
+(ert-deftest wamei/tty-image-mode-renders-and-hooks-window-changes ()
+  "モードに入ると描画し、window の変化で描き直すようにする。"
+  (let ((renders 0))
+    (cl-letf (((symbol-function 'wamei/tty-image--render)
+               (lambda () (setq renders (1+ renders)))))
+      (with-temp-buffer
+        (wamei/tty-image-mode)
+        (should (= renders 1))
+        (should (memq #'wamei/tty-image--render
+                      (buffer-local-value 'window-configuration-change-hook
+                                          (current-buffer))))
+        (should (memq #'wamei/tty-image--forget
+                      (buffer-local-value 'kill-buffer-hook (current-buffer))))))))
+
 (provide 'tty-image-mode-test)
 ;;; tty-image-mode-test.el ends here
