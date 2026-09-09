@@ -619,6 +619,60 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
       (wamei/project-memo-posframe-hide)
       (should-not calls))))
 
+(ert-deftest wamei/project-memo-posframe-hide-returns-the-selection-to-the-parent ()
+  ;; 隠したフレームに選択が残ると、tty では見えない window に入力が吸われる
+  ;; (フォーカスイベントが無いので自然には戻らない)。隠す側で親の本文
+  ;; window に選択を戻す。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((main (selected-window))
+            (selected nil))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+              (cl-letf (((symbol-function 'window-frame)
+                         (lambda (&optional _window) 'memo-posframe-frame))
+                        ((symbol-function 'wamei/project-tabs-main-window)
+                         (lambda () main))
+                        ((symbol-function 'select-window)
+                         (lambda (window &optional _norecord) (setq selected window))))
+                (wamei/project-memo-posframe-hide))
+              (should (eq selected main)))
+          (wamei/project-memo-posframe-hide))))))
+
+(ert-deftest wamei/project-memo-posframe-hide-leaves-a-selection-elsewhere-alone ()
+  ;; 選択が既に posframe の外にあるとき (トグルや focus 移動で閉じる経路) は
+  ;; 触らない。閉じるたびに本文 window へ選択を飛ばすと、別の window で
+  ;; 作業していた人の選択まで奪ってしまう。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((selected nil))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+              (cl-letf (((symbol-function 'select-window)
+                         (lambda (window &optional _norecord) (setq selected window))))
+                ;; window-frame は素のまま = 選択 window は実フレームにいる
+                (wamei/project-memo-posframe-hide))
+              (should-not selected))
+          (wamei/project-memo-posframe-hide))))))
+
+(ert-deftest wamei/project-memo-posframe-hide-cleans-up-after-the-frame-died ()
+  ;; メモバッファを kill すると dedicated window ごと child frame が消える。
+  ;; `frame-live-p' が nil になった後で hide しても、post-command-hook と
+  ;; 追跡変数を残さない (残すとセッションの残りの間ずっと空振りの hook が
+  ;; コマンドのたびに回り、buffer も参照され続ける)。
+  (wamei/project-memo-test--with-project root
+    (let ((post-command-hook nil))
+      (wamei/project-memo-test--with-posframe-stub calls
+        (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+        (should (memq #'wamei/project-memo--posframe-post-command post-command-hook))
+        (cl-letf (((symbol-function 'frame-live-p) (lambda (_frame) nil)))
+          (wamei/project-memo-posframe-hide))
+        (should-not (memq #'wamei/project-memo--posframe-post-command post-command-hook))
+        (should-not wamei/project-memo--posframe-frame)
+        (should-not wamei/project-memo--posframe-buffer)))))
+
 ;;; posframe の自動クローズ
 
 (ert-deftest wamei/project-memo-posframe-action-is-nil-when-not-shown ()
@@ -645,6 +699,27 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
       ;; selected-frame は素のまま = posframe のフレームではない
       (should (eq (wamei/project-memo--posframe-action) 'hide))
       (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-nil-while-the-minibuffer-is-active ()
+  ;; child frame は自分のミニバッファを持たず親フレームのものを使う
+  ;; (posframe.el の `posframe--create-posframe' が :minibuffer nil で作る)。
+  ;; メモにフォーカスがあるまま `C-x C-f' や `M-x' を始めると、コマンドの
+  ;; 途中で `selected-frame' が親に変わる。そこで 'hide にしてしまうと、
+  ;; ミニバッファを抜けた後に Emacs が child frame の window を選択し直す
+  ;; 一方でモジュール側は追跡変数も hook も捨てているので、画面にフレームが
+  ;; 残ったまま二度と閉じられなくなる。ミニバッファが立っている間は
+  ;; 「フォーカスはまだ外れていない」と見る。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (unwind-protect
+          (progn
+            (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+            ;; ミニバッファが無ければ 'hide になる状況をまず作る。
+            (should (eq (wamei/project-memo--posframe-action) 'hide))
+            (cl-letf (((symbol-function 'active-minibuffer-window)
+                       (lambda () (selected-window))))
+              (should-not (wamei/project-memo--posframe-action))))
+        (wamei/project-memo-posframe-hide)))))
 
 (ert-deftest wamei/project-memo-posframe-action-is-handoff-for-a-foreign-buffer ()
   ;; `window-buffer' を丸ごとスタブすると cl-letf が関数セルを差し替えるため、

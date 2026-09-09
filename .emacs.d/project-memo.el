@@ -389,13 +389,29 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
   wamei/project-memo--posframe-frame)
 
 (defun wamei/project-memo-posframe-hide ()
-  "メモの posframe を保存してから隠す。出ていなければ何もしない。"
-  (when (wamei/project-memo-posframe-frame)
-    (wamei/project-memo-save-all)
-    (posframe-hide wamei/project-memo--posframe-buffer)
+  "メモの posframe を保存してから隠す。出ていなければ何もしない。
+
+追跡の後始末 (hook の除去と変数の nil 化) はフレームが生きているかに
+関わらず必ず行う。メモバッファを kill すると posframe の dedicated window
+ごと child frame が消えるので、`frame-live-p' が nil になった状態でここへ
+来る経路が実在する。`when' の中に畳むと、その場合に `post-command-hook' の
+エントリと死んだバッファへの参照がセッションの残りの間ずっと残る。
+
+隠したあと、選択がそのフレームの window に残っていたら本文 window へ戻す。
+tty には window ごとのフォーカスイベントが無いので、見えなくなった child
+frame に選択が残ると以後の入力がその不可視バッファに吸い込まれ、自然には
+復帰しない (`C-x C-f' を `C-g' で抜けた直後がまさにこれ)。既に posframe の
+外を選択しているときは触らない。トグルや別 window への移動で閉じる経路で
+選択を奪ってしまうため。"
+  (let ((frame (wamei/project-memo-posframe-frame)))
+    (when frame
+      (wamei/project-memo-save-all)
+      (posframe-hide wamei/project-memo--posframe-buffer))
     (remove-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
     (setq wamei/project-memo--posframe-frame nil)
-    (setq wamei/project-memo--posframe-buffer nil))
+    (setq wamei/project-memo--posframe-buffer nil)
+    (when (and frame (eq (window-frame (selected-window)) frame))
+      (select-window (wamei/project-tabs-main-window))))
   nil)
 
 (defun wamei/project-memo--posframe-buffer-shown ()
@@ -408,9 +424,19 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
 
 - nil      … そのまま (メモにフォーカスがある)
 - `hide'   … 隠す (フォーカスが Emacs 内の別の場所へ移った)
-- `handoff'… 隠して中身を本文 window へ渡す (メモ以外のバッファが入った)"
+- `handoff'… 隠して中身を本文 window へ渡す (メモ以外のバッファが入った)
+
+ミニバッファが立っている間は「フォーカスはまだ外れていない」と見て nil を
+返す。posframe の child frame は自分のミニバッファを持たず親フレームのもの
+を使う (posframe.el)。そのためメモにフォーカスがあるまま `C-x C-f' や
+`M-x' を始めると、コマンドの途中で `selected-frame' が親に変わってしまう。
+これを 'hide と読むと、モジュールは追跡変数も hook も捨てるのに Emacs は
+ミニバッファを抜けた後で child frame の window を選択し直すので、閉じ方の
+分からないフレームが画面に残る。ミニバッファを抜けたあと本当に別の場所へ
+フォーカスが移っていれば、次のコマンド境界で通常どおり 'hide になる。"
   (when-let* ((frame (wamei/project-memo-posframe-frame)))
     (cond
+     ((active-minibuffer-window) nil)
      ((not (eq (selected-frame) frame)) 'hide)
      ((not (wamei/project-memo-buffer-p (wamei/project-memo--posframe-buffer-shown)))
       'handoff)
