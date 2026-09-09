@@ -388,21 +388,28 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
       (let ((main (selected-window)))
         (with-current-buffer (window-buffer main)
           (setq default-directory root))
-        (wamei/project-memo-toggle)
-        (should (eq (car (car calls)) 'show))
-        (should (equal (buffer-file-name (cadr (car calls)))
-                       (wamei/project-memo-file (wamei/project-memo-test--project root))))
-        ;; 本文 window は触らない
-        (should-not (wamei/project-memo-buffer-p (window-buffer main)))
-        (wamei/project-memo-posframe-hide)))))
+        ;; hide は unwind-protect で必ず走らせる。手前の should が落ちたときに
+        ;; hide を素通りすると post-command-hook と posframe 変数が汚れたまま
+        ;; 残り、後続テストに漏れる (このプランで既に 2 度踏んだ defect)。
+        (unwind-protect
+            (progn
+              (wamei/project-memo-toggle)
+              (should (eq (car (car calls)) 'show))
+              (should (equal (buffer-file-name (cadr (car calls)))
+                             (wamei/project-memo-file (wamei/project-memo-test--project root))))
+              ;; 本文 window は触らない
+              (should-not (wamei/project-memo-buffer-p (window-buffer main))))
+          (wamei/project-memo-posframe-hide))))))
 
 (ert-deftest wamei/project-memo-toggle-global-uses-the-posframe-by-default ()
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
-      (wamei/project-memo-toggle-global)
-      (should (equal (buffer-file-name (cadr (car calls)))
-                     (wamei/project-memo-global-file)))
-      (wamei/project-memo-posframe-hide))))
+      (unwind-protect
+          (progn
+            (wamei/project-memo-toggle-global)
+            (should (equal (buffer-file-name (cadr (car calls)))
+                           (wamei/project-memo-global-file))))
+        (wamei/project-memo-posframe-hide)))))
 
 (ert-deftest wamei/project-memo-toggle-closes-the-posframe-when-shown ()
   (wamei/project-memo-test--with-project root
@@ -433,6 +440,43 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
         (wamei/project-memo-toggle-global)
         (should (equal (buffer-file-name (window-buffer main))
                        (wamei/project-memo-global-file)))))))
+
+(ert-deftest wamei/project-memo-toggle-switches-the-posframe-to-a-different-target ()
+  ;; 全体メモを posframe に出した状態でプロジェクトメモを求めたら、閉じる
+  ;; だけで終わらず新しい対象が show される (`wamei/project-memo-posframe-show'
+  ;; の「先に古いバッファを隠す」処理に切り替えを任せる)。記録された呼び出し
+  ;; 列全体を見て、部分一致で通ってしまわないようにする。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((main (selected-window)))
+        (with-current-buffer (window-buffer main)
+          (setq default-directory root))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-toggle-global)   ; 全体メモを posframe に出す
+              (wamei/project-memo-toggle)           ; 別の対象 (プロジェクトメモ) を求める
+              (should (equal (mapcar #'car calls) '(show hide show)))
+              (should (equal (buffer-file-name (cadr (car calls)))
+                             (wamei/project-memo-file (wamei/project-memo-test--project root))))
+              (should (wamei/project-memo-posframe-frame)))
+          (wamei/project-memo-posframe-hide))))))
+
+(ert-deftest wamei/project-memo-toggle-posframe-does-not-disturb-a-main-window-already-showing-it ()
+  ;; 本文 window に既にそのメモが出ている状態で posframe を開くのは spec で
+  ;; 許されている組み合わせ。特別扱いせず、本文 window はそのまま。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let* ((main (selected-window))
+             (buffer (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+        (with-current-buffer (window-buffer main)
+          (setq default-directory root))
+        (set-window-buffer main buffer)
+        (unwind-protect
+            (progn
+              (wamei/project-memo-toggle)
+              (should (eq (car (car calls)) 'show))
+              (should (eq (window-buffer main) buffer)))
+          (wamei/project-memo-posframe-hide))))))
 
 ;;; posframe
 
