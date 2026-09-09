@@ -241,7 +241,11 @@ if [[ $INSIDE_EMACS == *ghostel* ]]; then
   # 復元された端末では前回の出力の末尾が WAMEI_TERM_RESTORE のファイルに入っている
   # (色は term-restore.el が SGR エスケープにして書いてある)。最初のプロンプトの前に
   # そのまま出し、子プロセスに引き継がないよう unset する。
+  # 出す前に画面とスクロールバック (\e[3J) を消す。login のバナー
+  # ("Last login: ... on ttys000") は .zshrc より前に出るので、消さないと復元した
+  # 出力の上に残り、次の保存でそれごと巻き取られて復元のたびに 1 行ずつ増える。
   if [[ -n $WAMEI_TERM_RESTORE && -r $WAMEI_TERM_RESTORE ]]; then
+    printf '\e[H\e[2J\e[3J'
     cat -- "$WAMEI_TERM_RESTORE"
   fi
   unset WAMEI_TERM_RESTORE

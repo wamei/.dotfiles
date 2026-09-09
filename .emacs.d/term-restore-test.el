@@ -146,6 +146,25 @@ ghostel は OSC 133 でプロンプトの範囲を受け取り、その文字に
     (insert "\n\n")
     (should (equal (wamei/term-restore--content) "out\n"))))
 
+(defun wamei/term-restore-test--insert-input-marked (text)
+  "TEXT を ghostel が入力に付ける `ghostel-input' プロパティ付きで挿入する。
+シェル側でプロンプトが組み直される構成では libghostty がプロンプト行ごと
+INPUT として持ち、印は `ghostel-input' だけになる。"
+  (insert (propertize text 'ghostel-input t 'rear-nonsticky t)))
+
+(ert-deftest wamei/term-restore-content-drops-trailing-input-marked-prompt ()
+  "プロンプトの印が `ghostel-input' だけでも末尾のプロンプトを落とす。
+前回の復元で cat した古いプロンプトには印が無いので、そこで止まる
+\(落とすのは今のシェルが出した分だけ)。"
+  (with-temp-buffer
+    (insert "out\n")
+    ;; 前回の復元で注入された古いプロンプト (ただのテキストなので印は無い)
+    (insert "~/x git:(master)\n$ \n")
+    ;; 今のシェルが出したプロンプト
+    (wamei/term-restore-test--insert-input-marked "~/x git:(master)\n$ ")
+    (should (equal (wamei/term-restore--content)
+                   "out\n~/x git:(master)\n$ \n"))))
+
 (ert-deftest wamei/term-restore-content-drops-typed-but-unrun-command ()
   "プロンプト行に入力途中のコマンドがあっても、その行ごと落とす。"
   (with-temp-buffer

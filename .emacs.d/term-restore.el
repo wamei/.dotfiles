@@ -17,7 +17,10 @@
 ;; (`wamei/term-restore-directory' 配下) に置き、内容が変わったときだけ書く。
 ;; 復元時は `ghostel-pre-spawn-hook' でそのパスを WAMEI_TERM_RESTORE に載せ、
 ;; .zshrc が起動時に cat する。色は ghostel が付けた face を SGR エスケープに
-;; 写して書いておき、cat したときに端末が解釈する。注入が効くのは起動時の
+;; 写して書いておき、cat したときに端末が解釈する。.zshrc は cat の前に画面と
+;; スクロールバックを消す。login のバナー ("Last login: ...") は .zshrc より前に
+;; 出るので、消さないと復元した出力の上に残り、次の保存でそれごと巻き取られて
+;; 復元のたびに 1 行ずつ増えていく。注入が効くのは起動時の
 ;; desktop 復元の間だけで、復元の仕上げ (`wamei/term-restore-ensure') が記録を
 ;; 空にして `wamei/term-restore--restoring' を下ろす。以降は同じ名前で開き直した
 ;; 端末に古い出力が出ることはない (記録は autosave が作り直すので、記録を
@@ -180,13 +183,22 @@ batch (端末なし) で tty の近似色に丸めるので当てにしない。
 (declare-function ghostel-create "ghostel" (&optional name display identity))
 
 (defun wamei/term-restore--prompt-line-p ()
-  "現在行がプロンプトの行なら非 nil。
-ghostel は OSC 133 のシェル統合 (bash/zsh/fish に自動注入される) でプロンプトの
-範囲を受け取り、その文字に `ghostel-prompt' プロパティを付ける。行内 (末尾の
-改行を含む) にその印があればプロンプトの行とみなす。"
-  (text-property-any (line-beginning-position)
-                     (min (point-max) (1+ (line-end-position)))
-                     'ghostel-prompt t))
+  "現在行がプロンプト (と入力) の行なら非 nil。
+ghostel は OSC 133 のシェル統合 (bash/fish/zsh に自動注入される) で受け取った
+libghostty の行単位のセマンティック状態を写し、プロンプトの行には
+`ghostel-prompt'、入力の行には `ghostel-input' を付ける。行内 (末尾の改行を
+含む) にどちらかの印があればプロンプトの行とみなす。
+
+`ghostel-prompt' だけでは足りない。プロンプト開始の印 (133;A) は
+`precmd' で PROMPT に埋め込まれるが、後から PROMPT を組み直す構成では
+残らないことがあり、そのときは ghostel の zle-line-init フォールバック
+(133;P;k=i) が代わりに立つ。libghostty はプロンプトの行ごと INPUT として
+持つので、印は `ghostel-input' だけになる。この場合に末尾のプロンプトが
+落ちないと、復元のたびに空のプロンプトが 1 組ずつ溜まっていく。"
+  (let ((beg (line-beginning-position))
+        (end (min (point-max) (1+ (line-end-position)))))
+    (or (text-property-any beg end 'ghostel-prompt t)
+        (text-property-any beg end 'ghostel-input t))))
 
 (defun wamei/term-restore--content ()
   "現在のバッファの内容を、末尾のプロンプト行と空行を除いて返す。
