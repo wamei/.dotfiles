@@ -989,7 +989,20 @@ shadow に塗り替える。tabulated-list は行単位の face を持たない�
   :ensure t
   ;; 初回のみ M-x copilot-install-server (npm 経由、node 22+) と
   ;; M-x copilot-login (ブラウザでデバイスコード入力) が必要。
-  :hook (prog-mode-hook . copilot-mode)
+  :preface
+  (defun wamei/copilot-maybe-enable ()
+    "init.el 以外で `copilot-mode' を有効にする。`prog-mode-hook' から呼ぶ。
+init.el は `copilot-max-char' (100000) を超えているので、Copilot に送られるのは
+point の前後 5 万文字ずつだけになる (`copilot--get-source')。前後の文脈が欠けた
+まま補完が出るうえ、送るたびに警告が出るので最初から対象外にする。
+init.el は symlink (~/.emacs.d/init.el → ~/.dotfiles/.emacs.d/init.el) なので、
+どちらのパスで開いても同じと分かるよう `file-truename' で比べる。"
+    (unless (and buffer-file-name
+                 user-init-file
+                 (equal (file-truename buffer-file-name)
+                        (file-truename user-init-file)))
+      (copilot-mode 1)))
+  :hook (prog-mode-hook . wamei/copilot-maybe-enable)
   :custom
   (copilot-idle-delay . 0.3)
   ;; モードごとの indent offset 変数が見つからないときの警告を止める。
