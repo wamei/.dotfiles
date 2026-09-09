@@ -109,6 +109,34 @@ adopt = true
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }
 
 # ---------------------------------------------------------------------------
+# macOS のシステム設定
+#
+# 注: mise 2026.9.1 はスカラー値 (bool / int / float / string) しか受け付けない。
+# ドキュメントにある配列・テーブル値はこの版では黙って落ちるので、Dock の
+# persistent-apps のような構造値はここでは表現できない。
+#
+# 反映には killall が要る。mise 自身はアプリを落とさないので hook で行う。
+# ---------------------------------------------------------------------------
+[bootstrap.macos.defaults]
+# ApplePressAndHold を切るのは、長押しでアクセント候補を出さずキーリピートさせるため
+# (Emacs で必須)。fnState は F1-F12 をファンクションキーとして扱う。
+"NSGlobalDomain" = { KeyRepeat = 2, InitialKeyRepeat = 30, ApplePressAndHoldEnabled = false, NSAutomaticCapitalizationEnabled = false, "com.apple.keyboard.fnState" = true }
+"com.apple.dock" = { autohide = true, tilesize = 64 }
+# AppleShowAllFiles は旧 README が `defaults write ... True` と文字列で書いていた
+# ため実機には文字列 "True" が入っている。mise は bool を書くので初回だけ差分として
+# 報告される。Finder はどちらも受け付けるので実害はない。
+"com.apple.finder" = { AppleShowAllFiles = true, FXPreferredViewStyle = "Nlsv" }
+
+[bootstrap.hooks]
+post-defaults = "killall Dock Finder || true"
+
+# ---------------------------------------------------------------------------
+# ログインシェル (旧 init.sh には無く、手で chsh していた)
+# ---------------------------------------------------------------------------
+[bootstrap.user]
+login_shell = "/bin/zsh"
+
+# ---------------------------------------------------------------------------
 # 宣言で表せない補助 (bootstrap の step 15 で自動実行される escape hatch)
 # 冪等に保つこと。毎回実行される。
 # ---------------------------------------------------------------------------
