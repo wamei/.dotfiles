@@ -245,4 +245,13 @@ if [[ $INSIDE_EMACS == *ghostel* ]]; then
     cat -- "$WAMEI_TERM_RESTORE"
   fi
   unset WAMEI_TERM_RESTORE
+
+  # シェルから Emacs 側を開く。ghostel_cmd は ghostel のシェル統合が定義する関数で、
+  # OSC 52;e を通して Emacs の ghostel-eval-cmds に載っている関数だけを呼べる
+  # (magit-status-setup-buffer は init.el で追加している)。相対パスは端末バッファの
+  # default-directory (OSC 7 でシェルの cwd に追従) 基準で解決される。
+  # 端末パネルは下部の side window なので、other-window 系で主領域に開く。
+  e()   { local f; for f in "$@"; do ghostel_cmd find-file-other-window "$f"; done }
+  dow() { ghostel_cmd dired-other-window "${1:-$PWD}" }
+  gst() { ghostel_cmd magit-status-setup-buffer "$PWD" }
 fi
