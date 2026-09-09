@@ -181,7 +181,17 @@ run = [
   # その検査が環境依存で偽陽性になるため。~/.config などは実ディレクトリとして
   # 存在しがちで、素の環境では必ず衝突として報告される。ここで検証したいのは設定の
   # 妥当性であって実行環境の状態ではない。dry-run なので何も書き換わらない。
-  "mise bootstrap -n --force-dotfiles",
+  #
+  # --skip task は必須。mise bootstrap -n は [bootstrap.hooks] の post-defaults の
+  # ような hook は本当に print-only で止まるが、[tasks.bootstrap] は違う。あれは
+  # 宣言ではなく shell を実行する escape hatch なので、-n の対象にできず素通りで
+  # 実行される (実測: emacs-plus-app が導入済みかを見る行が dry-run 中でも実際に
+  # 走っていた)。このマシンでは cask 導入済みで no-op に見えるが、cask が無い
+  # マシン (新規セットアップや CI、つまり verify が本来対象とする環境) では
+  # brew install --cask emacs-plus-app が実行され、486MB の cask を実際に
+  # インストールしてしまう。それは「非破壊」という verify の前提を裏切るので、
+  # --skip task でタスク実行そのものを外す。
+  "mise bootstrap -n --force-dotfiles --skip task",
 ]
 
 # ---------------------------------------------------------------------------
@@ -207,8 +217,8 @@ run = [
 # 14.12.0 のままだが、実体は自己更新で 16.3.0 まで進んでいる。auto_updates な
 # ので --greedy 無しの brew upgrade --cask はこれをスキップし続け、その食い違いは
 # 無害なまま放置される。ここで --greedy を付けると brew が
-# /Applications/Karabiner-Elements.app を丸ごと差し替え、[bootstrap.hooks] や
-# emacs-plus-app のコメントに書いたのと同じ TCC リセット (Accessibility 等の
+# /Applications/Karabiner-Elements.app を丸ごと差し替え、[bootstrap.brew] の
+# adopt = true のコメントに書いたのと同じ TCC リセット (Accessibility 等の
 # 許可が失効し、再許可が要る) をこのアプリにも起こす。この計画は
 # /Applications/Emacs.app で同じ事故を一度起こしている。--greedy を付けないのは
 # スタイルの問題ではなく、この再発を防ぐための明示的な選択。
