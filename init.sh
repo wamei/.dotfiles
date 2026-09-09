@@ -22,7 +22,11 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 
 # mise と ghq。どちらも [tools] / [bootstrap.packages] でも宣言しているが、
 # clone の時点ではまだ mise が動いていないのでここでは brew から入れる。
-brew install mise ghq
+# 導入済みなら何もしない (brew install は対象が古ければ黙って upgrade する
+# ため、無条件に呼ぶと seed を再実行するたびに意図しない upgrade が走る。
+# upgrade は mise run update の仕事)。
+command -v mise >/dev/null 2>&1 || brew install mise
+command -v ghq >/dev/null 2>&1 || brew install ghq
 
 # ghq.root は git config ではなく環境変数で渡す。~/.gitconfig は [dotfiles] が
 # symlink で管理するため、ここで git config --global を叩くと実ファイルが作られ、
