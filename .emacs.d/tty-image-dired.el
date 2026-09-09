@@ -214,5 +214,114 @@ COLUMNS は段あたりの枚数、BOX は箱の (桁 . 行)。箱は空白の�
       (wamei/tty-image-dired--redraw-caption index))
     (goto-char (point-min))))
 
+;;;; サムネイルの実体
+
+(defun wamei/tty-image-dired--make-thumb (src dst)
+  "SRC のサムネイルを DST に sips で作る。作れたら非 nil。
+組み込みの `image-dired-create-thumb' は非同期なので使わない。ファイルが
+できるまで箱を空白にして後から描き直す、という面倒を避ける。"
+  (make-directory (file-name-directory dst) t)
+  (and (zerop (call-process "sips" nil nil nil
+                            "-s" "format" "png"
+                            "-Z" (number-to-string image-dired-thumb-size)
+                            (expand-file-name src) "--out" dst))
+       (file-exists-p dst)
+       (> (file-attribute-size (file-attributes dst)) 0)))
+
+(defun wamei/tty-image-dired--thumb-file (file)
+  "FILE のサムネイルのパス。無いか古ければ作る。作れなければ nil。
+置き場所は `image-dired-thumb-name' が返すパスで、GUI の image-dired と共有する。"
+  (let* ((thumb (image-dired-thumb-name file))
+         (thumb-attr (file-attributes thumb)))
+    (if (and thumb-attr
+             (not (time-less-p (file-attribute-modification-time thumb-attr)
+                               (file-attribute-modification-time (file-attributes file)))))
+        thumb
+      (and (wamei/tty-image-dired--make-thumb file thumb) thumb))))
+
+;;;; 送受
+
+(defun wamei/tty-image-dired--fill-box (index lines)
+  "サムネイル INDEX の箱に LINES (行ごとの文字列のリスト) を書き込む。
+書き換えたあとプロパティを載せ直す (消えると点ベースのコマンドが動かなくなる)。"
+  (let ((inhibit-read-only t))
+    (save-excursion
+      (cl-loop for row from 0 below (cdr wamei/tty-image-dired--box)
+               for line in lines
+               do (let ((region (wamei/tty-image-dired--box-line-region index row)))
+                    (delete-region (car region) (cdr region))
+                    (goto-char (car region))
+                    (insert line))))
+    (wamei/tty-image-dired--put-properties index)))
+
+(defun wamei/tty-image-dired--show-box (index)
+  "サムネイル INDEX を端末へ送り、箱に placeholder を書き込む。
+サムネイルが作れない / 送れないときは箱を空白のままにする。`error' は投げない。"
+  (unless (aref wamei/tty-image-dired--ids index)
+    (let* ((file (aref wamei/tty-image-dired--files index))
+           (thumb (wamei/tty-image-dired--thumb-file file))
+           (px (and thumb (wamei/kitty-graphics-image-size thumb))))
+      (when px
+        (let* ((cells (wamei/kitty-graphics-cell-count
+                       px (wamei/kitty-graphics-cell-size) wamei/tty-image-dired--box))
+               (id (wamei/kitty-graphics-put thumb (car cells) (cdr cells) px)))
+          (when id
+            (aset wamei/tty-image-dired--ids index id)
+            (wamei/tty-image-dired--fill-box
+             index
+             (cl-loop for row from 0 below (cdr wamei/tty-image-dired--box)
+                      collect (let ((line (if (< row (cdr cells))
+                                              (wamei/kitty-graphics-placeholder-line
+                                               id (car cells) row)
+                                            "")))
+                                ;; placeholder は 1 セル = 3 文字の合成グリフなので、
+                                ;; 箱の桁数に合わせるパディングは文字数ではなく表示桁で計算する
+                                (concat line
+                                        (make-string (- (car wamei/tty-image-dired--box)
+                                                        (string-width line))
+                                                     ?\s)))))))))))
+
+(defun wamei/tty-image-dired--hide-box (index)
+  "サムネイル INDEX を端末から解放し、箱を空白に戻す。"
+  (when-let* ((id (aref wamei/tty-image-dired--ids index)))
+    (wamei/kitty-graphics-delete id)
+    (aset wamei/tty-image-dired--ids index nil)
+    (wamei/tty-image-dired--fill-box
+     index
+     (make-list (cdr wamei/tty-image-dired--box)
+                (make-string (car wamei/tty-image-dired--box) ?\s)))))
+
+(defun wamei/tty-image-dired--window-visible-range ()
+  "この window で見えているサムネイルの添字の範囲 (最初 . 最後)。無ければ nil。"
+  (when-let* ((window (get-buffer-window (current-buffer))))
+    (wamei/tty-image-dired--visible-range
+     (save-excursion (goto-char (window-start window))
+                     (count-lines (point-min) (line-beginning-position)))
+     (window-body-height window)
+     (wamei/tty-image-dired--band-lines)
+     wamei/tty-image-dired--columns
+     (length wamei/tty-image-dired--files))))
+
+(defvar-local wamei/tty-image-dired--shown-range nil
+  "最後に送った可視範囲 (最初 . 最後)。")
+
+(defun wamei/tty-image-dired--sync-visible ()
+  "見えているサムネイルだけが端末に置かれている状態にする。
+範囲が前と同じなら何もしない。画像 ID は 1〜255 しかないので、画面外のぶんは解放する。"
+  (let ((range (wamei/tty-image-dired--window-visible-range)))
+    (unless (equal range wamei/tty-image-dired--shown-range)
+      (setq wamei/tty-image-dired--shown-range range)
+      (dotimes (index (length wamei/tty-image-dired--files))
+        (if (and range (>= index (car range)) (<= index (cdr range)))
+            (wamei/tty-image-dired--show-box index)
+          (wamei/tty-image-dired--hide-box index))))))
+
+(defun wamei/tty-image-dired--release-all ()
+  "端末に置いたサムネイルをすべて解放する。"
+  (when wamei/tty-image-dired--ids
+    (dotimes (index (length wamei/tty-image-dired--ids))
+      (wamei/tty-image-dired--hide-box index)))
+  (setq wamei/tty-image-dired--shown-range nil))
+
 (provide 'tty-image-dired)
 ;;; tty-image-dired.el ends here
