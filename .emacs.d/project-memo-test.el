@@ -95,5 +95,42 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
                    (expand-file-name "notes.txt" wamei/project-memo-directory))))
       (should-not (wamei/project-memo-buffer-p buffer)))))
 
+;;; メモバッファ
+
+(ert-deftest wamei/project-memo-buffer-inserts-title-for-new-file ()
+  (wamei/project-memo-test--with-project root
+    (let ((buffer (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+      (with-current-buffer buffer
+        (should (string-prefix-p
+                 (concat "#+title: " (file-name-nondirectory (directory-file-name root)))
+                 (buffer-string)))))))
+
+(ert-deftest wamei/project-memo-buffer-keeps-existing-content ()
+  (wamei/project-memo-test--with-project root
+    (let ((file (wamei/project-memo-file (wamei/project-memo-test--project root))))
+      (with-temp-file file (insert "既存の中身\n"))
+      (let ((buffer (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+        (with-current-buffer buffer
+          (should (equal (buffer-string) "既存の中身\n")))))))
+
+(ert-deftest wamei/project-memo-buffer-overrides-project-for-project-memo ()
+  (wamei/project-memo-test--with-project root
+    (let ((buffer (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
+      (with-current-buffer buffer
+        (should (local-variable-p 'project-current-directory-override))
+        (should (equal (project-root (project-current nil)) root))))))
+
+(ert-deftest wamei/project-memo-buffer-does-not-override-project-for-global ()
+  (wamei/project-memo-test--with-project root
+    (let ((buffer (wamei/project-memo-buffer nil)))
+      (with-current-buffer buffer
+        (should-not (local-variable-p 'project-current-directory-override))
+        (should (equal (buffer-file-name) (wamei/project-memo-global-file)))))))
+
+(ert-deftest wamei/project-memo-buffer-is-org-mode ()
+  (wamei/project-memo-test--with-project root
+    (with-current-buffer (wamei/project-memo-buffer nil)
+      (should (derived-mode-p 'org-mode)))))
+
 (provide 'project-memo-test)
 ;;; project-memo-test.el ends here
