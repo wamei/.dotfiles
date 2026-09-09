@@ -333,5 +333,51 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
       (funcall after-focus-change-function)
       (should (= save-all-calls 1)))))
 
+;;; タブの初期画面
+
+(ert-deftest wamei/project-memo-switch-setup-shows-sidebar-and-memo ()
+  (wamei/project-memo-test--with-project root
+    (let ((main (selected-window)))
+      (with-current-buffer (window-buffer main)
+        (setq default-directory root))
+      (unwind-protect
+          (progn
+            ;; ERT は各テストの本体を `with-temp-buffer' で包むため、ここまでの
+            ;; current-buffer は main のバッファではなく ERT の一時バッファになっている。
+            ;; 実際の呼び出し (project-switch-project からの call-interactively) では
+            ;; コマンドループが current-buffer を選択中 window のバッファに揃えてから
+            ;; 呼ぶので、その前提をここで揃える (select-window はバッファもカレントにする)。
+            (select-window main)
+            (wamei/project-memo-switch-setup)
+            ;; 本文 window にプロジェクトメモ
+            (should (equal (buffer-file-name (window-buffer main))
+                           (wamei/project-memo-file (wamei/project-memo-test--project root))))
+            ;; 左に sidebar が出ていて、フォーカスは本文に残る
+            (let ((side (wamei/project-sidebar-window)))
+              (should side)
+              (should (eq (window-parameter side 'window-side) 'left)))
+            (should (eq (selected-window) main)))
+        (when-let* ((side (wamei/project-sidebar-window)))
+          (delete-window side))))))
+
+(ert-deftest wamei/project-memo-switch-setup-uses-directory-override ()
+  (wamei/project-memo-test--with-project root
+    ;; project-switch-project と同じ状況: default-directory は別で、
+    ;; project-current-directory-override だけが対象プロジェクトを指す。
+    (let ((main (selected-window))
+          (caller (get-buffer-create "*memo-test-caller*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer caller
+              (setq default-directory temporary-file-directory)
+              (setq-local project-current-directory-override root)
+              (set-window-buffer main caller)
+              (wamei/project-memo-switch-setup))
+            (should (equal (buffer-file-name (window-buffer main))
+                           (wamei/project-memo-file (wamei/project-memo-test--project root)))))
+        (when-let* ((side (wamei/project-sidebar-window)))
+          (delete-window side))
+        (kill-buffer caller)))))
+
 (provide 'project-memo-test)
 ;;; project-memo-test.el ends here

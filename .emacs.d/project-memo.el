@@ -18,6 +18,7 @@
 
 (require 'project)
 (require 'project-tabs)
+(require 'project-sidebar)
 
 (defgroup wamei/project-memo nil
   "org のメモ (プロジェクト別 / 全体)。"
@@ -203,6 +204,31 @@ GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐
                                     after-focus-change-function)
     (add-function :after after-focus-change-function #'wamei/project-memo-save-all))
   (add-hook 'kill-emacs-hook #'wamei/project-memo-save-all))
+
+;;; タブの初期画面
+
+(defun wamei/project-memo-switch-setup ()
+  "プロジェクトを開いた直後の画面を作る。
+
+`project-switch-commands' に置いて `project-switch-project' から
+`call-interactively' で呼ばれる。左に sidebar、本文 window にその
+プロジェクトのメモを出し、フォーカスは本文に残す。
+
+対象プロジェクトは `project-current' から取る。呼び出し元バッファに
+`project-current-directory-override' がバッファローカルで設定されて
+いるため (`default-directory' は変わらない)。`select-window' は選択した
+window のバッファをカレントにするので、取得はその前に済ませる。"
+  (interactive)
+  (let* ((project (project-current nil))
+         (root (and project (project-root project)))
+         (window (wamei/project-tabs-main-window))
+         (buffer (wamei/project-memo-buffer project)))
+    (select-window window)
+    (delete-other-windows window)
+    (set-window-buffer window buffer)
+    (when root
+      (wamei/project-sidebar-show root))
+    (select-window window)))
 
 (provide 'project-memo)
 ;;; project-memo.el ends here
