@@ -29,3 +29,15 @@
 "~/.aws/update-mfa-profile" = { source = ".aws/update-mfa-profile", mode = "symlink" }
 "~/.emacs.d/init.el" = { source = ".emacs.d/init.el", mode = "symlink" }
 "~/.emacs.d/early-init.el" = { source = ".emacs.d/early-init.el", mode = "symlink" }
+# ここから下は旧 init.sh が管理できていなかったもの。
+# rpbcopy は cp でコピーされていたためリポジトリを編集しても反映されなかった。
+# karabiner の ja.json はどこにもリンクされていなかった。
+"~/bin/rpbcopy" = { source = "bin/rpbcopy", mode = "symlink" }
+"~/.config/karabiner/assets/complex_modifications/ja.json" = { source = ".config/karabiner/assets/complex_modifications/ja.json", mode = "symlink" }
+# .gitconfig は init.sh で ln -sf がコメントアウトされ、代わりに
+# git config --global が 4 行走っていた。そのためリポジトリの alias 群と
+# push.default = nothing が一度も有効になっていなかった。
+"~/.gitconfig" = { source = ".gitconfig", mode = "symlink" }
+# core.excludesfile が指す ~/.gitignore はリポジトリ管理外の実ファイルだった。
+# リポジトリの .gitignore はリポジトリ自身の除外なので別ファイルにする。
+"~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }
