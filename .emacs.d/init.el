@@ -221,13 +221,20 @@ Console 版は罫線・ブロック要素・幾何図形 (U+2500-25FF) を半角
     ;; 記号ブロックの fallback を行高の合うフォントに固定する。
     ;; HackGen が持たない記号 (claude のスピナー ✢✳✶✻ や ⚙ ⌃ など) は既定だと
     ;; STIX Two Math / Arial Unicode MS に fallback し、ascent/descent が HackGen
-    ;; (20px = 16+4) より大きいためその行だけ 23〜28px に伸びる。ghostel の TUI は
+    ;; (20px = 16+4) より大きいためその行だけ 23〜28px に伸びる。端末の TUI は
     ;; 行高固定を前提にしているので、スピナーが回るたびに内容が押し下げられて
     ;; window から溢れ、Emacs が 1 行スクロールして画面全体が上下に揺れる。
     ;; Menlo は 17px にすると 20px = 16+4 で HackGen と一致し、これらの記号を
     ;; 広く持つ。fontset に HackGen → Menlo の順で登録し、HackGen が持つ字形は
     ;; そのまま使う (default fontset の指定は既定フォントより優先されるため、
     ;; HackGen を先頭に明示しないと HackGen の ● や ─ まで置き換わる)。
+    ;;
+    ;; これは vterm 都合ではなくフォントの寸法の問題で、ghostel でも同じ。
+    ;; ghostel は収まらないグリフを縮める機能 (ghostel-glyph-scale-floor 0.0)
+    ;; を持つので、この fallback と ghostel ブロックの display table を消しても
+    ;; 行高は 20px に固定できるが、記号が縮む (2026-09-09 実測: スピナー 78%、
+    ;; ⚙ 89%、⏺⏵⧉ 44%)。等倍で出すために fallback と置換を残し、縮小は切っている。
+    ;; fallback だけ消すとスピナーの行が 28px に伸びるので、片方だけは残せない。
     (add-to-list 'face-font-rescale-alist '("Menlo" . 0.95))
     (dolist (range '((#x2190 . #x21FF)    ; Arrows
                      (#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
