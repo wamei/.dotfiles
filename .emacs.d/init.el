@@ -441,6 +441,19 @@ ghostel 自身のグリフ縮小 (ghostel-glyph-scale-floor) は元の文字の�
         (pcase-dolist (`(,from . ,to) wamei/term-glyph-substitutions)
           (aset table from (vector (make-glyph-code to))))
         (setq buffer-display-table table))))
+  (defun wamei/term--plain-nobreak-chars ()
+    "端末バッファで NO-BREAK SPACE などの強調表示を切る。
+`nobreak-char-display' が t (既定) だと、Emacs は U+00A0 を
+`nobreak-space' face で描く。このテーマでは escape-glyph 由来の水色 +
+下線なので、空白に見えるセルに青い下線が 1 文字ぶん走る。Claude Code の
+TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロンプト行の
+`❯ ' の後ろなど) ので、パネル一面に散る。
+
+端末に届く U+00A0 は端末側のレイアウトであって「紛れ込んだ非 ASCII 空白」の
+警告ではないから、端末バッファでは強調そのものを切る。face はバッファ
+ローカルにできないので、`nobreak-char-display' をバッファローカルに倒す
+(表示エンジンはバッファをカレントにして読むので効く)。"
+    (setq-local nobreak-char-display nil))
   :init
   ;; 端末は下部 side window の slot 0、一覧は同じ side の slot 1 (右隣) へ。
   ;; :config だと ghostel がロードされるまで登録されないので :init で行う。
@@ -476,6 +489,7 @@ ghostel 自身のグリフ縮小 (ghostel-glyph-scale-floor) は元の文字の�
   (add-to-list 'ghostel-eval-cmds '("magit-status-setup-buffer" magit-status-setup-buffer))
 
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
+  (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
   (add-hook 'ghostel-mode-hook #'wamei/term--setup-buffer))
 
