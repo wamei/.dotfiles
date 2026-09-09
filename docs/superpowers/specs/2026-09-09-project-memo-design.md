@@ -55,8 +55,9 @@ init.el 側は `leaf org` (新規・最小) と `leaf project-memo` (load と ke
 - `wamei/project-memo-file (project)` … `~/org/<project-name>.org`。
   名前は `project-name` (タブに出ている名前と同じ) を使い、`/` は `-` に潰す。
 - `wamei/project-memo-global-file ()` … `~/org/global.org`。
-- ディレクトリが無ければ作る。ファイルが無い場合はバッファだけ作り、
-  `#+title: <name>` の 1 行を入れる。ファイルは最初の保存で生まれる。
+- ディレクトリが無ければ作る。バッファの中身が空なら `#+title: <name>` の
+  1 行を入れる (実体が 0 バイトのときも入れ直す)。挿入は undo の対象に
+  しない。ファイルは最初の保存で生まれる。
 - 同名の repo が複数あると同じメモを共有する。フラット構成を選んだ帰結として
   受け入れる (「どこにある repo でも扱えること」を優先した)。
 
@@ -71,6 +72,11 @@ init.el 側は `leaf org` (新規・最小) と `leaf project-memo` (load と ke
 標準で見る変数なので、タブ名・`project-find-file`・`consult-project-buffer`
 が揃ってそのプロジェクト基準になる。将来 `~/org` 自体を git repo にしても
 `~/org` のプロジェクトとは判定されない。
+
+あわせて `default-directory` も同じ root に向ける。override はバッファ
+ローカルで `project-current` 越しにしか見えないので、`default-directory` を
+生で読む利用者 (`wamei/project-sidebar-toggle` の「sidebar が出ていない」枝、
+`dired-jump` など) には届かないため。
 
 全体メモには設定しない (プロジェクト無しのまま)。
 
@@ -95,12 +101,20 @@ init.el 側は `leaf org` (新規・最小) と `leaf project-memo` (load と ke
 
 ### 4. 自動保存
 
-- **アイドル**: `auto-save-visited-mode` を有効にし、
-  `auto-save-visited-predicate` を「`wamei/project-memo-directory` 配下の
-  `.org` を訪れているバッファ」に限定する。他のファイルは従来どおり
-  (`#file#` への auto-save のみで、実ファイルは手動保存)。判定をバッファ
-  ローカルのフラグでなくパスで行うので、desktop 復元で開き直された
-  メモにもそのまま効く。間隔は既定の `auto-save-visited-interval` (5 秒)。
+- **アイドル**: このモジュール専用の `run-with-idle-timer` (繰り返し) で
+  `wamei/project-memo-save-all` を回す。間隔は
+  `wamei/project-memo-autosave-idle-interval` (既定 5 秒)。他のファイルは
+  従来どおり (`#file#` への auto-save のみで、実ファイルは手動保存)。
+  対象の判定はバッファローカルのフラグでなくパスで行うので、desktop 復元で
+  開き直されたメモにもそのまま効く。
+
+  `auto-save-visited-mode` + `auto-save-visited-predicate` は採らない。
+  あれは `save-some-buffers` 経由で、`buffer-save-without-query` が非 nil の
+  バッファを述語より先に無条件で保存する (files.el)。magit の
+  save-repository-buffers に `Y` と答えるとそのフラグが立つので、以後その
+  ソースファイルが書きかけのまま毎回ディスクへ書かれてしまう。
+  `save-some-buffers-functions` も走るので abbrev ファイルまで書かれる。
+  自前のタイマーなら「メモ以外は書かない」が述語頼みでなく構造で保証される。
 - **離れるとき**: 変更のあるメモバッファを `save-buffer` する関数を
   `window-selection-change-functions` / `after-focus-change-function` /
   `kill-emacs-hook` に足す。`save-silently` を束縛してエコーエリアを汚さない。
@@ -154,8 +168,9 @@ root の dired は開かなくなる。必要なときは既存の `C-x C-j`
   そのプロジェクトを返す、全体メモには設定されない
 - トグル: 本文 window にメモが出る / もう一度で元のバッファに戻る /
   プロジェクト外ではプレフィックス無しでも全体メモ
-- 自動保存: 述語が `~/org/*.org` にだけ t を返す、離脱時の関数が変更のある
-  メモだけを保存する
+- 自動保存: 保存関数が変更のあるメモだけを保存する (他のファイルは触らない)、
+  modtime がずれたメモは飛ばす、1 つの保存が失敗しても外へ飛ばさない、
+  setup がアイドルタイマーを 1 つだけ作る (2 回呼んでも増えない)
 - `wamei/project-memo-switch-setup` 後の window 構成: 左に sidebar、
   本文にメモ、フォーカスは本文
 
@@ -166,4 +181,9 @@ TDD (Red → Green → Refactoring) で進める。
 - org-agenda / org-capture / TODO ワークフロー
 - メモの検索 UI (既存の `consult-ripgrep` などで足りる)
 - 同名プロジェクトの衝突回避 (フラット構成を優先した結果として受け入れる)
+- `~/org` を git repo にしたときの sidebar 側の手当て。project-memo.el は
+  メモディレクトリ自身を root とするプロジェクトを返さないようにするが、
+  `wamei/project-sidebar--follow` はファイルのパスからプロジェクトを出すので
+  メモを別プロジェクト扱いして sidebar を `~/org` の dired に引っ張る。
+  `~/org` を repo にするなら project-sidebar.el 側にも同じ手当てが要る。
 - 既存タブへ切り替えたときのレイアウト再構成

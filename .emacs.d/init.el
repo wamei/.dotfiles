@@ -713,9 +713,13 @@ claude のバッファの中から呼ばれたときはそのセッションの�
          ("C-x C-p" . project-switch-project)
          ([remap project-switch-project] . wamei/project-switch-project-in-tab))
   :custom
-  ;; 切り替え先で何をするかをミニバッファで選ばせず、ルートを dired で開く。
-  ;; シンボルを入れるとその command を即実行する (dispatch メニューを出さない)。
-  (project-switch-commands . #'project-dired)
+  ;; 切り替え先で何をするかをミニバッファで選ばせず、sidebar + プロジェクトメモの
+  ;; 画面を作る (project-memo.el)。シンボルを入れるとその command を即実行する
+  ;; (dispatch メニューを出さない)。root の dired が要るときは C-u C-x C-j
+  ;; (dired-toggle-current-or-project-directory の project-dired 側)。
+  ;; プレフィクス無しの C-x C-j は dired-jump で、これは default-directory では
+  ;; なく buffer-file-name のディレクトリへ飛ぶので、メモからだと ~/org/ に着く。
+  (project-switch-commands . #'wamei/project-memo-switch-setup)
   :config
   ;; 未訪問・ignore 済みファイルを project-find-file と consult-project-buffer の
   ;; 候補に足す。init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
@@ -1199,6 +1203,45 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (wamei/project-sidebar-mode-hook . wamei/project-sidebar--sync-hide-mode-line)
   :config
   (wamei/project-sidebar-follow-mode 1))
+
+(leaf org
+  :doc "メモに使う分だけの org 設定 (agenda / capture は入れない)"
+  :ensure nil
+  :custom
+  ;; メモの置き場もここに従う (leaf project-memo の
+  ;; wamei/project-memo-directory)。パスの出どころはこの 1 箇所。
+  (org-directory . "~/org/")
+  (org-startup-indented . t)          ; 見出しの深さをインデントで見せる
+  (org-startup-folded . 'showall)     ; メモなので畳まずに開く
+  :hook
+  (org-mode-hook . visual-line-mode)) ; 長い行は折り返して表示する
+
+(leaf project-memo
+  :doc "org のメモ (プロジェクト別 / 全体)"
+  :ensure nil
+  ;; C-x C-m は C-x RET と同じキー列なので、標準の mule-keymap
+  ;; (set-buffer-file-coding-system / universal-coding-system-argument /
+  ;; revert-buffer-with-coding-system など) をこのバインドが乗っ取る。
+  ;; メモは常用、coding-system プレフィクスはほぼ使わないので割り切る。
+  ;; 逃げ道のキーは無い: GUI でも C-x <return> は local-function-key-map で
+  ;; C-x RET に翻訳されてこのバインドに来るので、mule-keymap へ届く打ち方は
+  ;; 残らない。必要になったら M-x から個別コマンドを呼ぶ (それだけが手段)。
+  :bind (("C-x C-m" . wamei/project-memo-toggle))
+  :preface
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "project-memo"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :custom
+  ;; メモの置き場は org-directory (leaf org) に従わせる。同じパスを 2 箇所に
+  ;; 書くと、片方だけ変えたときに黙って食い違う (メモが org-directory の外に
+  ;; 出ても誰も気づかない)。
+  (wamei/project-memo-directory . org-directory)
+  :config
+  ;; メモ専用のアイドルタイマーによる保存と、メモから離れたときの保存。
+  ;; auto-save-visited-mode は使わない (save-some-buffers 経由なので
+  ;; buffer-save-without-query の立ったバッファまで書いてしまう)。
+  (wamei/project-memo-autosave-setup))
 
 (leaf dired-toggle-sudo
   :ensure t
