@@ -738,7 +738,44 @@ claude のバッファの中から呼ばれたときはそのセッションの�
 (leaf magit
   :doc "git操作"
   :ensure t
-  :bind ("C-x g" . magit-status)
+  :preface
+  (defun wamei/magit--tab-toplevel ()
+    "タブに紐づいたプロジェクトのワークツリーのルート。git 管理外なら nil。
+
+`magit-toplevel' に root を渡す。root がワークツリーの途中を指していても
+ルートに正規化されるので、そのまま `magit-status' の起点にできる。
+root が消えていたら `magit-toplevel' が親を遡って別のリポジトリを拾いうるので、
+先に `file-directory-p' で止める。
+
+init.el は project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守る
+\(magit を開くのは init を読み終えた後なので、実際には常に定義済み)。"
+    (and (fboundp 'wamei/project-tabs-current-root)
+         (when-let* ((root (wamei/project-tabs-current-root))
+                     ((file-directory-p root)))
+           (magit-toplevel root))))
+
+  (defun wamei/magit-status ()
+    "タブに紐づいたプロジェクトの `magit-status' を開く。
+
+タブ 1 つにプロジェクト 1 つの運用なので、C-x g はカレントバッファではなく
+タブに紐づいたプロジェクトを起点にする。プロジェクト外の *scratch* や
+端末パネル、別リポジトリのファイルにいても、そのタブの status が出る。
+端末パネルの `wamei/term--root'、claude の
+`wamei/claude--tab-working-directory' と同じ考え方。
+
+magit は `project-current' を通らず `default-directory' で起点を決めるので、
+`wamei/project-tabs-commands' には載せられない。`magit-status' の
+interactive 部が `magit-toplevel' を見るところごと束縛して渡す
+\(C-u で別リポジトリを訊く挙動はそのまま残る)。
+
+タブのプロジェクトが git 管理外なら従来どおりバッファ基準。ここでタブの root を
+渡すと magit がリポジトリの作成を訊いてしまう。"
+    (interactive)
+    ;; 自前のコマンドなのでパッケージの autoload は効かない
+    (require 'magit)
+    (let ((default-directory (or (wamei/magit--tab-toplevel) default-directory)))
+      (call-interactively #'magit-status)))
+  :bind ("C-x g" . wamei/magit-status)
   ;; status は side window (sidebar / claude-code-ide / 端末パネル) を残して
   ;; 主領域いっぱいに表示し、q で開く前の window 構成に戻す。
   ;; fullframe 化は delete-other-windows で行われるため、side window 側に
