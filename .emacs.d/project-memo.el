@@ -343,6 +343,7 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
          :accept-focus t
          :cursor 'box
          :respect-mode-line t))
+  (add-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
   (select-frame-set-input-focus wamei/project-memo--posframe-frame)
   wamei/project-memo--posframe-frame)
 
@@ -351,8 +352,48 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
   (when (wamei/project-memo-posframe-frame)
     (wamei/project-memo-save-all)
     (posframe-hide wamei/project-memo--posframe-buffer)
+    (remove-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
     (setq wamei/project-memo--posframe-frame nil)
     (setq wamei/project-memo--posframe-buffer nil))
+  nil)
+
+(defun wamei/project-memo--posframe-buffer-shown ()
+  "posframe の window が映しているバッファ。出ていなければ nil。"
+  (when-let* ((frame (wamei/project-memo-posframe-frame)))
+    (window-buffer (frame-selected-window frame))))
+
+(defun wamei/project-memo--posframe-action ()
+  "posframe に対していま取るべき動作。
+
+- nil      … そのまま (メモにフォーカスがある)
+- `hide'   … 隠す (フォーカスが Emacs 内の別の場所へ移った)
+- `handoff'… 隠して中身を本文 window へ渡す (メモ以外のバッファが入った)"
+  (when-let* ((frame (wamei/project-memo-posframe-frame)))
+    (cond
+     ((not (eq (selected-frame) frame)) 'hide)
+     ((not (wamei/project-memo-buffer-p (wamei/project-memo--posframe-buffer-shown)))
+      'handoff)
+     (t nil))))
+
+(defun wamei/project-memo--posframe-post-command ()
+  "`post-command-hook' 用。posframe を閉じるべきなら閉じる。
+
+閉じる条件のうち「フォーカスが外れた」と「メモ以外のバッファが入った」を
+ここで見る (トグルで閉じるのは `wamei/project-memo-toggle' 側)。
+
+メモ以外が入るのは、posframe にフォーカスがあるまま `find-file' や
+`magit-status' を実行した場合。禁止キーの一覧を持つ代わりに、入ってしまった
+ものを本文 window へ引き取る。`post-command-hook' は再描画の前に走るので、
+別バッファが posframe に見える瞬間は基本的に出ない。"
+  (pcase (wamei/project-memo--posframe-action)
+    ('hide (wamei/project-memo-posframe-hide))
+    ('handoff
+     (let ((buffer (wamei/project-memo--posframe-buffer-shown))
+           (window (wamei/project-tabs-main-window)))
+       (wamei/project-memo-posframe-hide)
+       (when (buffer-live-p buffer)
+         (set-window-buffer window buffer))
+       (select-window window))))
   nil)
 
 ;;; 自動保存
