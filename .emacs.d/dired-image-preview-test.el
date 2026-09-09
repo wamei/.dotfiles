@@ -235,6 +235,37 @@
                      (save-excursion (goto-char pos) (line-beginning-position))))
           (should (eq this-command 'ignore)))))))
 
+(ert-deftest wamei/dired-image-preview-own-frame-window-p ()
+  "child frame の window かどうかを判定する。"
+  (cl-letf (((symbol-function 'frame-parent) (lambda (&optional _) nil)))
+    (should-not (wamei/dired-image-preview--own-frame-window-p (selected-window))))
+  (cl-letf (((symbol-function 'frame-parent) (lambda (&optional _) 'parent)))
+    (should (wamei/dired-image-preview--own-frame-window-p (selected-window)))))
+
+(ert-deftest wamei/dired-image-preview-motion-over-child-frame-keeps-preview ()
+  "マウスがプレビュー自身 (child frame) の上に入っても消さない。
+プレビューはポインタのすぐ右下に出るので、少し動かすと child frame に入る。そこで
+消すと出す・消すを繰り返して点滅する (eldoc-mouse も同じ guard を持つ)。"
+  (wamei/dired-image-preview-test--with-temp-dir dir
+    (wamei/dired-image-preview-test--with-dired dir buf
+      (wamei/dired-image-preview-test--with-recorder
+        (wamei/dired-image-preview-mode 1)
+        (let ((pos (wamei/dired-image-preview-test--goto-file "a.png")))
+          (wamei/dired-image-preview--track (selected-window) pos 0.5)
+          (wamei/dired-image-preview-test--fire-timer)
+          (let ((target wamei/dired-image-preview--active))
+            (should target)
+            ;; ポップアップの window から来た移動イベント (モードは付いていない)
+            (with-temp-buffer
+              (set-window-buffer (selected-window) (current-buffer))
+              (cl-letf (((symbol-function 'wamei/dired-image-preview--own-frame-window-p)
+                         (lambda (_) t)))
+                (wamei/dired-image-preview--handle-motion
+                 (wamei/dired-image-preview-test--motion-event (selected-window) (point-min)))))
+            (set-window-buffer (selected-window) buf)
+            (should (eq target wamei/dired-image-preview--active))
+            (should (= 0 wamei/dired-image-preview-test--hidden))))))))
+
 (ert-deftest wamei/dired-image-preview-motion-ignores-buffer-without-mode ()
   (wamei/dired-image-preview-test--with-temp-dir dir
     (wamei/dired-image-preview-test--with-dired dir _buf
@@ -367,6 +398,79 @@
         (wamei/dired-image-preview-mode 1)
         (should-not wamei/dired-image-preview-mode)
         (should-not track-mouse)))))
+
+(ert-deftest wamei/dired-image-preview-posframe-parameters-refuse-focus ()
+  "child frame は表示 (map) されてもキーボードフォーカスを取らない。
+posframe は `no-accept-focus' しか付けないので、macOS では frame が map された時点で
+フォーカスが移る。corfu / eldoc-box と同じく `no-focus-on-map' も渡す。"
+  (should (equal (cdr (assq 'no-focus-on-map wamei/dired-image-preview-posframe-parameters)) t))
+  (should (equal (cdr (assq 'no-accept-focus wamei/dired-image-preview-posframe-parameters)) t)))
+
+(ert-deftest wamei/dired-image-preview-posframe-stale-p-detects-missing-parameter ()
+  "posframe は引数が変わるまで child frame を作り直さないので、パラメータが
+欠けた frame が残ることがある。欠けていれば stale と判定する。"
+  (cl-letf (((symbol-function 'frame-live-p) (lambda (_) t)))
+    ;; 全部揃っている
+    (cl-letf (((symbol-function 'frame-parameter)
+               (lambda (_f key) (cdr (assq key wamei/dired-image-preview-posframe-parameters)))))
+      (should-not (wamei/dired-image-preview--posframe-stale-p 'frame)))
+    ;; no-focus-on-map が nil
+    (cl-letf (((symbol-function 'frame-parameter)
+               (lambda (_f key)
+                 (unless (eq key 'no-focus-on-map)
+                   (cdr (assq key wamei/dired-image-preview-posframe-parameters))))))
+      (should (wamei/dired-image-preview--posframe-stale-p 'frame)))))
+
+(ert-deftest wamei/dired-image-preview-posframe-show-recreates-stale-frame ()
+  "パラメータが欠けた child frame は表示前に捨てて、posframe に作り直させる。"
+  (wamei/dired-image-preview-test--with-temp-dir dir
+    (wamei/dired-image-preview-test--with-dired dir _buf
+      (let ((pos (wamei/dired-image-preview-test--goto-file "b.jpg"))
+            deleted)
+        (cl-letf (((symbol-function 'posframe-show) #'ignore)
+                  ((symbol-function 'posframe-delete-frame)
+                   (lambda (buffer) (push buffer deleted)))
+                  ((symbol-function 'face-attribute) (lambda (&rest _) "#525254"))
+                  ((symbol-function 'wamei/dired-image-preview--posframe-frame)
+                   (lambda () 'stale-frame))
+                  ((symbol-function 'wamei/dired-image-preview--posframe-stale-p)
+                   (lambda (_) t)))
+          (wamei/dired-image-preview--posframe-show
+           (wamei/dired-image-preview--target-at (selected-window) pos)))
+        (should (equal deleted (list wamei/dired-image-preview--buffer-name)))))))
+
+(ert-deftest wamei/dired-image-preview-posframe-show-keeps-good-frame ()
+  "パラメータが揃っている child frame は捨てない (毎回作り直すと重い)。"
+  (wamei/dired-image-preview-test--with-temp-dir dir
+    (wamei/dired-image-preview-test--with-dired dir _buf
+      (let ((pos (wamei/dired-image-preview-test--goto-file "b.jpg"))
+            deleted)
+        (cl-letf (((symbol-function 'posframe-show) #'ignore)
+                  ((symbol-function 'posframe-delete-frame)
+                   (lambda (buffer) (push buffer deleted)))
+                  ((symbol-function 'face-attribute) (lambda (&rest _) "#525254"))
+                  ((symbol-function 'wamei/dired-image-preview--posframe-frame)
+                   (lambda () 'good-frame))
+                  ((symbol-function 'wamei/dired-image-preview--posframe-stale-p)
+                   (lambda (_) nil)))
+          (wamei/dired-image-preview--posframe-show
+           (wamei/dired-image-preview--target-at (selected-window) pos)))
+        (should-not deleted)))))
+
+(ert-deftest wamei/dired-image-preview-posframe-show-passes-override-parameters ()
+  "`--posframe-show' が `wamei/dired-image-preview-posframe-parameters' を
+posframe-show の :override-parameters に渡す。"
+  (wamei/dired-image-preview-test--with-temp-dir dir
+    (wamei/dired-image-preview-test--with-dired dir _buf
+      (let ((pos (wamei/dired-image-preview-test--goto-file "b.jpg"))
+            captured)
+        (cl-letf (((symbol-function 'posframe-show)
+                   (lambda (_buffer &rest args) (setq captured args)))
+                  ((symbol-function 'face-attribute) (lambda (&rest _) "#525254")))
+          (wamei/dired-image-preview--posframe-show
+           (wamei/dired-image-preview--target-at (selected-window) pos)))
+        (should (equal (plist-get captured :override-parameters)
+                       wamei/dired-image-preview-posframe-parameters))))))
 
 ;;; posframe backend
 
