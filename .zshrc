@@ -202,8 +202,6 @@ eval "$(direnv hook zsh)"
 
 # Added by Antigravity
 export PATH="/Users/wamei/.antigravity/antigravity/bin:$PATH"
-export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
-export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
 
 # libpq (psql / pg_dump)。postgresql と衝突するため keg-only で symlink されず、bin を明示的に足す。
 # Emacs の sql-mode (M-x sql-postgres) が psql を PATH から引く。
