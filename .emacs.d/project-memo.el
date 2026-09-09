@@ -17,6 +17,26 @@
 ;; 置き場をフラットにしたので、同名の repo が複数あると同じメモを共有する。
 ;; 「どこにある repo でも扱えること」を優先した結果として受け入れている。
 ;;
+;; 既知の制限:
+;;
+;; - `wamei/project-memo-directory' (~/org) 自体を git repo にすると、
+;;   `wamei/project-sidebar--follow' がメモを「別プロジェクトのファイル」と
+;;   見なして sidebar を ~/org の dired に引っ張る。あちらは
+;;   `(file-name-directory file)' からプロジェクトを出すので、メモバッファの
+;;   `project-current-directory-override' も `default-directory' も見ない
+;;   (`wamei/project-sidebar--follow' の file-root の計算)。このモジュール側は
+;;   `wamei/project-memo--usable-project' で自分の判定を守っているが、
+;;   sidebar 側には手を入れていない。~/org を repo にするなら project-sidebar.el
+;;   にも同じ手当てが要る。
+;; - バッファローカルの `project-current-directory-override' と window
+;;   パラメータ `wamei/project-memo-back' は再起動をまたがない。desktop は
+;;   どちらも保存しないし、`wamei/project-memo-back' は
+;;   `window-persistent-parameters' に無いので `set-window-configuration'
+;;   (magit の q) でも落ちる。実害は無い。タブの root
+;;   (`wamei/project-tabs-root') は残るので対象プロジェクトの判定は効き、
+;;   最初の `C-x C-m' が override を張り直す。back が無いときの戻り先は
+;;   `wamei/project-memo--restore' のフォールバックが受け持つ。
+;;
 ;;; Code:
 
 (require 'project)
@@ -42,6 +62,14 @@
 (defun wamei/project-memo--sanitize (name)
   "NAME をファイル名に使える形にする。ディレクトリ区切りを - に潰す。"
   (replace-regexp-in-string "/" "-" name))
+
+(defun wamei/project-memo--truename-directory (dir)
+  "DIR を末尾 / 付きの実体パスにする。パス同士の比較用。
+
+`file-truename' まで通すのは、片方が symlink 越し (macOS の
+/var/folders → /private/var/folders など) でも同じ場所だと分かるように
+するため。"
+  (file-name-as-directory (file-truename (expand-file-name dir))))
 
 (defun wamei/project-memo--directory ()
   "メモのディレクトリ (末尾 / 付き)。無ければ作る。"
@@ -113,6 +141,22 @@ project-find-file などの起点もメモのディレクトリになってし�
 
 ;;; 表示
 
+(defun wamei/project-memo--usable-project (project)
+  "PROJECT をメモの対象にしてよければそのまま返す。だめなら nil。
+
+root がメモディレクトリ自身のものを弾く。spec §2 の「将来 ~/org 自体を
+git repo にしても ~/org のプロジェクトとは判定されない」を、パスから
+プロジェクトを計算するこの経路でも守るため。override が守るのはメモ
+バッファ自身の `project-current' だけで、ここには届かない。
+
+弾かないと、root の無いタブで全体メモを出しているときに `C-x C-m' が
+~/org/org.org を開く。それ自体がメモなので、メモを開くつもりの操作が
+別のメモを増やすだけになる。"
+  (and project
+       (not (equal (wamei/project-memo--truename-directory (project-root project))
+                   (wamei/project-memo--truename-directory wamei/project-memo-directory)))
+       project))
+
 (defun wamei/project-memo--project ()
   "メモの対象にするプロジェクト。無ければ nil。
 
@@ -126,15 +170,20 @@ project-find-file などの起点もメモのディレクトリになってし�
 残骸や、toggle を経由しない window-buffer の差し替えで古い back が残って
 いたときに、表示中のメモとは無関係な判定に化けてしまう。back を見るのは
 直接判定が失敗したとき (override を持たない全体メモが出ているとき) だけ
-でよい。"
+でよい。
+
+どの経路の答えも `wamei/project-memo--usable-project' に通す。メモ
+ディレクトリ自身を root とするプロジェクトを返さないため。"
   (if-let* ((root (wamei/project-tabs-current-root)))
-      (project-current nil root)
+      (wamei/project-memo--usable-project (project-current nil root))
     (let* ((window (wamei/project-tabs-main-window))
            (buffer (window-buffer window)))
-      (or (with-current-buffer buffer (project-current nil))
+      (or (wamei/project-memo--usable-project
+           (with-current-buffer buffer (project-current nil)))
           (when-let* ((back (window-parameter window 'wamei/project-memo-back)))
             (and (buffer-live-p back)
-                 (with-current-buffer back (project-current nil))))))))
+                 (wamei/project-memo--usable-project
+                  (with-current-buffer back (project-current nil)))))))))
 
 (defun wamei/project-memo--restore (window)
   "WINDOW をメモを出す前のバッファに戻す。記録が無ければ直前の非メモバッファ。
