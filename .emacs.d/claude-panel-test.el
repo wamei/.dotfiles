@@ -356,6 +356,20 @@ C-tab がグローバル (端末パネルの巡回) に戻ってしまっては�
       (wamei/claude-panel--hand-over a)
       (should (eq (window-buffer window) (claude-code-ide-mcp-session-buffer b))))))
 
+(ert-deftest wamei/claude-panel-hand-over-ignores-non-panel-windows ()
+  "パネル (side window) 以外に出ているセッションの終了では差し替えない。
+グリッド (claude-grid.el) の window は side window ではなく、そちらは
+セッションの増減で全体を組み直す。ここで別セッションを side window に
+出すと、同じ端末バッファが 2 つの window に出て pty のサイズが競合する。"
+  (wamei/claude-panel-test--with-env
+    (let* ((a (wamei/claude-panel-test--session "/tmp/proj/"))
+           (_b (wamei/claude-panel-test--session "/tmp/proj/" "b"))
+           (window (selected-window)))
+      (set-window-buffer window (claude-code-ide-mcp-session-buffer a))
+      (wamei/claude-panel--hand-over a)
+      (should (= 1 (length (window-list nil 'no-mini))))
+      (should (eq (window-buffer window) (claude-code-ide-mcp-session-buffer a))))))
+
 (ert-deftest wamei/claude-panel-hand-over-runs-before-cleanup-session ()
   (wamei/claude-panel-test--with-env
     (should (advice-member-p #'wamei/claude-panel--before-cleanup

@@ -634,6 +634,8 @@ claude のバッファの中から呼ばれたときはそのセッションの�
               :around #'wamei/claude--tab-working-directory)
   ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
+  ;; セッションの増減でグリッドのタブを組み直す (claude-grid.el)
+  (wamei/claude-grid-enable)
   ;; ghostel は hide-mode-line で mode-line を消しているが、Claude のバッファだけは
   ;; 戻して使用量のバーを出す (claude-usage.el)
   (wamei/claude-usage-enable)
