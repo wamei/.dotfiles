@@ -69,5 +69,31 @@
          (file-in-directory-p file (expand-file-name wamei/project-memo-directory))
          t)))
 
+;;; バッファ
+
+(defun wamei/project-memo-buffer (&optional project)
+  "PROJECT のメモバッファ。PROJECT が nil なら全体メモ。
+
+ファイルがまだ無ければ #+title: の 1 行だけ入れる。ファイルは最初の保存で
+生まれる (自動保存があるので、開いたまま数秒放置すれば実体ができる)。
+
+プロジェクトメモには `project-current-directory-override' をバッファ
+ローカルで持たせる。メモの実体は ~/org/ にあってプロジェクト外なので、
+これが無いとタブ名の判定 (`wamei/tab-bar-tab-name-project') が外れ、
+project-find-file などの起点もメモのディレクトリになってしまう。"
+  (let* ((file (if project
+                   (wamei/project-memo-file project)
+                 (wamei/project-memo-global-file)))
+         (new (not (file-exists-p file)))
+         (buffer (find-file-noselect file)))
+    (with-current-buffer buffer
+      (when (and new (zerop (buffer-size)))
+        (insert "#+title: " (if project (project-name project) (file-name-base file)) "\n\n"))
+      (if project
+          (setq-local project-current-directory-override
+                      (file-name-as-directory (expand-file-name (project-root project))))
+        (kill-local-variable 'project-current-directory-override)))
+    buffer))
+
 (provide 'project-memo)
 ;;; project-memo.el ends here
