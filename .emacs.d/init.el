@@ -432,6 +432,11 @@ ghostel 自身のグリフ縮小 (ghostel-glyph-scale-floor) は元の文字の�
   ;; copy mode では M-w は ghostel の ghostel-readonly-copy (折り返しの改行と
   ;; 行末の空白を落としてコピーし、copy mode を抜ける)。Cmd+C も同じにする。
   (define-key ghostel-readonly-mode-map (kbd "s-c") #'ghostel-readonly-copy)
+  ;; シェルから ghostel_cmd (OSC 52;e) で呼べる Emacs 関数の許可リスト。既定の
+  ;; find-file(-other-window) / dired(-other-window) / message に、.zshrc の gst が
+  ;; 使う magit-status を足す。任意の関数を呼ばせない仕組みなので、ここに無い
+  ;; 名前は黙って無視される。
+  (add-to-list 'ghostel-eval-cmds '("magit-status-setup-buffer" magit-status-setup-buffer))
 
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)

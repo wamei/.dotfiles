@@ -15,6 +15,7 @@ brew tap homebrew/cask-versions
 
 brew install coreutils
 brew install zsh-completions
+brew install timg  # Emacs の端末 (ghostel) に Kitty graphics で画像を出す
 
 brew tap homebrew/cask-fonts
 brew install --cask font-hackgen
