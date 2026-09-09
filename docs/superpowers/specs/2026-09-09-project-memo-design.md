@@ -72,6 +72,11 @@ init.el 側は `leaf org` (新規・最小) と `leaf project-memo` (load と ke
 が揃ってそのプロジェクト基準になる。将来 `~/org` 自体を git repo にしても
 `~/org` のプロジェクトとは判定されない。
 
+あわせて `default-directory` も同じ root に向ける。override はバッファ
+ローカルで `project-current` 越しにしか見えないので、`default-directory` を
+生で読む利用者 (`wamei/project-sidebar-toggle` の「sidebar が出ていない」枝、
+`dired-jump` など) には届かないため。
+
 全体メモには設定しない (プロジェクト無しのまま)。
 
 `wamei/project-tabs--use-tab-root` の advice は
