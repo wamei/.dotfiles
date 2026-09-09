@@ -184,5 +184,20 @@
       (wamei/dired-image-preview-kitty--make-frame parent 'buffer '(1 . 2) '(3 . 4))
       (should-not select-calls))))
 
+(ert-deftest wamei/dired-image-preview-kitty-make-frame-suppresses-special-glyphs ()
+  "tty は fringe が無いので、`truncate-lines' の行が window の幅ぴったりでも
+最終桁が truncation glyph に取られる。placeholder は幅ぴったりに並べるので、
+そのままだと画像の右端 1 列が `▸' に置き換わる。frame の `no-special-glyphs'
+で glyph を出させない。"
+  (let ((params nil))
+    (cl-letf (((symbol-function 'selected-frame) (lambda () 'parent-frame))
+              ((symbol-function 'make-frame) (lambda (p) (setq params p) 'child-frame))
+              ((symbol-function 'frame-root-window) (lambda (_f) 'window))
+              ((symbol-function 'set-window-buffer) #'ignore)
+              ((symbol-function 'set-window-dedicated-p) #'ignore)
+              ((symbol-function 'set-window-parameter) #'ignore))
+      (wamei/dired-image-preview-kitty--make-frame 'parent-frame 'buffer '(1 . 2) '(3 . 4))
+      (should (eq (alist-get 'no-special-glyphs params) t)))))
+
 (provide 'dired-image-preview-kitty-test)
 ;;; dired-image-preview-kitty-test.el ends here
