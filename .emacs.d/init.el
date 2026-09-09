@@ -340,7 +340,7 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
   :leaf-defer nil
   :hook
   ((ghostel-mode-hook) . hide-mode-line-mode)
-  ((dired-mode-hook ghostel-mode-hook wamei/term-list-mode-hook)
+  ((dired-mode-hook ghostel-mode-hook wamei/term-list-mode-hook image-mode-hook)
    . (lambda() (display-line-numbers-mode 0))))
 
 (leaf keybinds
@@ -1111,6 +1111,19 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
         nil t)
   :config
   (wamei/dired-image-preview-kitty-setup))
+
+(leaf tty-image-mode
+  :doc "tty では kitty graphics protocol で画像ファイルを表示する"
+  :ensure nil
+  ;; image-mode は tty では入口で error になるので、tty のときだけ横取りする。
+  ;; 端末が対応しているかは最初に画像を開いたときに a=q で訊いて端末ごとに記憶する。
+  :if (not (display-graphic-p))
+  :preface
+  (load (expand-file-name "tty-image-mode"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :config
+  (wamei/tty-image-setup))
 
 (leaf project-sidebar
   :doc "dired ベースのプロジェクトサイドバー (treemacs の代替)"

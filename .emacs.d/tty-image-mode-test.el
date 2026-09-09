@@ -219,5 +219,57 @@
         (should (memq #'wamei/tty-image--forget
                       (buffer-local-value 'kill-buffer-hook (current-buffer))))))))
 
+;;; image-mode の乗っ取り
+
+(ert-deftest wamei/tty-image-override-uses-tty-mode-when-available ()
+  "端末が対応していて大きさも測れれば自分のモードで開く。"
+  (let ((called nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p) (lambda () t))
+              ((symbol-function 'wamei/kitty-graphics-image-size) (lambda (_f) '(80 . 40)))
+              ((symbol-function 'wamei/tty-image-mode) (lambda () (setq called 'tty)))
+              ((symbol-function 'wamei/tty-image--as-text) (lambda () (setq called 'text))))
+      (with-temp-buffer
+        (setq buffer-file-name "/tmp/a.png")
+        (wamei/tty-image--image-mode-override)
+        (setq buffer-file-name nil))
+      (should (eq called 'tty)))))
+
+(ert-deftest wamei/tty-image-override-falls-back-to-text-when-unavailable ()
+  "非対応端末では error を投げずテキスト表示に落ちる
+\(tty で debug-on-error t だとデバッガに入って操作不能になるため)。"
+  (let ((called nil) (messages nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p) (lambda () nil))
+              ((symbol-function 'wamei/tty-image-mode) (lambda () (setq called 'tty)))
+              ((symbol-function 'wamei/tty-image--as-text) (lambda () (setq called 'text)))
+              ((symbol-function 'message) (lambda (fmt &rest args)
+                                            (push (apply #'format fmt args) messages))))
+      (wamei/tty-image--image-mode-override)
+      (should (eq called 'text))
+      (should messages))))
+
+(ert-deftest wamei/tty-image-override-falls-back-to-text-when-not-an-image ()
+  "空ファイルや画像でないファイル (大きさを測れない) もテキスト表示に落ちる。"
+  (let ((called nil) (messages nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p) (lambda () t))
+              ((symbol-function 'wamei/kitty-graphics-image-size) (lambda (_f) nil))
+              ((symbol-function 'wamei/tty-image-mode) (lambda () (setq called 'tty)))
+              ((symbol-function 'wamei/tty-image--as-text) (lambda () (setq called 'text)))
+              ((symbol-function 'message) (lambda (fmt &rest args)
+                                            (push (apply #'format fmt args) messages))))
+      (with-temp-buffer
+        (setq buffer-file-name "/tmp/empty.png")
+        (wamei/tty-image--image-mode-override)
+        (setq buffer-file-name nil))
+      (should (eq called 'text))
+      (should messages))))
+
+(ert-deftest wamei/tty-image-setup-overrides-image-mode ()
+  "setup で image-mode に override の advice が掛かる。"
+  (unwind-protect
+      (progn
+        (wamei/tty-image-setup)
+        (should (advice-member-p #'wamei/tty-image--image-mode-override 'image-mode)))
+    (advice-remove 'image-mode #'wamei/tty-image--image-mode-override)))
+
 (provide 'tty-image-mode-test)
 ;;; tty-image-mode-test.el ends here
