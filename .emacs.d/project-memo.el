@@ -42,6 +42,7 @@
 (require 'project)
 (require 'project-tabs)
 (require 'project-sidebar)
+(require 'posframe)
 
 (defgroup wamei/project-memo nil
   "org のメモ (プロジェクト別 / 全体)。"
@@ -246,6 +247,103 @@ GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐
         (set-window-parameter window 'wamei/project-memo-back (window-buffer window)))
       (set-window-buffer window buffer)
       (select-window window))))
+
+;;; posframe
+
+(defcustom wamei/project-memo-posframe-width-ratio 0.6
+  "メモの posframe の幅。親フレームの桁数に対する比率。"
+  :type 'float
+  :group 'wamei/project-memo)
+
+(defcustom wamei/project-memo-posframe-height-ratio 0.6
+  "メモの posframe の高さ。親フレームの行数に対する比率。"
+  :type 'float
+  :group 'wamei/project-memo)
+
+(defcustom wamei/project-memo-posframe-min-width 40
+  "メモの posframe の最小の幅 (桁)。"
+  :type 'integer
+  :group 'wamei/project-memo)
+
+(defcustom wamei/project-memo-posframe-min-height 10
+  "メモの posframe の最小の高さ (行)。"
+  :type 'integer
+  :group 'wamei/project-memo)
+
+(defvar wamei/project-memo--posframe-frame nil
+  "メモを出している posframe のフレーム。出ていなければ nil。")
+
+(defvar wamei/project-memo--posframe-buffer nil
+  "posframe に出しているメモバッファ。`posframe-hide' はバッファで指定する。")
+
+(defun wamei/project-memo-posframe-frame ()
+  "メモの posframe が出ていればそのフレーム。出ていなければ nil。"
+  (and wamei/project-memo--posframe-frame
+       (frame-live-p wamei/project-memo--posframe-frame)
+       wamei/project-memo--posframe-frame))
+
+(defun wamei/project-memo--posframe-size (ratio total minimum)
+  "RATIO (親フレームの TOTAL に対する比率) から posframe の大きさを出す。
+MINIMUM を下回らない。"
+  (max minimum (round (* ratio total))))
+
+(defun wamei/project-memo--popup-color (face attribute)
+  "FACE の ATTRIBUTE の色。FACE が未定義か未指定なら nil。
+
+枠と背景は init.el の *popup-appearance が定義する `wamei/popup-border' /
+`wamei/popup-body' から取る。あちらは init.el 側なので、モジュール単体で
+読む batch テストには存在しない。`face-attribute' は未定義の face に対して
+エラーを出す (\"Invalid face\") ので、存在するときだけ引く。nil を渡された
+posframe はフレーム既定の色を使う。"
+  (when (facep face)
+    (let ((value (face-attribute face attribute nil t)))
+      (unless (eq value 'unspecified) value))))
+
+(defun wamei/project-memo-posframe-show (buffer)
+  "BUFFER を画面中央の posframe に出し、フォーカスを移す。フレームを返す。
+
+`:accept-focus' を渡さないと posframe 自身が
+`posframe--redirect-posframe-focus' でフォーカスを親フレームへ送り返すので、
+編集できない。カーソルも既定では隠されるので明示的に出す。
+
+枠と背景は corfu / eldoc-box / vertico-posframe と同じ
+`wamei/popup-border' / `wamei/popup-body' から取る (init.el の
+*popup-appearance)。tty の罫線枠は同ブロックが display table に入れた
+box グリフがそのまま効く。
+
+`:respect-mode-line' を渡すのは見た目の趣味ではない。posframe は
+`:respect-mode-line' が nil だと表示するバッファに `mode-line-format' を
+nil で setq-local する。これは posframe を隠しても残るので、そのメモを
+あとから `C-u' で本文 window に出したときモードラインが消えたままになる。
+バッファを壊さないために残す。"
+  (setq wamei/project-memo--posframe-buffer buffer)
+  (setq wamei/project-memo--posframe-frame
+        (posframe-show
+         buffer
+         :poshandler #'posframe-poshandler-frame-center
+         :width (wamei/project-memo--posframe-size
+                 wamei/project-memo-posframe-width-ratio
+                 (frame-width) wamei/project-memo-posframe-min-width)
+         :height (wamei/project-memo--posframe-size
+                  wamei/project-memo-posframe-height-ratio
+                  (frame-height) wamei/project-memo-posframe-min-height)
+         :border-width 1
+         :border-color (wamei/project-memo--popup-color 'wamei/popup-border :background)
+         :background-color (wamei/project-memo--popup-color 'wamei/popup-body :background)
+         :accept-focus t
+         :cursor 'box
+         :respect-mode-line t))
+  (select-frame-set-input-focus wamei/project-memo--posframe-frame)
+  wamei/project-memo--posframe-frame)
+
+(defun wamei/project-memo-posframe-hide ()
+  "メモの posframe を保存してから隠す。出ていなければ何もしない。"
+  (when (wamei/project-memo-posframe-frame)
+    (wamei/project-memo-save-all)
+    (posframe-hide wamei/project-memo--posframe-buffer)
+    (setq wamei/project-memo--posframe-frame nil)
+    (setq wamei/project-memo--posframe-buffer nil))
+  nil)
 
 ;;; 自動保存
 

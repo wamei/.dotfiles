@@ -381,6 +381,117 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
         (kill-buffer work)
         (kill-buffer internal)))))
 
+;;; posframe
+
+(defmacro wamei/project-memo-test--with-posframe-stub (calls &rest body)
+  "`posframe-show' / `posframe-hide' をスタブして BODY を評価する。
+
+CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新しい順に
+積まれる。`posframe-show' はダミーのシンボル 'memo-posframe-frame を返し、
+`frame-live-p' もそれを生きているものとして扱う (batch では child frame を
+作れないため)。"
+  (declare (indent 1))
+  `(let ((,calls nil))
+     (cl-letf (((symbol-function 'posframe-show)
+                (lambda (buffer &rest args)
+                  (push (cons 'show (cons buffer args)) ,calls)
+                  'memo-posframe-frame))
+               ((symbol-function 'posframe-hide)
+                (lambda (buffer) (push (list 'hide buffer) ,calls) nil))
+               ((symbol-function 'frame-live-p)
+                (lambda (frame) (eq frame 'memo-posframe-frame)))
+               ((symbol-function 'select-frame-set-input-focus)
+                (lambda (frame &optional _norecord) frame))
+               ((symbol-function 'posframe-workable-p) (lambda () t)))
+       ,@body)))
+
+(ert-deftest wamei/project-memo-posframe-show-passes-buffer-and-center-poshandler ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer (wamei/project-memo-buffer nil)))
+        (wamei/project-memo-posframe-show buffer)
+        (let* ((call (car calls))
+               (args (cddr call)))
+          (should (eq (car call) 'show))
+          (should (eq (cadr call) buffer))
+          (should (eq (plist-get args :poshandler) #'posframe-poshandler-frame-center))
+          ;; 編集するのでフォーカスを受け取れる必要がある
+          (should (eq (plist-get args :accept-focus) t))
+          ;; カーソルが見えないと編集できない
+          (should (plist-get args :cursor))
+          ;; mode-line を消させない (下の -does-not-clobber- のテスト参照)
+          (should (plist-get args :respect-mode-line)))))
+    (wamei/project-memo-posframe-hide)))
+
+(ert-deftest wamei/project-memo-popup-color-is-nil-for-an-undefined-face ()
+  ;; init.el の *popup-appearance が定義する face はモジュール単体の batch には
+  ;; 無い。`face-attribute' は未定義 face でエラーを出すので、引く前に守る。
+  (should-not (wamei/project-memo--popup-color 'wamei/project-memo-test--no-such-face
+                                               :background)))
+
+(ert-deftest wamei/project-memo-popup-color-reads-a-defined-face ()
+  (let ((face 'wamei/project-memo-test--color-face))
+    (unwind-protect
+        (progn
+          (custom-declare-face face '((t (:background "#123456"))) "test")
+          (should (equal (wamei/project-memo--popup-color face :background) "#123456")))
+      (put face 'face-defface-spec nil))))
+
+(ert-deftest wamei/project-memo-posframe-show-sizes-from-the-ratios ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((wamei/project-memo-posframe-width-ratio 0.5)
+            (wamei/project-memo-posframe-height-ratio 0.5)
+            (wamei/project-memo-posframe-min-width 1)
+            (wamei/project-memo-posframe-min-height 1))
+        (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+        (let ((args (cddr (car calls))))
+          (should (= (plist-get args :width) (round (* 0.5 (frame-width)))))
+          (should (= (plist-get args :height) (round (* 0.5 (frame-height))))))))
+    (wamei/project-memo-posframe-hide)))
+
+(ert-deftest wamei/project-memo-posframe-show-respects-the-minimums ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((wamei/project-memo-posframe-width-ratio 0.01)
+            (wamei/project-memo-posframe-height-ratio 0.01)
+            (wamei/project-memo-posframe-min-width 40)
+            (wamei/project-memo-posframe-min-height 10))
+        (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+        (let ((args (cddr (car calls))))
+          (should (= (plist-get args :width) 40))
+          (should (= (plist-get args :height) 10)))))
+    (wamei/project-memo-posframe-hide)))
+
+(ert-deftest wamei/project-memo-posframe-frame-tracks-visibility ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (should-not (wamei/project-memo-posframe-frame))
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (should (wamei/project-memo-posframe-frame))
+      (wamei/project-memo-posframe-hide)
+      (should-not (wamei/project-memo-posframe-frame)))))
+
+(ert-deftest wamei/project-memo-posframe-hide-saves-the-memo ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer (wamei/project-memo-buffer nil)))
+        (wamei/project-memo-posframe-show buffer)
+        (with-current-buffer buffer
+          (goto-char (point-max))
+          (insert "posframe から書いた\n"))
+        (wamei/project-memo-posframe-hide)
+        (should-not (buffer-modified-p buffer))
+        (with-temp-buffer
+          (insert-file-contents (wamei/project-memo-global-file))
+          (should (string-match-p "posframe から書いた" (buffer-string))))))))
+
+(ert-deftest wamei/project-memo-posframe-hide-is-a-no-op-when-not-shown ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-hide)
+      (should-not calls))))
+
 ;;; 自動保存
 
 (defmacro wamei/project-memo-test--with-autosave-env (&rest body)
