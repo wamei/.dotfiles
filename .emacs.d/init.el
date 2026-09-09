@@ -1137,6 +1137,11 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
 (leaf project-memo
   :doc "org のメモ (プロジェクト別 / 全体)"
   :ensure nil
+  ;; C-x C-m は C-x RET と同じキー列なので、標準の mule-keymap
+  ;; (set-buffer-file-coding-system / universal-coding-system-argument /
+  ;; revert-buffer-with-coding-system など) をこのバインドが乗っ取る。
+  ;; メモは常用、coding-system プレフィクスはほぼ使わないので割り切る。
+  ;; 必要になったら M-x から個別コマンドを呼べば届く。
   :bind (("C-x C-m" . wamei/project-memo-toggle))
   :preface
   ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
