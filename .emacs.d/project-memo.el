@@ -106,8 +106,8 @@
 (defun wamei/project-memo-buffer (&optional project)
   "PROJECT のメモバッファ。PROJECT が nil なら全体メモ。
 
-ファイルがまだ無ければ #+title: の 1 行だけ入れる。ファイルは最初の保存で
-生まれる (自動保存があるので、開いたまま数秒放置すれば実体ができる)。
+中身が空なら #+title: の 1 行だけ入れる。ファイルは最初の保存で生まれる
+(自動保存があるので、開いたまま数秒放置すれば実体ができる)。
 
 プロジェクトメモには `project-current-directory-override' をバッファ
 ローカルで持たせる。メモの実体は ~/org/ にあってプロジェクト外なので、
@@ -127,11 +127,22 @@ project-find-file などの起点もメモのディレクトリになってし�
   (let* ((file (if project
                    (wamei/project-memo-file project)
                  (wamei/project-memo-global-file)))
-         (new (not (file-exists-p file)))
          (buffer (find-file-noselect file)))
     (with-current-buffer buffer
-      (when (and new (zerop (buffer-size)))
-        (insert "#+title: " (if project (project-name project) (file-name-base file)) "\n\n"))
+      (when (zerop (buffer-size))
+        ;; 判断は「バッファが空か」だけで、ファイルの有無は見ない。
+        ;; file-exists-p も条件に入れると、実体が 0 バイトになったメモに
+        ;; 二度と title が入らなくなる (自動保存があるので 0 バイトの
+        ;; 実体は簡単にできる)。
+        ;;
+        ;; 挿入中は undo を止める。title が undo スタックに載っていると、
+        ;; 新規メモで 1 回 undo しただけで消え、次の自動保存が 0 バイトで
+        ;; 書いてしまう。buffer-undo-list を後から潰すのではなく let で
+        ;; 抑止するのは、既に編集中のバッファの履歴を巻き添えにしないため。
+        (let ((buffer-undo-list t))
+          (insert "#+title: "
+                  (if project (project-name project) (file-name-base file))
+                  "\n\n")))
       (if project
           (let ((root (file-name-as-directory (expand-file-name (project-root project)))))
             (setq-local project-current-directory-override root)

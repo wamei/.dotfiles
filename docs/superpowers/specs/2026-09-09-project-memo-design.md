@@ -55,8 +55,9 @@ init.el 側は `leaf org` (新規・最小) と `leaf project-memo` (load と ke
 - `wamei/project-memo-file (project)` … `~/org/<project-name>.org`。
   名前は `project-name` (タブに出ている名前と同じ) を使い、`/` は `-` に潰す。
 - `wamei/project-memo-global-file ()` … `~/org/global.org`。
-- ディレクトリが無ければ作る。ファイルが無い場合はバッファだけ作り、
-  `#+title: <name>` の 1 行を入れる。ファイルは最初の保存で生まれる。
+- ディレクトリが無ければ作る。バッファの中身が空なら `#+title: <name>` の
+  1 行を入れる (実体が 0 バイトのときも入れ直す)。挿入は undo の対象に
+  しない。ファイルは最初の保存で生まれる。
 - 同名の repo が複数あると同じメモを共有する。フラット構成を選んだ帰結として
   受け入れる (「どこにある repo でも扱えること」を優先した)。
 
