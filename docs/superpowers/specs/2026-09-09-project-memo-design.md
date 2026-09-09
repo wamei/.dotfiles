@@ -180,4 +180,9 @@ TDD (Red → Green → Refactoring) で進める。
 - org-agenda / org-capture / TODO ワークフロー
 - メモの検索 UI (既存の `consult-ripgrep` などで足りる)
 - 同名プロジェクトの衝突回避 (フラット構成を優先した結果として受け入れる)
+- `~/org` を git repo にしたときの sidebar 側の手当て。project-memo.el は
+  メモディレクトリ自身を root とするプロジェクトを返さないようにするが、
+  `wamei/project-sidebar--follow` はファイルのパスからプロジェクトを出すので
+  メモを別プロジェクト扱いして sidebar を `~/org` の dired に引っ張る。
+  `~/org` を repo にするなら project-sidebar.el 側にも同じ手当てが要る。
 - 既存タブへ切り替えたときのレイアウト再構成

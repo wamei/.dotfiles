@@ -285,6 +285,30 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
             (should-not (wamei/project-memo-buffer-p (window-buffer main))))
         (kill-buffer other)))))
 
+(ert-deftest wamei/project-memo--project-ignores-project-rooted-at-memo-directory ()
+  (wamei/project-memo-test--with-project root
+    ;; spec §2 の「将来 ~/org 自体を git repo にしても ~/org のプロジェクト
+    ;; とは判定されない」。override はメモバッファ自身の project-current しか
+    ;; 守らないので、パスから計算するこの関数にも同じ保証を持たせる。
+    ;; さもないと root 無しのタブで全体メモを出しているとき C-x C-m が
+    ;; ~/org/org.org (= それ自体がメモ) を開いてしまう。
+    (let* ((memo-dir wamei/project-memo-directory)
+           (project-find-functions
+            (cons (lambda (dir)
+                    (when (string-prefix-p memo-dir (file-truename (expand-file-name dir)))
+                      (cons 'transient memo-dir)))
+                  project-find-functions))
+           (main (selected-window))
+           (global-memo (wamei/project-memo-buffer nil)))
+      ;; タブに root が無く、本文 window に全体メモ (override 無し) が出ている。
+      (set-window-buffer main global-memo)
+      (set-window-parameter main 'wamei/project-memo-back nil)
+      (should-not (wamei/project-memo--project))
+      ;; その帰結として、開かれるのは global.org のまま。
+      (should (equal (buffer-file-name
+                      (wamei/project-memo-buffer (wamei/project-memo--project)))
+                     (wamei/project-memo-global-file))))))
+
 (ert-deftest wamei/project-memo-toggle-skips-internal-buffers-when-no-back-recorded ()
   (wamei/project-memo-test--with-project root
     ;; フォールバックの seq-find は生の `buffer-list' を走るので、
