@@ -99,7 +99,7 @@ mise trust && mise bootstrap
 
 | brew formula | mise の指定 | 備考 |
 |---|---|---|
-| coreutils | `"aqua:uutils/coreutils"` | GNU ではなく Rust 実装。`gls` / `gdate` のような `g` プレフィックスは付かない |
+| coreutils | `"aqua:uutils/coreutils"` | GNU ではなく Rust 実装。**単一の multicall バイナリ `coreutils` だけが入る** (下記) |
 | direnv | `"aqua:direnv/direnv"` | |
 | gh | `"aqua:cli/cli"` | |
 | git-lfs | `"aqua:git-lfs/git-lfs"` | `~/.gitconfig` の filter が参照 |
@@ -109,10 +109,27 @@ mise trust && mise bootstrap
 | pipx | `"aqua:pypa/pipx"` | `[settings]` の `pipx:yamllint` が実体として使う |
 | awscli | `"aqua:aws/aws-cli"` | |
 | copilot | `"aqua:aws/copilot-cli"` | **brew の `copilot` は AWS Copilot CLI**。mise registry の `copilot` は GitHub Copilot CLI で別物 |
-| openjdk@17 | `java = "17"` | core backend |
+| openjdk@17 | `"core:java" = "temurin-17"` | 下記 |
 | — | `"aqua:x-motemen/ghq"` | 新規導入 |
 | azure-cli | `"pipx:azure-cli"` | |
 | cloudflare-wrangler | `"npm:wrangler"` | mise 側の名前が異なる。実体の取得は `[settings]` の `npm.package_manager = "bun"` |
+
+### coreutils の実体 (実機で確認)
+
+`aqua:uutils/coreutils` が入れるのは **`coreutils` という multicall バイナリ 1 本だけ**で、`ls` や `cp` は PATH に出ない。
+
+- **良い面**: システムの `ls` / `cp` / `rm` を上書きする危険がない
+- **悪い面**: brew の GNU coreutils が入れる `gls` `gdate` `gsed` などの `g` プレフィックス付きコマンドは**一切入らない**。使い方が `coreutils ls` `coreutils date` という形に変わる
+
+リポジトリ内に `g` プレフィックス付きコマンドの利用箇所は見つからなかったが、対話シェルで `gdate` などを使っていた場合はここで失われる。Task 3 の検証でこの点を明示的に確認する。
+
+### java のバージョン指定 (実機で確認)
+
+`java = "17"` は **2022 年で更新が止まった OpenJDK GA ビルドの 17.0.2** に解決される (`mise ls-remote core:java` の `17.x` 系は 17.0.0 / 17.0.1 / 17.0.2 で打ち止め)。brew の `openjdk@17` は 17.0.20.1 なので、そのまま移すと 3 年分のパッチが失われる。
+
+`"core:java" = "temurin-17"` を使う。実測で `temurin-17.0.20+101` に解決され、brew 版と同じ世代になる。
+
+`core:` を付けてバックエンド名込みで書くのは、`.zshrc` の `show_env_mise` が `<backend>:<pkg>` 形式のツールを「言語のバージョンではない」としてプロンプトから除外するため。`java` と裸で書くと全プロンプトに `java:temurin-17` が出る。プロンプトに出したければ裸の `java` に変えればよい。
 
 ### 付随して必要な `.zshrc` の変更
 
