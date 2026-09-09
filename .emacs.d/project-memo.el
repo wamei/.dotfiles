@@ -187,11 +187,21 @@ GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐
   nil)
 
 (defun wamei/project-memo-autosave-setup ()
-  "メモの自動保存を有効にする。init.el から 1 回呼ぶ。"
+  "メモの自動保存を有効にする。init.el から 1 回呼ぶ。
+
+複数回呼んでも安全 (idempotent)。`add-hook' は同じ関数の重複追加を自分で
+弾いてくれる。`add-function' も同じ FUNCTION を渡す限りは内部で古い方を
+外してから積み直すだけで二重合成にはならないが、それを暗黙の前提にせず
+`advice-function-member-p' で「既に合成済みか」を明示的に見てから合成する
+(hook 側の `add-hook' と対称にして、この関数全体が idempotent だと
+読み取れるようにする意図)。init.el を対話的に再評価する運用なので、
+このガードで安心して再評価できる。"
   (setq auto-save-visited-predicate #'wamei/project-memo--auto-save-p)
   (auto-save-visited-mode 1)
   (add-hook 'window-selection-change-functions #'wamei/project-memo-save-all)
-  (add-function :after after-focus-change-function #'wamei/project-memo-save-all)
+  (unless (advice-function-member-p #'wamei/project-memo-save-all
+                                    after-focus-change-function)
+    (add-function :after after-focus-change-function #'wamei/project-memo-save-all))
   (add-hook 'kill-emacs-hook #'wamei/project-memo-save-all))
 
 (provide 'project-memo)

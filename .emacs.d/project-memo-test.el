@@ -288,16 +288,50 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
     (should-not (wamei/project-memo-save-all (selected-frame)))))
 
 (ert-deftest wamei/project-memo-autosave-setup-installs-predicate-and-hooks ()
-  (let ((auto-save-visited-predicate nil)
-        (window-selection-change-functions nil)
-        (kill-emacs-hook nil)
-        (after-focus-change-function #'ignore)
-        (auto-save-visited-mode nil))
-    (cl-letf (((symbol-function 'auto-save-visited-mode) (lambda (&rest _) t)))
+  (let* ((auto-save-visited-predicate nil)
+         (window-selection-change-functions nil)
+         (kill-emacs-hook nil)
+         (base-calls 0)
+         ;; #'ignore だと「呼ばれたかどうか」を見られないので、素の focus-change
+         ;; 処理を模した副作用付きの関数にしておく。
+         (after-focus-change-function (lambda () (setq base-calls (1+ base-calls))))
+         (auto-save-visited-mode nil)
+         (save-all-calls 0))
+    (cl-letf (((symbol-function 'auto-save-visited-mode) (lambda (&rest _) t))
+              ((symbol-function 'wamei/project-memo-save-all)
+               (lambda (&rest _) (setq save-all-calls (1+ save-all-calls)))))
       (wamei/project-memo-autosave-setup)
       (should (eq auto-save-visited-predicate #'wamei/project-memo--auto-save-p))
       (should (memq #'wamei/project-memo-save-all window-selection-change-functions))
-      (should (memq #'wamei/project-memo-save-all kill-emacs-hook)))))
+      (should (memq #'wamei/project-memo-save-all kill-emacs-hook))
+      ;; after-focus-change-function への合成が :after であることを確認する。
+      ;; advice-function-member-p は「含まれているか」しか見ないので、それだけだと
+      ;; :override 等への取り違えを見逃す。base (素の focus-change 処理) の副作用と
+      ;; wamei/project-memo-save-all の副作用が両方観測できることまで見て、
+      ;; base を消してしまう合成方法ではないことを確かめる。
+      (should (advice-function-member-p #'wamei/project-memo-save-all
+                                        after-focus-change-function))
+      (funcall after-focus-change-function)
+      (should (= base-calls 1))
+      (should (= save-all-calls 1)))))
+
+(ert-deftest wamei/project-memo-autosave-setup-does-not-double-compose-after-focus-change-function ()
+  (let* ((auto-save-visited-predicate nil)
+         (window-selection-change-functions nil)
+         (kill-emacs-hook nil)
+         (after-focus-change-function #'ignore)
+         (auto-save-visited-mode nil)
+         (save-all-calls 0))
+    (cl-letf (((symbol-function 'auto-save-visited-mode) (lambda (&rest _) t))
+              ((symbol-function 'wamei/project-memo-save-all)
+               (lambda (&rest _) (setq save-all-calls (1+ save-all-calls)))))
+      ;; init.el を再評価するなどして 2 回呼ばれても、フォーカス変化のたびに
+      ;; wamei/project-memo-save-all が 2 回走る (合成が二重になる) ことがない
+      ;; ように、実際に 1 回だけ発火することを確認する。
+      (wamei/project-memo-autosave-setup)
+      (wamei/project-memo-autosave-setup)
+      (funcall after-focus-change-function)
+      (should (= save-all-calls 1)))))
 
 (provide 'project-memo-test)
 ;;; project-memo-test.el ends here
