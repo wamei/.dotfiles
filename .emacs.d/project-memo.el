@@ -95,5 +95,60 @@ project-find-file などの起点もメモのディレクトリになってし�
         (kill-local-variable 'project-current-directory-override)))
     buffer))
 
+;;; 表示
+
+(defun wamei/project-memo--project ()
+  "メモの対象にするプロジェクト。無ければ nil。
+
+タブに紐づいた root (project-tabs.el) を先に見る。本文 window に別
+プロジェクトのファイルや *scratch* が出ていても、タブの宣言に従わせる。
+
+タブに root が無いときは本文 window のバッファで判定するが、そこに
+既にメモが出ているなら退避してある元のバッファを見る。メモの実体は
+`wamei/project-memo-directory' 直下でプロジェクト外にあるため、メモ
+自身を基準にすると (全体メモ表示中の 2 回目の toggle のように) 常に
+「プロジェクト外」判定になってしまう。"
+  (if-let* ((root (wamei/project-tabs-current-root)))
+      (project-current nil root)
+    (let* ((window (wamei/project-tabs-main-window))
+           (buffer (window-buffer window)))
+      (when (wamei/project-memo-buffer-p buffer)
+        (let ((back (window-parameter window 'wamei/project-memo-back)))
+          (when (buffer-live-p back)
+            (setq buffer back))))
+      (with-current-buffer buffer
+        (project-current nil)))))
+
+(defun wamei/project-memo--restore (window)
+  "WINDOW をメモを出す前のバッファに戻す。記録が無ければ直前のバッファ。"
+  (let ((back (window-parameter window 'wamei/project-memo-back)))
+    (set-window-parameter window 'wamei/project-memo-back nil)
+    (if (buffer-live-p back)
+        (set-window-buffer window back)
+      (switch-to-prev-buffer window))
+    (select-window window)))
+
+(defun wamei/project-memo-toggle (&optional global)
+  "本文 window にメモを出す。既に出ていれば元のバッファに戻る。
+
+GLOBAL (`C-u') が非 nil なら全体メモ。タブがプロジェクトに紐づいて
+いないときは GLOBAL 無しでも全体メモになる。
+
+出す先は `wamei/project-tabs-main-window'。sidebar や端末パネルに
+フォーカスがあっても本文 window に出す。
+
+戻り先は window パラメータに退避する。メモから別のメモへ切り替えた
+ときは上書きせず、最初にメモを出す前のバッファを保つ。"
+  (interactive "P")
+  (let* ((project (unless global (wamei/project-memo--project)))
+         (buffer (wamei/project-memo-buffer project))
+         (window (wamei/project-tabs-main-window)))
+    (if (eq (window-buffer window) buffer)
+        (wamei/project-memo--restore window)
+      (unless (wamei/project-memo-buffer-p (window-buffer window))
+        (set-window-parameter window 'wamei/project-memo-back (window-buffer window)))
+      (set-window-buffer window buffer)
+      (select-window window))))
+
 (provide 'project-memo)
 ;;; project-memo.el ends here

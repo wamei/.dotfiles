@@ -132,5 +132,67 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
     (with-current-buffer (wamei/project-memo-buffer nil)
       (should (derived-mode-p 'org-mode)))))
 
+;;; 表示トグル
+
+(ert-deftest wamei/project-memo-toggle-shows-project-memo-in-main-window ()
+  (wamei/project-memo-test--with-project root
+    (let ((main (selected-window)))
+      (with-current-buffer (window-buffer main)
+        (setq default-directory root))
+      (wamei/project-memo-toggle)
+      (should (eq (selected-window) main))
+      (should (equal (buffer-file-name (window-buffer main))
+                     (wamei/project-memo-file (wamei/project-memo-test--project root)))))))
+
+(ert-deftest wamei/project-memo-toggle-returns-to-previous-buffer ()
+  (wamei/project-memo-test--with-project root
+    (let* ((main (selected-window))
+           (work (find-file-noselect (expand-file-name "main.el" root))))
+      (unwind-protect
+          (progn
+            (set-window-buffer main work)
+            (wamei/project-memo-toggle)
+            (should (wamei/project-memo-buffer-p (window-buffer main)))
+            (wamei/project-memo-toggle)
+            (should (eq (window-buffer main) work)))
+        (kill-buffer work)))))
+
+(ert-deftest wamei/project-memo-toggle-with-prefix-shows-global-memo ()
+  (wamei/project-memo-test--with-project root
+    (let ((main (selected-window)))
+      (with-current-buffer (window-buffer main)
+        (setq default-directory root))
+      (wamei/project-memo-toggle '(4))
+      (should (equal (buffer-file-name (window-buffer main))
+                     (wamei/project-memo-global-file))))))
+
+(ert-deftest wamei/project-memo-toggle-outside-project-shows-global-memo ()
+  (wamei/project-memo-test--with-project root
+    (let ((main (selected-window))
+          (scratch (get-buffer-create "*memo-test-scratch*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer scratch (setq default-directory temporary-file-directory))
+            (set-window-buffer main scratch)
+            (wamei/project-memo-toggle)
+            (should (equal (buffer-file-name (window-buffer main))
+                           (wamei/project-memo-global-file))))
+        (kill-buffer scratch)))))
+
+(ert-deftest wamei/project-memo-toggle-from-global-to-project-keeps-back-buffer ()
+  (wamei/project-memo-test--with-project root
+    (let* ((main (selected-window))
+           (work (find-file-noselect (expand-file-name "main.el" root))))
+      (unwind-protect
+          (progn
+            (set-window-buffer main work)
+            (wamei/project-memo-toggle '(4))   ; 全体メモ
+            (wamei/project-memo-toggle)        ; プロジェクトメモ (メモ → メモ)
+            (should (equal (buffer-file-name (window-buffer main))
+                           (wamei/project-memo-file (wamei/project-memo-test--project root))))
+            (wamei/project-memo-toggle)        ; 戻り先は work のまま
+            (should (eq (window-buffer main) work)))
+        (kill-buffer work)))))
+
 (provide 'project-memo-test)
 ;;; project-memo-test.el ends here
