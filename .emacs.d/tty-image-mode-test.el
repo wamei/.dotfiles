@@ -11,11 +11,14 @@
 
 ;;; 大きさ
 
-(ert-deftest wamei/tty-image-window-cells-uses-body-size ()
-  "上限は window の本文の桁数・行数。"
+(ert-deftest wamei/tty-image-window-cells-reserves-a-column-for-the-truncation-glyph ()
+  "上限は window の本文の桁数・行数。ただし桁は 1 引く。
+tty には fringe が無いので、truncate-lines が t でも行が window-body-width
+ちょうどのときは最終桁が truncation glyph に取られ、画像の右端 1 列が
+描かれなくなる。それを避けるため、あらかじめ 1 桁分空けておく。"
   (cl-letf (((symbol-function 'window-body-width) (lambda (&optional _w) 80))
             ((symbol-function 'window-body-height) (lambda (&optional _w) 24)))
-    (should (equal (wamei/tty-image--window-cells 'window) '(80 . 24)))))
+    (should (equal (wamei/tty-image--window-cells 'window) '(79 . 24)))))
 
 (ert-deftest wamei/tty-image-window-cells-is-at-least-one ()
   "0 桁・0 行の window でも 1 を下回らない (0 を渡すと転送が壊れる)。"
@@ -29,8 +32,9 @@ PX は呼び手 (`--render') が測って渡す。ここでは測らない。"
   (cl-letf (((symbol-function 'wamei/kitty-graphics-cell-size) (lambda () '(8 . 16)))
             ((symbol-function 'window-body-width) (lambda (&optional _w) 40))
             ((symbol-function 'window-body-height) (lambda (&optional _w) 40)))
-    ;; 800/8 = 100 桁、400/16 = 25 行。40 桁に収めるので 0.4 倍 → 40 x 10
-    (should (equal (wamei/tty-image--target-cells '(800 . 400) 'window) '(40 . 10)))))
+    ;; 800/8 = 100 桁、400/16 = 25 行。window は 40 桁だが truncation glyph の
+    ;; ぶん 39 桁に収めるので 0.39 倍 → 39 x 10 (25 * 0.39 = 9.75 → 10)
+    (should (equal (wamei/tty-image--target-cells '(800 . 400) 'window) '(39 . 10)))))
 
 (ert-deftest wamei/tty-image-target-cells-nil-without-window ()
   "window に出ていなければ nil。"
