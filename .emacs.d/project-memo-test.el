@@ -599,6 +599,20 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
       (wamei/project-memo-posframe-hide)
       (should-not (wamei/project-memo-posframe-frame)))))
 
+(ert-deftest wamei/project-memo-posframe-buffer-tracks-the-shown-buffer ()
+  ;; 表示先を選ぶ層 (`wamei/project-memo--toggle') が posframe 層の内部変数を
+  ;; 直接覗かずに済むようにするアクセサ。フレームが死んでいれば nil。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer (wamei/project-memo-buffer nil)))
+        (should-not (wamei/project-memo-posframe-buffer))
+        (wamei/project-memo-posframe-show buffer)
+        (should (eq (wamei/project-memo-posframe-buffer) buffer))
+        (cl-letf (((symbol-function 'frame-live-p) (lambda (_frame) nil)))
+          (should-not (wamei/project-memo-posframe-buffer)))
+        (wamei/project-memo-posframe-hide)
+        (should-not (wamei/project-memo-posframe-buffer))))))
+
 (ert-deftest wamei/project-memo-posframe-hide-saves-the-memo ()
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
