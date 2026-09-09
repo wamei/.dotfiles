@@ -3,6 +3,10 @@
 ;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
 ;; 出す。端末が 2 つ以上あるときは右隣に一覧 (`wamei/term-list-mode') を出す。
 ;;
+;; どのプロジェクトの端末かはタブに紐づいたプロジェクト (project-tabs.el) で
+;; 決める。カレントバッファ基準ではないので、*scratch* や claude パネルに
+;; いても、そのタブの端末が出る (詳細は `wamei/term--root')。
+;;
 ;; 端末バッファは "*term: <project>[ N]*"、一覧は "*terminals: <project>*" と
 ;; プロジェクト名で分ける。一覧は表示中の端末と同じプロジェクトのものを出すので、
 ;; タブ (プロジェクト) を切り替えても別プロジェクトの端末が並ばない。
@@ -18,6 +22,7 @@
 (defvar ghostel-shell)                  ; ghostel.el
 (defvar ghostel-title)                  ; ghostel.el (buffer-local)
 (declare-function ghostel-create "ghostel" (&optional name display identity))
+(declare-function wamei/project-tabs-current-root "project-tabs" (&optional frame))
 
 (defvar wamei/term-height 0.3
   "端末ウィンドウの高さ (フレームに対する割合)。
@@ -89,11 +94,37 @@ window に付いた幅は残らない。変数に覚えておき wamei/term--set
 
 ;;; 端末バッファの管理
 
+(defun wamei/term--panel-buffer-p ()
+  "カレントバッファが端末パネルのバッファ (端末本体か一覧) か。"
+  (let ((name (buffer-name)))
+    (or (string-prefix-p "*term: " name)
+        (string-prefix-p wamei/term-list-buffer-prefix name))))
+
+(defun wamei/term--tab-root ()
+  "カレントタブに紐づいたプロジェクトルート。無ければ nil。
+
+紐づけは project-tabs.el が行う。init.el はこのファイルを ghostel ブロックで、
+project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守る
+\(端末が動くのは init を読み終えた後なので、実際には常に定義済み)。"
+  (and (fboundp 'wamei/project-tabs-current-root)
+       (wamei/project-tabs-current-root)))
+
 (defun wamei/term--root ()
-  "端末を開くディレクトリ。プロジェクト内ならそのルート。"
-  (if-let* ((project (project-current nil)))
-      (project-root project)
-    default-directory))
+  "端末を開くディレクトリ。
+
+タブ 1 つにプロジェクト 1 つの運用なので、パネルの外から呼ばれたとき
+\(C-z / C-S-z / C-tab など) はカレントバッファではなくタブに紐づいた
+プロジェクトを起点にする。プロジェクト外の *scratch* や claude パネル、
+別プロジェクトのファイルにいても、そのタブの端末が出る。
+
+端末本体と一覧の中から呼ばれたときはそのバッファのプロジェクトを見る。
+一覧の再描画やタイトル変更 (プロセスフィルタ) はパネルに出ている端末を
+基準に動くので、ここでタブに引っぱられると別プロジェクトの一覧を描いて
+しまう。タブに紐づけが無ければ従来どおりバッファ基準。"
+  (or (and (not (wamei/term--panel-buffer-p)) (wamei/term--tab-root))
+      (if-let* ((project (project-current nil)))
+          (project-root project)
+        default-directory)))
 
 (defun wamei/term--project-name ()
   "タブ (プロジェクト) を識別する名前。"
@@ -367,15 +398,6 @@ dedicated のままだと set-window-buffer が失敗する。"
     (delete-window window))
   (when-let* ((window (wamei/term--window)))
     (delete-window window)))
-
-(defvar wamei/term-cycle-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "<C-tab>") #'wamei/term-next)
-    (define-key map (kbd "<C-S-tab>") #'wamei/term-previous)
-    ;; 端末によっては Shift-Tab が iso-lefttab として報告される
-    (define-key map (kbd "<C-S-iso-lefttab>") #'wamei/term-previous)
-    map)
-  "端末内で tab-bar-mode の C-tab 割り当てを上書きするキーマップ。")
 
 (defun wamei/term--cycle (offset)
   "現在の端末から OFFSET 個ずれた端末に切り替える。端は巻き戻る。"
