@@ -672,9 +672,10 @@ claude のバッファの中から呼ばれたときはそのセッションの�
          ("C-x C-p" . project-switch-project)
          ([remap project-switch-project] . wamei/project-switch-project-in-tab))
   :custom
-  ;; 切り替え先で何をするかをミニバッファで選ばせず、ルートを dired で開く。
-  ;; シンボルを入れるとその command を即実行する (dispatch メニューを出さない)。
-  (project-switch-commands . #'project-dired)
+  ;; 切り替え先で何をするかをミニバッファで選ばせず、sidebar + プロジェクトメモの
+  ;; 画面を作る (project-memo.el)。シンボルを入れるとその command を即実行する
+  ;; (dispatch メニューを出さない)。root の dired が要るときは C-x C-j がある。
+  (project-switch-commands . #'wamei/project-memo-switch-setup)
   :config
   ;; 未訪問・ignore 済みファイルを project-find-file と consult-project-buffer の
   ;; 候補に足す。init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
@@ -1122,6 +1123,29 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (wamei/project-sidebar-mode-hook . wamei/project-sidebar--sync-hide-mode-line)
   :config
   (wamei/project-sidebar-follow-mode 1))
+
+(leaf org
+  :doc "メモに使う分だけの org 設定 (agenda / capture は入れない)"
+  :ensure nil
+  :custom
+  (org-directory . "~/org/")
+  (org-startup-indented . t)          ; 見出しの深さをインデントで見せる
+  (org-startup-folded . 'showall)     ; メモなので畳まずに開く
+  :hook
+  (org-mode-hook . visual-line-mode)) ; 長い行は折り返して表示する
+
+(leaf project-memo
+  :doc "org のメモ (プロジェクト別 / 全体)"
+  :ensure nil
+  :bind (("C-x C-m" . wamei/project-memo-toggle))
+  :preface
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "project-memo"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :config
+  ;; アイドル中の保存 (auto-save-visited-mode) と、メモから離れたときの保存。
+  (wamei/project-memo-autosave-setup))
 
 (leaf dired-toggle-sudo
   :ensure t
