@@ -317,6 +317,10 @@ tty child frame が使え、端末が a=q に OK を返すこと。結果は端�
                              (minibuffer . nil)
                              (no-accept-focus . t) (no-focus-on-map . t)
                              (no-other-frame . t)
+                             ;; 端末には fringe が無いので、`truncate-lines' の行が window の
+                             ;; 幅ぴったりでも最終桁が truncation glyph に取られる。placeholder は
+                             ;; 幅ぴったりに並べるため、そのままだと画像の右端 1 列が消える。
+                             (no-special-glyphs . t)
                              ;; 枠は外側 1 文字。init.el の display table で罫線になる
                              (undecorated . nil)
                              (menu-bar-lines . 0) (tool-bar-lines . 0) (tab-bar-lines . 0)
