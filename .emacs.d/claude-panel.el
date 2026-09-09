@@ -16,7 +16,8 @@
 ;;   端末タイトルで流してくる会話名を優先し、無ければセッション名 (proj:name)。
 ;; - 切り替え: tab-line のクリックは dedicated window では switch-to-buffer が
 ;;   失敗するため `tab-line-select-tab-buffer' に advice で割り込む。C-tab /
-;;   C-S-tab はバッファローカルなキーマップで端末パネルの巡回を上書きする。
+;;   C-S-tab はバッファローカルなマイナーモード
+;;   (`wamei/claude-panel-keys-mode') で端末パネルの巡回を上書きする。
 ;; - 終了: `claude-code-ide--cleanup-session' の前で、消えるセッションがパネルに
 ;;   出ていれば同じプロジェクトの別セッションに差し替え、パネルを残す。後で
 ;;   tab-line を描き直す (バッファが消えるだけでは redisplay が走らない)。
@@ -124,21 +125,35 @@ special にするだけで束縛はしないため。ghostel 未ロードのま�
   "Claude バッファでセッションを巡回し、Cmd+V を横取りするキーマップ。
 グローバルの C-tab (端末パネルの巡回) と Cmd+V をバッファ内だけ上書きする。")
 
+(define-minor-mode wamei/claude-panel-keys-mode
+  "Claude バッファで `wamei/claude-panel-map' を有効にする。
+
+`use-local-map' で合成キーマップを重ねる方法だと ghostel に消される。
+ghostel はローカルマップにキーマップ (`ghostel-semi-char-mode-map' や
+`ghostel--readonly-keymap') を直接入れるので、copy mode / Emacs mode への
+出入りごとに `use-local-map' で差し替えが起きる。スクロールで copy mode に
+入っただけで C-tab がグローバルの端末巡回に戻り、semi-char mode に戻っても
+合成キーマップは失われたままになる。
+
+マイナーモードのキーマップはローカルマップより先に引かれるので、ghostel が
+何度入れ替えても残る。char mode だけは `emulation-mode-map-alists' 経由で
+更に手前に入るため、これも含めて全てのキーが端末へ行く (意図どおり)。"
+  :keymap wamei/claude-panel-map)
+
 (defun wamei/claude-panel--setup (buffer)
   "BUFFER を一覧に登録し、tab-line と巡回キーを有効にする。何度呼んでもよい。"
   (when (buffer-live-p buffer)
     (wamei/claude-panel--register buffer)
     (with-current-buffer buffer
+      ;; ghostel のキーマップは全端末で共有なので触らず、巡回キーは
+      ;; このバッファのマイナーモードで持つ
+      (wamei/claude-panel-keys-mode 1)
       (unless (bound-and-true-p tab-line-mode)
         (setq-local tab-line-tabs-function #'wamei/claude-panel--tabs
                     tab-line-tab-name-function #'wamei/claude-panel--tab-name
                     tab-line-cache-key-function #'wamei/claude-panel--cache-key
                     tab-line-new-button-show nil
                     tab-line-close-button-show nil)
-        ;; ghostel のキーマップは全端末で共有なので触らず、巡回キーを前に重ねた
-        ;; 合成キーマップをこのバッファだけに付ける
-        (use-local-map (make-composed-keymap wamei/claude-panel-map
-                                             (current-local-map)))
         (tab-line-mode 1)))))
 
 ;;; 表示

@@ -301,6 +301,23 @@
       (with-temp-buffer
         (should-not (eq (key-binding (kbd "<C-tab>")) #'wamei/claude-panel-next))))))
 
+(ert-deftest wamei/claude-panel-cycle-keys-survive-local-map-replacement ()
+  "ghostel がローカルマップを入れ替えても巡回キーが残る。
+
+ghostel は copy mode / Emacs mode の出入りごとに `use-local-map' で
+ローカルマップを差し替える。スクロールで copy mode に入っただけで
+C-tab がグローバル (端末パネルの巡回) に戻ってしまってはいけない。"
+  (wamei/claude-panel-test--with-env
+    (let* ((a (wamei/claude-panel-test--session "/tmp/proj/"))
+           (buffer (claude-code-ide-mcp-session-buffer a)))
+      (claude-code-ide--display-buffer-in-side-window buffer)
+      (with-current-buffer buffer
+        ;; ghostel--enter-readonly / ghostel-semi-char-mode 相当
+        (use-local-map (make-sparse-keymap))
+        (should (eq (key-binding (kbd "<C-tab>")) #'wamei/claude-panel-next))
+        (should (eq (key-binding (kbd "<C-S-tab>")) #'wamei/claude-panel-previous))
+        (should (eq (key-binding (kbd "s-v")) #'wamei/term-input-paste))))))
+
 ;;; セッション終了時の差し替え
 
 (ert-deftest wamei/claude-panel-hand-over-shows-sibling-when-displayed-session-dies ()
