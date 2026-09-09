@@ -18,6 +18,8 @@ Xcode Command Line Tools、Homebrew、mise、ghq を入れ、このリポジト�
 リポジトリ外から実行すると `[bootstrap.*]` が見えない。
 
 ```sh
+mise trust            # このリポジトリの設定を信頼する (未信頼だと非対話では
+                      # エラー、対話では毎回プロンプトされる)
 mise bootstrap        # 適用
 mise bootstrap -n     # dry-run (適用せず差分だけ表示)
 mise bootstrap status # 収束状態の確認
@@ -64,4 +66,7 @@ ghq get <url>
 - `[dotfiles]` のエントリ内の未知キーは警告なしに無視される。編集したら必ず
   `mise run verify` で確認すること
 - cask は `[bootstrap.brew] adopt = true` で扱っている。入れ直すと
-  `/Applications/*.app` が置き換わり macOS の TCC 権限がリセットされるため
+  `/Applications/*.app` が置き換わり macOS の TCC 権限がリセットされるため、
+  画面収録やアクセシビリティなどの許可をアプリごとに UI から再承認する必要が
+  出る。`adopt = true` は既存の `.app` をそのまま brew 管理下に取り込み、
+  不要な入れ直しを避けるための設定

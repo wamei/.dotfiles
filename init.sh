@@ -18,7 +18,13 @@ xcode-select -p >/dev/null 2>&1 || xcode-select --install
 if ! command -v brew >/dev/null 2>&1; then
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 fi
-eval "$(/opt/homebrew/bin/brew shellenv)"
+# brew の prefix は Apple Silicon (/opt/homebrew) と Intel (/usr/local) で違う。
+# 決め打ちすると Intel Mac でコマンドが無く set -e で落ちるため両方を試す。
+if [ -x /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x /usr/local/bin/brew ]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+fi
 
 # mise と ghq。どちらも [tools] / [bootstrap.packages] でも宣言しているが、
 # clone の時点ではまだ mise が動いていないのでここでは brew から入れる。
@@ -33,7 +39,10 @@ command -v ghq >/dev/null 2>&1 || brew install ghq
 # 直後の mise bootstrap が symlink を張れずに衝突する。恒久的な設定は
 # リポジトリの .gitconfig が持っている。
 if [ ! -d "$DOTFILES_ROOT" ]; then
-  GHQ_ROOT="$HOME/projects" ghq get git@github.com:wamei/.dotfiles.git
+  # この seed が動く時点では新規マシンに SSH 鍵が無く、git@ (SSH) では
+  # Permission denied (publickey) で失敗する。リポジトリは public なので
+  # HTTPS なら無認証で clone できる。remote は後から好みで SSH に変更してよい。
+  GHQ_ROOT="$HOME/projects" ghq get https://github.com/wamei/.dotfiles.git
 fi
 
 cd "$DOTFILES_ROOT"
