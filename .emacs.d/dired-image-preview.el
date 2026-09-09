@@ -20,7 +20,6 @@
 
 (require 'dired)
 (require 'image)
-(require 'svg)
 (require 'cl-lib)
 
 (declare-function posframe-show "posframe")
@@ -47,6 +46,26 @@
 行を連続で送っている間に点滅しないよう、少し待つ。"
   :type 'number)
 
+(defcustom wamei/dired-image-preview-background "#313435"
+  "プレビューの地の色。画像の透明部分を焼き込む色であり、child frame の背景色でもある。
+
+`wamei/popup-body' のような「テーマの色」ではなく、**親フレームの地の見た目の色**を
+入れる。親フレームは `alpha' で透過しているので、地の見た目は
+
+    見た目 = alpha × テーマの背景色 + (1 - alpha) × デスクトップ
+
+であってテーマの背景色そのものではない。ここにテーマの色を入れると、透過している
+親の上にもう一枚色を重ねることになり、透過部分だけが必ず周囲より暗い板に見える。
+見た目の色に合わせておくと板が周囲に沈み、image-mode で画像を開いたときと同じく
+「画像だけが浮いている」ように見える。
+
+この色は child frame の背景色と、画像の透明部分を焼き込む色の**両方**に使う。
+片方だけ変えると透明部分だけが四角く浮く。
+
+既定値は doom-molokai (背景 #1c1e1f) + 親 frame の `alpha' 90 のときの実測値。
+テーマ・alpha・壁紙を変えたら測り直す (スクリーンショットの地の画素を拾う)。"
+  :type 'color)
+
 (defcustom wamei/dired-image-preview-max-size-ratio 0.3
   "プレビューの最大の大きさ。フレームの幅・高さに対する比。"
   :type 'number)
@@ -55,10 +74,6 @@
   "プレビューをマウス/point の文字から離す距離 (桁 . 行)。
 文字の右下にこの分だけ空けて置く。"
   :type '(cons integer integer))
-
-(defcustom wamei/dired-image-preview-checkerboard-colors '("#808080" . "#c0c0c0")
-  "透過部分を見せるための市松模様の 2 色。"
-  :type '(cons color color))
 
 (defvar wamei/dired-image-preview-display-function
   #'wamei/dired-image-preview--posframe-show
@@ -69,7 +84,8 @@
   "表示中のプレビューを消す関数。引数なし。")
 
 (defvar wamei/dired-image-preview-posframe-parameters
-  '((no-accept-focus . t)
+  '((alpha . 80)
+    (no-accept-focus . t)
     (no-focus-on-map . t)
     (no-other-frame . t)
     (cursor-type . nil))
@@ -78,7 +94,12 @@ posframe は `:accept-focus' から `no-accept-focus' しか付けないので�
 frame が map された時点でウィンドウマネージャがそこへキーボードフォーカスを移す
 \(posframe 側の `posframe--redirect-posframe-focus' は posframe バッファが
 current のときしか働かない)。corfu / eldoc-box と同じく `no-focus-on-map' も渡して、
-表示だけしてフォーカスは動かさない。")
+表示だけしてフォーカスは動かさない。
+
+`alpha' は 80 (他のポップアップは 90)。NS の Emacs は `alpha-background'
+\(画素ごとの背景透過) を実装していない (`nm Emacs' に `_ns_set_alpha_background'
+が無く、generic の `gui_set_alpha_background' が値を保持するだけ) ので、裏を
+透かす手は frame 全体の `alpha' しかない。")
 
 (defvar wamei/dired-image-preview-available-predicate #'display-images-p
   "この環境でプレビューを出せるなら非 nil を返す関数。
@@ -233,14 +254,6 @@ DELAY 秒後に表示を予約する。"
   (cons (floor (* wamei/dired-image-preview-max-size-ratio (frame-inner-width frame)))
         (floor (* wamei/dired-image-preview-max-size-ratio (frame-inner-height frame)))))
 
-(defun wamei/dired-image-preview--fit-size (size max)
-  "SIZE (幅 . 高さ) を縦横比を保って MAX (幅 . 高さ) に収めた大きさを返す。拡大はしない。"
-  (let ((scale (min 1.0
-                    (/ (float (car max)) (car size))
-                    (/ (float (cdr max)) (cdr size)))))
-    (cons (max 1 (round (* scale (car size))))
-          (max 1 (round (* scale (cdr size)))))))
-
 (defun wamei/dired-image-preview--max-image-size (frame)
   "FRAME を基準にした `max-image-size' の絶対値 (ピクセル) を返す。
 既定の 10.0 (frame の 10 倍) は、画像を読み込む frame で判定される。posframe の
@@ -261,48 +274,15 @@ child frame は作られた直後 32px 程度なので、そのままだと 320p
 (defvar wamei/dired-image-preview--buffer-name " *dired-image-preview*"
   "プレビューを描くバッファの名前。")
 
-(defconst wamei/dired-image-preview--alpha-types '(png gif webp svg)
-  "透過 (アルファ) を持てる画像型。市松模様の上に合成して透過部分を見せる。")
-
-(defun wamei/dired-image-preview--alpha-type-p (type)
-  "画像型 TYPE が透過を持てるなら非 nil。"
-  (memq type wamei/dired-image-preview--alpha-types))
-
-(defun wamei/dired-image-preview--checkerboard-svg (file type size)
-  "FILE (画像型 TYPE) を市松模様の上に SIZE (幅 . 高さ) で載せた SVG を返す。
-macOS の Emacs は child frame の背景だけを透明にできない (alpha-background 非対応) ので、
-透過部分は SVG の合成で見せる。Emacs 自身の PNG 読み込みはアルファを背景色に
-焼き込んでしまうが、librsvg は <image> を正しく合成する。"
-  (let* ((width (car size))
-         (height (cdr size))
-         (svg (svg-create width height))
-         (defs (svg-node svg 'defs))
-         (pattern (svg-node defs 'pattern :id "checkerboard" :width 16 :height 16
-                            :patternUnits "userSpaceOnUse")))
-    (svg-node pattern 'rect :width 16 :height 16
-              :fill (car wamei/dired-image-preview-checkerboard-colors))
-    (svg-node pattern 'rect :width 8 :height 8
-              :fill (cdr wamei/dired-image-preview-checkerboard-colors))
-    (svg-node pattern 'rect :x 8 :y 8 :width 8 :height 8
-              :fill (cdr wamei/dired-image-preview-checkerboard-colors))
-    (svg-rectangle svg 0 0 width height :fill "url(#checkerboard)")
-    (svg-embed svg file (format "image/%s" (if (eq type 'svg) "svg+xml" type)) nil
-               :width width :height height)
-    svg))
-
-(defun wamei/dired-image-preview--image (file max frame)
-  "FILE の画像を MAX (幅 . 高さ) に収めた image spec を返す。FRAME で大きさを測る。
-透過を持てる型は市松模様つきの SVG にする。それ以外は :max-width / :max-height で縮める。"
-  (let* ((type (image-supported-file-p file))
-         (image (create-image file type nil :max-width (car max) :max-height (cdr max))))
-    (if (and (wamei/dired-image-preview--alpha-type-p type)
-             (image-type-available-p 'svg))
-        (svg-image (wamei/dired-image-preview--checkerboard-svg
-                    file type
-                    (wamei/dired-image-preview--fit-size
-                     (image-size (create-image file type) t frame) max))
-                   :scale 1)
-      image)))
+(defun wamei/dired-image-preview--image (file max background)
+  "FILE の画像を MAX (幅 . 高さ) に収めた image spec を返す。
+透明部分は BACKGROUND に焼き込む (libpng / librsvg が読み込み時に合成する)。
+NS の Emacs は画素ごとの背景透過ができないので、透過を見せる手は
+「地と同じ色に溶かして frame ごと `alpha' で透かす」しかない。image-mode で
+画像を開いたときと同じ見え方になる。"
+  (create-image file (image-supported-file-p file) nil
+                :max-width (car max) :max-height (cdr max)
+                :background background))
 
 (defun wamei/dired-image-preview--render (image)
   "IMAGE をプレビュー用のバッファに描いてそのバッファを返す。"
@@ -343,6 +323,7 @@ posframe は引数が変わったときだけ child frame を作り直すので�
   (let* ((window (wamei/dired-image-preview--target-window target))
          (frame (window-frame window))
          (gap (wamei/dired-image-preview--pixel-gap frame))
+         (background wamei/dired-image-preview-background)
          ;; 画像は posframe の fit-frame-to-buffer が child frame で読み込む。
          ;; その判定が child frame の大きさに縛られないよう、親 frame 基準の絶対値にする。
          (max-image-size (wamei/dired-image-preview--max-image-size frame))
@@ -350,7 +331,7 @@ posframe は引数が変わったときだけ child frame を作り直すので�
                   (wamei/dired-image-preview--image
                    (wamei/dired-image-preview--target-file target)
                    (wamei/dired-image-preview--max-pixel-size frame)
-                   frame))))
+                   background))))
     ;; posframe は選択中の window を親として :position の文字を探すので、
     ;; マウスが別の window にあっても対象の window で計算させる。
     (with-selected-window window
@@ -359,6 +340,7 @@ posframe は引数が変わったときだけ child frame を作り直すので�
                      :poshandler #'posframe-poshandler-point-bottom-left-corner
                      :x-pixel-offset (car gap)
                      :y-pixel-offset (cdr gap)
+                     :background-color background
                      :border-width 1
                      :border-color (face-attribute 'wamei/popup-border :background nil t)
                      :accept-focus nil
