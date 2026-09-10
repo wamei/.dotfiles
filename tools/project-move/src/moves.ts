@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { slug } from "./slug.ts";
+import { slug, slugChildRemainder } from "./slug.ts";
 
 /** 1 件の移動。from も to も絶対パス。 */
 export type Move = { from: string; to: string };
@@ -13,6 +13,30 @@ export type Move = { from: string; to: string };
  */
 export function defaultMovesLogPath(home: string): string {
   return join(home, ".local", "state", "project-move", "moves.tsv");
+}
+
+/**
+ * 適用済みの moves ログの退避先 (I5)。
+ *
+ * `claude-state-move` はログを読むだけで消費した分を刈り込まない実装だった。
+ * ログは `project-move` が追記し続ける一方なので、時間が経つと「もう改名も
+ * 書き換えも終わった行」が溜まり続け、`detectMoveCollisions` の連鎖検出が
+ * それら過去の行まで対象にしてしまう。たとえば `projects/foo → local/foo` が
+ * 未刈り込みのまま残っていると、後日 `local/foo → github.com/o/foo` を昇格
+ * したときにこの 2 行が「to が別の from と一致する」連鎖とみなされ、
+ * 昇格そのものが `refusing to apply` で拒否される (実際に踏んだ形の 1 つは
+ * `project-move` を retry して同じ行が 2 度入っただけでも起きる)。
+ *
+ * 最も単純な形で十分と判断した: 実適用が成功した直後にログファイルの中身を
+ * まるごと `moves.applied.tsv` へ追記し、元のログファイルを消す。次回の実行は
+ * 同じログパスを読みにいくが、消費済みの行はもう無いので「未処理分だけ」が
+ * 自然に残る。これで detectMoveCollisions が見るのは常に「まだ適用していない
+ * 行」だけになり、上のような偽陽性の連鎖検出が起きなくなる。
+ * 監査目的で過去分を消さずに `moves.applied.tsv` 側へ追記で積んでいく
+ * (上書きしない)。
+ */
+export function appliedMovesLogPath(logPath: string): string {
+  return logPath.endsWith(".tsv") ? `${logPath.slice(0, -4)}.applied.tsv` : `${logPath}.applied.tsv`;
 }
 
 export function formatMoveRow(move: Move, at: Date): string {
@@ -37,10 +61,41 @@ function collectSlugCollisions(paths: string[], label: string): string[] {
 }
 
 /**
+ * from 同士のスラッグの「接頭辞の曖昧さ」を検出する (Minor 2)。
+ *
+ * collectSlugCollisions は完全一致しか見ない。しかし slugChildRemainder は
+ * 「dirName が parentSlug 自身か、その子 (parentSlug + "-" + 残り) か」を判定して
+ * 実際の改名対象を拾う実装なので、完全一致でなくても ─ ある move の
+ * slug(from) が別の move の slug(from) の「子スラッグ」として解釈できる場合 ─
+ * claude-state-move のディレクトリ走査は両者を区別できない。
+ *
+ * 例: `local/memotan` と `local/memotan_knowledge` は完全一致しないが、
+ * slug(local/memotan_knowledge) は slug(local/memotan) + "-knowledge" になり、
+ * "-" は「非英数字 1 文字」の変換結果でもあるので、`local/memotan` の移動を
+ * 処理する際に `local/memotan_knowledge` のスラッグディレクトリまで
+ * 「子ディレクトリ (worktree 等)」として誤って引きずり込みうる。
+ */
+function collectSlugPrefixAmbiguities(paths: string[], label: string): string[] {
+  const warnings: string[] = [];
+  const withSlug = paths.map((p) => ({ path: p, slug: slug(p) }));
+  for (const parent of withSlug) {
+    for (const child of withSlug) {
+      if (parent.path === child.path || parent.slug === child.slug) continue;
+      if (slugChildRemainder(child.slug, parent.slug) === null) continue;
+      warnings.push(
+        `${label} slug("${parent.path}") is a prefix of slug("${child.path}") and could be ` +
+          `misread as its child under ~/.claude/projects: ${parent.path}, ${child.path}`,
+      );
+    }
+  }
+  return warnings;
+}
+
+/**
  * 移動リストの衝突を検査する。dry-run の安全確認のために spec が要求している
  * チェックだが、どのタスクにも実装が割り当てられていなかったのでここに足す。
  *
- * 検出する 3 種類はいずれも「後から適用した書き換えが先の結果を黙って壊す/
+ * 検出する 4 種類はいずれも「後から適用した書き換えが先の結果を黙って壊す/
  * 飲み込む」形で、しかも ~/.claude 配下の実ファイルに対する操作なので、
  * 検出できずに実適用してしまうと元に戻せない。
  *
@@ -56,6 +111,9 @@ function collectSlugCollisions(paths: string[], label: string): string[] {
  *    "mc-data-catalog" になる)。見た目が違う 2 つの from (または to) が同じ
  *    スラッグに落ちると、~/.claude/projects 配下では同じディレクトリを指すため、
  *    本来別プロジェクトのセッション履歴が 1 つのディレクトリに混ざる。
+ * 4. スラッグの接頭辞の曖昧さ: 完全一致ではないが、一方の from スラッグが
+ *    他方の from スラッグの「子スラッグ」として解釈できてしまう場合
+ *    (collectSlugPrefixAmbiguities 参照)。
  */
 export function detectMoveCollisions(moves: Move[]): string[] {
   const warnings: string[] = [];
@@ -87,6 +145,7 @@ export function detectMoveCollisions(moves: Move[]): string[] {
 
   warnings.push(...collectSlugCollisions(moves.map((m) => m.from), "move sources"));
   warnings.push(...collectSlugCollisions(moves.map((m) => m.to), "move destinations"));
+  warnings.push(...collectSlugPrefixAmbiguities(moves.map((m) => m.from), "move sources"));
 
   return warnings;
 }
