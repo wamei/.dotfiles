@@ -100,8 +100,11 @@
   (format "\e_Ga=d,d=I,i=%d,q=2\e\\" id))
 
 (defun wamei/kitty-graphics--query-sequence ()
-  "端末が kitty graphics に対応しているかを訊くシーケンス。対応なら i=31;OK が返る。"
-  "\e_Ga=q,i=31,s=1,v=1,f=24;AAAA\e\\")
+  "端末が kitty graphics に対応しているかを訊くシーケンス。対応なら i=31;OK が返る。
+後ろに CSI 6 n (カーソル位置報告) を付ける。非対応の端末は a=q に何も答えないが、
+CPR はどの端末も必ず答えるので、「応答が 1 文字も無い」= こちらが取り逃がした、
+と判別できる。応答は捨てるだけでよい。"
+  "\e_Ga=q,i=31,s=1,v=1,f=24;AAAA\e\\\e[6n")
 
 (defun wamei/kitty-graphics--query-ok-p (response)
   "RESPONSE (端末からの応答) が対応を示していれば非 nil。"
@@ -246,21 +249,24 @@ SIZE (幅 . 高さ) が分かっていれば渡す。無ければここで測る
 
 (defun wamei/kitty-graphics--query-terminal (param seq parse)
   "端末に SEQ を送り応答を PARSE で読んだ結果を、端末パラメータ PARAM に記憶して返す。
-一度訊いたら訊き直さない。結果が nil のときは `none' を記憶する。
-ただし起動中は訊かない (応答を拾えないため)。そのときは記憶もしないので、
-起動後に呼ばれたときに訊き直す。"
+一度訊いたら訊き直さない。応答があったのに解釈できなければ `none' を記憶する。
+応答が 1 文字も無いときだけは記憶せず、次に呼ばれたときに訊き直す。"
   (let ((cached (terminal-parameter nil param)))
     (cond ((eq cached 'none) nil)
           (cached cached)
-          ;; 起動中は Emacs 自身の初期化シーケンスが端末との間を流れていて、
-          ;; 応答を拾い損ねる。ここで失敗を `none' として記憶すると、以後その端末が
-          ;; 丸ごと非対応扱いになる (desktop 復元で dired が開くと実際に踏む)。
-          ;; 訊かずに nil を返し、記憶もしない。次に呼ばれたときに訊き直す。
-          ((not after-init-time) nil)
           (t (wamei/kitty-graphics--send seq)
-             (let ((result (funcall parse (wamei/kitty-graphics--read-response))))
-               (set-terminal-parameter nil param (or result 'none))
-               result)))))
+             (let* ((response (wamei/kitty-graphics--read-response))
+                    (result (funcall parse response)))
+               (cond
+                (result (set-terminal-parameter nil param result) result)
+                ;; 応答が 1 文字も返らなかったのは、非対応ではなくこちらが
+                ;; 取り逃がした可能性が高い。起動中や desktop 復元中に実際に起きる。
+                ;; ここで `none' を記憶すると以後その端末が丸ごと非対応扱いになるので、
+                ;; 記憶せずに次の機会へ回す。問い合わせには CPR を付けてあるので、
+                ;; 端末に届いていれば必ず何か返る。
+                ((string-empty-p response) nil)
+                ;; 何か返ったのに解釈できなかった = 本当に非対応
+                (t (set-terminal-parameter nil param 'none) nil)))))))
 
 (defun wamei/kitty-graphics-available-p ()
   "この端末が kitty graphics の Unicode placeholder を使えるなら非 nil。
@@ -277,7 +283,8 @@ SIZE (幅 . 高さ) が分かっていれば渡す。無ければここで測る
 訊けなければ 8x16 とみなす。"
   (or (wamei/kitty-graphics--query-terminal
        'wamei/kitty-graphics-cell-size
-       "\e[16t"
+       ;; 対応確認と同じ理由で CPR を付ける。沈黙と非対応を区別するため。
+       "\e[16t\e[6n"
        #'wamei/kitty-graphics--parse-cell-size)
       '(8 . 16)))
 
