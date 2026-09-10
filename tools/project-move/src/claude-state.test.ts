@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   claudeStateMove,
+  isClaudeRunning,
   mergeSessionsIndexes,
   rewriteLines,
   type ClaudeStatePaths,
@@ -226,4 +227,21 @@ test("rewriteLines は例外で抜けても *.project-move-tmp を残さない",
   const r = makeRewriter(moves);
   await expect(rewriteLines(filePath, r, throwing, false)).rejects.toThrow("boom");
   expect(existsSync(`${filePath}.project-move-tmp`)).toBe(false);
+});
+
+test("pgrep が 0 を返したら起動中と判定する", () => {
+  expect(isClaudeRunning(() => 0)).toBe(true);
+});
+
+test("pgrep が 1 を返したら停止中と判定する", () => {
+  expect(isClaudeRunning(() => 1)).toBe(false);
+});
+
+test("移動先が重複する moves を渡すと report.warnings に衝突が載る", async () => {
+  const collidingMoves = [
+    { from: OLD, to: NEW },
+    { from: "/Users/w/projects/other", to: NEW },
+  ];
+  const report = await claudeStateMove(collidingMoves, paths, { dryRun: true });
+  expect(report.warnings.some((w) => w.includes(NEW))).toBe(true);
 });

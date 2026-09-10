@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { slug } from "./slug.ts";
 
 /** 1 件の移動。from も to も絶対パス。 */
 export type Move = { from: string; to: string };
@@ -16,6 +17,78 @@ export function defaultMovesLogPath(home: string): string {
 
 export function formatMoveRow(move: Move, at: Date): string {
   return `${at.toISOString()}\t${move.from}\t${move.to}\n`;
+}
+
+function collectSlugCollisions(paths: string[], label: string): string[] {
+  const bySlug = new Map<string, Set<string>>();
+  for (const p of paths) {
+    const s = slug(p);
+    const set = bySlug.get(s) ?? new Set<string>();
+    set.add(p);
+    bySlug.set(s, set);
+  }
+  const warnings: string[] = [];
+  for (const [s, set] of bySlug) {
+    if (set.size > 1) {
+      warnings.push(`${label} slug to the same "${s}": ${[...set].join(", ")}`);
+    }
+  }
+  return warnings;
+}
+
+/**
+ * 移動リストの衝突を検査する。dry-run の安全確認のために spec が要求している
+ * チェックだが、どのタスクにも実装が割り当てられていなかったのでここに足す。
+ *
+ * 検出する 3 種類はいずれも「後から適用した書き換えが先の結果を黙って壊す/
+ * 飲み込む」形で、しかも ~/.claude 配下の実ファイルに対する操作なので、
+ * 検出できずに実適用してしまうと元に戻せない。
+ *
+ * 1. 移動先の重複: 2 件以上の move が同じ to を指すと、moveInto はディレクトリを
+ *    マージする実装なので、複数の移動元の中身が同じディレクトリに合流してしまい、
+ *    どのセッションがどのプロジェクト由来かを区別できなくなる。
+ * 2. 連鎖書き換え: ある move の to が、別の move の from そのものか、その配下
+ *    (from + "/") にあると、Rewriter は全 move のルールを同時に文字列へ適用する
+ *    ため、a.to へ書き換わった箇所がさらに b (from === a.to) のルールにも
+ *    マッチして二重に置換される。結果は a.to でも b.to でもない壊れたパスになる。
+ * 3. スラッグの衝突: slug() は英数字以外を全て 1 個の "-" に潰す非可逆な多対一
+ *    写像 (例: "mc-data-catalog" と "mc_data_catalog" はどちらも
+ *    "mc-data-catalog" になる)。見た目が違う 2 つの from (または to) が同じ
+ *    スラッグに落ちると、~/.claude/projects 配下では同じディレクトリを指すため、
+ *    本来別プロジェクトのセッション履歴が 1 つのディレクトリに混ざる。
+ */
+export function detectMoveCollisions(moves: Move[]): string[] {
+  const warnings: string[] = [];
+
+  const byTo = new Map<string, Move[]>();
+  for (const m of moves) {
+    const group = byTo.get(m.to) ?? [];
+    group.push(m);
+    byTo.set(m.to, group);
+  }
+  for (const [to, group] of byTo) {
+    if (group.length > 1) {
+      warnings.push(
+        `${group.length} moves share the same destination "${to}": ${group.map((m) => m.from).join(", ")}`,
+      );
+    }
+  }
+
+  for (const a of moves) {
+    for (const b of moves) {
+      if (a === b) continue;
+      if (b.from === a.to || b.from.startsWith(`${a.to}/`)) {
+        warnings.push(
+          `move to "${a.to}" collides with move from "${b.from}" (chained rewrite)`,
+        );
+      }
+    }
+  }
+
+  warnings.push(...collectSlugCollisions(moves.map((m) => m.from), "move sources"));
+  warnings.push(...collectSlugCollisions(moves.map((m) => m.to), "move destinations"));
+
+  return warnings;
 }
 
 export function parseMovesTsv(text: string): Move[] {
