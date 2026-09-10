@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { defaultMovesLogPath } from "../src/moves.ts";
+import { appliedMovesLogPath, defaultMovesLogPath } from "../src/moves.ts";
 
 const CLI = join(import.meta.dir, "claude-state-move.ts");
 
@@ -203,6 +203,9 @@ test("プロセスゲート: claude 停止中なら通過して通常どおり�
   });
   expect(exitCode).toBe(0);
   expect(stdout).toContain("--- applied ---");
+  // C2: ~/.claude/projects (ここでは --claude-home 配下の projects/) を
+  // クローンでバックアップし、その先を報告する。
+  expect(stdout).toContain("backup");
 });
 
 test("衝突ゲート: 実適用は衝突があると exit 1 で終わり、ファイルを 1 つも変えない", () => {
@@ -240,4 +243,93 @@ test("--dry-run は衝突があっても止まらず、警告を出して正常�
   expect(exitCode).toBe(0);
   expect(stdout).toContain("warn");
   expect(stdout).toContain("/new/dest");
+});
+
+// --- I3: --history の既定値は --claude-home に追随する ----------------------
+
+test("I3: --history を省略すると既定値は --claude-home 配下の history.jsonl になる", () => {
+  // baseArgs() は --history を明示するので、ここでは意図的に含めない。
+  // 従来の実装は既定値を join(home, ".claude", "history.jsonl") で組み立てて
+  // おり、--claude-home だけを差し替えて --history と --dry-run を両方付け
+  // 忘れると本物の ~/.claude/history.jsonl を書き換えてしまっていた。
+  writeFileSync(
+    join(claudeHome, "history.jsonl"),
+    `${JSON.stringify({ display: "x", project: "/old/path" })}\n`,
+  );
+
+  const { exitCode, stdout } = runCli(
+    ["--claude-home", claudeHome, "--claude-json", claudeJson, "/old/path", "/new/path"],
+    { fakePgrepExit: 1 },
+  );
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain("--- applied ---");
+  const rewritten = JSON.parse(readFileSync(join(claudeHome, "history.jsonl"), "utf8").trim());
+  expect(rewritten.project).toBe("/new/path");
+});
+
+// --- I4: 位置引数は 0 個か 2 個以外は exit 2 で拒否する ----------------------
+
+test("I4: 位置引数が 1 個だけだと exit 2 で拒否し、ログ全件フォールバックに落ちない", () => {
+  const { exitCode, stderr } = runCli([...baseArgs(), "/only-one"]);
+  expect(exitCode).toBe(2);
+  expect(stderr).toContain("0 or 2");
+});
+
+test("I4: 位置引数が 3 個以上でも exit 2 で拒否する", () => {
+  const { exitCode, stderr } = runCli([...baseArgs(), "/a", "/b", "/c"]);
+  expect(exitCode).toBe(2);
+  expect(stderr).toContain("0 or 2");
+});
+
+// --- C1: 位置引数は絶対パスであることを検査する ------------------------------
+
+test("C1: 位置引数のどちらかが相対パスなら exit 2 で拒否する (存在確認ではなく絶対パス検査)", () => {
+  const { exitCode, stderr } = runCli([...baseArgs(), "relative/old", "/abs/new"]);
+  expect(exitCode).toBe(2);
+  expect(stderr).toContain("absolute path");
+});
+
+test("C1: 絶対パスの .. を正規化してから移動リストに使う", () => {
+  const oldPath = `${root}/a/../old-dir`;
+  const newPath = `${root}/new-dir`;
+  const { exitCode, stdout } = runCli(["--dry-run", ...baseArgs(), oldPath, newPath], {
+    fakePgrepExit: 1,
+  });
+  expect(exitCode).toBe(0);
+  // 正規化後の絶対パス (/root/old-dir) がそのまま扱われていること自体は
+  // dry-run のログには renames が出ない (対象ディレクトリが無いため) ので、
+  // 少なくとも「相対パス扱いで拒否されない」ことと正常終了を確認する。
+  expect(stdout).toContain("--- dry run ---");
+});
+
+// --- I5: 適用成功後にログを退避し、次回は未処理分だけを読む -----------------
+
+test("I5: 適用成功後にログを退避するので、後から昇格した move が古い分と連鎖衝突しない (回帰テスト)", () => {
+  const log = defaultMovesLogPath(fakeHome);
+  mkdirSync(dirname(log), { recursive: true });
+  writeFileSync(log, "2026-09-11T00:00:00.000Z\t/o/foo\t/o/local/foo\n");
+
+  // 1 回目: 適用に成功する
+  const r1 = runCli([...baseArgs()], { fakePgrepExit: 1 });
+  expect(r1.exitCode).toBe(0);
+  // 消費したログは退避されて消えている (I5)
+  expect(existsSync(log)).toBe(false);
+  const applied = readFileSync(appliedMovesLogPath(log), "utf8");
+  expect(applied).toContain("/o/foo");
+
+  // 2 回目: 1 回目の move を「昇格」させる行だけを新しいログとして積む。
+  // 1 回目の行が刈り込まれずに残っていたら、"/o/local/foo" が両方の行に
+  // 現れる連鎖書き換えとみなされ、refusing to apply で拒否されるはずの組み合わせ。
+  writeFileSync(log, "2026-09-11T01:00:00.000Z\t/o/local/foo\t/o/gh/x/foo\n");
+  const r2 = runCli([...baseArgs()], { fakePgrepExit: 1 });
+  expect(r2.exitCode).toBe(0);
+  expect(r2.stderr).not.toContain("refusing to apply");
+});
+
+test("I5: <old> <new> を直接渡した経路では退避対象のログが無いので何もしない", () => {
+  // このテスト自体は「ログが無くても落ちない」ことの確認。
+  const { exitCode } = runCli([...baseArgs(), "/old/path", "/new/path"], { fakePgrepExit: 1 });
+  expect(exitCode).toBe(0);
+  expect(existsSync(appliedMovesLogPath(defaultMovesLogPath(fakeHome)))).toBe(false);
 });
