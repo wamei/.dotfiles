@@ -13,12 +13,12 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { defaultMovesLogPath } from "../src/moves.ts";
 
 const CLI = join(import.meta.dir, "project-move.ts");
@@ -36,24 +36,52 @@ const CLI = join(import.meta.dir, "project-move.ts");
 //
 // runCli は毎回 env.HOME を tmpdir 配下に差し替えて再発を防ぐが、それでも
 // 同じ穴が再発したときに目視に頼らず気付けるよう、実ホーム側のこの 2 箇所を
-// テスト前後で比較し、「存在しない」か「テスト前と変わっていない」ことを
-// 毎テスト後に確認する。
+// テスト前後で比較する。
+//
+// レビュー指摘: 当初は existsSync の真偽値だけを比較していたが、これは
+// 「今その場所に何も無い」環境でしか機能しない。この移行が進み Task 11 で
+// ~/projects/local に正当なプロジェクトが 16 個並ぶようになると、
+// 「存在する」→「存在する」で一致してしまい、その中に汚染ファイルが 1 つ
+// 増えても検知できなくなる。存在の有無ではなく、**子エントリ名の一覧**を
+// 比較することで、中身が増えた/減ったこと自体を検知できるようにする。
 const REAL_HOME = homedir();
 const REAL_PROJECTS_LOCAL = join(REAL_HOME, "projects", "local");
-const REAL_MOVES_LOG = defaultMovesLogPath(REAL_HOME);
+const REAL_MOVES_LOG_DIR = dirname(defaultMovesLogPath(REAL_HOME));
 
-const realProjectsLocalExistedBefore = existsSync(REAL_PROJECTS_LOCAL);
-const realMovesLogExistedBefore = existsSync(REAL_MOVES_LOG);
-const realMovesLogContentBefore = realMovesLogExistedBefore
-  ? readFileSync(REAL_MOVES_LOG, "utf8")
-  : undefined;
+/** ディレクトリの「存在有無」と「直下の子エントリ名一覧 (ソート済み)」のスナップショット。 */
+type DirSnapshot = { exists: boolean; entries: string[] };
+
+function snapshotDir(dir: string): DirSnapshot {
+  if (!existsSync(dir)) return { exists: false, entries: [] };
+  return { exists: true, entries: readdirSync(dir).sort() };
+}
+
+/**
+ * before と現在のスナップショットを比較し、増えた/減ったエントリ名を含む形で
+ * 差分をアサートする。`expect(...).toEqual(...)` に増減の一覧を直接載せるので、
+ * 失敗時のメッセージにそのままエントリ名が出る (「次に踏んだ人がすぐ原因に
+ * 辿り着けるように」という要求への対応)。
+ */
+function assertDirUnchanged(dir: string, before: DirSnapshot, label: string) {
+  const after = snapshotDir(dir);
+  const beforeSet = new Set(before.entries);
+  const afterSet = new Set(after.entries);
+  const added = after.entries.filter((e) => !beforeSet.has(e));
+  const removed = before.entries.filter((e) => !afterSet.has(e));
+  expect({ label, exists: after.exists, added, removed }).toEqual({
+    label,
+    exists: before.exists,
+    added: [],
+    removed: [],
+  });
+}
+
+const realProjectsLocalBefore = snapshotDir(REAL_PROJECTS_LOCAL);
+const realMovesLogDirBefore = snapshotDir(REAL_MOVES_LOG_DIR);
 
 function assertRealHomeUntouched() {
-  expect(existsSync(REAL_PROJECTS_LOCAL)).toBe(realProjectsLocalExistedBefore);
-  expect(existsSync(REAL_MOVES_LOG)).toBe(realMovesLogExistedBefore);
-  if (realMovesLogExistedBefore) {
-    expect(readFileSync(REAL_MOVES_LOG, "utf8")).toBe(realMovesLogContentBefore as string);
-  }
+  assertDirUnchanged(REAL_PROJECTS_LOCAL, realProjectsLocalBefore, "~/projects/local");
+  assertDirUnchanged(REAL_MOVES_LOG_DIR, realMovesLogDirBefore, "~/.local/state/project-move");
 }
 
 let root: string;
