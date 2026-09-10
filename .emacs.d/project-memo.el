@@ -555,10 +555,29 @@ child frame も消す」という設計になっている)。dedicated を外し
 分からないフレームが画面に残る。ミニバッファを抜けたあと本当に別の場所へ
 フォーカスが移っていれば、次のコマンド境界で通常どおり \='hide になる。
 バッファが死んでいる場合はこのガードより先に \='hide にする — 死んだ
-バッファを抱えたまま待つ理由が無いため。"
+バッファを抱えたまま待つ理由が無いため。
+
+素の `C-g' (`this-command' が `keyboard-quit') は、上のどの判定より先に
+無条件で \='hide にする。実機診断 (詳細は
+`docs/superpowers/specs/2026-09-10-project-memo-posframe-design.md' の
+「posframe を閉じる条件」参照): 実端末 (tmux + `emacs -nw') で小窓に
+フォーカスがある状態で素の `C-g' を送ると、`keyboard-quit' が quit を
+signal する過程で tty 側が `selected-frame' を端末本体のフレームへ戻し、
+それきり戻らない — tty の
+child frame は同じ端末画面への重ね描画でしかなく、GUI のような独立した
+ウィンドウを持たないため。これは上の「フォーカスが外れた」判定に副作用的
+に引っかかって閉じているだけで、GUI (独立した child frame を持つ) では
+同じ再選択が起きないので閉じないままだった。この食い違いは設計ではなく
+バグであり、ユーザーは「どちらの環境でも閉じる」を選んだ。`selected-frame'
+の偶然の変化に環境ごと頼るのではなく `this-command' で直接見ることで、
+tty と GUI のどちらでも同じに、かつ確実に閉じるようにする。ミニバッファを
+`C-g' で取り消す方は `minibuffer-keyboard-quit' / `abort-minibuffers' に
+なり `keyboard-quit' ではないので、この分岐には自然に引っかからない
+(下のミニバッファガードに委ねる)。"
   (when-let* ((frame (wamei/project-memo-posframe-frame)))
     (cond
      ((not (buffer-live-p wamei/project-memo--posframe-buffer)) 'hide)
+     ((eq this-command 'keyboard-quit) 'hide)
      ((active-minibuffer-window) nil)
      ((not (eq (selected-frame) frame)) 'hide)
      (t nil))))
