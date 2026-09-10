@@ -1720,16 +1720,20 @@ canary で問題が出たら、ここで止めて原因を潰してから次へ�
 - [ ] **Step 1: 全件を dry-run して移動先を確認する**
 
 ```bash
-cd ~/projects
-project-move --dry-run $(ls -d */ | grep -v '^github.com/' | grep -v '^local/' | sed 's|/$||')
+project-move --dry-run $(ls -d ~/projects/*/ | grep -v '/github\.com/$' | grep -v '/local/$' | sed 's|/$||')
 ```
+
+**絶対パスで渡すこと。** `cd ~/projects` してから相対名を渡してはいけない。相対名だと
+`from` が `BeecoV2` のような裸の文字列になり、その文字列が全ファイルで置換されて
+`~/.claude.json` と `history.jsonl` と Emacs の状態ファイルが壊れる。壊れた結果も
+JSON として妥当なので既存のガードを通り抜け、dry-run は行数しか出さないので
+気づけない。コマンド側にも `resolve()` を入れてあるが、手順としても絶対パスで渡す。
 Expected: 24 件が `ghq`、16 件が `local`、`ImportApps_2` も `ghq` として出る (次の Step で除外する)
 
 - [ ] **Step 2: ImportApps_2 を除いて移す**
 
 ```bash
-cd ~/projects
-project-move $(ls -d */ | grep -v '^github.com/' | grep -v '^local/' | grep -v '^ImportApps_2/' | sed 's|/$||')
+project-move $(ls -d ~/projects/*/ | grep -v '/github\.com/$' | grep -v '/local/$' | grep -v '/ImportApps_2/$' | sed 's|/$||')
 ```
 Expected: 40 件の移動と、手当ての報告
 
