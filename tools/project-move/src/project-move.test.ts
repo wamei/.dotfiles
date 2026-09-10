@@ -11,7 +11,7 @@ import {
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyFixups, isEmacsRunning } from "./project-move.ts";
+import { applyFixups, isEmacsRunning, preflightStatus } from "./project-move.ts";
 
 let root: string;
 let plan: { kind: "ghq"; from: string; to: string };
@@ -152,6 +152,88 @@ test("変更行数を複数行にわたって正しく数える", async () => {
 // (bun がエントリポイントの realpath を基準に解決するのか、symlink 自体の
 // パスを基準にするのかはドキュメントを読むだけでは確証が持てない) ので、
 // 実際に symlink を張ってサブプロセス起動し、証拠として確認する。
+// --- I9: --fixups-only 用の projectRoot 明示指定 ----------------------------
+
+test("projectRoot: 'to' を指定すると dry-run でも移動先を見る (--fixups-only 用)", async () => {
+  // --fixups-only は「移動は既に終わっている」ことが前提のモードなので、
+  // dry-run と併用しても plan.from はもう存在しない。自動選択 (dry-run なら
+  // plan.from) に任せると何も見つからず「手当てなし」と報告してしまう。
+  rmSync(plan.from, { recursive: true, force: true });
+  const f = join(plan.to, ".claude", "settings.local.json");
+  writeFileSync(f, JSON.stringify({ permissions: { allow: [`Bash(grep x ${plan.from}/a)`] } }));
+
+  const r = await applyFixups(plan, {
+    emacsStateFiles: [],
+    dryRun: true,
+    emacsRunning: false,
+    projectRoot: "to",
+  });
+
+  const entry = r.rewrittenFiles.find((x) => x.path === f);
+  expect(entry).toBeDefined();
+  // dry-run なので実ファイルは書き換わっていない
+  expect(readFileSync(f, "utf8")).toContain(plan.from);
+});
+
+// --- Minor 1: settings.local.json は JSON として妥当かを確認してから書く ----
+
+test("settings.local.json の書き換え結果が不正な JSON になる場合は書き込まず警告する", async () => {
+  // 移動先パスにダブルクオートを含む極端なケースを使い、テキスト置換の結果が
+  // JSON として壊れることを作為的に再現する (通常のパスではまず起きないが、
+  // ガード自体はこのケースでしか確認できない)。ファイルシステム上は APFS/HFS
+  // どちらも `"` を含むディレクトリ名を許容するので、実ディレクトリとして作れる。
+  const weirdTo = join(root, 'new"quote');
+  mkdirSync(join(weirdTo, ".claude"), { recursive: true });
+  const weirdPlan = { kind: "ghq" as const, from: plan.from, to: weirdTo };
+  const f = join(weirdTo, ".claude", "settings.local.json");
+  const before = JSON.stringify({ permissions: { allow: [`Bash(grep x ${plan.from}/a)`] } });
+  writeFileSync(f, before);
+
+  const r = await applyFixups(weirdPlan, { emacsStateFiles: [], dryRun: false, emacsRunning: false });
+
+  // 壊れた JSON は書き込まれず、原本のまま残る
+  expect(readFileSync(f, "utf8")).toBe(before);
+  expect(r.warnings.join(" ")).toMatch(/settings\.local\.json/);
+  expect(r.rewrittenFiles.some((x) => x.path === f)).toBe(false);
+});
+
+// --- I8: 移動前に uncommitted / unpushed / stash を見せる -------------------
+
+test("preflightStatus: uncommitted / unpushed / stash をそれぞれ拾う", () => {
+  const dir = join(root, "repo");
+  mkdirSync(dir, { recursive: true });
+  spawnSync("git", ["init", "-q"], { cwd: dir });
+  spawnSync("git", ["config", "user.email", "t@example.com"], { cwd: dir });
+  spawnSync("git", ["config", "user.name", "t"], { cwd: dir });
+
+  writeFileSync(join(dir, "a.txt"), "1\n");
+  spawnSync("git", ["add", "a.txt"], { cwd: dir });
+  spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: dir });
+
+  // remote が無いので、これだけでも "unpushed" (branches - remotes) に載る
+  writeFileSync(join(dir, "b.txt"), "2\n");
+  spawnSync("git", ["add", "b.txt"], { cwd: dir });
+  spawnSync("git", ["commit", "-q", "-m", "second"], { cwd: dir });
+
+  writeFileSync(join(dir, "a.txt"), "stashed change\n");
+  spawnSync("git", ["stash", "push", "-q", "-m", "wip"], { cwd: dir });
+
+  writeFileSync(join(dir, "c.txt"), "3\n");
+
+  const status = preflightStatus(dir);
+  expect(status.uncommitted).toContain("c.txt");
+  expect(status.unpushed.split("\n").filter((l) => l.trim() !== "").length).toBe(2);
+  expect(status.stash).toContain("wip");
+});
+
+test("preflightStatus: 何も無ければ全て空文字", () => {
+  const dir = join(root, "clean-repo");
+  mkdirSync(dir, { recursive: true });
+  spawnSync("git", ["init", "-q"], { cwd: dir });
+  const status = preflightStatus(dir);
+  expect(status).toEqual({ uncommitted: "", unpushed: "", stash: "" });
+});
+
 test("symlink 経由でも相対 import が解決する", () => {
   const link = join(root, "project-move-link");
   symlinkSync(new URL("../cli/project-move.ts", import.meta.url).pathname, link);

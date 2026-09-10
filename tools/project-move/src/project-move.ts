@@ -25,6 +25,25 @@ export function isEmacsRunning(
   return exec("pgrep", ["-x", "Emacs"]) === 0;
 }
 
+export type PreflightStatus = { uncommitted: string; unpushed: string; stash: string };
+
+/**
+ * 移動で失いうるものを一覧する (I8, CLAUDE.md の「破壊的操作」節の趣旨:
+ * 消さない、見せるだけ)。3 種類を見るのは、コミット済みでも push 済みでも
+ * stash に積んだだけでも、移動そのもの (ghq migrate / mv) が万一失敗したときに
+ * 失うものの性質が変わるため。spec の「事前確認」節はこの 3 つを列挙しているが、
+ * 実装は uncommitted (`git status --porcelain`) しか出していなかった。
+ */
+export function preflightStatus(dir: string): PreflightStatus {
+  const run = (args: string[]): string =>
+    (spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" }).stdout ?? "").trimEnd();
+  return {
+    uncommitted: run(["status", "--porcelain"]),
+    unpushed: run(["log", "--branches", "--not", "--remotes", "--oneline"]),
+    stash: run(["stash", "list"]),
+  };
+}
+
 async function rewriteFileInPlace(
   path: string,
   rewrite: (s: string) => string,
@@ -43,9 +62,51 @@ async function rewriteFileInPlace(
   return changed;
 }
 
+/**
+ * settings.local.json 専用の書き換え (Minor 1)。
+ *
+ * rewriteFileInPlace は素朴なテキスト置換で、結果が妥当な JSON かを確認しない。
+ * このファイルだけは Claude Code 自身が起動時にパースする許可設定なので、
+ * 書き換え後に壊れた JSON を書いてしまうと、そのプロジェクトで許可設定が
+ * 一切読めなくなる (許可プロンプトが全部復活する程度では済まない)。書き込む前に
+ * JSON.parse を通し、妥当でなければ書かずに警告へ回す。
+ */
+async function rewriteSettingsLocalJson(
+  path: string,
+  rewrite: (s: string) => string,
+  dryRun: boolean,
+): Promise<{ changed: number; invalid: boolean }> {
+  const before = await readFile(path, "utf8");
+  const after = rewrite(before);
+  if (after === before) return { changed: 0, invalid: false };
+  try {
+    JSON.parse(after);
+  } catch {
+    return { changed: 0, invalid: true };
+  }
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const changed = beforeLines.filter((l, i) => l !== afterLines[i]).length;
+  if (!dryRun) await writeFile(path, after);
+  return { changed, invalid: false };
+}
+
 export async function applyFixups(
   plan: MovePlan,
-  opts: { emacsStateFiles: string[]; dryRun: boolean; emacsRunning: boolean },
+  opts: {
+    emacsStateFiles: string[];
+    dryRun: boolean;
+    emacsRunning: boolean;
+    /**
+     * プロジェクト内ファイルをどちらから読むかの明示指定 (I9 の `--fixups-only`
+     * 用)。省略時は従来どおり dry-run かどうかで自動選択する。`--fixups-only`
+     * は「移動は既に終わっている」状態を手当てするモードなので、--dry-run と
+     * 併用しても常に plan.to (移動済みの実体) を見る必要があり、
+     * 自動選択 (dry-run なら plan.from) に任せると plan.from はもう存在せず
+     * 何も見つからない。
+     */
+    projectRoot?: "from" | "to";
+  },
 ): Promise<FixupReport> {
   const r = makeRewriter([{ from: plan.from, to: plan.to }]);
   const report: FixupReport = { rewrittenFiles: [], manualSteps: [], warnings: [] };
@@ -58,13 +119,20 @@ export async function applyFixups(
   // plan.from (まだそこにある実体) を見て、実適用のときは移動済みの plan.to を
   // 見るように切り替える。Emacs の状態ファイルは $HOME 配下の絶対パスであり
   // 移動そのものの影響を受けないため、この切り替えとは無関係に常にそのまま読む。
-  const projectRoot = opts.dryRun ? plan.from : plan.to;
+  const rootChoice = opts.projectRoot ?? (opts.dryRun ? "from" : "to");
+  const projectRoot = rootChoice === "from" ? plan.from : plan.to;
 
   // 1) プロジェクト内の permission allowlist。移さないと許可プロンプトが増える。
   const settings = join(projectRoot, ".claude", "settings.local.json");
   if (existsSync(settings)) {
-    const changed = await rewriteFileInPlace(settings, r.rewriteText, opts.dryRun);
-    if (changed > 0) report.rewrittenFiles.push({ path: settings, changedLines: changed });
+    const { changed, invalid } = await rewriteSettingsLocalJson(settings, r.rewriteText, opts.dryRun);
+    if (invalid) {
+      report.warnings.push(
+        `${settings}: rewriting it would produce invalid JSON; left unchanged. check it by hand.`,
+      );
+    } else if (changed > 0) {
+      report.rewrittenFiles.push({ path: settings, changedLines: changed });
+    }
   }
 
   // 2) Emacs の状態ファイル
