@@ -962,6 +962,62 @@ BODY の中でさらに `cl-letf' して上書きする。"
       (should (eq (wamei/project-memo--posframe-action) 'hide))
       (wamei/project-memo-posframe-hide))))
 
+(ert-deftest wamei/project-memo-posframe-action-is-hide-on-bare-keyboard-quit ()
+  ;; 実機診断: 実端末で小窓にフォーカスがある状態で素の
+  ;; `C-g' を押すと、`keyboard-quit' の quit 処理の途中で tty 側が
+  ;; `selected-frame' を端末本体のフレームへ戻してしまい、そのまま戻らない
+  ;; (child frame はその端末上の重ね描画でしかないため)。これは
+  ;; `--posframe-action' の「フォーカスが外れた」判定に副作用的に引っかかって
+  ;; 閉じているだけで、GUI では同じ再選択が起きないので閉じない。
+  ;; どちらの環境でも確実に同じ動きにするため、`selected-frame' の偶然の
+  ;; 変化に頼らず `this-command' で直接見る。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame))
+                (this-command 'keyboard-quit))
+        ;; selected-frame は小窓のままでも (フォーカスは外れていなくても)、
+        ;; 素の C-g なら閉じる。
+        (should (eq (wamei/project-memo--posframe-action) 'hide)))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-nil-on-minibuffer-cancel ()
+  ;; ミニバッファを `C-g' で取り消すコマンドは `keyboard-quit' ではなく
+  ;; `minibuffer-keyboard-quit' / `abort-minibuffers' になる (`abort-recursive-edit'
+  ;; 経由)。ここで 'hide にすると「M-x を C-g で抜けたら小窓も閉じる」に
+  ;; なってしまい、変えないと決めた挙動を壊す。selected-frame は実機では
+  ;; ミニバッファを抜けた時点で小窓へ戻っている (実機診断の実測どおり) ので、
+  ;; ここでもそれを模して「フォーカスは小窓に戻っている」状態で確認する。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame))
+                (this-command 'minibuffer-keyboard-quit))
+        (should-not (wamei/project-memo--posframe-action)))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-nil-for-an-ordinary-command-while-focused ()
+  ;; 素の C-g 以外の通常コマンドでは、既存どおりフォーカスが小窓にある限り
+  ;; 閉じない。`this-command' 分岐を足したことで通常コマンドまで巻き込んで
+  ;; いないことの確認。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame))
+                (this-command 'self-insert-command))
+        (should-not (wamei/project-memo--posframe-action)))
+      (wamei/project-memo-posframe-hide))))
+
+(ert-deftest wamei/project-memo-posframe-post-command-hides-on-bare-keyboard-quit ()
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame))
+                (this-command 'keyboard-quit))
+        (wamei/project-memo--posframe-post-command))
+      (should-not (wamei/project-memo-posframe-frame))
+      (should (eq (car (car calls)) 'hide)))))
+
 (ert-deftest wamei/project-memo-posframe-action-is-nil-while-the-minibuffer-is-active ()
   ;; child frame は自分のミニバッファを持たず親フレームのものを使う
   ;; (posframe.el の `posframe--create-posframe' が :minibuffer nil で作る)。
