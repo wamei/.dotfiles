@@ -981,6 +981,28 @@ BODY の中でさらに `cl-letf' して上書きする。"
         (should (eq (wamei/project-memo--posframe-action) 'hide)))
       (wamei/project-memo-posframe-hide))))
 
+(ert-deftest wamei/project-memo-posframe-action-is-hide-when-keyboard-quit-and-focus-left-coincide ()
+  ;; 実機診断 (spec doc 参照): tty では素の C-g の際
+  ;; `this-command' が `keyboard-quit' になるのと同時に、quit の副作用で
+  ;; `selected-frame' も既に posframe から外れている — つまり
+  ;; `--posframe-action' の `keyboard-quit' 節と「フォーカスが外れた」節が
+  ;; 両方同時に真になる状態が実機で起きる。`cond' は最初の節 (`keyboard-quit')
+  ;; だけを採るので後者は評価されないが、両方が真でも壊れない (二重に
+  ;; 閉じない・post-command-hook 経由の hide が1回で済む) ことをここで
+  ;; 固定する。selected-frame をスタブしない (=素のまま) ことで、
+  ;; 「フォーカスが外れた」側も自然に真にしている。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (let ((this-command 'keyboard-quit))
+        ;; selected-frame は素のまま = posframe のフレームではない
+        ;; (wamei/project-memo-posframe-action-is-hide-when-focus-left と同じ前提)。
+        (should (eq (wamei/project-memo--posframe-action) 'hide))
+        (wamei/project-memo--posframe-post-command))
+      (should-not (wamei/project-memo-posframe-frame))
+      ;; hide が呼ばれたのは1回だけ (二重に閉じていない)。
+      (should (= (length (seq-filter (lambda (call) (eq (car call) 'hide)) calls)) 1)))))
+
 (ert-deftest wamei/project-memo-posframe-action-is-nil-on-minibuffer-cancel ()
   ;; ミニバッファを `C-g' で取り消すコマンドは `keyboard-quit' ではなく
   ;; `minibuffer-keyboard-quit' / `abort-minibuffers' になる (`abort-recursive-edit'
