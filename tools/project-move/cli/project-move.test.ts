@@ -13,12 +13,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { defaultMovesLogPath } from "../src/moves.ts";
 
 const CLI = join(import.meta.dir, "project-move.ts");
@@ -117,7 +119,16 @@ function fakeGhqPath(): string {
   return binDir;
 }
 
-function runCli(args: string[], opts: { fakeGhq?: boolean } = {}) {
+/** 指定した理由で失敗する偽の `ghq` を PATH に差し込む (I7 用)。 */
+function fakeGhqFailingWith(reason: string): string {
+  const binDir = mkdtempSync(join(tmpdir(), "project-move-cli-ghq-fail-"));
+  const script = join(binDir, "ghq");
+  writeFileSync(script, `#!/bin/sh\necho "${reason}" >&2\nexit 1\n`);
+  chmodSync(script, 0o755);
+  return binDir;
+}
+
+function runCli(args: string[], opts: { fakeGhq?: boolean; ghqPath?: string; cwd?: string } = {}) {
   const env = { ...process.env };
   // HOME を tmpdir 配下に差し替える。project-move.ts は local ルート
   // (`homedir()/projects/local`) と moves ログ (`defaultMovesLogPath(homedir())`)
@@ -128,7 +139,15 @@ function runCli(args: string[], opts: { fakeGhq?: boolean } = {}) {
   if (opts.fakeGhq) {
     env.PATH = `${fakeGhqPath()}:${process.env.PATH ?? ""}`;
   }
-  const proc = Bun.spawnSync(["bun", CLI, ...args], { env, stdout: "pipe", stderr: "pipe" });
+  if (opts.ghqPath) {
+    env.PATH = `${opts.ghqPath}:${process.env.PATH ?? ""}`;
+  }
+  const proc = Bun.spawnSync(["bun", CLI, ...args], {
+    env,
+    cwd: opts.cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   return {
     exitCode: proc.exitCode,
     stdout: proc.stdout.toString(),
@@ -184,4 +203,152 @@ test("--to を指定しない従来の経路は壊れていない (回帰)", () 
   // 別経路)。fakeHome を使っているので実ホームの projects/local は参照しない。
   expect(stdout).toContain(`local ${src} -> `);
   expect(stdout).toContain(`${fakeHome}/projects/local/plain-dir`);
+});
+
+// --- C1: 相対パスを絶対パスに正規化する ------------------------------------
+
+test("C1: 相対パスの位置引数と --to を絶対パスに正規化してから使う (回帰テスト)", () => {
+  // 実際に移動まで行い、「絶対パスで呼んだのと同じ移動先になる」ことを
+  // ファイルシステム上の結果で確認する (root 自体が /var -> /private/var の
+  // シンボリックリンクを経由することがあり、サブプロセス内の process.cwd() は
+  // 正規化された /private 側を返すため、stdout の文字列を素の root 文字列と
+  // 比較すると環境依存で揺れる。移動が実際に正しい場所へ届いたかどうかで見る)。
+  const src = join(root, "rel-src");
+  mkdirSync(src, { recursive: true });
+  const toAbs = join(root, "rel-dest");
+
+  const relSrc = relative(root, src);
+  const relTo = relative(root, toAbs);
+
+  const { exitCode, stdout } = runCli(["--to", relTo, relSrc], { cwd: root });
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain("local ");
+  // 相対パスで呼んでも、絶対パスで呼んだのと同じ移動先に実際に移動している
+  expect(existsSync(toAbs)).toBe(true);
+  expect(existsSync(src)).toBe(false);
+});
+
+test("C1: 移動元が存在しない絶対パスに解決される場合はエラーで終了し、何も動かさない", () => {
+  const missing = join(root, "does-not-exist");
+  const { exitCode, stderr } = runCli(["--dry-run", missing]);
+  expect(exitCode).not.toBe(0);
+  expect(stderr).toContain(missing);
+});
+
+// --- I6/I10: 1 件の失敗が残りのバッチを道連れにしない -----------------------
+
+test("I6: 1 件の移動が失敗しても他のディレクトリは処理を続け、失敗した分だけログに残らない", () => {
+  const srcA = join(root, "dirA");
+  const srcB = join(root, "dirB");
+  mkdirSync(srcA, { recursive: true });
+  mkdirSync(srcB, { recursive: true });
+  // dirA の行き先を先回りして塞いでおき、"already exists" で失敗させる
+  const localRoot = join(fakeHome, "projects", "local");
+  mkdirSync(join(localRoot, "dirA"), { recursive: true });
+
+  const { exitCode, stderr } = runCli([srcA, srcB], { fakeGhq: true });
+
+  expect(exitCode).toBe(0);
+  expect(stderr).toContain("failed to move");
+  // 失敗した dirA は移動されていない
+  expect(existsSync(srcA)).toBe(true);
+  // 成功した dirB はちゃんと移動されている
+  expect(existsSync(srcB)).toBe(false);
+  expect(existsSync(join(localRoot, "dirB"))).toBe(true);
+
+  // ログには成功した dirB だけが載る (失敗した dirA は載らない)
+  const log = readFileSync(defaultMovesLogPath(fakeHome), "utf8");
+  expect(log).toContain("dirB");
+  expect(log).not.toContain("/dirA\t");
+});
+
+// --- I7: ghq が判定不能な理由を返したら local に落とさず止める --------------
+
+test("I7: ghq が既知の理由 (remote 無し/非 git) 以外で失敗したら、local に落とさず理由を出して止まる", () => {
+  const src = join(root, "weird-project");
+  mkdirSync(src, { recursive: true });
+  const ghqPath = fakeGhqFailingWith("ghq: unexpected internal error");
+
+  const { exitCode, stderr } = runCli(["--dry-run", src], { ghqPath });
+
+  expect(exitCode).not.toBe(0);
+  expect(stderr).toContain("unexpected internal error");
+  // local には落ちていない (何も出力されていないはず、あるいは少なくとも
+  // "local " という行が出ていないこと)
+  expect(existsSync(join(fakeHome, "projects", "local", "weird-project"))).toBe(false);
+});
+
+// --- I8: 移動前に uncommitted / unpushed / stash を見せる -------------------
+
+test("I8: 移動前に unpushed と stash も表示する", () => {
+  const src = join(root, "repo-with-history");
+  mkdirSync(src, { recursive: true });
+  spawnSync("git", ["init", "-q"], { cwd: src });
+  spawnSync("git", ["config", "user.email", "t@example.com"], { cwd: src });
+  spawnSync("git", ["config", "user.name", "t"], { cwd: src });
+  writeFileSync(join(src, "a.txt"), "1\n");
+  spawnSync("git", ["add", "a.txt"], { cwd: src });
+  spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: src });
+  writeFileSync(join(src, "a.txt"), "changed\n");
+  spawnSync("git", ["stash", "push", "-q", "-m", "wip"], { cwd: src });
+
+  const { exitCode, stdout } = runCli(["--dry-run", src], { fakeGhq: true });
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain("unpushed:");
+  expect(stdout).toContain("stash:");
+  expect(stdout).toContain("wip");
+});
+
+// --- I9: --fixups-only -------------------------------------------------------
+
+test("I9: --fixups-only <old> <new> は移動せず手当てだけを走らせる", () => {
+  const oldPath = join(root, "already-moved-old");
+  const newPath = join(root, "already-moved-new");
+  mkdirSync(join(newPath, ".claude"), { recursive: true });
+  writeFileSync(
+    join(newPath, ".claude", "settings.local.json"),
+    JSON.stringify({ permissions: { allow: [`Bash(grep x ${oldPath}/a)`] } }),
+  );
+
+  const { exitCode, stdout } = runCli(["--fixups-only", oldPath, newPath]);
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain(`fixups ${oldPath} -> ${newPath}`);
+  const settings = readFileSync(join(newPath, ".claude", "settings.local.json"), "utf8");
+  expect(settings).toContain(`${newPath}/a`);
+  expect(settings).not.toContain(oldPath);
+});
+
+test("I9: --fixups-only は位置引数を省略すると移動ログの全行を対象にする", () => {
+  const oldPath = join(root, "log-old");
+  const newPath = join(root, "log-new");
+  mkdirSync(join(newPath, ".claude"), { recursive: true });
+  writeFileSync(
+    join(newPath, ".claude", "settings.local.json"),
+    JSON.stringify({ permissions: { allow: [`Bash(grep x ${oldPath}/a)`] } }),
+  );
+  const log = defaultMovesLogPath(fakeHome);
+  mkdirSync(dirname(log), { recursive: true });
+  writeFileSync(log, `2026-09-11T00:00:00.000Z\t${oldPath}\t${newPath}\n`);
+
+  const { exitCode, stdout } = runCli(["--fixups-only"]);
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain(`fixups ${oldPath} -> ${newPath}`);
+  const settings = readFileSync(join(newPath, ".claude", "settings.local.json"), "utf8");
+  expect(settings).toContain(`${newPath}/a`);
+});
+
+test("I9: --fixups-only と --to は併用できない", () => {
+  const { exitCode, stderr } = runCli(["--fixups-only", "--to", "/x", "/y"]);
+  expect(exitCode).not.toBe(0);
+  expect(stderr).toContain("--fixups-only");
+});
+
+test("I9: --fixups-only に位置引数を 1 つだけ渡すとエラーで終了する", () => {
+  const { exitCode, stderr } = runCli(["--fixups-only", "/only-one"]);
+  expect(exitCode).not.toBe(0);
+  expect(stderr).toContain("--fixups-only");
 });
