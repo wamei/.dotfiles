@@ -95,6 +95,129 @@
   ;; 出すものが無ければ区切りも要らない
   (should (equal (wamei/term-modeline--status-string 0 t) "")))
 
+;;; 実行時刻
+
+(ert-deftest wamei/term-modeline-test-format-duration-omits-empty-units ()
+  "0 の単位は出さない。間の単位だけが 0 でも詰める。"
+  (should (equal (wamei/term-modeline--format-duration 18) "18s"))
+  (should (equal (wamei/term-modeline--format-duration 171) "2m51s"))
+  (should (equal (wamei/term-modeline--format-duration 3600) "1h"))
+  (should (equal (wamei/term-modeline--format-duration 3605) "1h5s"))
+  (should (equal (wamei/term-modeline--format-duration 86399) "23h59m59s")))
+
+(ert-deftest wamei/term-modeline-test-format-duration-truncates-to-seconds ()
+  "既定はミリ秒を出さない。端数は切り捨てる (実行中に数字が戻らないため)。"
+  (should (equal (wamei/term-modeline--format-duration 18.9) "18s")))
+
+(ert-deftest wamei/term-modeline-test-format-duration-milliseconds ()
+  "ミリ秒まで求められたら ms の単位を足す。"
+  (should (equal (wamei/term-modeline--format-duration 0.045 'milliseconds) "45ms"))
+  (should (equal (wamei/term-modeline--format-duration 18.412 'milliseconds) "18s412ms"))
+  (should (equal (wamei/term-modeline--format-duration 171.32 'milliseconds) "2m51s320ms"))
+  (should (equal (wamei/term-modeline--format-duration 3843.456 'milliseconds)
+                 "1h4m3s456ms")))
+
+(ert-deftest wamei/term-modeline-test-format-duration-zero ()
+  "全部の単位が 0 なら、一番小さい単位で 0 を出す (空にしない)。"
+  (should (equal (wamei/term-modeline--format-duration 0) "0s"))
+  (should (equal (wamei/term-modeline--format-duration 0 'milliseconds) "0ms")))
+
+(ert-deftest wamei/term-modeline-test-format-duration-clamps-negative ()
+  "時計が巻き戻っても負の時間は出さない。"
+  (should (equal (wamei/term-modeline--format-duration -5) "0s")))
+
+(ert-deftest wamei/term-modeline-test-time-string-before-any-command ()
+  "まだ何も実行していなければ出さない。"
+  (should-not (wamei/term-modeline--time-string nil nil 0 t)))
+
+(ert-deftest wamei/term-modeline-test-time-string-while-running ()
+  "実行中は開始時刻 (年月日から秒まで) と、秒までの経過時間。"
+  (should (equal (wamei/term-modeline--time-string 50940 nil 50958 t)
+                 "1970-01-01 14:09:00- (18s)")))
+
+(ert-deftest wamei/term-modeline-test-time-string-after-finish ()
+  "終わったら終了時刻が埋まる。所要時間はここで初めてミリ秒まで出す。"
+  (should (equal (wamei/term-modeline--time-string 50940 51111.32 99999 t)
+                 "1970-01-01 14:09:00-14:11:51 (2m51s320ms)")))
+
+(ert-deftest wamei/term-modeline-test-time-string-repeats-date-across-midnight ()
+  "日をまたいだときだけ終了時刻にも年月日を付ける (どの日か分からなくなるため)。"
+  (should (equal (wamei/term-modeline--time-string 86390 86410 99999 t)
+                 "1970-01-01 23:59:50-1970-01-02 00:00:10 (20s)")))
+
+(ert-deftest wamei/term-modeline-test-state-includes-time ()
+  "1 行に出す材料に実行時刻が入る。"
+  (with-temp-buffer
+    (rename-buffer "*term: dotfiles*")
+    (setq wamei/term-modeline--start-time 50940
+          wamei/term-modeline--end-time 51111)          ; ちょうど 2m51s000ms
+    ;; ここはタイムゾーンに依らせない (`--state' はローカルで出す)。
+    (should (string-match-p
+             "\\`[0-9]\\{4\\}-[0-9][0-9]-[0-9][0-9] [0-9:]\\{8\\}-[0-9:]\\{8\\} (2m51s)\\'"
+             (plist-get (wamei/term-modeline--state) :time)))))
+
+;;; 毎秒の再描画
+
+(defmacro wamei/term-modeline-test--with-clean-tick (&rest body)
+  "タイマーの状態を持ち込まずに BODY を走らせ、残ったタイマーを片付ける。"
+  (declare (indent 0))
+  `(let ((wamei/term-modeline--running nil)
+         (wamei/term-modeline--tick-timer nil))
+     (unwind-protect (progn ,@body)
+       (wamei/term-modeline--stop-tick))))
+
+(ert-deftest wamei/term-modeline-test-tick-runs-only-while-a-command-runs ()
+  "コマンドが走っている間だけ 1 秒タイマーを回す。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (should-not wamei/term-modeline--tick-timer)
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (should (memq wamei/term-modeline--tick-timer timer-list))
+      (wamei/term-modeline--on-command-finish (current-buffer) 0)
+      (should-not wamei/term-modeline--tick-timer))))
+
+(ert-deftest wamei/term-modeline-test-tick-keeps-running-for-other-terminals ()
+  "1 つ終わっても他の端末が走っていればタイマーは止めない。"
+  (wamei/term-modeline-test--with-clean-tick
+    (let ((a (generate-new-buffer " *term-a*"))
+          (b (generate-new-buffer " *term-b*")))
+      (unwind-protect
+          (progn
+            (wamei/term-modeline--on-command-start a)
+            (wamei/term-modeline--on-command-start b)
+            (wamei/term-modeline--on-command-finish a 0)
+            (should wamei/term-modeline--tick-timer)
+            (wamei/term-modeline--on-command-finish b 0)
+            (should-not wamei/term-modeline--tick-timer))
+        (kill-buffer a)
+        (kill-buffer b)))))
+
+(ert-deftest wamei/term-modeline-test-tick-drops-dead-buffers ()
+  "端末を殺したままコマンドが終わらなくても、次の tick でタイマーは止まる。"
+  (wamei/term-modeline-test--with-clean-tick
+    (let ((buffer (generate-new-buffer " *term-c*")))
+      (wamei/term-modeline--on-command-start buffer)
+      (kill-buffer buffer)
+      (wamei/term-modeline--tick)
+      (should-not wamei/term-modeline--tick-timer))))
+
+(ert-deftest wamei/term-modeline-test-command-start-records-time ()
+  "開始で開始時刻が入り、終了時刻は空く。終了で終了時刻が入る。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (should wamei/term-modeline--start-time)
+      (should-not wamei/term-modeline--end-time)
+      (wamei/term-modeline--on-command-finish (current-buffer) 0)
+      (should wamei/term-modeline--end-time))))
+
+(ert-deftest wamei/term-modeline-test-prompt-redraw-does-not-record-end ()
+  "C を伴わない D (プロンプトの再描画) では終了時刻を入れない。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-finish (current-buffer) 0)
+      (should-not wamei/term-modeline--end-time))))
+
 ;;; 1 行の組み立て
 
 (defun wamei/term-modeline-test--state (&rest overrides)
@@ -143,12 +266,81 @@
     (should (string-suffix-p "…" line))))
 
 (ert-deftest wamei/term-modeline-test-render-faces ()
-  "タイトルは mode-line-buffer-id、番号とディレクトリは shadow。"
+  "タイトルは mode-line-buffer-id、番号とディレクトリは控えめなほう。"
   (let ((line (wamei/term-modeline--render (wamei/term-modeline-test--state) 60)))
-    (should (eq (get-text-property (string-match "2/3" line) 'face line) 'shadow))
+    (should (eq (get-text-property (string-match "2/3" line) 'face line)
+                'wamei/term-modeline-dim))
     (should (eq (get-text-property (string-match "ls" line) 'face line)
                 'mode-line-buffer-id))
-    (should (eq (get-text-property (string-match "src" line) 'face line) 'shadow))))
+    (should (eq (get-text-property (string-match "src" line) 'face line)
+                'wamei/term-modeline-dim))))
+
+(ert-deftest wamei/term-modeline-test-render-time-after-title ()
+  "実行時刻はタイトルのすぐ右、ディレクトリの手前。"
+  (should (equal (substring-no-properties
+                  (wamei/term-modeline--render
+                   (wamei/term-modeline-test--state
+                    :time "2026-09-10 22:42:15-22:45:06 (2m51s320ms)")
+                   80))
+                 (concat "2/3  ls -al  2026-09-10 22:42:15-22:45:06 (2m51s320ms)"
+                         "   src/lib"))))
+
+(ert-deftest wamei/term-modeline-test-render-drops-dir-before-time ()
+  "幅が足りないとき、先に捨てるのはディレクトリ。"
+  (let ((line (substring-no-properties
+               (wamei/term-modeline--render
+                (wamei/term-modeline-test--state
+                 :title "npm run build:watch"
+                 :time "2026-09-10 22:42:15-22:45:06 (2m51s320ms)")
+                60))))
+    (should-not (string-match-p "src/lib" line))
+    (should (string-match-p "2026-09-10 22:42:15" line))
+    (should (<= (string-width line) 60))))
+
+(ert-deftest wamei/term-modeline-test-render-drops-time-when-still-narrow ()
+  "ディレクトリを捨てても足りなければ実行時刻も捨てて、タイトルに幅を回す。"
+  (let ((line (substring-no-properties
+               (wamei/term-modeline--render
+                (wamei/term-modeline-test--state
+                 :title "npm run build:watch"
+                 :time "2026-09-10 22:42:15-22:45:06 (2m51s320ms)")
+                40))))
+    (should-not (string-match-p "2026-09-10" line))
+    (should (string-prefix-p "2/3  npm run" line))
+    (should (<= (string-width line) 40))))
+
+(ert-deftest wamei/term-modeline-test-faces-follow-selection ()
+  "非アクティブな mode-line では暗いほうの face を使う。"
+  (should (eq (wamei/term-modeline--time-face t) 'wamei/term-modeline-time))
+  (should (eq (wamei/term-modeline--time-face nil)
+              'wamei/term-modeline-time-inactive))
+  (should (eq (wamei/term-modeline--dim-face t) 'wamei/term-modeline-dim))
+  (should (eq (wamei/term-modeline--dim-face nil)
+              'wamei/term-modeline-dim-inactive)))
+
+(ert-deftest wamei/term-modeline-test-render-dims-when-not-selected ()
+  "選択していないウィンドウでは、時刻も番号も cwd も暗いほうへ落とす。"
+  (let ((line (wamei/term-modeline--render
+               (wamei/term-modeline-test--state
+                :time "2026-09-10 22:42:15- (18s)" :selected nil)
+               80)))
+    (should (eq (get-text-property (string-match "2026" line) 'face line)
+                'wamei/term-modeline-time-inactive))
+    (should (eq (get-text-property (string-match "2/3" line) 'face line)
+                'wamei/term-modeline-dim-inactive))
+    (should (eq (get-text-property (string-match "src" line) 'face line)
+                'wamei/term-modeline-dim-inactive))))
+
+(ert-deftest wamei/term-modeline-test-render-time-face ()
+  "選択の有無が状態に無ければアクティブなほう。
+実行時刻は専用の face を持つ。`shadow' では薄すぎ、地の色ではタイトルと
+同じ強さになる。"
+  (let ((line (wamei/term-modeline--render
+               (wamei/term-modeline-test--state
+                :time "2026-09-10 22:42:15- (18s)")
+               80)))
+    (should (eq (get-text-property (string-match "2026" line) 'face line)
+                'wamei/term-modeline-time))))
 
 ;;; mode-line 共通部品 (claude-usage.el と共有)
 
