@@ -1,5 +1,10 @@
 # メモを画面中央の posframe で開く 実装計画
 
+> この plan は実行時点の記録であり、その後
+> `docs/superpowers/specs/2026-09-10-project-memo-posframe-design.md`
+> で改訂された (handoff の削除、`C-x m` への付け替えなど)。内容はここでは
+> 直さず、最新の設計は上記 spec を参照すること。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `C-x C-m` の既定の表示先を画面中央の posframe に変え、本文 window 表示は `C-u` 付きに移し、全体メモを `C-x C-S-m` に分ける。
