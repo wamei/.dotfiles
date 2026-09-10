@@ -18,13 +18,15 @@
 ;;   (`posframe-workable-p' が nil) では `C-u' 無しでも本文 window に落とす
 ;; - posframe はフォーカスが外れたときと、もう一度トグルしたときに閉じる。
 ;;   いずれも閉じる前に保存する。ESC / C-g では閉じない (どちらも org の
-;;   編集中に使う)。posframe にフォーカスがあるまま find-file や
-;;   magit-status を実行しても、posframe の window は posframe.el が強い
-;;   dedicated にしている (`set-window-dedicated-p' に t) ので、そのバッファ
-;;   は posframe には入らず display-buffer が親フレームに出す。つまり実際に
-;;   通る経路はどちらも「フォーカスが外れた」側になる。メモ以外が入った
-;;   ときの経路 (`wamei/project-memo--posframe-action' の 'handoff) は、
-;;   その dedicated が何かの拍子に外れた場合の保険として残してある
+;;   編集中に使う)。`posframe-show' は child frame の root window を強い
+;;   dedicated にする (posframe.el) が、`wamei/project-memo-posframe-show' は
+;;   show の直後にそれを解除する。メモの小窓にフォーカスがある状態で
+;;   find-file や magit-status を実行したら、そのバッファは小窓自身の中に
+;;   開く。本文 window は一切触らない。トグル
+;;   (`wamei/project-memo--toggle') は小窓に映っているバッファ
+;;   (`wamei/project-memo--posframe-buffer-shown') を見て、要求されたメモ
+;;   本人ならそのまま閉じ、別のバッファ (別のメモ、または小窓の中で開いた
+;;   ファイル) なら閉じずに要求されたメモを出し直す
 ;;
 ;; 置き場をフラットにしたので、同名の repo が複数あると同じメモを共有する。
 ;; 「どこにある repo でも扱えること」を優先した結果として受け入れている。
@@ -258,18 +260,26 @@ MAIN-WINDOW が非 nil なら本文 window、nil なら画面中央の posframe 
 posframe が使えない環境 (`posframe-workable-p' が nil、batch や child frame
 非対応の端末) では MAIN-WINDOW によらず本文 window に落とす。
 
-同じ posframe 対象 (同じ BUFFER) を続けて求められたら閉じる (トグル)。
-別の対象を posframe で求められたときは、閉じずに `wamei/project-memo-posframe-show'
-へそのまま渡す。BUFFER の切り替えは同関数が既に持っている「先に古い方を
-隠す」処理 (Task 2) に任せる — ここで無条件に閉じると、閉じるだけで
-新しい対象を出さない動作になってしまう。表示先を本文 window に変えるとき
-だけ、ここで posframe を閉じる。"
+posframe が既に出ているときの分岐は「いま小窓に映っているバッファ」
+(`wamei/project-memo--posframe-buffer-shown') を見る。追跡変数
+(`wamei/project-memo-posframe-buffer') ではなく実際に映っているものを見る
+のは、`wamei/project-memo-posframe-show' が dedicated を外しているため、
+小窓の中で find-file した別のファイルや、それを経由せず映ったままの別の
+メモが、追跡変数とは無関係に映っていることがあるため。
+
+- 映っているのが BUFFER 自身 → 閉じる (トグル)
+- それ以外 (別のメモ、または小窓の中で開いたファイル) → 閉じずに BUFFER を
+  `wamei/project-memo-posframe-show' で出す。小窓の中でファイルを開いた後に
+  同じキーを押すとメモに戻り、もう一度押すと閉じる往復になる。BUFFER の
+  切り替えは同関数が既に持っている「先に古い方を隠す」処理に任せる
+
+表示先を本文 window に変えるときだけ、ここで posframe を閉じる。"
   (let* ((project (unless global (wamei/project-memo--project)))
          (buffer (wamei/project-memo-buffer project))
          (use-posframe (and (not main-window) (posframe-workable-p))))
     (cond
      (use-posframe
-      (if (eq (wamei/project-memo-posframe-buffer) buffer)
+      (if (eq (wamei/project-memo--posframe-buffer-shown) buffer)
           (wamei/project-memo-posframe-hide)
         (wamei/project-memo-posframe-show buffer)))
      (t
@@ -363,6 +373,11 @@ posframe はフレーム既定の色を使う。"
 `posframe--redirect-posframe-focus' でフォーカスを親フレームへ送り返すので、
 編集できない。カーソルも既定では隠されるので明示的に出す。
 
+`:window-point' を渡さないと `posframe-show' は毎回 point 0 に飛ばす
+(posframe.el の `posframe--create-posframe' が
+`(window-point (or window-point 0))' としている)。閉じて開き直しても
+前回いた場所に戻れるよう、BUFFER の現在の point を渡す。
+
 枠と背景は corfu / eldoc-box / vertico-posframe と同じ
 `wamei/popup-border' / `wamei/popup-body' から取る (init.el の
 *popup-appearance)。tty の罫線枠は同ブロックが display table に入れた
@@ -374,32 +389,64 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
 あとから `C-u' で本文 window に出したときモードラインが消えたままになる。
 バッファを壊さないために残す。
 
+`posframe-show' は child frame の root window を強い dedicated にする
+(posframe.el)。show の直後にそれを解除する。メモの小窓にフォーカスがある
+状態で `C-x C-f' や `magit-status' を実行したら、その小窓の中に開くように
+するため (本文 window は一切触らない)。dedicated を保ったままだと
+`set-window-buffer' がエラーになり `display-buffer' もこの window を避ける
+ので、他のバッファは強制的に親フレームへ出て行ってしまう。
+
 すでに別の BUFFER を出している posframe があれば、先にそれを隠す
 (`wamei/project-memo-posframe-hide' 経由で保存も伴う)。`posframe--frame' は
 バッファローカル (posframe.el) なので、隠さずに別バッファへ `posframe-show'
 すると古いフレームは追跡から外れたまま画面に残ってしまう。トグルや
 自動クローズなど `show' の呼び出し元が複数になる後続タスクのために、
-「show の前に自分で hide する」という前提を呼び出し側に負わせない。"
+「show の前に自分で hide する」という前提を呼び出し側に負わせない。
+
+`posframe-show' は `(selected-window)' の frame を親として使う
+(posframe.el、`:parent-frame' を渡す口が無い)。dedicated を外した (このあと)
+結果、小窓の中でファイルを開いて作業していることが正常な状態になったので、
+`selected-frame' が小窓 (前回の posframe 自身) のままこの関数が呼ばれる経路が
+実在する — 小窓の中で別のメモや `C-u' 無しの `C-x C-m' を求めたとき。
+その状態のまま `posframe-show' すると、親が小窓自身になった `parent-frame'
+チェーンを作ろうとして \"Circular specification of \\='parent-frame\\='\" で
+落ちる。`wamei/project-tabs-base-frame' (project-tabs.el) で最上位の実
+フレームまで遡ってから show するので、呼び出し時にどこが選択されていても
+親は常に本物のトップレベルフレームになる。
+
+`posframe-show' はフレームを使い回すとき (`posframe--create-posframe' が
+生死と直前の引数の両方を見て判定する) `set-window-buffer' を呼ばない —
+窓が既に強い dedicated で BUFFER 以外を映せない、という前提の上の最適化
+らしい。dedicated を外した今、小窓に別のバッファ (小窓の中で開いたファイル
+や別のメモ) が映ったままフレームを使い回すと、`posframe-show' に BUFFER を
+渡しても窓の中身はそのまま変わらない。`posframe-show' の返り値任せにせず、
+このあと自分で `set-window-buffer' と `set-window-point' をやり直す。"
   (when (and (wamei/project-memo-posframe-frame)
              (not (eq wamei/project-memo--posframe-buffer buffer)))
     (wamei/project-memo-posframe-hide))
   (setq wamei/project-memo--posframe-buffer buffer)
-  (setq wamei/project-memo--posframe-frame
-        (posframe-show
-         buffer
-         :poshandler #'posframe-poshandler-frame-center
-         :width (wamei/project-memo--posframe-size
-                 wamei/project-memo-posframe-width-ratio
-                 (frame-width) wamei/project-memo-posframe-min-width)
-         :height (wamei/project-memo--posframe-size
-                  wamei/project-memo-posframe-height-ratio
-                  (frame-height) wamei/project-memo-posframe-min-height)
-         :border-width 1
-         :border-color (wamei/project-memo--popup-color 'wamei/popup-border :background)
-         :background-color (wamei/project-memo--popup-color 'wamei/popup-body :background)
-         :accept-focus t
-         :cursor 'box
-         :respect-mode-line t))
+  (with-selected-frame (wamei/project-tabs-base-frame)
+    (setq wamei/project-memo--posframe-frame
+          (posframe-show
+           buffer
+           :poshandler #'posframe-poshandler-frame-center
+           :width (wamei/project-memo--posframe-size
+                   wamei/project-memo-posframe-width-ratio
+                   (frame-width) wamei/project-memo-posframe-min-width)
+           :height (wamei/project-memo--posframe-size
+                    wamei/project-memo-posframe-height-ratio
+                    (frame-height) wamei/project-memo-posframe-min-height)
+           :border-width 1
+           :border-color (wamei/project-memo--popup-color 'wamei/popup-border :background)
+           :background-color (wamei/project-memo--popup-color 'wamei/popup-body :background)
+           :accept-focus t
+           :cursor 'box
+           :respect-mode-line t
+           :window-point (with-current-buffer buffer (point))))
+    (let ((window (frame-selected-window wamei/project-memo--posframe-frame)))
+      (set-window-dedicated-p window nil)
+      (set-window-buffer window buffer)
+      (set-window-point window (with-current-buffer buffer (point)))))
   (add-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
   (select-frame-set-input-focus wamei/project-memo--posframe-frame)
   wamei/project-memo--posframe-frame)
@@ -418,7 +465,13 @@ tty には window ごとのフォーカスイベントが無いので、見え�
 frame に選択が残ると以後の入力がその不可視バッファに吸い込まれ、自然には
 復帰しない (`C-x C-f' を `C-g' で抜けた直後がまさにこれ)。既に posframe の
 外を選択しているときは触らない。トグルや別 window への移動で閉じる経路で
-選択を奪ってしまうため。"
+選択を奪ってしまうため。
+
+戻すときは `select-frame-set-input-focus' を先に呼ぶ。`select-window' は
+選択された frame の中の選択 window を変えるだけで、ウィンドウシステムの
+入力フォーカスまでは動かさない。child frame が OS レベルの入力フォーカス
+を持ったまま隠れると、親フレームのカーソルが非アクティブ表示 (見えなく)
+になる。"
   (let ((frame (wamei/project-memo-posframe-frame)))
     (when frame
       (wamei/project-memo-save-all)
@@ -427,7 +480,9 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
     (setq wamei/project-memo--posframe-frame nil)
     (setq wamei/project-memo--posframe-buffer nil)
     (when (and frame (eq (window-frame (selected-window)) frame))
-      (select-window (wamei/project-tabs-main-window))))
+      (let ((window (wamei/project-tabs-main-window)))
+        (select-frame-set-input-focus (window-frame window))
+        (select-window window))))
   nil)
 
 (defun wamei/project-memo--posframe-buffer-shown ()
@@ -438,20 +493,17 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 (defun wamei/project-memo--posframe-action ()
   "posframe に対していま取るべき動作。
 
-- nil      … そのまま (メモにフォーカスがある)
-- `hide'   … 隠す (フォーカスが Emacs 内の別の場所へ移った)
-- `handoff'… 隠して中身を本文 window へ渡す (メモ以外のバッファが入った)
+- nil    … そのまま (メモにフォーカスがある)
+- `hide' … 隠す (フォーカスが Emacs 内の別の場所へ移った)
 
-\='handoff は実際にはまず通らない保険。posframe.el は posframe の window を
-強い dedicated にする (`set-window-dedicated-p' に t、posframe.el の
-`posframe-show')。強い dedicated の window は `set-window-buffer' がエラーに
-なり、`switch-to-buffer' も `display-buffer' も避けるので、メモ以外のバッファ
-がここに入ることは事実上ない。メモにフォーカスがあるまま `find-file' や
-`magit-status' を実行すると、そのバッファは `display-buffer' が親フレームへ
-出し、posframe は下の \='hide (フォーカスが外れた) で閉じる。spec の 3 つ目の
-閉じる条件はそれで満たされている。この枝は、何かが dedicated を外して
-しまった場合にメモ以外のバッファが child frame に取り残されないようにする
-ためだけに残してある。
+`wamei/project-memo-posframe-show' が show の直後に dedicated を外して
+いるので、小窓の中で `find-file' や `magit-status' を実行してもそのバッファ
+は小窓自身に開く。以前あった「メモ以外のバッファが入ったら本文 window へ
+引き渡す」経路 (\\='handoff) は、dedicated を保つという前提ごと無くなった
+ので削除した。小窓に何が映っていても、フォーカスが小窓に留まっている限り
+ここは nil のまま — 閉じるかどうかの判断 (映っているのが要求されたメモ
+本人かどうか) はトグル側 (`wamei/project-memo--toggle') が
+`wamei/project-memo--posframe-buffer-shown' を見て行う。
 
 ミニバッファが立っている間は「フォーカスはまだ外れていない」と見て nil を
 返す。posframe の child frame は自分のミニバッファを持たず親フレームのもの
@@ -465,32 +517,19 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
     (cond
      ((active-minibuffer-window) nil)
      ((not (eq (selected-frame) frame)) 'hide)
-     ((not (wamei/project-memo-buffer-p (wamei/project-memo--posframe-buffer-shown)))
-      'handoff)
      (t nil))))
 
 (defun wamei/project-memo--posframe-post-command ()
-  "`post-command-hook' 用。posframe を閉じるべきなら閉じる。
+  "`post-command-hook' 用。フォーカスが外れていたら posframe を閉じる。
 
-閉じる条件のうち「フォーカスが外れた」と「メモ以外のバッファが入った」を
-ここで見る (トグルで閉じるのは `wamei/project-memo-toggle' 側)。
-
-日常的に通るのは \='hide の方。`find-file' や `magit-status' をメモから実行
-した場合も、そのバッファは posframe ではなく親フレームに出て、posframe は
-フォーカスが外れたものとして閉じる。\='handoff はそれが成り立たなくなった
-ときの保険で、なぜ実際には通らないかは `wamei/project-memo--posframe-action'
-の docstring に書いた。通ったときは、取り残されたバッファを本文 window へ
-引き取る。`post-command-hook' は再描画の前に走るので、別バッファが posframe
-に見える瞬間は基本的に出ない。"
-  (pcase (wamei/project-memo--posframe-action)
-    ('hide (wamei/project-memo-posframe-hide))
-    ('handoff
-     (let ((buffer (wamei/project-memo--posframe-buffer-shown))
-           (window (wamei/project-tabs-main-window)))
-       (wamei/project-memo-posframe-hide)
-       (when (buffer-live-p buffer)
-         (set-window-buffer window buffer))
-       (select-window window))))
+閉じる条件のうち「フォーカスが外れた」をここで見る (トグルで閉じるのは
+`wamei/project-memo-toggle' 側)。dedicated を外しているので (
+`wamei/project-memo-posframe-show')、小窓の中で `find-file' や
+`magit-status' を実行してもそのバッファは小窓自身に開く。以前あった
+「メモ以外のバッファが入ったら本文 window へ引き渡す」経路は、その前提
+(dedicated を保つ) ごと無くなったので削除した。"
+  (when (eq (wamei/project-memo--posframe-action) 'hide)
+    (wamei/project-memo-posframe-hide))
   nil)
 
 ;;; 自動保存
