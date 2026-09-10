@@ -20,6 +20,10 @@ test("列が足りない行は行番号付きで落とす", () => {
   expect(() => parseMovesTsv("2026-09-10T00:00:00.000Z\t/only-one")).toThrow(/line 1/);
 });
 
+test("列が多い行は行番号付きで落とす", () => {
+  expect(() => parseMovesTsv("2026-09-10T00:00:00.000Z\t/a\t/b\textra")).toThrow(/line 1/);
+});
+
 test("行の書式は timestamp/from/to のタブ区切り", () => {
   const at = new Date("2026-09-10T12:34:56.000Z");
   expect(formatMoveRow({ from: "/a", to: "/b" }, at)).toBe(
