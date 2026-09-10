@@ -71,26 +71,6 @@ function parseArgs(argv: string[]): {
   return { dryRun, options, positional };
 }
 
-/**
- * Claude が起動中かどうか。
- *
- * 本体はテスト時に exec 関数を差し替えられる (`isClaudeRunning(exec)`) が、
- * CLI はサブプロセスとして起動するテストしかできず、JS の関数を直接注入する
- * 経路が無い。かといって PATH に偽の pgrep を置く方式は、テストごとに
- * tmpdir + PATH 操作が要り、他の pgrep 呼び出し (もしあれば) にも影響しうる。
- * ここでは環境変数 1 個で上書きできる口を用意する方式を選んだ。CLI 引数に
- * 混ぜないのは、実運用のコマンドラインに紛れて誤操作の温床になるのを避けるため
- * (環境変数ならテストプロセスの env だけに閉じ、対話シェルで誤って残る心配が
- * ない)。未設定なら通常どおり本物の pgrep を使う。
- */
-function claudeRunning(): boolean {
-  const fakeStatus = process.env.CLAUDE_STATE_MOVE_TEST_PGREP_STATUS;
-  if (fakeStatus !== undefined) {
-    return isClaudeRunning(() => Number(fakeStatus));
-  }
-  return isClaudeRunning();
-}
-
 const { dryRun, options, positional } = parseArgs(process.argv.slice(2));
 
 const home = homedir();
@@ -112,7 +92,7 @@ if (positional.length === 2) {
   moves = parseMovesTsv(await readFile(log, "utf8"));
 }
 
-if (!dryRun && claudeRunning()) {
+if (!dryRun && isClaudeRunning()) {
   console.error(
     "claude is running. ~/.claude.json is rewritten continuously while it runs,\n" +
       "so this would be overwritten. quit every claude session and retry.",

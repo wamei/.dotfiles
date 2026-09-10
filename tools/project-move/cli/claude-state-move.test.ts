@@ -10,7 +10,7 @@
 // 本物の ~/.claude / ~/.claude.json には一切触れない。paths は全て
 // --claude-home / --claude-json / --history で明示的に tmpdir 配下を指す。
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,9 +32,38 @@ function baseArgs(): string[] {
   ];
 }
 
-function runCli(args: string[], env: Record<string, string> = {}) {
+/**
+ * 偽の pgrep を用意し、それを含むディレクトリのパスを返す。
+ *
+ * isClaudeRunning() は `spawnSync("pgrep", ["-x", "claude"])` を呼ぶだけで、
+ * CLI 側にテスト用の分岐を注入する経路は無い。以前は環境変数
+ * (CLAUDE_STATE_MOVE_TEST_PGREP_STATUS) でこれを迂回していたが、レビューで
+ * 「本番コードに安全ゲートの迂回路を置くと、シェルに export が 1 つ残るだけで
+ * 『Claude 起動中は絶対に書き換えない』という保証が消え、しかも壊れるのは
+ * ~/.claude.json で被害に気付きにくい」と指摘され、迂回路ごと撤回した。
+ *
+ * 代わりに、CLI を起動するサブプロセスの PATH の先頭に、実行可能な偽の
+ * `pgrep` を置いたディレクトリを差し込む。こうすると本番コードは一切変えず、
+ * `isClaudeRunning` 内部の `spawnSync` 呼び出しを含む本物の経路をそのまま
+ * 通しつつ、その先の pgrep の結果だけを差し替えられる (環境変数で
+ * isClaudeRunning 自体を丸ごと迂回するより強い検証になる)。
+ */
+function fakePgrepPath(exitCode: number): string {
+  const binDir = mkdtempSync(join(tmpdir(), `claude-state-cli-pgrep-${exitCode}-`));
+  const script = join(binDir, "pgrep");
+  writeFileSync(script, `#!/bin/sh\nexit ${exitCode}\n`);
+  chmodSync(script, 0o755);
+  return binDir;
+}
+
+function runCli(args: string[], opts: { fakePgrepExit?: number } = {}) {
+  const env = { ...process.env };
+  if (opts.fakePgrepExit !== undefined) {
+    const binDir = fakePgrepPath(opts.fakePgrepExit);
+    env.PATH = `${binDir}:${process.env.PATH ?? ""}`;
+  }
   const proc = Bun.spawnSync(["bun", CLI, ...args], {
-    env: { ...process.env, ...env },
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -85,13 +114,20 @@ test("--from-log がログファイルを読む", () => {
 
 test("プロセスゲート: claude 起動中と判定されたら exit 1 で何も書き換えない", () => {
   const before = readFileSync(claudeJson, "utf8");
-  const { exitCode, stderr } = runCli(
-    [...baseArgs(), "/old/path", "/new/path"],
-    { CLAUDE_STATE_MOVE_TEST_PGREP_STATUS: "0" },
-  );
+  const { exitCode, stderr } = runCli([...baseArgs(), "/old/path", "/new/path"], {
+    fakePgrepExit: 0, // pgrep -x claude が見つかった (= 起動中) を模す
+  });
   expect(exitCode).toBe(1);
   expect(stderr).toContain("claude is running");
   expect(readFileSync(claudeJson, "utf8")).toBe(before);
+});
+
+test("プロセスゲート: claude 停止中なら通過して通常どおり実行できる", () => {
+  const { exitCode, stdout } = runCli([...baseArgs(), "/old/path", "/new/path"], {
+    fakePgrepExit: 1, // pgrep が該当プロセス無しを模す (= 停止中)
+  });
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain("--- applied ---");
 });
 
 test("衝突ゲート: 実適用は衝突があると exit 1 で終わり、ファイルを 1 つも変えない", () => {
@@ -106,10 +142,9 @@ test("衝突ゲート: 実適用は衝突があると exit 1 で終わり、フ�
     ].join("\n"),
   );
 
-  const { exitCode, stderr } = runCli(
-    [...baseArgs(), "--from-log", log],
-    { CLAUDE_STATE_MOVE_TEST_PGREP_STATUS: "1" },
-  );
+  const { exitCode, stderr } = runCli([...baseArgs(), "--from-log", log], {
+    fakePgrepExit: 1, // 停止中にしてプロセスゲートを通過させ、衝突ゲートだけを見る
+  });
   expect(exitCode).toBe(1);
   expect(stderr).toContain("refusing to apply");
   expect(readFileSync(claudeJson, "utf8")).toBe(before);
