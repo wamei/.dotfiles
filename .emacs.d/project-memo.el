@@ -339,13 +339,18 @@ posframe が使えない環境では `C-u' 無しでも本文 window に出る�
        wamei/project-memo--posframe-frame))
 
 (defun wamei/project-memo-posframe-buffer ()
-  "posframe に出しているメモバッファ。出ていなければ nil。
+  "posframe に対して最後に show を求めたバッファ。出ていなければ nil。
 
-表示先を選ぶ層 (`wamei/project-memo--toggle') はこれを見る。内部変数を
-直接読ませないのは、あちらが posframe 層より前に書かれていて前方参照に
-なる (byte-compile が free variable を警告する) のと、表示先の判断に
-posframe 層の内部を覗かせないため。フレームが死んでいるときに nil を
-返すのは `wamei/project-memo-posframe-frame' と同じ扱い。"
+`wamei/project-memo--posframe-buffer' の公開アクセサ。フレームが死んで
+いるときに nil を返すのは `wamei/project-memo-posframe-frame' と同じ扱い。
+
+表示先を選ぶ層 (`wamei/project-memo--toggle') はこれではなく「実際に
+小窓に映っているバッファ」(`wamei/project-memo--posframe-buffer-shown')
+を見て閉じる/出すを判断する。`wamei/project-memo-posframe-show' が
+dedicated を外しているため、最後に要求したバッファと実際に映っている
+バッファが食い違うことがあり (小窓の中で find-file した場合など)、
+トグルの判断にはそちらが要る。このアクセサは「最後に何を要求したか」を
+読みたい側 (テストなど) のために残してある。"
   (and (wamei/project-memo-posframe-frame)
        wamei/project-memo--posframe-buffer))
 
@@ -420,7 +425,20 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
 らしい。dedicated を外した今、小窓に別のバッファ (小窓の中で開いたファイル
 や別のメモ) が映ったままフレームを使い回すと、`posframe-show' に BUFFER を
 渡しても窓の中身はそのまま変わらない。`posframe-show' の返り値任せにせず、
-このあと自分で `set-window-buffer' と `set-window-point' をやり直す。"
+このあと自分で `set-window-buffer' と `set-window-point' をやり直す。
+バッファが既に映っているときは `set-window-buffer' を呼ばない。無条件に
+呼ぶと同じバッファを映しているときも `window-start' がリセットされ、
+`window-buffer-change-functions' が child frame で発火してしまう
+(project-tabs.el の `wamei/project-tabs--pin-name-soon' がこれに載っている
+ので、素通しだと再表示のたびに無駄な `run-at-time' が積まれる)。
+
+`(frame-selected-window frame)' ではなく `(frame-root-window frame)' で
+window を取る。posframe.el 自身が同じ window を `posframe--create-posframe'
+でこの取り方 (`frame-root-window') をしている (create 時の
+`set-window-buffer' / `set-window-dedicated-p' 呼び出し箇所) ので、posframe
+が「その child frame の window」として扱っているものに合わせる。child frame
+は `unsplittable' なので selected-window と root-window は今のところ一致
+するが、指しているものが違うと読めてしまうのは避けたい。"
   (when (and (wamei/project-memo-posframe-frame)
              (not (eq wamei/project-memo--posframe-buffer buffer)))
     (wamei/project-memo-posframe-hide))
@@ -443,9 +461,10 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
            :cursor 'box
            :respect-mode-line t
            :window-point (with-current-buffer buffer (point))))
-    (let ((window (frame-selected-window wamei/project-memo--posframe-frame)))
+    (let ((window (frame-root-window wamei/project-memo--posframe-frame)))
       (set-window-dedicated-p window nil)
-      (set-window-buffer window buffer)
+      (unless (eq (window-buffer window) buffer)
+        (set-window-buffer window buffer))
       (set-window-point window (with-current-buffer buffer (point)))))
   (add-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
   (select-frame-set-input-focus wamei/project-memo--posframe-frame)
@@ -455,10 +474,17 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
   "メモの posframe を保存してから隠す。出ていなければ何もしない。
 
 追跡の後始末 (hook の除去と変数の nil 化) はフレームが生きているかに
-関わらず必ず行う。メモバッファを kill すると posframe の dedicated window
-ごと child frame が消えるので、`frame-live-p' が nil になった状態でここへ
-来る経路が実在する。`when' の中に畳むと、その場合に `post-command-hook' の
-エントリと死んだバッファへの参照がセッションの残りの間ずっと残る。
+関わらず必ず行う。フレームが何らかの外部要因 (`delete-frame' を直接呼ぶ、
+`posframe-delete-all' など) で先に死んでいる状態でここへ来る経路がある。
+`when' の中に畳むと、その場合に `post-command-hook' のエントリと死んだ
+バッファへの参照がセッションの残りの間ずっと残る。
+
+なお dedicated を外した (`wamei/project-memo-posframe-show') ので、メモ
+バッファを kill しても posframe.el 自身がこの child frame を道連れに
+削除することはもう無い (`replace-buffer-in-windows' は dedicated でない
+window を単に `switch-to-prev-buffer' で差し替えるだけで、フレームは
+生きたまま残る)。その代わりの後始末は `wamei/project-memo--posframe-action'
+の「追跡バッファが死んでいたら \\='hide にする」ガードが受け持つ。
 
 隠したあと、選択がそのフレームの window に残っていたら本文 window へ戻す。
 tty には window ごとのフォーカスイベントが無いので、見えなくなった child
@@ -486,9 +512,13 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
   nil)
 
 (defun wamei/project-memo--posframe-buffer-shown ()
-  "posframe の window が映しているバッファ。出ていなければ nil。"
+  "posframe の window が映しているバッファ。出ていなければ nil。
+
+`(frame-root-window frame)' で window を取る。posframe.el 自身が
+`posframe--create-posframe' で同じ window をこの取り方をしている
+(`wamei/project-memo-posframe-show' も参照)。"
   (when-let* ((frame (wamei/project-memo-posframe-frame)))
-    (window-buffer (frame-selected-window frame))))
+    (window-buffer (frame-root-window frame))))
 
 (defun wamei/project-memo--posframe-action ()
   "posframe に対していま取るべき動作。
@@ -505,6 +535,17 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 本人かどうか) はトグル側 (`wamei/project-memo--toggle') が
 `wamei/project-memo--posframe-buffer-shown' を見て行う。
 
+追跡しているバッファ (`wamei/project-memo--posframe-buffer') が死んでいたら
+無条件に \='hide にする。dedicated を外す前は、メモバッファを kill すると
+posframe.el がその dedicated window ごと child frame を道連れに削除していた
+(posframe.el の `posframe--create-posframe' 参照、「buffer が消えたら
+child frame も消す」という設計になっている)。dedicated を外した今はそうは
+ならず、`replace-buffer-in-windows' は dedicated でない window を単に
+`switch-to-prev-buffer' で無関係なバッファに差し替えるだけなのでフレームは
+生きたまま残る — フォーカスは小窓に留まったままなので、下の \='hide 判定
+(selected-frame が変わったか) には引っかからず、何もせずに放置すると小窓が
+無関係なバッファを映したまま孤児化する。
+
 ミニバッファが立っている間は「フォーカスはまだ外れていない」と見て nil を
 返す。posframe の child frame は自分のミニバッファを持たず親フレームのもの
 を使う (posframe.el)。そのためメモにフォーカスがあるまま `C-x C-f' や
@@ -512,9 +553,12 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
 これを \='hide と読むと、モジュールは追跡変数も hook も捨てるのに Emacs は
 ミニバッファを抜けた後で child frame の window を選択し直すので、閉じ方の
 分からないフレームが画面に残る。ミニバッファを抜けたあと本当に別の場所へ
-フォーカスが移っていれば、次のコマンド境界で通常どおり \='hide になる。"
+フォーカスが移っていれば、次のコマンド境界で通常どおり \='hide になる。
+バッファが死んでいる場合はこのガードより先に \='hide にする — 死んだ
+バッファを抱えたまま待つ理由が無いため。"
   (when-let* ((frame (wamei/project-memo-posframe-frame)))
     (cond
+     ((not (buffer-live-p wamei/project-memo--posframe-buffer)) 'hide)
      ((active-minibuffer-window) nil)
      ((not (eq (selected-frame) frame)) 'hide)
      (t nil))))

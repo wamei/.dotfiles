@@ -226,17 +226,25 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
 `frame-live-p' もそれを生きているものとして扱う (batch では child frame を
 作れないため)。
 
-`frame-selected-window' / `set-window-dedicated-p' / `set-window-buffer' /
-`set-window-point' はダミーの \\='memo-posframe-frame / \\='memo-posframe-window
-だけをダミー扱いし、それ以外はすべて素の実装へ流す。
-`wamei/project-memo-posframe-show' が show の直後にやり直す dedicated 解除・
-バッファ・point の設定の通り道 (ダミーフレームには実の window が無いので
-素のままだと wrong-type-argument になる) のためだけの上書きで、
-`wamei/project-tabs-main-window' や project-sidebar.el の
-`set-window-dedicated-p' 呼び出しのような、無関係な実 window / 実フレームへの
-呼び出しまでダミーに巻き込むと壊れる (`frame-selected-window' は
-project-tabs.el の main window 解決が使っている)。呼ばれた引数を検証したい
+`frame-root-window' / `set-window-dedicated-p' / `set-window-buffer' /
+`set-window-point' / `window-buffer' はダミーの \\='memo-posframe-frame /
+\\='memo-posframe-window だけをダミー扱いし、それ以外はすべて素の実装へ流す
+(引数は実物と同じ `&optional' にする — 実物の `frame-root-window' も
+`frame-selected-window' も frame 引数は省略可能で、省略時は選択フレームを
+見る)。`wamei/project-memo-posframe-show' が show の直後にやり直す
+dedicated 解除・バッファ・point の設定の通り道 (ダミーフレームには実の
+window が無いので素のままだと wrong-type-argument になる) のためだけの
+上書きで、project-tabs.el や project-sidebar.el の無関係な実 window / 実
+フレームへの呼び出しまでダミーに巻き込むと壊れる。呼ばれた引数を検証したい
 テストは BODY の中でさらに `cl-letf' して上書きする。
+
+`window-buffer' はダミーの window に対して `--dummy-window-buffer' (この
+マクロが束縛するレキシカル変数) を返し、`set-window-buffer' がダミーの
+window に呼ばれるとそこへ書き込む。`wamei/project-memo-posframe-show' が
+「既に同じバッファを映しているときは `set-window-buffer' を呼び直さない」
+(Minor 5 相当) ようになったため、この対で「ダミーの小窓は今何を映して
+いることになっているか」を素朴に模す必要がある。既定では 2 回目以降の同じ
+BUFFER への show で `set-window-buffer' が呼ばれないことになる。
 
 `wamei/project-memo--posframe-buffer-shown' は既定で追跡変数
 (`wamei/project-memo--posframe-buffer') をそのまま返すようにする。本来は
@@ -246,10 +254,12 @@ window が無いので同じ理由で直接差し替える。「dedicated を外
 BODY の中でさらに `cl-letf' して上書きする。"
   (declare (indent 1))
   `(let ((,calls nil)
-         (--real-frame-selected-window (symbol-function 'frame-selected-window))
+         (--dummy-window-buffer nil)
+         (--real-frame-root-window (symbol-function 'frame-root-window))
          (--real-set-window-dedicated-p (symbol-function 'set-window-dedicated-p))
          (--real-set-window-buffer (symbol-function 'set-window-buffer))
-         (--real-set-window-point (symbol-function 'set-window-point)))
+         (--real-set-window-point (symbol-function 'set-window-point))
+         (--real-window-buffer (symbol-function 'window-buffer)))
      (cl-letf (((symbol-function 'posframe-show)
                 (lambda (buffer &rest args)
                   (push (cons 'show (cons buffer args)) ,calls)
@@ -260,11 +270,11 @@ BODY の中でさらに `cl-letf' して上書きする。"
                 (lambda (frame) (eq frame 'memo-posframe-frame)))
                ((symbol-function 'select-frame-set-input-focus)
                 (lambda (frame &optional _norecord) frame))
-               ((symbol-function 'frame-selected-window)
-                (lambda (frame)
+               ((symbol-function 'frame-root-window)
+                (lambda (&optional frame)
                   (if (eq frame 'memo-posframe-frame)
                       'memo-posframe-window
-                    (funcall --real-frame-selected-window frame))))
+                    (funcall --real-frame-root-window frame))))
                ((symbol-function 'set-window-dedicated-p)
                 (lambda (window flag)
                   (if (eq window 'memo-posframe-window)
@@ -273,13 +283,18 @@ BODY の中でさらに `cl-letf' して上書きする。"
                ((symbol-function 'set-window-buffer)
                 (lambda (window buffer &optional keep-margins)
                   (if (eq window 'memo-posframe-window)
-                      nil
+                      (setq --dummy-window-buffer buffer)
                     (funcall --real-set-window-buffer window buffer keep-margins))))
                ((symbol-function 'set-window-point)
                 (lambda (window pos)
                   (if (eq window 'memo-posframe-window)
                       nil
                     (funcall --real-set-window-point window pos))))
+               ((symbol-function 'window-buffer)
+                (lambda (&optional window)
+                  (if (eq window 'memo-posframe-window)
+                      --dummy-window-buffer
+                    (funcall --real-window-buffer window))))
                ((symbol-function 'wamei/project-memo--posframe-buffer-shown)
                 (lambda () wamei/project-memo--posframe-buffer))
                ((symbol-function 'posframe-workable-p) (lambda () t)))
@@ -967,6 +982,26 @@ BODY の中でさらに `cl-letf' して上書きする。"
                        (lambda () (selected-window))))
               (should-not (wamei/project-memo--posframe-action))))
         (wamei/project-memo-posframe-hide)))))
+
+(ert-deftest wamei/project-memo-posframe-action-is-hide-when-the-tracked-buffer-was-killed ()
+  ;; dedicated を外した (`wamei/project-memo-posframe-show') ので、メモ
+  ;; バッファを kill しても posframe.el は child frame を道連れにしない
+  ;; (`replace-buffer-in-windows' は dedicated でない window を
+  ;; `switch-to-prev-buffer' で差し替えるだけ)。selected-frame が posframe の
+  ;; ままでも、追跡しているバッファが死んでいたら小窓を孤児化させず閉じる。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer (wamei/project-memo-buffer nil)))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show buffer)
+              (cl-letf (((symbol-function 'selected-frame) (lambda () 'memo-posframe-frame)))
+                ;; フォーカスは小窓のまま (selected-frame は posframe) だが、
+                ;; メモバッファ自体は死んでいる。
+                (with-current-buffer buffer (set-buffer-modified-p nil))
+                (kill-buffer buffer)
+                (should (eq (wamei/project-memo--posframe-action) 'hide))))
+          (wamei/project-memo-posframe-hide))))))
 
 (ert-deftest wamei/project-memo-posframe-post-command-hides-when-focus-left ()
   (wamei/project-memo-test--with-project root
