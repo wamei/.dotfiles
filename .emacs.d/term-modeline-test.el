@@ -194,5 +194,46 @@
                    (:eval (wamei/term-modeline--status))
                    mode-line-process))))
 
+;;; 行グリッドへの詰め物
+
+(ert-deftest wamei/term-modeline-grid-pad-height-lands-on-grid ()
+  "残りの高さが行高で割り切れる mode-line の高さを返す。"
+  (dolist (available '(1809 1810 1814 1818 1822 1826 1843 1692))
+    (let ((h (wamei/term-modeline-grid-pad-height available 18)))
+      (should (zerop (mod (- available h) 18))))))
+
+(ert-deftest wamei/term-modeline-grid-pad-height-is-smallest-above-floor ()
+  "床以上で最小の高さを選ぶ。無駄な余白は 1 行ぶん未満に収まる。"
+  (dolist (available '(1809 1810 1814 1818 1822 1826 1843 1692))
+    (let ((h (wamei/term-modeline-grid-pad-height available 18)))
+      (should (>= h wamei/term-modeline-height-floor))
+      (should (< h (+ wamei/term-modeline-height-floor 18))))))
+
+(ert-deftest wamei/term-modeline-grid-pad-height-guards-line-height ()
+  "行高が取れないときは床をそのまま返す (batch の tty など)。"
+  (should (= (wamei/term-modeline-grid-pad-height 1809 0)
+             wamei/term-modeline-height-floor))
+  (should (= (wamei/term-modeline-grid-pad-height 1809 nil)
+             wamei/term-modeline-height-floor)))
+
+(ert-deftest wamei/term-modeline-grid-pad-ascent-reserves-descent ()
+  "descent を必要な px だけ確保する。
+Emacs は ascent px を (高さ * 百分率 / 100) の整数除算で出すので、
+百分率を切り上げると descent が 1px 足りなくなり、mode-line に出る
+ブレイルの descent がはみ出して高さが 1px 狂う。"
+  (dolist (h (number-sequence 24 41))
+    (let* ((pct (wamei/term-modeline-grid-pad-ascent h))
+           (ascent (/ (* h pct) 100)))
+      (should (>= (- h ascent) wamei/term-modeline-grid-pad-descent)))))
+
+(ert-deftest wamei/term-modeline-grid-pad-spacer-is-cached ()
+  "同じ高さの詰め物は作り直さない (mode-line は毎フレーム評価される)。"
+  (let ((wamei/term-modeline--grid-pad-cache nil))
+    (let ((a (wamei/term-modeline-grid-pad-image 27))
+          (b (wamei/term-modeline-grid-pad-image 27))
+          (c (wamei/term-modeline-grid-pad-image 28)))
+      (should (eq a b))
+      (should-not (eq a c)))))
+
 (provide 'term-modeline-test)
 ;;; term-modeline-test.el ends here
