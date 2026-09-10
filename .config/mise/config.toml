@@ -56,19 +56,6 @@ go = "1"
 # ghq。リポジトリの置き場を ~/projects/<host>/<owner>/<repo> に揃える
 # (root は .gitconfig の [ghq] で指定)。
 "aqua:x-motemen/ghq" = "latest"
-# java を裸で書くと 17 系が 17.0.2 (2022 年で更新停止の OpenJDK GA ビルド)
-# に解決され、brew の openjdk@17 (17.0.20.1) から 3 年分のパッチが失われる。
-# temurin を明示すると 17.0.20+101 になり同世代を保てる。この version pin は
-# 今も必要。
-# ただし backend 名 (core:) を付けても `mise ls --current` はこのエントリを
-# 裸の `java` として報告するため、.zshrc の show_env_mise が持つ
-# 「<backend>:<pkg> 形式はプロンプトから除く」フィルタはここには効かない。
-# 実際に `mise ls --current` は `java  temurin-17.0.20+101  ...` と表示され、
-# 結果として今回の移行で `java:temurin-17.0.20+101` が全プロンプトに新しく
-# 出るようになった (以前は brew の PATH から java が来ており mise はそれを
-# 見ていなかったため出ていなかった)。抑制したい場合は show_env_mise 側で
-# java を明示的に除外する必要がある (このファイルではなく .zshrc の変更)。
-"core:java" = "temurin-17"
 "pipx:azure-cli" = "latest"
 # brew の formula 名は cloudflare-wrangler だが npm パッケージ名は wrangler。
 # 実体の取得は下の npm.package_manager (bun)。
@@ -86,6 +73,7 @@ go = "1"
 # (<backend>:<pkg>) を「言語のバージョンではない道具」としてプロンプトから除くため。
 "aqua:pnpm/pnpm" = "latest"
 "npm:yarn" = "1"
+java = "17"
 
 [settings]
 # nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む
