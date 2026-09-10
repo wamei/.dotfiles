@@ -491,17 +491,12 @@ remap には色を直接入れてあるので、テーマが変わったら入�
                        (wamei/claude-usage--render wamei/claude-usage--state now)))))
     (cdr wamei/claude-usage--cache)))
 
-(defconst wamei/claude-usage--mode-line-height-pin
-  (propertize "\u2800" 'face wamei/term-modeline-braille-unscale)
-  "mode-line の高さを固定するための先頭の空白。
-U+2800 BRAILLE PATTERN BLANK は字形が空白でありながら Apple Braille に属する
-ので、スピナー (同じフォント) と同じ ascent / descent を mode-line に常時
-与える。これが無いとスピナーの出入りで mode-line の高さが 1px 変わり、
-ウィンドウの本文高さが行グリッドから外れて画面が揺れる
-\(term-modeline.el の「ブレイルの大きさ」)。ただの空白より 3px 広い。")
-
 (defconst wamei/claude-usage--mode-line-format
-  `(,wamei/claude-usage--mode-line-height-pin
+  ;; 先頭は行グリッドへの詰め物。mode-line を端数ぶん厚くして端末の本文高さを
+  ;; 行境界に乗せる (term-modeline.el の「行グリッドへの詰め物」)。この
+  ;; バッファは下の `wamei/claude-usage--mode-line-faces' で mode-line の
+  ;; 地色をパネルに合わせているので、厚くしても下端の余白に見える。
+  '((:eval (wamei/term-modeline-grid-pad-spacer))
     (:eval (wamei/claude-usage-mode-line))
     ;; ghostel の入力モードタグ (":Copy" など) を右端に出す。既定の
     ;; `mode-line-format' を丸ごと置き換えているので、足さないと

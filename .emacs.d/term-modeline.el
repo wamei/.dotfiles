@@ -218,6 +218,84 @@ ascent 15 / descent 3 に収まる。`face-font-rescale-alist' に入れる値�
 高さ固定用の空白に付ける。倍率を掛けた要求サイズに rescale が掛かるので、
 結果は縮める前と同じ px になる。")
 
+;;; 行グリッドへの詰め物
+
+;; ghostel は端末グリッドをウィンドウ下端に揃える (`ghostel--anchor-window')。
+;; 表示している行の高さの合計がウィンドウの本文高さを超えるぶんは
+;; `window-vscroll' として払われるので、先頭行が数 px 切れた状態が定常になる。
+;; この vscroll は redisplay が point を見せるためにスクロールをやり直すと落ち、
+;; 次の再描画で戻る。Claude が動いている間は毎秒数十回再描画が走るので、端数ぶん
+;; 画面全体が上下に揺れる。やり直すのは選択中のウィンドウだけなので、揺れるのも
+;; 選択中のウィンドウだけになる。
+;;
+;; 端数は本文高さが行高で割り切れないことから出る。mode-line を余りぶんだけ
+;; 厚くすれば本文高さが行境界に乗り、端数は消える。フレームの高さを詰める手も
+;; あるが、macOS は短時間の連続リサイズをまとめてしまい `set-frame-height' が
+;; 黙って無視されることがあり、高さの違う窓が並んでいると一番高いものにしか
+;; 合わせられない。mode-line はバッファごとに決まるので、窓ごとに自分の端数を
+;; 吸収でき、ウィンドウマネージャと綱引きもしない。Claude のパネルは
+;; claude-usage.el が mode-line の地色をパネルに合わせているので、厚くしても
+;; 下端の余白に見える。
+
+(defconst wamei/term-modeline-height-floor 24
+  "mode-line の高さの下限 (ピクセル)。
+詰め物はこれ以上で最小の、本文高さが行境界に乗る高さを選ぶ。中身が自然に取る
+高さ (実測 22px: 使用量バーの画像とブレイルのスピナー) より小さいと詰め物が
+効かず端数が残るので、少し余裕を持たせてある。無駄になる余白は
+1 行ぶん未満に収まる。")
+
+(defconst wamei/term-modeline-grid-pad-descent 5
+  "詰め物が baseline より下に確保する px 数。
+mode-line に出るブレイル (Apple Braille) の descent と同じ。これより浅いと
+スピナーの descent がはみ出して mode-line が 1px 高くなり、整列が崩れる。")
+
+(defvar wamei/term-modeline--grid-pad-cache nil
+  "高さから詰め物の画像への alist。mode-line は毎フレーム評価されるので、
+同じ高さの画像を作り直さない。")
+
+(defun wamei/term-modeline-grid-pad-height (available line-height)
+  "端末グリッドを行境界に乗せる mode-line の高さを返す。
+AVAILABLE は mode-line を除いたウィンドウの高さ (ピクセル)。
+`wamei/term-modeline-height-floor' 以上で最小の、(AVAILABLE - 戻り値) が
+LINE-HEIGHT の倍数になる高さ。LINE-HEIGHT が取れないときは下限をそのまま返す。"
+  (let ((min-height wamei/term-modeline-height-floor))
+    (if (and (integerp line-height) (> line-height 0))
+        (+ min-height (mod (- available min-height) line-height))
+      min-height)))
+
+(defun wamei/term-modeline-grid-pad-ascent (height)
+  "高さ HEIGHT px の詰め物に渡す `:ascent' (百分率)。
+Emacs は ascent の px を (高さ * 百分率 / 100) の整数除算で出すので、
+百分率は切り捨てる。切り上げると descent が 1px 足りなくなり、mode-line に
+出るブレイルの descent がはみ出して高さが狂う。"
+  (/ (* 100 (- height wamei/term-modeline-grid-pad-descent)) height))
+
+(defun wamei/term-modeline-grid-pad-image (height)
+  "高さ HEIGHT px の見えない詰め物の画像。同じ高さならキャッシュを返す。"
+  (or (cdr (assq height wamei/term-modeline--grid-pad-cache))
+      (let ((image (create-image
+                    (format "<svg width=\"1\" height=\"%d\" xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+                            height)
+                    'svg t :ascent (wamei/term-modeline-grid-pad-ascent height))))
+        (push (cons height image) wamei/term-modeline--grid-pad-cache)
+        image)))
+
+(defun wamei/term-modeline-grid-pad-spacer (&optional window)
+  "mode-line の先頭に置く詰め物。`:eval' から呼ぶ。
+描画中の WINDOW (既定は選択中の window) の高さで決まるので、フレームの
+リサイズにも自動で追従する。TTY にはピクセルの概念が無いので何も出さない。"
+  (let ((window (or window (selected-window))))
+    (if (not (display-graphic-p (window-frame window)))
+        ""
+      (propertize
+       " " 'display
+       (wamei/term-modeline-grid-pad-image
+        (wamei/term-modeline-grid-pad-height
+         (- (window-pixel-height window)
+            (window-tab-line-height window)
+            (window-bottom-divider-width window))
+         (with-selected-window window (default-line-height))))))))
+
 ;;; mode-line-format
 
 (defun wamei/term-modeline--status ()

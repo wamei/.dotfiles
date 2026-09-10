@@ -540,12 +540,6 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; 再描画のたびにカーソルへ張り直す (term-input.el の「IME の変換中文字」)。
   (advice-add 'ghostel--redraw-now :after #'wamei/term-input--ns-after-redraw)
 
-  ;; ウィンドウの本文高さが行高で割り切れないと、ghostel が端数を
-  ;; window-vscroll で払い、選択中のウィンドウが端数ぶん上下に揺れる。
-  ;; 端数が出ないようフレーム高さを詰める (term-panel.el の「行グリッドへの整列」)。
-  ;; フックは redisplay の最中に走るので、リサイズはその外へ逃がしている。
-  (add-hook 'window-size-change-functions #'wamei/term--schedule-grid-align)
-
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
