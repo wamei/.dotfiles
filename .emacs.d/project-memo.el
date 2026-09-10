@@ -555,10 +555,50 @@ child frame も消す」という設計になっている)。dedicated を外し
 分からないフレームが画面に残る。ミニバッファを抜けたあと本当に別の場所へ
 フォーカスが移っていれば、次のコマンド境界で通常どおり \='hide になる。
 バッファが死んでいる場合はこのガードより先に \='hide にする — 死んだ
-バッファを抱えたまま待つ理由が無いため。"
+バッファを抱えたまま待つ理由が無いため。
+
+素の `C-g' (`this-command' が `keyboard-quit') は、上のどの判定より先に
+無条件で \='hide にする。実機診断 (詳細は
+`docs/superpowers/specs/2026-09-10-project-memo-posframe-design.md' の
+「posframe を閉じる条件」参照): 実端末 (tmux + `emacs -nw') で小窓に
+フォーカスがある状態で素の `C-g' を送ると、`keyboard-quit' が quit を
+signal する過程で tty 側が `selected-frame' を端末本体のフレームへ戻し、
+それきり戻らない — tty の
+child frame は同じ端末画面への重ね描画でしかなく、GUI のような独立した
+ウィンドウを持たないため。これは上の「フォーカスが外れた」判定に副作用的
+に引っかかって閉じているだけで、GUI (独立した child frame を持つ) では
+同じ再選択が起きないので閉じないままだった。この食い違いは設計ではなく
+バグであり、ユーザーは「どちらの環境でも閉じる」を選んだ。`selected-frame'
+の偶然の変化に環境ごと頼るのではなく `this-command' で直接見ることで、
+tty と GUI のどちらでも同じに、かつ確実に閉じるようにする。ミニバッファを
+`C-g' で取り消す方は `minibuffer-keyboard-quit' / `abort-minibuffers' に
+なり `keyboard-quit' ではないので、この分岐には自然に引っかからない
+(下のミニバッファガードに委ねる)。
+
+この分岐を「ミニバッファが活性な間は閉じない」ガードより先に置いても
+安全な理由: 実機 (tty) で `M-x' を `C-g' で取り消したときの
+`this-command' は `abort-minibuffers' であり `keyboard-quit' には
+ならないことを確認済み。逆に本物の `keyboard-quit' がミニバッファ読み取り
+中に dispatch された場合は、`keyboard-quit' が無条件に quit を signal
+する結果その recursive edit ごと巻き戻ってからでないと
+`post-command-hook' は走らないので、この関数が呼ばれる時点では
+`active-minibuffer-window' は既に nil になっている — つまりこの2つの
+分岐が同時に問題を起こす (ミニバッファ活性中に \\='hide してしまう) 経路は
+無い。
+
+tty の実機診断では、この分岐と下の「フォーカスが外れた」分岐
+(`(not (eq (selected-frame) frame))`) が同時に真になる (`this-command' が
+`keyboard-quit' であることと、quit の副作用で `selected-frame' が
+既に変わっていることの両方が同時に成り立つ) ことも確認している。`cond' は
+最初に真になった節だけを採るのでこの分岐が先に \\='hide を返し、下の節は
+評価すらされない。`wamei/project-memo-posframe-hide' は既に隠れている
+状態からもう一度呼ばれても安全 (frame が生きているかの `when' で分岐し、
+追跡変数と hook の後始末は無条件に行う設計、上のコメント参照) なので、
+両方が同時に真であっても二重に閉じたり後始末が壊れたりはしない。"
   (when-let* ((frame (wamei/project-memo-posframe-frame)))
     (cond
      ((not (buffer-live-p wamei/project-memo--posframe-buffer)) 'hide)
+     ((eq this-command 'keyboard-quit) 'hide)
      ((active-minibuffer-window) nil)
      ((not (eq (selected-frame) frame)) 'hide)
      (t nil))))
