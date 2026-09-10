@@ -33,7 +33,9 @@
 
 - `C-x C-m` の既定の表示先を posframe にする。`C-u` を付けると本文 window。
 - 全体メモは `C-x m` に分ける。
-- posframe はフォーカスが外れたら閉じる。`ESC` / `C-g` では閉じない。
+- posframe はフォーカスが外れたら閉じる。素の `C-g` (`keyboard-quit`) でも
+  閉じる。`ESC` と、ミニバッファを取り消す `C-g`
+  (`minibuffer-keyboard-quit` / `abort-minibuffers`) では閉じない。
 - posframe の window は dedicated にしない。小窓にフォーカスがある状態で
   `C-x C-f` や `magit-status` を実行したら、その小窓の中に開く。
 - プロジェクトタブを開いた直後 (`C-x C-p` / `C-x t p`) は今までどおり本文 window。
@@ -118,14 +120,37 @@ child frame 非対応環境でコマンドが壊れないようにするため�
 
 ## posframe を閉じる条件
 
-次の 2 つ。`ESC` と `C-g` では閉じない (どちらも org の編集中に使うため)。
-いずれの経路でも、隠す前に必ずそのメモを保存する。
+次の 3 つ。`ESC` では閉じない (org の編集中に使うため)。いずれの経路でも、
+隠す前に必ずそのメモを保存する。
 
 1. `C-x C-m` / `C-x m` をもう一度押す (トグル)
 2. Emacs 内の別の window / frame / タブへフォーカスが移る
+3. 素の `C-g` (`this-command` が `keyboard-quit`)
 
 2 は `post-command-hook` で見る (`selected-frame` が posframe のフレームで
-なくなったら保存して隠す)。
+なくなったら保存して隠す)。3 も同じ `post-command-hook` の経路で見るが、
+`selected-frame` ではなく `this-command` で直接判定する (次段落)。
+
+当初は `C-g` でも閉じない設計だった (org の編集中に誤って `C-g` を打っても
+メモが消えないように、という意図)。ところが実機で、**tty
+(`emacs -nw`) では素の `C-g` で閉じ、GUI では閉じない**という食い違いが
+見つかった。原因は実装のバグで、設計どおりの違いではない: 実端末で小窓に
+フォーカスがある状態で素の `C-g` を送ると、`keyboard-quit` が quit を
+signal する過程で tty 側が `selected-frame` を端末本体のフレームへ戻し、
+それきり戻らない (tty の child frame は同じ端末画面への重ね描画でしかなく、
+GUI のような独立したウィンドウを持たないため)。これが上の「2. フォーカスが
+外れた」判定に副作用的に引っかかって tty だけ閉じていた。GUI は独立した
+child frame を持つため同じ再選択が起きず、閉じないままだった。
+
+ユーザーの判断は「どちらの環境でも閉じる」。`selected-frame` の偶然の環境
+依存の変化に頼るのをやめ、`this-command` が `keyboard-quit` かどうかを
+直接見ることで、tty と GUI のどちらでも確実に同じ動きにした。ミニバッファ
+を `C-g` で取り消す方は `minibuffer-keyboard-quit` / `abort-minibuffers` に
+なり `keyboard-quit` ではないので、この判定には自然に引っかからず、
+「ミニバッファが活性な間は閉じない」というもう一つの条件 (下記) にそのまま
+委ねられる。診断は実端末 (tmux + `emacs -nw`) と隔離 GUI daemon の両方で
+実測して確認した (`selected-frame` / `this-command` / `post-command-hook`
+の発火有無を突き合わせ)。
 
 これとは別に、追跡しているバッファ (小窓に最後に出すよう求めたバッファ)
 が死んでいたら無条件に隠す。dedicated を外した副作用で、メモバッファを
