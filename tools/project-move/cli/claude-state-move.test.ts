@@ -10,13 +10,48 @@
 // 本物の ~/.claude / ~/.claude.json には一切触れない。paths は全て
 // --claude-home / --claude-json / --history で明示的に tmpdir 配下を指す。
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultMovesLogPath } from "../src/moves.ts";
 
 const CLI = join(import.meta.dir, "claude-state-move.ts");
 
+// --- 実ホームの汚染検知 -----------------------------------------------------
+//
+// このテストは --claude-home / --claude-json / --history を毎回明示的に渡す
+// ので、書き込み先の 3 つは実ホームに触れない。ただし `--from-log` を省略し
+// かつ位置引数が 2 つでない呼び出しをすると、CLI は
+// `defaultMovesLogPath(homedir())` (実ホーム側の既定パス) を読みにいく分岐が
+// ある。現状のテストは全て 2 個の位置引数か `--from-log` のどちらかを渡して
+// おりこの分岐を踏まないが、project-move.ts 側で「HOME を差し替えないと
+// 実ホームに書き込む経路がある」事故が実際に起きたため (レビューで発見)、
+// 同じ構造の穴がここに無いことをテストレベルでも保証しておく。
+const REAL_HOME = homedir();
+const REAL_MOVES_LOG = defaultMovesLogPath(REAL_HOME);
+
+const realMovesLogExistedBefore = existsSync(REAL_MOVES_LOG);
+const realMovesLogContentBefore = realMovesLogExistedBefore
+  ? readFileSync(REAL_MOVES_LOG, "utf8")
+  : undefined;
+
+function assertRealHomeUntouched() {
+  expect(existsSync(REAL_MOVES_LOG)).toBe(realMovesLogExistedBefore);
+  if (realMovesLogExistedBefore) {
+    expect(readFileSync(REAL_MOVES_LOG, "utf8")).toBe(realMovesLogContentBefore as string);
+  }
+}
+
 let root: string;
+let fakeHome: string;
 let claudeHome: string;
 let claudeJson: string;
 let historyJsonl: string;
@@ -58,6 +93,12 @@ function fakePgrepPath(exitCode: number): string {
 
 function runCli(args: string[], opts: { fakePgrepExit?: number } = {}) {
   const env = { ...process.env };
+  // HOME を tmpdir 配下に差し替える。書き込み先はどのテストも --claude-home
+  // 等で明示しているので実害は無いはずだが、`defaultMovesLogPath(homedir())`
+  // を読みにいく分岐がまだ残っているため、`homedir()` 自体を tmpdir に
+  // 逃がしておく (project-move.ts で実際に起きた事故と同じ構造の穴を、
+  // 万一のコード変更で踏んでも実ホームに触れないようにするため)。
+  env.HOME = fakeHome;
   if (opts.fakePgrepExit !== undefined) {
     const binDir = fakePgrepPath(opts.fakePgrepExit);
     env.PATH = `${binDir}:${process.env.PATH ?? ""}`;
@@ -76,6 +117,8 @@ function runCli(args: string[], opts: { fakePgrepExit?: number } = {}) {
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "claude-state-cli-"));
+  fakeHome = join(root, "fake-home");
+  mkdirSync(fakeHome, { recursive: true });
   claudeHome = join(root, ".claude");
   claudeJson = join(root, ".claude.json");
   historyJsonl = join(root, ".claude", "history.jsonl");
@@ -83,7 +126,11 @@ beforeEach(() => {
   writeFileSync(claudeJson, JSON.stringify({ projects: {} }));
   writeFileSync(historyJsonl, "");
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+  // 実ホームを一切変えていないことを、後片付けの前に毎回確認する。
+  assertRealHomeUntouched();
+  rmSync(root, { recursive: true, force: true });
+});
 
 test("値を取るオプションと併用しても、位置引数 2 つを <old> <new> として正しく拾う (回帰テスト)", () => {
   // --claude-home などの「値」が positional に紛れ込むと、この 2 つの位置引数が
