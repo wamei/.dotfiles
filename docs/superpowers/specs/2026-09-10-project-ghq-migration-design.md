@@ -96,7 +96,7 @@ function sC(e){ let n = k(e); if (n.length <= 200) return n;
 `mc.data.catalog` は同じスラッグになる。したがって**新スラッグは必ず実パスから
 再計算する**。旧スラッグ文字列を加工して新スラッグを作ってはならない。
 
-### 移動時に書き換えが必要な Claude 側の 5 箇所
+### 移動時に書き換えが必要な Claude 側の 6 箇所
 
 | 対象 | 内容 |
 |---|---|
@@ -104,7 +104,8 @@ function sC(e){ let n = k(e); if (n.length <= 200) return n;
 | 配下の `*.jsonl` | `cwd` (ほぼ全行)、`persistedOutputPath` (旧スラッグを含む)。表示だけでなく `attach` / `respawn` / worktree 解決に効く |
 | `~/.claude.json` の `.projects` | 絶対パスがキー。21 件。移さないと trust dialog 再表示、`allowedTools` と MCP 許可がリセット |
 | `~/.claude.json` の `.githubRepoPaths` | `owner/repo` → 絶対パス配列。12 エントリ / 14 パス |
-| `~/.claude/history.jsonl` | 各行の `project` が絶対パス。約 1900 行。↑キーのプロンプト履歴がディレクトリ単位で引かれる |
+| `~/.claude/history.jsonl` | 各行の `project` が絶対パス。1985 行。↑キーのプロンプト履歴がディレクトリ単位で引かれる |
+| `<slug>/sessions-index.json` | `originalPath` と `entries[].fullPath` / `entries[].projectPath` が絶対パス。存在するのは 3 ディレクトリ (うち移行対象は dominion-card-generator と mcwf-web) |
 
 公式の移行手段は存在しない (`claude project` にあるのは `purge` のみ)。
 
@@ -116,13 +117,42 @@ function sC(e){ let n = k(e); if (n.length <= 200) return n;
 `~/.claude/file-history/` は編集対象ファイルの絶対パスのハッシュをキーに持つため、
 移動後に古いセッションから rewind / checkpoint 復元はできない。**これは諦める。**
 
-### 追随対象のセッション
+### 追随対象のセッション (訂正済み)
 
-移動対象のうちセッションを持つのは 14 ディレクトリ / 95 本。
-これに取り残されている dotfiles の 122 本を加えて **計 217 本**。
+当初 `ls | wc -l` で数えたため `memory/` や `sessions-index.json`、セッション UUID
+ディレクトリまで本数に含めてしまっていた。**トップレベルの `*.jsonl` で数え直した
+実数**は以下:
 
-`~/.claude/projects/-Users-wamei-projects-apple-reminder-sync` (1 本) は実体
-ディレクトリが既に無い孤児。**対象外とし放置する。**
+| 移行対象 | 本数 |
+|---|---|
+| BeecoV2 | 16 |
+| mcwf-web | 15 |
+| ietateru | 14 |
+| mcwf-api | 4 |
+| mc-data-catalog / mc-gpt / rit-dev-book | 各 2 |
+| BeecoV2 の worktree / SDXFW_TEMPLATE / hama-reminder / waminder | 各 1 |
+
+移行対象は 11 ディレクトリ / **59 本**。これに取り残されている dotfiles の
+**100 本**を加えて計 159 本。
+
+`ImportApps` / `rither` / `dominion-card-generator` は**トップレベルの `*.jsonl` を
+1 本も持たない** (`memory/` と `sessions-index.json` のみ)。ディレクトリの移動と
+`sessions-index.json` の書き換えは要るが、resume で引ける transcript は無い。
+
+`~/.claude/projects/-Users-wamei-projects-apple-reminder-sync` は実体ディレクトリが
+既に無い孤児。**対象外とし放置する。**
+
+### データ量と、それが設計に課す制約
+
+`~/.claude/projects` は **538 MB**。最大の単一ファイルは 36.2 MB
+(`waminder/.../subagents/agent-*.jsonl`)、次いで ietateru の 23.7 MB。
+
+したがって:
+
+- **jsonl はファイル全体をメモリに載せず、行ストリームで処理する。**
+  `JSON.parse` するのは旧パス文字列を含む行だけに絞る (まず部分文字列で判定する)
+- **`<sessionId>/subagents/*.jsonl` も対象に含める。** 最大のファイルはここにある。
+  トップレベルの `*.jsonl` だけを見る実装は不十分
 
 ### 絶対パス参照の実態
 
@@ -191,9 +221,14 @@ Claude を落としてから叩く。移動ログを読んで未処理分をま�
 2. `~/.claude.json` と `~/.claude/projects/` をバックアップ
 3. `~/.claude/projects/<旧slug>` → `<新slug>` に mv。移動先が既にあればマージする
    (ファイル名が UUID なので実質衝突しない)
-4. 配下の `*.jsonl` の旧パス文字列と旧スラッグ文字列を置換
-5. `~/.claude.json` の `.projects` キーをリネーム、`.githubRepoPaths` の値を置換
-6. `~/.claude/history.jsonl` の `project` を置換
+4. 配下の `*.jsonl` (トップレベルと `<sessionId>/subagents/` の両方) の旧パス文字列と
+   旧スラッグ文字列を置換。**行ストリームで処理し、旧パスを含む行だけを触る**
+   (最大 36 MB のファイルがあるため全体をメモリに載せない)
+5. `<slug>/sessions-index.json` があれば `originalPath` と `entries[].fullPath` /
+   `entries[].projectPath` を置換。**実在しない jsonl を指すエントリがあっても失敗しない**
+   (dominion-card-generator の 5 エントリが実際にそうなっている)
+6. `~/.claude.json` の `.projects` キーをリネーム、`.githubRepoPaths` の値を置換
+7. `~/.claude/history.jsonl` の `project` を置換
 
 テスト可能性のため、`~/.claude` と `~/.claude.json` の位置は
 `--claude-home` / `--claude-json` で差し替えられる。`CLAUDE_CONFIG_DIR` は
@@ -229,7 +264,8 @@ env のセマンティクスには依存しない。
 |---|---|
 | `slug(path)` | **実データのゴールデン**。`~/.claude/projects/` の 18 ディレクトリと各 jsonl の `cwd` の対応表を一度吸い出して fixture に固め、全件一致で Green |
 | `rewriteClaudeJson(json, moves)` | `.projects` のキーリネーム、移動先キーが既存だった場合のマージ、`.githubRepoPaths` の配列内置換と重複整理、無関係キーが無傷であること |
-| `rewriteJsonlLine(line, moves)` | `cwd` / `persistedOutputPath` (旧スラッグを含む) / 本文中の絶対パス |
+| `rewriteJsonlLine(line, moves)` | `cwd` / `persistedOutputPath` (旧スラッグを含む) / 本文中の絶対パス。旧パスを含まない行は**同一オブジェクトのまま素通し**すること |
+| `rewriteSessionsIndex(json, moves)` | `originalPath`、`entries[].fullPath` (スラッグ部分も含む)、`entries[].projectPath`。実在しない jsonl を指すエントリでも落ちないこと |
 | `planMove(dir)` | tmpdir に `git init` + `remote add` した偽リポジトリで、remote あり / remote 無し / 非 git の 3 分岐 |
 
 統合テストは tmpdir に偽の `~/.claude` ツリーを組み、`--claude-home` /
@@ -245,12 +281,20 @@ env のセマンティクスには依存しない。
 - 自動化せず手作業に回すもの (lefthook / husky の再生成、`direnv allow`)
 - 衝突と警告 (スラッグ衝突、移動先が既に存在、Emacs / Claude が起動中)
 
-### 実機検証は canary 1 件で往復させる
+### 実機検証は canary 2 件で往復させる
 
 fixture テストが通っても「本物の `claude --resume` が引けるか」は別問題である。
-**`dominion-card-generator`** (自分の repo、セッション 2 本、ghq パス) を canary とし、
-`cd ~/projects/github.com/wamei/dominion-card-generator && claude --resume` が
-移動前の 2 本を列挙することを確認してから残りに広げる。
+
+当初 `dominion-card-generator` を canary に予定したが、**トップレベルの `*.jsonl` を
+1 本も持たない**ことが分かった (`sessions-index.json` の 5 エントリはいずれも既に
+削除された jsonl を指している)。resume で引くものが無く canary にならない。
+
+代わりに 2 件で往復させ、2 つの経路を別々に潰す。
+
+| canary | 何を検証するか |
+|---|---|
+| `SDXFW_TEMPLATE` (jsonl 1 本、`github.com/RIT-Inc-Dev/`) | transcript 経路。`claude --resume` が移動前のセッションを列挙する |
+| `mcwf-web` (jsonl 15 本、`sessions-index.json` を持つ) | index 経路。`sessions-index.json` の `originalPath` / `fullPath` / `projectPath` が新パスに揃う |
 
 **`claude-state-move` は Claude 全停止が前提なので、この確認は Claude 自身では
 実行できない。** 用意するのは貼れるコマンド列と dry-run 出力までで、実行と確認は
@@ -259,12 +303,12 @@ fixture テストが通っても「本物の `claude --resume` が引けるか�
 ## 実行順序
 
 1. 道具を作る (TDD)。ホームには触らない
-2. canary 1 件 — `project-move` → Claude 停止 → `claude-state-move` →
-   `claude --resume` 確認
-3. 残り 42 件
-4. dotfiles の 122 本を復旧
+2. canary 2 件 — `SDXFW_TEMPLATE` (transcript 経路) と `mcwf-web` (index 経路)。
+   それぞれ `project-move` → Claude 停止 → `claude-state-move` → `claude --resume` 確認
+3. 残り 41 件
+4. dotfiles の 100 本を復旧
    (`claude-state-move /Users/wamei/.dotfiles /Users/wamei/projects/github.com/wamei/.dotfiles`)。
-   移動先には既に 6 本あるのでマージ経路の実適用例になる
+   移動先には既に 5 本あるのでマージ経路の実適用例になる
 5. `ImportApps_2` を削除
 
 ## 切り戻し
