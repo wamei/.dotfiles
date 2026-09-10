@@ -83,5 +83,39 @@
       (wamei/dired-image-preview-kitty--make-frame 'parent-frame 'buffer '(1 . 2) '(3 . 4))
       (should (eq (alist-get 'no-special-glyphs params) t)))))
 
+(ert-deftest wamei/dired-image-preview-kitty-available-p-does-not-query-the-terminal ()
+  "モードの可否判定は端末に訊かない。
+`wamei/dired-image-preview-mode' は dired バッファを開くたびに (desktop 復元に
+よる起動中も含めて) これを呼ぶ。ここで訊くと応答を取り逃がして、そのバッファの
+モードが二度と有効にならない。対応の可否は実際に出すときに訊く。"
+  (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p)
+             (lambda () (error "ここで端末に訊いてはいけない")))
+            ((symbol-function 'display-graphic-p) (lambda (&rest _) nil)))
+    (should (wamei/dired-image-preview-kitty-available-p))))
+
+(ert-deftest wamei/dired-image-preview-kitty-available-p-needs-tty-child-frames ()
+  "tty child frame が使えない環境では出せない。"
+  (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) nil))
+            ((symbol-function 'featurep)
+             (lambda (feature) (not (eq feature 'tty-child-frames)))))
+    (should-not (wamei/dired-image-preview-kitty-available-p))))
+
+(ert-deftest wamei/dired-image-preview-kitty-available-p-is-nil-on-gui ()
+  (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t)))
+    (should-not (wamei/dired-image-preview-kitty-available-p))))
+
+(ert-deftest wamei/dired-image-preview-kitty-show-asks-the-terminal ()
+  "実際に出すときに初めて端末に訊く。非対応なら何も送らない。"
+  (let ((asked 0) (measured 0))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics-available-p)
+               (lambda () (setq asked (1+ asked)) nil))
+              ((symbol-function 'wamei/dired-image-preview-kitty-hide) #'ignore)
+              ((symbol-function 'wamei/kitty-graphics-image-size)
+               (lambda (_f) (setq measured (1+ measured)) '(80 . 40))))
+      (wamei/dired-image-preview-kitty-show 'target)
+      (should (= asked 1))
+      ;; 非対応と分かった時点で止まる (画像を測りにも行かない)
+      (should (= measured 0)))))
+
 (provide 'dired-image-preview-kitty-test)
 ;;; dired-image-preview-kitty-test.el ends here
