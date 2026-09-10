@@ -15,27 +15,96 @@ import {
   type Move,
 } from "../src/moves.ts";
 
-const args = process.argv.slice(2);
-const dryRun = args.includes("--dry-run");
-const positional = args.filter((a) => !a.startsWith("--"));
+// 値を取るオプションはここ 1 箇所にだけ列挙する。散らばると「位置引数の走査が
+// オプションの値を拾ってしまう」バグが再発するため (レビュー指摘: 実際に
+// `--claude-home $TMP/claude` の `$TMP/claude` を positional として拾い、
+// 渡した <old> <new> を無視して既定の moves ログ (実ホーム側!) にフォールバック
+// する事故が起きた)。
+const VALUE_OPTIONS = new Set(["claude-home", "claude-json", "history", "from-log"]);
 
-function optionValue(name: string, fallback: string): string {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
+/**
+ * 引数を先頭から順に 1 パスで走査する。
+ *
+ * `args.filter(a => !a.startsWith("--"))` のような「-- で始まらないものを
+ * 全部位置引数とみなす」実装は、値を取るオプションの値 (`--claude-home` の次の
+ * トークンなど) まで位置引数として拾ってしまう。ここでは VALUE_OPTIONS に
+ * 載っているオプションに当たったら次のトークンを値として明示的に消費して
+ * 読み飛ばし、それ以外の `--` 始まりはフラグとしてそのまま次へ、残りだけを
+ * 位置引数として集める。
+ */
+function parseArgs(argv: string[]): {
+  dryRun: boolean;
+  options: Record<string, string>;
+  positional: string[];
+} {
+  let dryRun = false;
+  const options: Record<string, string> = {};
+  const positional: string[] = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      const name = arg.slice(2);
+      if (!VALUE_OPTIONS.has(name)) {
+        console.error(`unknown option: ${arg}`);
+        process.exit(2);
+      }
+      const value = argv[i + 1];
+      // 値が無い、または次のトークンが別のオプションに見える場合は、それを
+      // うっかり値として採用しない (以前のバグの裏返し: `--dry-run` のような
+      // 文字列をそのままパスとして受け取ってしまうのを防ぐ)。
+      if (value === undefined || value.startsWith("--")) {
+        console.error(`missing value for ${arg}`);
+        process.exit(2);
+      }
+      options[name] = value;
+      i++; // 値のトークンを消費
+      continue;
+    }
+    positional.push(arg);
+  }
+
+  return { dryRun, options, positional };
 }
+
+/**
+ * Claude が起動中かどうか。
+ *
+ * 本体はテスト時に exec 関数を差し替えられる (`isClaudeRunning(exec)`) が、
+ * CLI はサブプロセスとして起動するテストしかできず、JS の関数を直接注入する
+ * 経路が無い。かといって PATH に偽の pgrep を置く方式は、テストごとに
+ * tmpdir + PATH 操作が要り、他の pgrep 呼び出し (もしあれば) にも影響しうる。
+ * ここでは環境変数 1 個で上書きできる口を用意する方式を選んだ。CLI 引数に
+ * 混ぜないのは、実運用のコマンドラインに紛れて誤操作の温床になるのを避けるため
+ * (環境変数ならテストプロセスの env だけに閉じ、対話シェルで誤って残る心配が
+ * ない)。未設定なら通常どおり本物の pgrep を使う。
+ */
+function claudeRunning(): boolean {
+  const fakeStatus = process.env.CLAUDE_STATE_MOVE_TEST_PGREP_STATUS;
+  if (fakeStatus !== undefined) {
+    return isClaudeRunning(() => Number(fakeStatus));
+  }
+  return isClaudeRunning();
+}
+
+const { dryRun, options, positional } = parseArgs(process.argv.slice(2));
 
 const home = homedir();
 const paths = {
-  claudeHome: optionValue("claude-home", join(home, ".claude")),
-  claudeJson: optionValue("claude-json", join(home, ".claude.json")),
-  historyJsonl: optionValue("history", join(home, ".claude", "history.jsonl")),
+  claudeHome: options["claude-home"] ?? join(home, ".claude"),
+  claudeJson: options["claude-json"] ?? join(home, ".claude.json"),
+  historyJsonl: options["history"] ?? join(home, ".claude", "history.jsonl"),
 };
 
 let moves: Move[];
 if (positional.length === 2) {
   moves = [{ from: positional[0], to: positional[1] }];
 } else {
-  const log = optionValue("from-log", defaultMovesLogPath(home));
+  const log = options["from-log"] ?? defaultMovesLogPath(home);
   if (!existsSync(log)) {
     console.error(`no moves log at ${log}; pass <old> <new> instead`);
     process.exit(2);
@@ -43,7 +112,7 @@ if (positional.length === 2) {
   moves = parseMovesTsv(await readFile(log, "utf8"));
 }
 
-if (!dryRun && isClaudeRunning()) {
+if (!dryRun && claudeRunning()) {
   console.error(
     "claude is running. ~/.claude.json is rewritten continuously while it runs,\n" +
       "so this would be overwritten. quit every claude session and retry.",
