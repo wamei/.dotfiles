@@ -26,6 +26,51 @@ export type ClaudeStateReport = {
   warnings: string[];
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+const SESSIONS_INDEX_FILE = "sessions-index.json";
+
+/**
+ * <slug>/sessions-index.json をマージする。
+ *
+ * moveInto の一般ルール (「ファイル名は UUID なので実質衝突しない、既にあれば
+ * 触らない」) が、このファイルにだけ成り立たない。sessions-index.json はスラッグ
+ * ディレクトリ直下の固定名なので、移動先が既存プロジェクトならほぼ確実に両方に
+ * 存在する。スキップすると移動元の索引が宙に浮き、ディレクトリも空にならないので
+ * rmdir されず残骸が永久に残る (dotfiles のような、移動先に既にセッションがある
+ * プロジェクトを畳む経路そのもの)。
+ *
+ * version と originalPath は移動先側を使う (originalPath は後段の
+ * rewriteSessionsIndex が新パスへ書き換える)。entries は連結し、重複した
+ * sessionId は移動先側を残す (新しい場所で観測された情報の方が現在の状態に近い、
+ * という裁定による)。ファイル I/O から切り離した純粋関数にしてあるので、
+ * ディレクトリ構造を用意しなくてもテストできる。
+ */
+export function mergeSessionsIndexes(dest: unknown, src: unknown): unknown {
+  if (!isRecord(dest)) return dest;
+
+  const destEntries = Array.isArray(dest.entries) ? dest.entries : [];
+  const srcEntries = isRecord(src) && Array.isArray(src.entries) ? src.entries : [];
+
+  const destIds = new Set(
+    destEntries
+      .filter(isRecord)
+      .map((e) => e.sessionId)
+      .filter((id) => id !== undefined),
+  );
+  const merged = [
+    ...destEntries,
+    ...srcEntries.filter((e) => {
+      const id = isRecord(e) ? e.sessionId : undefined;
+      return id === undefined || !destIds.has(id);
+    }),
+  ];
+
+  return { ...dest, entries: merged };
+}
+
 /** 中身をマージしながら dir を dest へ移す。dest が無ければ単純な rename。 */
 async function moveInto(dir: string, dest: string): Promise<boolean> {
   if (!existsSync(dest)) {
@@ -34,8 +79,19 @@ async function moveInto(dir: string, dest: string): Promise<boolean> {
     return false;
   }
   // ファイル名は UUID なので実質衝突しない。既にあるものは触らない。
+  // ただし sessions-index.json だけは固定名で確実に衝突しうるので、上のとおりマージする。
   for (const entry of await readdir(dir)) {
     const target = join(dest, entry);
+    if (entry === SESSIONS_INDEX_FILE && existsSync(target)) {
+      const [srcJson, destJson] = await Promise.all([
+        readFile(join(dir, entry), "utf8").then((s) => JSON.parse(s)),
+        readFile(target, "utf8").then((s) => JSON.parse(s)),
+      ]);
+      const merged = `${JSON.stringify(mergeSessionsIndexes(destJson, srcJson), null, 2)}\n`;
+      await writeFile(target, merged);
+      await unlink(join(dir, entry));
+      continue;
+    }
     if (!existsSync(target)) await rename(join(dir, entry), target);
   }
   // 中身を移し終えた元ディレクトリは空になる。残すと ~/.claude/projects に
@@ -51,7 +107,7 @@ async function moveInto(dir: string, dest: string): Promise<boolean> {
  * 一時ファイルに書いてから rename で被せるのは、書き込み途中で落ちても元の
  * ファイルが壊れないようにするため。セッション履歴は失うと戻せない。
  */
-async function rewriteLines(
+export async function rewriteLines(
   path: string,
   r: Rewriter,
   transform: (line: string, r: Rewriter) => string,
@@ -60,11 +116,21 @@ async function rewriteLines(
   const tmp = `${path}.project-move-tmp`;
   const out = dryRun ? null : createWriteStream(tmp);
   let changed = 0;
-  const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
-  for await (const line of rl) {
-    const next = transform(line, r);
-    if (next !== line) changed++;
-    out?.write(`${next}\n`);
+  try {
+    const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
+    for await (const line of rl) {
+      const next = transform(line, r);
+      if (next !== line) changed++;
+      out?.write(`${next}\n`);
+    }
+  } catch (err) {
+    // transform や入力ストリームが例外を投げて抜けるときも一時ファイルを残さない。
+    // 閉じずに unlink すると書き込み中の fd が残ったままになりうるので、先に閉じる。
+    if (out) {
+      await new Promise<void>((resolve) => out.end(() => resolve()));
+      if (existsSync(tmp)) await unlink(tmp);
+    }
+    throw err;
   }
   if (out) {
     await new Promise<void>((resolve, reject) => {
@@ -76,6 +142,28 @@ async function rewriteLines(
     else await unlink(tmp);
   }
   return changed;
+}
+
+/**
+ * バックアップの書き込み先を決める。
+ *
+ * この移行は何回かに分けて実行する前提なので、`.project-move-backup` を無条件に
+ * 上書きすると、2 回目以降の実行が「1 回目の、まだ何も触られていない原本の
+ * バックアップ」を静かに潰してしまい、安全網の意味が無くなる。初回は今までどおりの
+ * 名前を使い (既存の運用・テストが見ている名前)、既にあればタイムスタンプ付きの
+ * 別名に逃がす。同一ミリ秒内の連続実行で名前が衝突しても上書きしないよう、
+ * 空くまで連番を足す。
+ */
+function backupDestination(f: string): string {
+  const base = `${f}.project-move-backup`;
+  if (!existsSync(base)) return base;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  let candidate = `${base}.${stamp}`;
+  let n = 1;
+  while (existsSync(candidate)) {
+    candidate = `${base}.${stamp}-${n++}`;
+  }
+  return candidate;
 }
 
 async function jsonlFilesUnder(dir: string): Promise<string[]> {
@@ -104,7 +192,7 @@ export async function claudeStateMove(
   // 破壊の前に控える。CLAUDE.md の「破壊的操作」節の趣旨に沿う。
   if (!opts.dryRun) {
     for (const f of [paths.claudeJson, paths.historyJsonl]) {
-      if (existsSync(f)) await copyFile(f, `${f}.project-move-backup`);
+      if (existsSync(f)) await copyFile(f, backupDestination(f));
     }
   }
 
