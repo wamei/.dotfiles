@@ -359,6 +359,18 @@ spawn で走る。desktop の autosave が記録を埋め直すため、端末�
                 (should-not (getenv "WAMEI_TERM_RESTORE"))))
           (kill-buffer (current-buffer)))))))
 
+;;; ghostel のロード
+
+(ert-deftest wamei/term-restore-ghostel-create-is-autoloaded ()
+  "ghostel 未ロードのまま取りこぼしの端末を作れる。
+`ghostel-create' には ghostel 側に autoload cookie が無いので、term-restore.el
+自身が autoload を張る。張り忘れると `wamei/term-restore-ensure' の生成が
+void-function になり、記録が黙って捨てられる (生成は `condition-case' で
+包んであるので message だけ出て復元されない)。"
+  (let ((def (symbol-function 'ghostel-create)))
+    (should (autoloadp def))
+    (should (equal (cadr def) "ghostel"))))
+
 ;;; 復元の仕上げ
 
 (defmacro wamei/term-restore-test--with-fake-create (&rest body)

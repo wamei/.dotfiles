@@ -24,6 +24,15 @@
 (declare-function ghostel-create "ghostel" (&optional name display identity))
 (declare-function wamei/project-tabs-current-root "project-tabs" (&optional frame))
 
+;; `ghostel-create' には ghostel 側に autoload cookie が無いので自分で張る。
+;; このファイルは init.el の leaf ghostel ブロックの `:preface' で読まれ、
+;; ghostel 本体はまだロードされていない。leaf の `:bind' も autoload を張るが
+;; 対象は `wamei/term-toggle' で、その defun (このファイル) が上書きしてしまう
+;; ので、C-z では ghostel はロードされない。これが無いと ghostel をまだ
+;; 読んでいないセッション (desktop に端末が無く claude-code-ide も起動して
+;; いない) の最初の C-z が void-function ghostel-create で落ちる。
+(autoload 'ghostel-create "ghostel")
+
 (defvar wamei/term-height 0.3
   "端末ウィンドウの高さ (フレームに対する割合)。
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
