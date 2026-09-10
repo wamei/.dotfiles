@@ -237,6 +237,118 @@ test("pgrep が 1 を返したら停止中と判定する", () => {
   expect(isClaudeRunning(() => 1)).toBe(false);
 });
 
+// --- C2: ~/.claude/projects をクローンでバックアップする -------------------
+
+test("C2: 実適用の前に ~/.claude/projects をクローンでバックアップする", async () => {
+  const report = await claudeStateMove(moves, paths, { dryRun: false });
+  expect(report.projectsBackupPath).toBeTruthy();
+  const backupPath = report.projectsBackupPath as string;
+  expect(existsSync(backupPath)).toBe(true);
+  // バックアップは書き換え前の中身をそのまま保持している (OLD のまま)
+  expect(readFileSync(join(backupPath, OLD_SLUG, "s1.jsonl"), "utf8")).toContain(OLD);
+});
+
+test("C2: dry-run ではバックアップを取らない", async () => {
+  const report = await claudeStateMove(moves, paths, { dryRun: true });
+  expect(report.projectsBackupPath).toBeNull();
+  expect(existsSync(`${join(paths.claudeHome, "projects")}.project-move-backup`)).toBe(false);
+});
+
+test("C2: バックアップに失敗したら実行を中止し、何も書き換えない", async () => {
+  const beforeClaudeJson = readFileSync(paths.claudeJson, "utf8");
+  const failingBackup = () => ({ ok: false as const, message: "clonefile not supported (test)" });
+
+  await expect(
+    claudeStateMove(moves, paths, { dryRun: false, backupProjectsDir: failingBackup }),
+  ).rejects.toThrow(/back.?up/i);
+
+  // 中断したので、改名も ~/.claude.json の書き換えも一切起きていない
+  expect(existsSync(join(paths.claudeHome, "projects", OLD_SLUG))).toBe(true);
+  expect(existsSync(join(paths.claudeHome, "projects", NEW_SLUG))).toBe(false);
+  expect(readFileSync(paths.claudeJson, "utf8")).toBe(beforeClaudeJson);
+});
+
+// --- I1: 改名済み・中身は旧パスのままの状態からの再実行 ---------------------
+
+test("I1: 改名済みで中身が旧パスのままの状態から再実行すると、中身が書き換わる (回帰テスト)", async () => {
+  // 前回の実行が改名だけ終えて中身の書き換えで例外を投げた (あるいは kill された)
+  // という状況を模す: OLD_SLUG は存在せず (改名済み)、NEW_SLUG 配下の jsonl が
+  // まだ旧パスを指している。
+  rmSync(join(paths.claudeHome, "projects", OLD_SLUG), { recursive: true, force: true });
+  rmSync(join(paths.claudeHome, "projects", `${OLD_SLUG}--claude-worktrees-wt`), {
+    recursive: true,
+    force: true,
+  });
+  const destDir = join(paths.claudeHome, "projects", NEW_SLUG);
+  mkdirSync(destDir, { recursive: true });
+  writeFileSync(join(destDir, "s1.jsonl"), `${JSON.stringify({ cwd: OLD })}\n`);
+
+  const report = await claudeStateMove(moves, paths, { dryRun: false });
+
+  const rewrittenPath = join(destDir, "s1.jsonl");
+  expect(JSON.parse(readFileSync(rewrittenPath, "utf8").trim()).cwd).toBe(NEW);
+  // 今回改名した対象は無い (再実行なので) が、それでも中身は書き換わった
+  expect(report.renames).toEqual([]);
+  expect(report.rewrittenFiles.some((f) => f.path === rewrittenPath)).toBe(true);
+});
+
+test("I1: dry-run でも改名済みで中身が旧パスのままのディレクトリを検出して報告する", async () => {
+  rmSync(join(paths.claudeHome, "projects", OLD_SLUG), { recursive: true, force: true });
+  rmSync(join(paths.claudeHome, "projects", `${OLD_SLUG}--claude-worktrees-wt`), {
+    recursive: true,
+    force: true,
+  });
+  const destDir = join(paths.claudeHome, "projects", NEW_SLUG);
+  mkdirSync(destDir, { recursive: true });
+  writeFileSync(join(destDir, "s1.jsonl"), `${JSON.stringify({ cwd: OLD })}\n`);
+
+  const report = await claudeStateMove(moves, paths, { dryRun: true });
+
+  expect(report.rewrittenFiles.some((f) => f.path === join(destDir, "s1.jsonl"))).toBe(true);
+  // dry-run なので実ファイルは変わっていない
+  expect(readFileSync(join(destDir, "s1.jsonl"), "utf8")).toContain(OLD);
+});
+
+// --- I2: memory/ のようなディレクトリを再帰的にマージする -------------------
+
+test("I2: 移動先にも memory/ があり中のファイル名が異なる場合、両方とも再帰的にマージされる", async () => {
+  const srcMemory = join(paths.claudeHome, "projects", OLD_SLUG, "memory");
+  mkdirSync(srcMemory, { recursive: true });
+  writeFileSync(join(srcMemory, "src-note.md"), "src\n");
+
+  const destDir = join(paths.claudeHome, "projects", NEW_SLUG);
+  const destMemory = join(destDir, "memory");
+  mkdirSync(destMemory, { recursive: true });
+  writeFileSync(join(destMemory, "dest-note.md"), "dest\n");
+
+  const report = await claudeStateMove(moves, paths, { dryRun: false });
+
+  expect(existsSync(join(destMemory, "src-note.md"))).toBe(true);
+  expect(existsSync(join(destMemory, "dest-note.md"))).toBe(true);
+  // 移動元は空になり削除されている (memory/ を含めて完全にマージできたので)
+  expect(existsSync(join(paths.claudeHome, "projects", OLD_SLUG))).toBe(false);
+  expect(report.warnings.some((w) => w.includes("memory"))).toBe(false);
+});
+
+test("I2: memory/ 配下で同名ファイルが衝突した場合は警告を出し、両方とも黙って消さない", async () => {
+  const srcMemory = join(paths.claudeHome, "projects", OLD_SLUG, "memory");
+  mkdirSync(srcMemory, { recursive: true });
+  writeFileSync(join(srcMemory, "note.md"), "src version\n");
+
+  const destDir = join(paths.claudeHome, "projects", NEW_SLUG);
+  const destMemory = join(destDir, "memory");
+  mkdirSync(destMemory, { recursive: true });
+  writeFileSync(join(destMemory, "note.md"), "dest version\n");
+
+  const report = await claudeStateMove(moves, paths, { dryRun: false });
+
+  // 衝突したファイルは上書きされず、移動先の内容がそのまま残る
+  expect(readFileSync(join(destMemory, "note.md"), "utf8")).toBe("dest version\n");
+  // 移動元の衝突したファイルも消えずに残っている (黙って捨てない)
+  expect(existsSync(join(srcMemory, "note.md"))).toBe(true);
+  expect(report.warnings.some((w) => w.includes("note.md"))).toBe(true);
+});
+
 test("移動先が重複する moves を渡すと report.warnings に衝突が載る", async () => {
   const collidingMoves = [
     { from: OLD, to: NEW },
