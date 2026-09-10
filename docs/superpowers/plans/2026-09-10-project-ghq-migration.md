@@ -1750,8 +1750,43 @@ cd ~/projects/github.com/g-a-d/aws-kms-sign-csr && direnv allow
 
 ```bash
 claude-state-move --dry-run   # 先に確認する
-claude-state-move
 ```
+
+**ここで `warn` 行が出る。想定済みなので慌てないこと。** スラッグの接頭辞の
+曖昧さ検査が次の 2 組を拾う:
+
+```
+slug(.../mc-research) is a prefix of slug(.../mc-research-server)
+slug(.../memotan)     is a prefix of slug(.../memotan_knowledge)
+```
+
+検査は正しく働いているが、**この 2 組については偽陽性**である。曖昧になりうる
+スラッグディレクトリ (`-Users-wamei-projects-mc-research-server` など) は
+`~/.claude/projects` に実在しないため、混ざるセッションが存在しない。
+実在を確認してから進む:
+
+```bash
+cd ~/.claude/projects && ls -d ./-Users-wamei-projects-mc-research* ./-Users-wamei-projects-memotan* 2>&1
+```
+
+出力が「No such file or directory」なら混ざりようがない。
+
+衝突があると `claude-state-move` は **exit 1 で何も書き換えずに止まる** (安全側)。
+そこで、この 2 組だけログから外して個別に適用する:
+
+```bash
+# 1. 該当 2 組を除いた分をまとめて適用
+grep -v -e '/mc-research' -e '/memotan' ~/.local/state/project-move/moves.tsv > /tmp/moves-bulk.tsv
+claude-state-move --from-log /tmp/moves-bulk.tsv
+
+# 2. 残りを 1 組ずつ位置引数で適用 (位置引数経路は検査対象がその 1 組だけになる)
+claude-state-move ~/projects/mc-research        ~/projects/local/mc-research
+claude-state-move ~/projects/mc-research-server ~/projects/local/mc-research-server
+claude-state-move ~/projects/memotan            ~/projects/local/memotan
+claude-state-move ~/projects/memotan_knowledge  ~/projects/local/memotan_knowledge
+```
+
+Expected: 1 も 2 も rename と rewrite が出て、`refusing to apply` が出ないこと
 
 - [ ] **Step 5: BeecoV2 の worktree が生きていることを確認する**
 
