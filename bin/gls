@@ -1,0 +1,40 @@
+#!/bin/sh
+# GNU の gls (brew coreutils) の代わりに mise の uutils coreutils を呼ぶ。
+#
+# brew の coreutils を mise の `aqua:uutils/coreutils' に移した際、brew 版の
+# uninstall で /opt/homebrew/bin/gls が消えた。uutils が入れるのは multicall
+# バイナリ `coreutils' 1 本だけで、`gls' や `ls' は PATH に出ない。gls に
+# 依存しているのは .zshrc の ls エイリアスと Emacs の dired
+# (.emacs.d/dired-gnu-ls.el) の 2 箇所で、どちらも
+# --group-directories-first / --dired という GNU 拡張を渡す。uutils の ls は
+# 両方を受け付ける (実測: 0.11.0)。
+#
+# mise の shim (~/.local/share/mise/shims/coreutils) を経由しないのは、あれが
+# mise 本体への symlink で、1 回の呼び出しに 150ms 前後かかるため。dired は
+# dired-auto-revert-buffer が有効なのでディレクトリを開くたび走る。installs 配下を
+# 直接引くと 20ms 未満で済む。
+set -eu
+
+data_dir="${MISE_DATA_DIR:-$HOME/.local/share/mise}"
+
+# レイアウト:
+#   installs/aqua-uutils-coreutils/<version>/coreutils-<version>-<triple>/coreutils
+# <version> の階層は mise が latest という symlink を張るので版が上がっても
+# 追従する。その下の triple 付きディレクトリ名は版に依存するため glob で引く。
+for candidate in "$data_dir"/installs/aqua-uutils-coreutils/latest/coreutils-*/coreutils; do
+  if [ -x "$candidate" ]; then
+    exec "$candidate" ls "$@"
+  fi
+done
+
+# glob が外れたとき (mise のレイアウト変更、latest symlink の欠落) の保険。
+# mise を 1 回起動するので上の経路より遅いが、動かないよりはよい。
+if command -v mise >/dev/null 2>&1; then
+  bin=$(mise which coreutils 2>/dev/null || true)
+  if [ -n "$bin" ] && [ -x "$bin" ]; then
+    exec "$bin" ls "$@"
+  fi
+fi
+
+echo "gls: uutils coreutils not found under $data_dir (try: mise install)" >&2
+exit 127

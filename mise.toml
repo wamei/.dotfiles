@@ -87,6 +87,11 @@ adopt = true
 "~/.emacs.d/init.el" = { source = ".emacs.d/init.el", mode = "symlink" }
 "~/.emacs.d/early-init.el" = { source = ".emacs.d/early-init.el", mode = "symlink" }
 "~/bin/rpbcopy" = { source = "bin/rpbcopy", mode = "symlink" }
+# GNU ls の代わりに mise の uutils coreutils を呼ぶラッパ。.zshrc の ls
+# エイリアスと Emacs の dired (.emacs.d/dired-gnu-ls.el) が gls を引く。
+# brew の coreutils を [tools] の aqua:uutils/coreutils に移した際、brew 版の
+# uninstall で /opt/homebrew/bin/gls が消えたため、その代替として要る。
+"~/bin/gls" = { source = "bin/gls", mode = "symlink" }
 "~/.config/karabiner/assets/complex_modifications/ja.json" = { source = ".config/karabiner/assets/complex_modifications/ja.json", mode = "symlink" }
 "~/.gitconfig" = { source = ".gitconfig", mode = "symlink" }
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }

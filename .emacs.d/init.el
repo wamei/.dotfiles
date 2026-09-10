@@ -1054,8 +1054,15 @@ init.el は symlink (~/.emacs.d/init.el → ~/.dotfiles/.emacs.d/init.el) なの
   (setq dired-recursive-copies 'always)
   (setq dired-isearch-filenames t)
   (setq dired-auto-revert-buffer t)
-  (setq dired-listing-switches "--color=auto --group-directories-first -alLv")
-  (setq insert-directory-program "/opt/homebrew/bin/gls")
+  ;; dired が使う ls と `dired-listing-switches' は dired-gnu-ls.el が決める。
+  ;; GNU ls (`--dired' / `--group-directories-first') の実体は brew の coreutils
+  ;; ではなく mise の uutils なので、パスの直書きをやめて候補列から引く。
+  ;; 見つからない環境では BSD ls 用に switches を落として dired が開けるようにする。
+  ;; 実体は dired-gnu-ls.el。init.el は symlink なので実体の隣から読む。
+  (load (expand-file-name "dired-gnu-ls"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (wamei/dired-gnu-ls-configure)
   (put 'dired-find-alternate-file 'disabled nil)
   ;; ファイルを掴んで別の dired バッファへ落とせるようにする (down-mouse-1)。
   ;; 動かさずに離したときは mouse-1 が押し戻されるので通常のクリックと両立する。
