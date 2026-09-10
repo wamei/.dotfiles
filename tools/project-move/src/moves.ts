@@ -23,8 +23,8 @@ export function parseMovesTsv(text: string): Move[] {
   text.split("\n").forEach((line, i) => {
     if (line.trim() === "" || line.startsWith("#")) return;
     const cols = line.split("\t");
-    if (cols.length < 3) {
-      throw new Error(`moves.tsv line ${i + 1}: expected 3 tab-separated columns`);
+    if (cols.length !== 3) {
+      throw new Error(`moves.tsv line ${i + 1}: expected exactly 3 tab-separated columns`);
     }
     moves.push({ from: cols[1], to: cols[2] });
   });
