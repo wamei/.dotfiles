@@ -1523,7 +1523,15 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
 
 (leaf global-display-line-numbers
   :doc "行番号を表示する"
-  :global-minor-mode global-display-line-numbers-mode)
+  ;; `global-display-line-numbers-mode' の有効化は、既存の全バッファで
+  ;; `display-line-numbers-mode' を無条件に on にする (easy-mmode.el の
+  ;; "Go through existing buffers")。after-change-major-mode-hook 経由と違って
+  ;; 明示的に切った (display-line-numbers--set-explicitly) 分を見ないので、
+  ;; init.el を再評価すると dired や端末パネルで切った行番号まで復活する。
+  ;; 既に有効なら何もしないことで再評価を冪等にする。
+  :config
+  (unless (bound-and-true-p global-display-line-numbers-mode)
+    (global-display-line-numbers-mode 1)))
 
 (leaf expand-region
   :doc "選択範囲を拡張する"
