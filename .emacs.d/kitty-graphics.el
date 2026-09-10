@@ -246,10 +246,17 @@ SIZE (幅 . 高さ) が分かっていれば渡す。無ければここで測る
 
 (defun wamei/kitty-graphics--query-terminal (param seq parse)
   "端末に SEQ を送り応答を PARSE で読んだ結果を、端末パラメータ PARAM に記憶して返す。
-一度訊いたら訊き直さない。結果が nil のときは `none' を記憶する。"
+一度訊いたら訊き直さない。結果が nil のときは `none' を記憶する。
+ただし起動中は訊かない (応答を拾えないため)。そのときは記憶もしないので、
+起動後に呼ばれたときに訊き直す。"
   (let ((cached (terminal-parameter nil param)))
     (cond ((eq cached 'none) nil)
           (cached cached)
+          ;; 起動中は Emacs 自身の初期化シーケンスが端末との間を流れていて、
+          ;; 応答を拾い損ねる。ここで失敗を `none' として記憶すると、以後その端末が
+          ;; 丸ごと非対応扱いになる (desktop 復元で dired が開くと実際に踏む)。
+          ;; 訊かずに nil を返し、記憶もしない。次に呼ばれたときに訊き直す。
+          ((not after-init-time) nil)
           (t (wamei/kitty-graphics--send seq)
              (let ((result (funcall parse (wamei/kitty-graphics--read-response))))
                (set-terminal-parameter nil param (or result 'none))

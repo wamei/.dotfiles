@@ -175,5 +175,49 @@
       ;; 256 色モードでは前景色が color-N
       (should (equal (get-text-property 0 'face (nth 0 lines)) '(:foreground "color-7"))))))
 
+(ert-deftest wamei/kitty-graphics-query-terminal-does-not-ask-during-startup ()
+  "起動中は端末に訊かない。Emacs 自身の初期化シーケンスが流れていて応答を
+拾い損ねるため。訊いていないので記憶もしない (次に呼ばれたら訊き直す)。"
+  (let ((sent nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics--send)
+               (lambda (seq) (push seq sent)))
+              ((symbol-function 'wamei/kitty-graphics--read-response) (lambda () ""))
+              ((symbol-function 'terminal-parameter) (lambda (&rest _) nil))
+              ((symbol-function 'set-terminal-parameter)
+               (lambda (&rest _) (error "起動中に記憶してはいけない")))
+              (after-init-time nil))
+      (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" #'identity))
+      (should-not sent))))
+
+(ert-deftest wamei/kitty-graphics-query-terminal-asks-after-startup ()
+  "起動後は訊いて、結果を記憶する。"
+  (let ((sent nil) (stored nil))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics--send)
+               (lambda (seq) (push seq sent)))
+              ((symbol-function 'wamei/kitty-graphics--read-response) (lambda () "OK"))
+              ((symbol-function 'terminal-parameter) (lambda (&rest _) nil))
+              ((symbol-function 'set-terminal-parameter)
+               (lambda (_t key value) (setq stored (cons key value))))
+              (after-init-time (current-time)))
+      (should (equal (wamei/kitty-graphics--query-terminal 'test "SEQ" #'identity) "OK"))
+      (should (equal sent '("SEQ")))
+      (should (equal stored '(test . "OK"))))))
+
+(ert-deftest wamei/kitty-graphics-query-terminal-remembers-a-real-failure ()
+  "起動後に訊いて応答が無かったのは本当の非対応。`none' として記憶し、訊き直さない。"
+  (let ((stored nil) (asked 0))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics--send) #'ignore)
+              ((symbol-function 'wamei/kitty-graphics--read-response)
+               (lambda () (setq asked (1+ asked)) ""))
+              ((symbol-function 'terminal-parameter) (lambda (&rest _) (cdr stored)))
+              ((symbol-function 'set-terminal-parameter)
+               (lambda (_t key value) (setq stored (cons key value))))
+              (after-init-time (current-time)))
+      (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" (lambda (_) nil)))
+      (should (equal stored '(test . none)))
+      ;; 2 回目は記憶を見るだけ
+      (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" (lambda (_) nil)))
+      (should (= asked 1)))))
+
 (provide 'kitty-graphics-test)
 ;;; kitty-graphics-test.el ends here

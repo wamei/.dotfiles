@@ -97,14 +97,27 @@ ANCHOR はアンカー文字の (桁 . 行)、SIZE は frame の (桁 . 行)、F
     frame))
 
 (defun wamei/dired-image-preview-kitty-available-p ()
-  "この端末で kitty graphics のプレビューを出せるなら非 nil。
-tty child frame が使え、端末が kitty graphics に対応していること。"
-  (and (featurep 'tty-child-frames)
-       (wamei/kitty-graphics-available-p)))
+  "この端末でプレビューの child frame を出せるなら非 nil。
+tty であることと tty child frame が使えることだけを見る。**端末には訊かない。**
+
+`wamei/dired-image-preview-mode' は dired バッファを開くたびにこれを呼び、偽なら
+その場でモードを切る。desktop 復元による起動中にも呼ばれるが、そのタイミングでは
+端末に訊いても応答を拾えないため、ここで訊くとモードが二度と有効にならない。
+kitty graphics に対応しているかは、実際に出すとき
+\(`wamei/dired-image-preview-kitty-show\=') に訊く。"
+  (and (not (display-graphic-p))
+       (featurep 'tty-child-frames)))
 
 (defun wamei/dired-image-preview-kitty-show (target)
-  "TARGET の画像を kitty graphics で child frame に表示する。"
+  "TARGET の画像を kitty graphics で child frame に表示する。
+端末が kitty graphics に対応しているかはここで初めて訊く。ユーザの操作中なので
+端末が応答を返せる (起動中に訊くと取り逃がす)。結果は端末ごとに記憶される。"
   (wamei/dired-image-preview-kitty-hide)
+  (when (wamei/kitty-graphics-available-p)
+    (wamei/dired-image-preview-kitty--show-1 target)))
+
+(defun wamei/dired-image-preview-kitty--show-1 (target)
+  "TARGET の画像を送って child frame に出す。端末が対応していることは呼び手が確かめる。"
   (let* ((window (wamei/dired-image-preview--target-window target))
          (frame (window-frame window))
          (file (wamei/dired-image-preview--target-file target))
