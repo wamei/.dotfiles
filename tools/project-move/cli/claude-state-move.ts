@@ -14,64 +14,35 @@ import {
   parseMovesTsv,
   type Move,
 } from "../src/moves.ts";
+import { parseArgs } from "../src/args.ts";
 
 // 値を取るオプションはここ 1 箇所にだけ列挙する。散らばると「位置引数の走査が
 // オプションの値を拾ってしまう」バグが再発するため (レビュー指摘: 実際に
 // `--claude-home $TMP/claude` の `$TMP/claude` を positional として拾い、
 // 渡した <old> <new> を無視して既定の moves ログ (実ホーム側!) にフォールバック
-// する事故が起きた)。
+// する事故が起きた)。パース自体は project-move.ts と共有する src/args.ts に
+// 切り出してある。
 const VALUE_OPTIONS = new Set(["claude-home", "claude-json", "history", "from-log"]);
 
-/**
- * 引数を先頭から順に 1 パスで走査する。
- *
- * `args.filter(a => !a.startsWith("--"))` のような「-- で始まらないものを
- * 全部位置引数とみなす」実装は、値を取るオプションの値 (`--claude-home` の次の
- * トークンなど) まで位置引数として拾ってしまう。ここでは VALUE_OPTIONS に
- * 載っているオプションに当たったら次のトークンを値として明示的に消費して
- * 読み飛ばし、それ以外の `--` 始まりはフラグとしてそのまま次へ、残りだけを
- * 位置引数として集める。
- */
-function parseArgs(argv: string[]): {
-  dryRun: boolean;
-  options: Record<string, string>;
-  positional: string[];
-} {
-  let dryRun = false;
-  const options: Record<string, string> = {};
-  const positional: string[] = [];
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--dry-run") {
-      dryRun = true;
-      continue;
-    }
-    if (arg.startsWith("--")) {
-      const name = arg.slice(2);
-      if (!VALUE_OPTIONS.has(name)) {
-        console.error(`unknown option: ${arg}`);
-        process.exit(2);
-      }
-      const value = argv[i + 1];
-      // 値が無い、または次のトークンが別のオプションに見える場合は、それを
-      // うっかり値として採用しない (以前のバグの裏返し: `--dry-run` のような
-      // 文字列をそのままパスとして受け取ってしまうのを防ぐ)。
-      if (value === undefined || value.startsWith("--")) {
-        console.error(`missing value for ${arg}`);
-        process.exit(2);
-      }
-      options[name] = value;
-      i++; // 値のトークンを消費
-      continue;
-    }
-    positional.push(arg);
-  }
-
-  return { dryRun, options, positional };
+let parsed: ReturnType<typeof parseArgs>;
+try {
+  parsed = parseArgs(process.argv.slice(2), VALUE_OPTIONS);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(2);
 }
+const { flags, options, positional } = parsed;
 
-const { dryRun, options, positional } = parseArgs(process.argv.slice(2));
+// parseArgs は未知の `--xxx` もエラーにせず flags に入れて返す (値オプションか
+// どうかの判断しかしない汎用関数のため)。「dry-run 以外のフラグは未知」という
+// 判断はこの CLI 固有の関心事なので、ここで検証する。
+for (const f of flags) {
+  if (f !== "dry-run") {
+    console.error(`unknown option: --${f}`);
+    process.exit(2);
+  }
+}
+const dryRun = flags.has("dry-run");
 
 const home = homedir();
 const paths = {
