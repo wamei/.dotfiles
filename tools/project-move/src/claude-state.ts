@@ -3,7 +3,8 @@ import { createReadStream, createWriteStream, existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
-import type { Move } from "./moves.ts";
+import { spawnSync } from "node:child_process";
+import { detectMoveCollisions, type Move } from "./moves.ts";
 import { slug, slugChildRemainder } from "./slug.ts";
 import {
   makeRewriter,
@@ -25,6 +26,22 @@ export type ClaudeStateReport = {
   claudeJsonKeys: { from: string; to: string }[];
   warnings: string[];
 };
+
+/**
+ * Claude Code が動いているか。
+ *
+ * ~/.claude.json は起動中ずっと書き戻されており (~/.claude/backups に数分おきの
+ * バックアップが溜まる)、起動中に書き換えても上書きで消える。だから --force は
+ * 用意せず、検出したら必ず拒否する。
+ *
+ * pgrep はベストエフォートで、すり抜ける起動形態は残りうる。spec のリスク 2。
+ */
+export function isClaudeRunning(
+  exec: (cmd: string, args: string[]) => number = (cmd, args) =>
+    spawnSync(cmd, args).status ?? 1,
+): boolean {
+  return exec("pgrep", ["-x", "claude"]) === 0;
+}
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -186,7 +203,13 @@ export async function claudeStateMove(
     renames: [],
     rewrittenFiles: [],
     claudeJsonKeys: [],
-    warnings: [],
+    // 移動リストそのものの衝突 (移動先の重複・連鎖書き換え・スラッグの衝突) を
+    // 最初に検査しておく。ここでは警告として載せるだけで止めない — dry-run は
+    // まさにこの検査結果を確認するために回すので、claudeStateMove 自身が
+    // 止めてしまうと使えなくなる。実適用を拒否するかどうかは呼び出し側 (CLI) の
+    // 責務にする (衝突を無視して適用すると 538 MB のセッション履歴が別プロジェクト
+    // のものと不可逆に混ざるため、CLI 側では拒否する)。
+    warnings: detectMoveCollisions(moves),
   };
 
   // 破壊の前に控える。CLAUDE.md の「破壊的操作」節の趣旨に沿う。
