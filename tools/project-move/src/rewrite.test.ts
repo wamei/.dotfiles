@@ -52,9 +52,16 @@ test("長いパスを先に処理して部分置換を防ぐ", () => {
   expect(r2.rewriteText("/p/a/b/c")).toBe("/y/b/c");
 });
 
-test("置換先に $ が含まれても壊れない", () => {
+test("置換先に $& が含まれても壊れない", () => {
   const r3 = makeRewriter([
-    { from: "/p/a", to: "/p/$x" },
+    { from: "/p/a", to: "/p/$&" },
   ]);
-  expect(r3.rewriteText("/p/a/b")).toBe("/p/$x/b");
+  expect(r3.rewriteText("/p/a/b")).toBe("/p/$&/b");
+});
+
+test("置換先に $$ が含まれても壊れない", () => {
+  const r4 = makeRewriter([
+    { from: "/p/a", to: "/p/$$" },
+  ]);
+  expect(r4.rewriteText("/p/a/b")).toBe("/p/$$/b");
 });
