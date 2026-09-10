@@ -100,10 +100,17 @@
 フレームを返すので、それをモジュールの変数に持って以降の判定に使う。
 
 `posframe-show` は child frame の root window を強い dedicated にする
-(posframe.el)。show の直後にそれを `(set-window-dedicated-p (frame-selected-window
+(posframe.el)。show の直後にそれを `(set-window-dedicated-p (frame-root-window
 frame) nil)` で解除する。狙いは「メモの小窓にフォーカスがある状態で
 `C-x C-f` や `magit-status` を叩いたら、その小窓の中に開く」こと (下の
 「posframe を閉じる条件」参照)。本文 window は一切触らない。
+
+副作用として、メモバッファを kill しても posframe.el はもうこの child
+frame を道連れに削除しない。`replace-buffer-in-windows` は window が
+dedicated でかつフレーム唯一の window のときだけフレームごと削除し、
+そうでなければ `switch-to-prev-buffer` で window の中身を差し替えるだけ
+だからで、dedicated を外した以上フレームは生きたまま残る。この後始末は
+「posframe を閉じる条件」に追記した `--posframe-action` のガードが受け持つ。
 
 `posframe-workable-p` が nil のときは posframe を出さず、本文 window に
 フォールバックする (`C-u` を付けたのと同じ動き)。batch、`emacs_basic_display`、
@@ -119,6 +126,13 @@ child frame 非対応環境でコマンドが壊れないようにするため�
 
 2 は `post-command-hook` で見る (`selected-frame` が posframe のフレームで
 なくなったら保存して隠す)。
+
+これとは別に、追跡しているバッファ (小窓に最後に出すよう求めたバッファ)
+が死んでいたら無条件に隠す。dedicated を外した副作用で、メモバッファを
+kill しても child frame はもう道連れに削除されない (前節参照) ため、
+フォーカスが小窓に留まったまま (2 に引っかからないまま) 小窓が無関係な
+バッファを映して孤児化することがある。フォーカスが外れたかどうかより先に
+このガードを見る。
 
 dedicated を外した (前節) ので、小窓の中で `find-file` した別のファイルや
 `magit-status` が開いたバッファは、`display-buffer` を経由するかどうかに
@@ -158,7 +172,7 @@ batch (67 本) と GUI プローブは通ったが、tmux + `emacs -nw` の実�
    作業した後にフォーカスがそこに残ったまま `posframe-show` を呼ぶと、
    親が小窓自身になる循環した `parent-frame` チェーンを作ろうとして
    \"Circular specification of 'parent-frame'\" で落ちる。
-   `wamei/project-memo-posframe-show` は `wamei/project-tabs-base-frame'
+   `wamei/project-memo-posframe-show` は `wamei/project-tabs-base-frame`
    (project-tabs.el) で最上位の実フレームまで遡ってから `posframe-show`
    を呼ぶことで避けている。
 2. **フレームを使い回すと窓の中身が変わらない** — `posframe-show` は
@@ -168,7 +182,7 @@ batch (67 本) と GUI プローブは通ったが、tmux + `emacs -nw` の実�
    別のバッファが映ったまま同じ対象を求め直すと、フレームは使い回されるが
    窓の中身は前のバッファのままになる。`wamei/project-memo-posframe-show`
    は `posframe-show` の返り値任せにせず、そのあと自分で
-   `set-window-buffer' / `set-window-point` をやり直している。
+   `set-window-buffer` / `set-window-point` をやり直している。
 
 ### 隠すときの入力フォーカス
 
