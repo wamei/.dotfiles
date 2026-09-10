@@ -182,6 +182,11 @@ batch (端末なし) で tty の近似色に丸めるので当てにしない。
 (defvar ghostel-pre-spawn-hook)         ; ghostel.el
 (declare-function ghostel-create "ghostel" (&optional name display identity))
 
+;; term-panel.el と同じ理由で autoload を張る (ghostel 側に cookie が無い)。
+;; ここは desktop 復元の取りこぼしを作る経路で、`condition-case' に包まれて
+;; いるので void-function になっても message が出るだけで黙って捨てられる。
+(autoload 'ghostel-create "ghostel")
+
 (defun wamei/term-restore--prompt-line-p ()
   "現在行がプロンプト (と入力) の行なら非 nil。
 ghostel は OSC 133 のシェル統合 (bash/fish/zsh に自動注入される) で受け取った

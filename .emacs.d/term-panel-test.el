@@ -96,6 +96,18 @@
           (forward-line 1))
         (nreverse names)))))
 
+;;; ghostel のロード
+
+(ert-deftest wamei/term-panel-ghostel-create-is-autoloaded ()
+  "ghostel 未ロードのまま端末を作れる。
+`ghostel-create' には ghostel 側に autoload cookie が無く、パネルのコマンドは
+term-panel.el で defun されているので leaf の `:bind' が張る autoload も
+上書きされる。term-panel.el 自身が autoload を張らないと、ghostel を
+まだ読んでいないセッションの最初の C-z が void-function で落ちる。"
+  (let ((def (symbol-function 'ghostel-create)))
+    (should (autoloadp def))
+    (should (equal (cadr def) "ghostel"))))
+
 ;;; 起点になるプロジェクト
 
 (ert-deftest wamei/term-panel-root-uses-tab-project-outside-project ()
