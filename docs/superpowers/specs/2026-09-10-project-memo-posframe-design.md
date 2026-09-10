@@ -33,7 +33,9 @@
 
 - `C-x C-m` の既定の表示先を posframe にする。`C-u` を付けると本文 window。
 - 全体メモは `C-x m` に分ける。
-- posframe はフォーカスが外れたら閉じる。`ESC` / `C-g` では閉じない。
+- posframe はフォーカスが外れたら閉じる。素の `C-g` (`keyboard-quit`) でも
+  閉じる。`ESC` と、ミニバッファを取り消す `C-g`
+  (`minibuffer-keyboard-quit` / `abort-minibuffers`) では閉じない。
 - posframe の window は dedicated にしない。小窓にフォーカスがある状態で
   `C-x C-f` や `magit-status` を実行したら、その小窓の中に開く。
 - プロジェクトタブを開いた直後 (`C-x C-p` / `C-x t p`) は今までどおり本文 window。
@@ -118,14 +120,75 @@ child frame 非対応環境でコマンドが壊れないようにするため�
 
 ## posframe を閉じる条件
 
-次の 2 つ。`ESC` と `C-g` では閉じない (どちらも org の編集中に使うため)。
-いずれの経路でも、隠す前に必ずそのメモを保存する。
+次の 3 つ。`ESC` では閉じない (org の編集中に使うため)。いずれの経路でも、
+隠す前に必ずそのメモを保存する。
 
 1. `C-x C-m` / `C-x m` をもう一度押す (トグル)
 2. Emacs 内の別の window / frame / タブへフォーカスが移る
+3. 素の `C-g` (`this-command` が `keyboard-quit`)
 
 2 は `post-command-hook` で見る (`selected-frame` が posframe のフレームで
-なくなったら保存して隠す)。
+なくなったら保存して隠す)。3 も同じ `post-command-hook` の経路で見るが、
+`selected-frame` ではなく `this-command` で直接判定する (次段落)。
+
+当初は `C-g` でも閉じない設計だった (org の編集中に誤って `C-g` を打っても
+メモが消えないように、という意図)。ところが実機で、**tty
+(`emacs -nw`) では素の `C-g` で閉じ、GUI では閉じない**という食い違いが
+見つかった。原因は実装のバグで、設計どおりの違いではない: 実端末で小窓に
+フォーカスがある状態で素の `C-g` を送ると、`keyboard-quit` が quit を
+signal する過程で tty 側が `selected-frame` を端末本体のフレームへ戻し、
+それきり戻らない (tty の child frame は同じ端末画面への重ね描画でしかなく、
+GUI のような独立したウィンドウを持たないため)。これが上の「2. フォーカスが
+外れた」判定に副作用的に引っかかって tty だけ閉じていた。GUI は独立した
+child frame を持つため同じ再選択が起きず、閉じないままだった。
+
+ユーザーの判断は「どちらの環境でも閉じる」。`selected-frame` の偶然の環境
+依存の変化に頼るのをやめ、`this-command` が `keyboard-quit` かどうかを
+直接見ることで、tty と GUI のどちらでも確実に同じ動きにした。ミニバッファ
+を `C-g` で取り消す方は `minibuffer-keyboard-quit` / `abort-minibuffers` に
+なり `keyboard-quit` ではないので、この判定には自然に引っかからず、
+「ミニバッファが活性な間は閉じない」というもう一つの条件 (下記) にそのまま
+委ねられる。診断は実端末 (tmux + `emacs -nw`) と隔離 GUI daemon の両方で
+実測して確認した (`selected-frame` / `this-command` / `post-command-hook`
+の発火有無を突き合わせ)。
+
+### 残存リスク: posframe 生成直後の C-g
+
+レビューで実 tty (tmux + `emacs -nw`) を使って追加確認したところ、posframe
+を出した直後 (200〜300ms 以内) に `C-g` を送ると、`keyboard-quit` の
+`:before` advice が一度も発火せず `this-command` も `nil` のままになる
+ケースが見つかった (2/2 回で再現)。作られたばかりの child frame の処理が
+プロセスに残っている間は、quit が低レベルの quit-flag / 割り込み経路で
+配送され、`keyboard-quit` のコマンドとしての dispatch を丸ごと迂回する
+ためと見られる。tty ではこれは無害 — 既存の「2. フォーカスが外れた」判定
+(`selected-frame` ベース) が `this-command` と無関係に引き続き拾うので、
+ユーザーから見える挙動は変わらず閉じる。
+
+同じ race が GUI でも起きるなら、GUI には「2」に相当する副作用
+(`selected-frame` が勝手に変わる) が無いため、posframe が黙って閉じない
+まま残る恐れがある。これを確かめるため、隔離 GUI daemon (実 NS フレーム)
+で `unread-command-events` に実コマンドループを処理させる方法 (synthetic
+な `execute-kbd-macro` 単体とは違い、本物のコマンド境界・
+`post-command-hook` を経由する) を使い、posframe 生成直後
+0〜300ms (0, 50, 100, 150, 200, 250, 300ms、うち 200ms と 300ms は 4 回
+ずつ追試、計 15 試行、いずれもフレッシュな daemon で毎回新規に child
+frame を作らせた) の間隔で `C-g` を送った。**全試行で `keyboard-quit` が
+正常に dispatch され (`this-command` が `keyboard-quit` になり、advice が
+発火し、`--posframe-action` が `'hide` を返して閉じた)**。GUI の child
+frame は `posframe-show` が返った直後に `frame-visible-p` が既に `t`
+であることも確認しており、Lisp から見る限り生成は同期的に完了している
+ように見える。
+
+ただし、この GUI 側の計測は macOS のアクセシビリティ権限が取得できない
+環境で行ったため、`unread-command-events` で Lisp のイベントキューに
+投入したものであり、本物の OS レベルのキーボード割り込みではない。
+tty で実際に再現した race は低レベルの割り込み経路に起因するため、真に
+同じ経路を GUI の本物のキー入力で検証できたわけではない。したがって
+「GUI ではこの race は起きない」と断定はできず、「この検証方法では
+再現しなかった」という事実と、「本物の OS キー入力では未検証」という
+範囲を分けて記録する。この結果を踏まえ、`last-input-event` を追加で
+見る案 (割り込み経路も拾えるようにする案) は、現時点で実装する根拠が
+無いため見送った。将来 GUI でこの race が実際に確認されたら再検討する。
 
 これとは別に、追跡しているバッファ (小窓に最後に出すよう求めたバッファ)
 が死んでいたら無条件に隠す。dedicated を外した副作用で、メモバッファを
