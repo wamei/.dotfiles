@@ -89,5 +89,33 @@ Emacs を経由しないので、ここで送るのはキーだけでよい。"
       (ghostel-send-key "v" "ctrl")
     (ghostel-yank)))
 
+;;; IME の変換中文字
+
+(defvar ns-working-overlay)             ; nsterm.m
+(defvar ghostel--cursor-char-pos)       ; ghostel.el (buffer-local)
+
+(defun wamei/term-input--ns-keep-working-overlay ()
+  "macOS の IME の変換中 overlay を端末カーソルの位置へ張り直す。
+NS の変換中文字はバッファに挿入されず、`point' に置いた長さ 0 の
+`ns-working-overlay' の after-string として描かれる。ghostel は 30fps で
+バッファを書き換えるので、この overlay は書き換えの前後で別の位置に
+取り残され、変換中の文字が端末カーソルと無関係な行に出る。
+`ghostel-inhibit-redraw-functions' で変換中だけ再描画を止める手もあるが、
+それだと変換の途中で IME が確定させた文字が端末へ送られても画面に出ない。
+再描画は止めず、書き換えのたびにカーソルへ張り直す。"
+  (let ((ov (bound-and-true-p ns-working-overlay)))
+    (when (and (overlayp ov)
+               (eq (overlay-buffer ov) (current-buffer))
+               (bound-and-true-p ghostel--cursor-char-pos))
+      (move-overlay ov ghostel--cursor-char-pos ghostel--cursor-char-pos))))
+
+(defun wamei/term-input--ns-after-redraw (buffer &rest _)
+  "BUFFER の変換中 overlay を張り直す。`ghostel--redraw-now' の :after。
+再描画は引数のバッファに対して行われるが、advice はその
+`with-current-buffer' の外で走るので自分でカレントにする。"
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (wamei/term-input--ns-keep-working-overlay))))
+
 (provide 'term-input)
 ;;; term-input.el ends here

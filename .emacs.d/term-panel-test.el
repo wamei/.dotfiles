@@ -337,5 +337,72 @@
         (wamei/term-previous)
         (should (eq (window-buffer (wamei/term--window)) second))))))
 
+;;; 行グリッドへの整列
+
+(ert-deftest wamei/term-panel-grid-trim-returns-remainder ()
+  "本文高さが行高で割り切れないとき、余りぶんだけ詰める。"
+  (should (= (wamei/term--grid-trim '(1692) 18) 0))
+  (should (= (wamei/term--grid-trim '(1709) 18) 17))
+  (should (= (wamei/term--grid-trim '(1722) 18) 12)))
+
+(ert-deftest wamei/term-panel-grid-trim-uses-tallest ()
+  "端末ウィンドウが複数あるときは一番高いものを基準にする。
+基準より d px 低いウィンドウの端数は d px に収まる。低い方に合わせると
+高いウィンドウの端数が (行高 - d) px に跳ね上がる。"
+  (should (= (wamei/term--grid-trim '(1722 1722 1722) 18) 12))
+  (should (= (wamei/term--grid-trim '(400 1722) 18) 12)))
+
+(ert-deftest wamei/term-panel-grid-trim-without-terminals ()
+  "端末ウィンドウが無いフレームには触らない。"
+  (should (= (wamei/term--grid-trim nil 18) 0)))
+
+(ert-deftest wamei/term-panel-grid-trim-guards-line-height ()
+  "行高が取れないときは何もしない (batch の tty など)。"
+  (should (= (wamei/term--grid-trim '(1722) 0) 0))
+  (should (= (wamei/term--grid-trim '(1722) nil) 0)))
+
+(ert-deftest wamei/term-panel-grid-resize-p-allows-fresh-frame ()
+  "まだ試していないフレームは詰めてよい。"
+  (should (wamei/term--grid-resize-p 1780 nil)))
+
+(ert-deftest wamei/term-panel-grid-resize-p-skips-aligned-frame ()
+  "自分が指示した高さになっているなら整列済みなので触らない。"
+  (should-not (wamei/term--grid-resize-p 1751 '(1768 . 1751))))
+
+(ert-deftest wamei/term-panel-grid-resize-p-skips-refused-resize ()
+  "試行前の高さのままなら WM に拒まれているので、やり直さない。"
+  (should-not (wamei/term--grid-resize-p 1768 '(1768 . 1751))))
+
+(ert-deftest wamei/term-panel-grid-resize-p-allows-after-user-resize ()
+  "ユーザがフレームを動かしたら、また揃えにいく。"
+  (should (wamei/term--grid-resize-p 1900 '(1768 . 1751))))
+
+(ert-deftest wamei/term-panel-grid-align-is-deferred ()
+  "整列は redisplay の外へ逃がす。`window-size-change-functions' は
+redisplay の最中に走るので、その場でフレームをリサイズすると描画がやり直され、
+入力中の文字が描かれないなどの副作用が出る。"
+  (let ((wamei/term--grid-timer nil)
+        (scheduled 0)
+        (resized 0))
+    (cl-letf (((symbol-function 'run-at-time)
+               (lambda (&rest _) (setq scheduled (1+ scheduled)) 'timer))
+              ((symbol-function 'wamei/term--align-frame-to-grid)
+               (lambda (&rest _) (setq resized (1+ resized)))))
+      (wamei/term--schedule-grid-align (selected-frame))
+      (should (= scheduled 1))
+      (should (= resized 0)))))
+
+(ert-deftest wamei/term-panel-grid-align-does-not-queue-twice ()
+  "1 回の redisplay で何度呼ばれても、予約は 1 つだけ。"
+  (let ((wamei/term--grid-timer nil)
+        (scheduled 0))
+    (cl-letf (((symbol-function 'run-at-time)
+               (lambda (&rest _) (setq scheduled (1+ scheduled)) 'timer))
+              ((symbol-function 'timerp) (lambda (x) (eq x 'timer))))
+      (wamei/term--schedule-grid-align (selected-frame))
+      (wamei/term--schedule-grid-align (selected-frame))
+      (wamei/term--schedule-grid-align (selected-frame))
+      (should (= scheduled 1)))))
+
 (provide 'term-panel-test)
 ;;; term-panel-test.el ends here

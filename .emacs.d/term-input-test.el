@@ -177,5 +177,54 @@ copy mode で M-w した後は ghostel がマークを非アクティブにす�
         (call-interactively #'wamei/term-input-copy))
       (should (equal (car kill-ring) "world")))))
 
+;;; IME の変換中 overlay
+
+;; nsterm.m の変数。batch では未定義なので special にしておく。
+(defvar ns-working-overlay nil)
+;; ghostel の buffer-local 変数 (端末カーソルの位置)。
+(defvar-local ghostel--cursor-char-pos nil)
+
+(ert-deftest wamei/term-input-ns-overlay-follows-cursor ()
+  "再描画で置き去りになった変換中 overlay を端末カーソルへ張り直す。"
+  (with-temp-buffer
+    (insert "line1\nline2\nline3\n")
+    (let ((cursor (progn (goto-char (point-min)) (forward-line 2) (point)))
+          (ov (make-overlay 1 1)))
+      (setq-local ghostel--cursor-char-pos cursor)
+      (let ((ns-working-overlay ov))
+        (wamei/term-input--ns-keep-working-overlay))
+      (should (= (overlay-start ov) cursor))
+      (should (= (overlay-end ov) cursor)))))
+
+(ert-deftest wamei/term-input-ns-overlay-ignores-other-buffer ()
+  "別のバッファに属する overlay は動かさない。"
+  (let ((other (generate-new-buffer " *other*")))
+    (unwind-protect
+        (let ((ov (with-current-buffer other (insert "abc") (make-overlay 1 1))))
+          (with-temp-buffer
+            (insert "line1\nline2\n")
+            (setq-local ghostel--cursor-char-pos (point-max))
+            (let ((ns-working-overlay ov))
+              (wamei/term-input--ns-keep-working-overlay))
+            (should (= (overlay-start ov) 1))))
+      (kill-buffer other))))
+
+(ert-deftest wamei/term-input-ns-overlay-without-cursor ()
+  "端末カーソルの位置が分からないときは何もしない。"
+  (with-temp-buffer
+    (insert "line1\nline2\n")
+    (let ((ov (make-overlay 1 1)))
+      (setq-local ghostel--cursor-char-pos nil)
+      (let ((ns-working-overlay ov))
+        (wamei/term-input--ns-keep-working-overlay))
+      (should (= (overlay-start ov) 1)))))
+
+(ert-deftest wamei/term-input-ns-overlay-absent ()
+  "変換中でない (overlay が無い) ときは黙って何もしない。"
+  (with-temp-buffer
+    (setq-local ghostel--cursor-char-pos 1)
+    (let ((ns-working-overlay nil))
+      (should-not (wamei/term-input--ns-keep-working-overlay)))))
+
 (provide 'term-input-test)
 ;;; term-input-test.el ends here
