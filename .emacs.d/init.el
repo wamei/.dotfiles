@@ -354,6 +354,7 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
          ("M-b" . 'backward-to-word)
          ("M-f" . 'forward-to-word)
          ("M-h" . 'backward-kill-word)
+         ("M-o" . 'other-window)
          ("s-x" . 'kill-region)
          ("s-c" . 'kill-ring-save)
          ("s-v" . 'yank)))
