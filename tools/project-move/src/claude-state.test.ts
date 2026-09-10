@@ -2,8 +2,14 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { claudeStateMove, type ClaudeStatePaths } from "./claude-state.ts";
+import { basename, dirname, join } from "node:path";
+import {
+  claudeStateMove,
+  mergeSessionsIndexes,
+  rewriteLines,
+  type ClaudeStatePaths,
+} from "./claude-state.ts";
+import { makeRewriter } from "./rewrite.ts";
 
 let root: string;
 let paths: ClaudeStatePaths;
@@ -104,6 +110,97 @@ test("実行前にバックアップを取る", async () => {
   expect(existsSync(`${paths.claudeJson}.project-move-backup`)).toBe(true);
 });
 
+test("2 回目の実行は 1 回目のバックアップを上書きしない", async () => {
+  const original = readFileSync(paths.claudeJson, "utf8");
+  await claudeStateMove(moves, paths, { dryRun: false });
+  const backupPath = `${paths.claudeJson}.project-move-backup`;
+  expect(readFileSync(backupPath, "utf8")).toBe(original);
+
+  // 2 回目 (対象になる move が無くても構わない。バックアップの副作用だけを見る)
+  await claudeStateMove(moves, paths, { dryRun: false });
+
+  // 1 回目の、まだ何も触られていない原本のバックアップは変わらず残っている
+  expect(readFileSync(backupPath, "utf8")).toBe(original);
+  // 2 回目の実行でも新しいバックアップが増えている (上書きされて消えたのではない)
+  const dir = dirname(paths.claudeJson);
+  const base = basename(paths.claudeJson);
+  const backups = readdirSync(dir).filter((f) => f.startsWith(`${base}.project-move-backup`));
+  expect(backups.length).toBeGreaterThan(1);
+});
+
+test("sessions-index.json は移動先にもあれば entries をマージし、重複 sessionId は移動先を残す", async () => {
+  writeFileSync(
+    join(paths.claudeHome, "projects", OLD_SLUG, "sessions-index.json"),
+    JSON.stringify({
+      version: 1,
+      originalPath: OLD,
+      entries: [
+        { sessionId: "dup", projectPath: OLD, fullPath: "old-dup-path" },
+        { sessionId: "srcOnly", projectPath: OLD, fullPath: "old-src-only-path" },
+      ],
+    }),
+  );
+  const destDir = join(paths.claudeHome, "projects", NEW_SLUG);
+  mkdirSync(destDir, { recursive: true });
+  writeFileSync(
+    join(destDir, "sessions-index.json"),
+    JSON.stringify({
+      version: 2,
+      originalPath: NEW,
+      entries: [
+        { sessionId: "dup", projectPath: NEW, fullPath: "new-dup-path" },
+        { sessionId: "destOnly", projectPath: NEW, fullPath: "new-dest-only-path" },
+      ],
+    }),
+  );
+
+  await claudeStateMove(moves, paths, { dryRun: false });
+
+  const idx = JSON.parse(readFileSync(join(destDir, "sessions-index.json"), "utf8"));
+  expect(idx.version).toBe(2);
+  const bySessionId = Object.fromEntries(idx.entries.map((e: { sessionId: string }) => [e.sessionId, e]));
+  expect(Object.keys(bySessionId).sort()).toEqual(["destOnly", "dup", "srcOnly"]);
+  // 重複した sessionId は移動先側の内容を残す
+  expect(bySessionId.dup.fullPath).toBe("new-dup-path");
+  // 移動元にしか無いエントリも連結されている
+  expect(bySessionId.srcOnly).toBeDefined();
+  // マージし終えた移動元ディレクトリは空になり rmdir される
+  expect(existsSync(join(paths.claudeHome, "projects", OLD_SLUG))).toBe(false);
+});
+
+test("mergeSessionsIndexes: 重複 sessionId は移動先を残し、version/originalPath も移動先を使う", () => {
+  const dest = {
+    version: 2,
+    originalPath: NEW,
+    entries: [{ sessionId: "dup", tag: "dest" }, { sessionId: "destOnly" }],
+  };
+  const src = {
+    version: 1,
+    originalPath: OLD,
+    entries: [{ sessionId: "dup", tag: "src" }, { sessionId: "srcOnly" }],
+  };
+  const merged = mergeSessionsIndexes(dest, src) as {
+    version: number;
+    originalPath: string;
+    entries: { sessionId: string; tag?: string }[];
+  };
+  expect(merged.version).toBe(2);
+  expect(merged.originalPath).toBe(NEW);
+  expect(merged.entries.map((e) => e.sessionId).sort()).toEqual(["destOnly", "dup", "srcOnly"]);
+  expect(merged.entries.find((e) => e.sessionId === "dup")?.tag).toBe("dest");
+});
+
+test("mergeSessionsIndexes: 片方に entries が無くても落ちない", () => {
+  expect(mergeSessionsIndexes({ version: 1 }, { version: 1, entries: [{ sessionId: "a" }] })).toEqual({
+    version: 1,
+    entries: [{ sessionId: "a" }],
+  });
+  expect(mergeSessionsIndexes({ version: 1, entries: [{ sessionId: "a" }] }, { version: 1 })).toEqual({
+    version: 1,
+    entries: [{ sessionId: "a" }],
+  });
+});
+
 test("書き換え後に一時ファイルが残らない", async () => {
   await claudeStateMove(moves, paths, { dryRun: false });
   // projects 配下・historyJsonl 双方に *.project-move-tmp が残っていないことを確認する。
@@ -118,4 +215,15 @@ test("書き換え後に一時ファイルが残らない", async () => {
     return found;
   }
   expect(findTmpFiles(paths.claudeHome)).toEqual([]);
+});
+
+test("rewriteLines は例外で抜けても *.project-move-tmp を残さない", async () => {
+  const filePath = join(root, "boom.jsonl");
+  writeFileSync(filePath, "a\nb\nc\n");
+  const throwing = (): string => {
+    throw new Error("boom");
+  };
+  const r = makeRewriter(moves);
+  await expect(rewriteLines(filePath, r, throwing, false)).rejects.toThrow("boom");
+  expect(existsSync(`${filePath}.project-move-tmp`)).toBe(false);
 });
