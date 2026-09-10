@@ -15,12 +15,13 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { defaultMovesLogPath } from "../src/moves.ts";
 
 const CLI = join(import.meta.dir, "claude-state-move.ts");
@@ -35,19 +36,46 @@ const CLI = join(import.meta.dir, "claude-state-move.ts");
 // おりこの分岐を踏まないが、project-move.ts 側で「HOME を差し替えないと
 // 実ホームに書き込む経路がある」事故が実際に起きたため (レビューで発見)、
 // 同じ構造の穴がここに無いことをテストレベルでも保証しておく。
+//
+// レビュー指摘: 存在有無の真偽値だけを比較する形では、この移行が進んで
+// ~/.local/state/project-move/ に正当なファイルが並ぶようになった時点で
+// 「存在する」→「存在する」の一致だけで安全網が無効化される。子エントリ名の
+// 一覧を比較する形にし、Task 11 以降も機能させる (project-move.ts 用の
+// cli/project-move.test.ts と同じ設計)。
 const REAL_HOME = homedir();
-const REAL_MOVES_LOG = defaultMovesLogPath(REAL_HOME);
+const REAL_MOVES_LOG_DIR = dirname(defaultMovesLogPath(REAL_HOME));
 
-const realMovesLogExistedBefore = existsSync(REAL_MOVES_LOG);
-const realMovesLogContentBefore = realMovesLogExistedBefore
-  ? readFileSync(REAL_MOVES_LOG, "utf8")
-  : undefined;
+/** ディレクトリの「存在有無」と「直下の子エントリ名一覧 (ソート済み)」のスナップショット。 */
+type DirSnapshot = { exists: boolean; entries: string[] };
+
+function snapshotDir(dir: string): DirSnapshot {
+  if (!existsSync(dir)) return { exists: false, entries: [] };
+  return { exists: true, entries: readdirSync(dir).sort() };
+}
+
+/**
+ * before と現在のスナップショットを比較し、増えた/減ったエントリ名を含む形で
+ * 差分をアサートする。`expect(...).toEqual(...)` に増減の一覧を直接載せるので、
+ * 失敗時のメッセージにそのままエントリ名が出る。
+ */
+function assertDirUnchanged(dir: string, before: DirSnapshot, label: string) {
+  const after = snapshotDir(dir);
+  const beforeSet = new Set(before.entries);
+  const afterSet = new Set(after.entries);
+  const added = after.entries.filter((e) => !beforeSet.has(e));
+  const removed = before.entries.filter((e) => !afterSet.has(e));
+  expect({ label, exists: after.exists, added, removed }).toEqual({
+    label,
+    exists: before.exists,
+    added: [],
+    removed: [],
+  });
+}
+
+const realMovesLogDirBefore = snapshotDir(REAL_MOVES_LOG_DIR);
 
 function assertRealHomeUntouched() {
-  expect(existsSync(REAL_MOVES_LOG)).toBe(realMovesLogExistedBefore);
-  if (realMovesLogExistedBefore) {
-    expect(readFileSync(REAL_MOVES_LOG, "utf8")).toBe(realMovesLogContentBefore as string);
-  }
+  assertDirUnchanged(REAL_MOVES_LOG_DIR, realMovesLogDirBefore, "~/.local/state/project-move");
 }
 
 let root: string;
