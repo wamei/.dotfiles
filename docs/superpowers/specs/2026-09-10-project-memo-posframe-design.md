@@ -152,6 +152,44 @@ child frame を持つため同じ再選択が起きず、閉じないままだ�
 実測して確認した (`selected-frame` / `this-command` / `post-command-hook`
 の発火有無を突き合わせ)。
 
+### 残存リスク: posframe 生成直後の C-g
+
+レビューで実 tty (tmux + `emacs -nw`) を使って追加確認したところ、posframe
+を出した直後 (200〜300ms 以内) に `C-g` を送ると、`keyboard-quit` の
+`:before` advice が一度も発火せず `this-command` も `nil` のままになる
+ケースが見つかった (2/2 回で再現)。作られたばかりの child frame の処理が
+プロセスに残っている間は、quit が低レベルの quit-flag / 割り込み経路で
+配送され、`keyboard-quit` のコマンドとしての dispatch を丸ごと迂回する
+ためと見られる。tty ではこれは無害 — 既存の「2. フォーカスが外れた」判定
+(`selected-frame` ベース) が `this-command` と無関係に引き続き拾うので、
+ユーザーから見える挙動は変わらず閉じる。
+
+同じ race が GUI でも起きるなら、GUI には「2」に相当する副作用
+(`selected-frame` が勝手に変わる) が無いため、posframe が黙って閉じない
+まま残る恐れがある。これを確かめるため、隔離 GUI daemon (実 NS フレーム)
+で `unread-command-events` に実コマンドループを処理させる方法 (synthetic
+な `execute-kbd-macro` 単体とは違い、本物のコマンド境界・
+`post-command-hook` を経由する) を使い、posframe 生成直後
+0〜300ms (0, 50, 100, 150, 200, 250, 300ms、うち 200ms と 300ms は 4 回
+ずつ追試、計 15 試行、いずれもフレッシュな daemon で毎回新規に child
+frame を作らせた) の間隔で `C-g` を送った。**全試行で `keyboard-quit` が
+正常に dispatch され (`this-command` が `keyboard-quit` になり、advice が
+発火し、`--posframe-action` が `'hide` を返して閉じた)**。GUI の child
+frame は `posframe-show` が返った直後に `frame-visible-p` が既に `t`
+であることも確認しており、Lisp から見る限り生成は同期的に完了している
+ように見える。
+
+ただし、この GUI 側の計測は macOS のアクセシビリティ権限が取得できない
+環境で行ったため、`unread-command-events` で Lisp のイベントキューに
+投入したものであり、本物の OS レベルのキーボード割り込みではない。
+tty で実際に再現した race は低レベルの割り込み経路に起因するため、真に
+同じ経路を GUI の本物のキー入力で検証できたわけではない。したがって
+「GUI ではこの race は起きない」と断定はできず、「この検証方法では
+再現しなかった」という事実と、「本物の OS キー入力では未検証」という
+範囲を分けて記録する。この結果を踏まえ、`last-input-event` を追加で
+見る案 (割り込み経路も拾えるようにする案) は、現時点で実装する根拠が
+無いため見送った。将来 GUI でこの race が実際に確認されたら再検討する。
+
 これとは別に、追跡しているバッファ (小窓に最後に出すよう求めたバッファ)
 が死んでいたら無条件に隠す。dedicated を外した副作用で、メモバッファを
 kill しても child frame はもう道連れに削除されない (前節参照) ため、
