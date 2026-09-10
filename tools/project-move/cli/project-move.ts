@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { ghqProbe, planMove } from "../src/plan-move.ts";
+import { ghqProbe, planMove, type MovePlan } from "../src/plan-move.ts";
 import { applyFixups, isEmacsRunning } from "../src/project-move.ts";
 import { defaultMovesLogPath, formatMoveRow } from "../src/moves.ts";
 import { parseArgs } from "../src/args.ts";
@@ -28,7 +28,7 @@ try {
   console.error((e as Error).message);
   process.exit(2);
 }
-const { flags, positional: dirs } = parsed;
+const { flags, options, positional: dirs } = parsed;
 
 // 未知の `--xxx` は静かに無視せず落とす (dry-run 以外のフラグは想定していない)。
 for (const f of flags) {
@@ -38,6 +38,19 @@ for (const f of flags) {
   }
 }
 const dryRun = flags.has("dry-run");
+const explicitTo = options.to;
+
+// --to は 1 つのディレクトリにしか許さない。複数のディレクトリに同じ移動先を
+// 指定しても意味を成さず、後から処理したものが先の移動結果を上書きしてしまう
+// (mkdir + rename の宛先が全員同じになる)。spec の
+// `project-move [--dry-run] [--to <path>] <dir>...` という形自体は複数
+// ディレクトリを許すが、それは --to 無しのとき (ghq / localRoot が各々に
+// 別の移動先を計算する) の話であって、--to で明示指定したときは 1 対 1 の
+// 関係でなければ安全に扱えない。ここで早期に弾き、1 つも移動を始めない。
+if (explicitTo !== undefined && dirs.length !== 1) {
+  console.error("--to can only be used with exactly one directory");
+  process.exit(2);
+}
 const home = homedir();
 
 const EMACS_STATE_FILES = [
@@ -54,7 +67,14 @@ const emacsRunning = isEmacsRunning();
 const log = defaultMovesLogPath(home);
 
 for (const dir of dirs) {
-  const plan = planMove(dir, { probe: ghqProbe, localRoot: join(home, "projects", "local") });
+  // --to が与えられたときは ghq / localRoot の自動判定を使わず、指定された
+  // path をそのまま移動先にする。種別は "local" 扱いにする (ghq が決めた場所
+  // ではなく、ユーザーが明示指定した場所という意味で、以降の existsSync チェック
+  // や rename も local と同じ経路を通す)。
+  const plan: MovePlan =
+    explicitTo !== undefined
+      ? { kind: "local", from: dir.replace(/\/+$/, ""), to: explicitTo }
+      : planMove(dir, { probe: ghqProbe, localRoot: join(home, "projects", "local") });
   console.log(`${plan.kind === "ghq" ? "ghq  " : "local"} ${plan.from} -> ${plan.to}`);
 
   // 移動前に、失いうるものを見せる (CLAUDE.md の「破壊的操作」節)
