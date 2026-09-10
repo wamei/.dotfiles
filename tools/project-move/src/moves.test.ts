@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { defaultMovesLogPath, detectMoveCollisions, formatMoveRow, parseMovesTsv } from "./moves.ts";
+import {
+  appliedMovesLogPath,
+  defaultMovesLogPath,
+  detectMoveCollisions,
+  formatMoveRow,
+  parseMovesTsv,
+} from "./moves.ts";
 
 test("3 列 TSV を読む", () => {
   const text = [
@@ -88,4 +94,36 @@ test("detectMoveCollisions: スラッグの衝突 (to 同士) を検出する", 
     { from: "/Users/w/projects/b", to: "/Users/w/projects/github.com/o/mc_data_catalog" },
   ]);
   expect(warnings.length).toBe(1);
+});
+
+test("detectMoveCollisions: from 側スラッグの接頭辞の曖昧さを検出する (Minor 2)", () => {
+  // 移行後に実際に起きる関係: local/memotan と local/memotan_knowledge。
+  // 完全一致ではないが、後者のスラッグは前者のスラッグ + "-knowledge" になり、
+  // ディレクトリ走査上は「子ディレクトリ」と区別が付かない。
+  const warnings = detectMoveCollisions([
+    { from: "/Users/w/projects/local/memotan", to: "/Users/w/projects/github.com/o/memotan" },
+    {
+      from: "/Users/w/projects/local/memotan_knowledge",
+      to: "/Users/w/projects/github.com/o/memotan-knowledge",
+    },
+  ]);
+  expect(warnings.some((w) => w.includes("memotan_knowledge") && w.includes("prefix"))).toBe(true);
+});
+
+test("detectMoveCollisions: 無関係な from はスラッグの接頭辞警告を出さない", () => {
+  const warnings = detectMoveCollisions([
+    { from: "/Users/w/projects/a", to: "/Users/w/projects/github.com/o/a" },
+    { from: "/Users/w/projects/b", to: "/Users/w/projects/github.com/o/b" },
+  ]);
+  expect(warnings).toEqual([]);
+});
+
+test("appliedMovesLogPath: 既定ログの隣に .applied.tsv を作る (I5)", () => {
+  expect(appliedMovesLogPath("/Users/w/.local/state/project-move/moves.tsv")).toBe(
+    "/Users/w/.local/state/project-move/moves.applied.tsv",
+  );
+});
+
+test("appliedMovesLogPath: .tsv 以外の拡張子でも .applied.tsv を付け足す", () => {
+  expect(appliedMovesLogPath("/tmp/custom-log")).toBe("/tmp/custom-log.applied.tsv");
 });
