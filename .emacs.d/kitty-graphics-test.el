@@ -39,8 +39,10 @@
   (should (equal (wamei/kitty-graphics--delete-sequence 7) "\e_Ga=d,d=I,i=7,q=2\e\\")))
 
 (ert-deftest wamei/kitty-graphics-query-sequence ()
-  (should (equal (wamei/kitty-graphics--query-sequence)
-                 "\e_Ga=q,i=31,s=1,v=1,f=24;AAAA\e\\")))
+  "対応確認の本体。後ろに付く CPR は
+`wamei/kitty-graphics-query-sequence-appends-cpr' で見る。"
+  (should (string-prefix-p "\e_Ga=q,i=31,s=1,v=1,f=24;AAAA\e\\"
+                           (wamei/kitty-graphics--query-sequence))))
 
 (ert-deftest wamei/kitty-graphics-query-ok-p ()
   (should (wamei/kitty-graphics--query-ok-p "\e_Gi=31;OK\e\\"))
@@ -175,49 +177,61 @@
       ;; 256 色モードでは前景色が color-N
       (should (equal (get-text-property 0 'face (nth 0 lines)) '(:foreground "color-7"))))))
 
-(ert-deftest wamei/kitty-graphics-query-terminal-does-not-ask-during-startup ()
-  "起動中は端末に訊かない。Emacs 自身の初期化シーケンスが流れていて応答を
-拾い損ねるため。訊いていないので記憶もしない (次に呼ばれたら訊き直す)。"
-  (let ((sent nil))
-    (cl-letf (((symbol-function 'wamei/kitty-graphics--send)
-               (lambda (seq) (push seq sent)))
-              ((symbol-function 'wamei/kitty-graphics--read-response) (lambda () ""))
-              ((symbol-function 'terminal-parameter) (lambda (&rest _) nil))
-              ((symbol-function 'set-terminal-parameter)
-               (lambda (&rest _) (error "起動中に記憶してはいけない")))
-              (after-init-time nil))
-      (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" #'identity))
-      (should-not sent))))
+(ert-deftest wamei/kitty-graphics-query-sequence-appends-cpr ()
+  "対応確認の後ろに CSI 6 n (カーソル位置報告) を付ける。
+CPR はどの端末も必ず答えるので、応答が 1 文字も無いときに
+「非対応」と「こちらが取り逃がした」を区別できる。"
+  (let ((seq (wamei/kitty-graphics--query-sequence)))
+    (should (string-prefix-p "\e_Ga=q,i=31,s=1,v=1,f=24;AAAA\e\\" seq))
+    (should (string-suffix-p "\e[6n" seq))))
 
-(ert-deftest wamei/kitty-graphics-query-terminal-asks-after-startup ()
-  "起動後は訊いて、結果を記憶する。"
-  (let ((sent nil) (stored nil))
-    (cl-letf (((symbol-function 'wamei/kitty-graphics--send)
-               (lambda (seq) (push seq sent)))
-              ((symbol-function 'wamei/kitty-graphics--read-response) (lambda () "OK"))
-              ((symbol-function 'terminal-parameter) (lambda (&rest _) nil))
-              ((symbol-function 'set-terminal-parameter)
-               (lambda (_t key value) (setq stored (cons key value))))
-              (after-init-time (current-time)))
-      (should (equal (wamei/kitty-graphics--query-terminal 'test "SEQ" #'identity) "OK"))
-      (should (equal sent '("SEQ")))
-      (should (equal stored '(test . "OK"))))))
-
-(ert-deftest wamei/kitty-graphics-query-terminal-remembers-a-real-failure ()
-  "起動後に訊いて応答が無かったのは本当の非対応。`none' として記憶し、訊き直さない。"
+(ert-deftest wamei/kitty-graphics-query-terminal-caches-a-real-negative ()
+  "応答はあったが対応を示していない = 本当の非対応。`none' を記憶して訊き直さない。"
   (let ((stored nil) (asked 0))
     (cl-letf (((symbol-function 'wamei/kitty-graphics--send) #'ignore)
               ((symbol-function 'wamei/kitty-graphics--read-response)
-               (lambda () (setq asked (1+ asked)) ""))
+               ;; CPR だけ返ってきた = 端末は聞こえているが kitty 非対応
+               (lambda () (setq asked (1+ asked)) "\e[5;1R"))
               ((symbol-function 'terminal-parameter) (lambda (&rest _) (cdr stored)))
               ((symbol-function 'set-terminal-parameter)
-               (lambda (_t key value) (setq stored (cons key value))))
-              (after-init-time (current-time)))
+               (lambda (_t key value) (setq stored (cons key value)))))
       (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" (lambda (_) nil)))
       (should (equal stored '(test . none)))
-      ;; 2 回目は記憶を見るだけ
       (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" (lambda (_) nil)))
       (should (= asked 1)))))
+
+(ert-deftest wamei/kitty-graphics-query-terminal-does-not-cache-silence ()
+  "応答が 1 文字も無いのは、非対応ではなくこちらが取り逃がした可能性が高い
+\(起動中や desktop 復元中に実際に起きる)。記憶せず、次に呼ばれたら訊き直す。"
+  (let ((asked 0))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics--send) #'ignore)
+              ((symbol-function 'wamei/kitty-graphics--read-response)
+               (lambda () (setq asked (1+ asked)) ""))
+              ((symbol-function 'terminal-parameter) (lambda (&rest _) nil))
+              ((symbol-function 'set-terminal-parameter)
+               (lambda (&rest _) (error "沈黙を記憶してはいけない"))))
+      (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" (lambda (_) nil)))
+      (should-not (wamei/kitty-graphics--query-terminal 'test "SEQ" (lambda (_) nil)))
+      (should (= asked 2)))))
+
+(ert-deftest wamei/kitty-graphics-query-terminal-caches-success ()
+  "対応が確認できたら記憶して訊き直さない。"
+  (let ((stored nil) (asked 0))
+    (cl-letf (((symbol-function 'wamei/kitty-graphics--send) #'ignore)
+              ((symbol-function 'wamei/kitty-graphics--read-response)
+               (lambda () (setq asked (1+ asked)) "OK"))
+              ((symbol-function 'terminal-parameter) (lambda (&rest _) (cdr stored)))
+              ((symbol-function 'set-terminal-parameter)
+               (lambda (_t key value) (setq stored (cons key value)))))
+      (should (equal (wamei/kitty-graphics--query-terminal 'test "SEQ" #'identity) "OK"))
+      (should (equal stored '(test . "OK")))
+      (should (equal (wamei/kitty-graphics--query-terminal 'test "SEQ" #'identity) "OK"))
+      (should (= asked 1)))))
+
+(ert-deftest wamei/kitty-graphics-parse-cell-size-ignores-cpr ()
+  "CPR (ESC [ 行 ; 桁 R) をセルサイズの応答と取り違えない。"
+  (should-not (wamei/kitty-graphics--parse-cell-size "\e[6;1R"))
+  (should (equal (wamei/kitty-graphics--parse-cell-size "\e[6;19;8t\e[5;1R") '(8 . 19))))
 
 (provide 'kitty-graphics-test)
 ;;; kitty-graphics-test.el ends here
