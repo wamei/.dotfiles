@@ -347,7 +347,9 @@ fixture テストが通っても「本物の `claude --resume` が引けるか�
 
 ## 切り戻し
 
-- 移動: `moves.tsv` の old / new を逆に mv
+- 移動: `moves.tsv` の old / new を逆に mv。**適用に成功した行は
+  `moves.applied.tsv` へ退避される**ので、切り戻しではそちらを見る
+  (同じログを二度適用しないための仕組み)
 - Claude 状態: `claude-state-move` が実行前に取ったバックアップから戻す
 
 ## リスク・未確定
