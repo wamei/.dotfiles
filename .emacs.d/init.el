@@ -215,6 +215,9 @@
     (set-fontset-font nil 'japanese-jisx0208
                       (font-spec :family font-family :height font-size))
     (add-to-list 'face-font-rescale-alist '("Menlo" . 0.9))
+    ;; Apple Braille の縮小は ghostel ブロックで入れる (理由と倍率は
+    ;; term-modeline.el の「ブレイルの大きさ」)。ここではまだ
+    ;; term-modeline.el を読んでいないので定数が使えない。
     (dolist (range '(;(#x2190 . #x21FF)    ; Arrows
                      ;(#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
                      ;(#x2600 . #x26FF)    ; Misc Symbols (⚙ ⚠ ...)
@@ -490,9 +493,18 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; ghostel-spinner-type の defcustom は :type 'symbol なので、:custom
   ;; (= customize-set-variable) 経由だと型検査に引っかかって警告が出る。
   ;; この defcustom に :set は無いので setq で入れて等価。
-  ;; ブレイルは Apple Braille にフォールバックする (既定フォントより背は低いので
-  ;; 行高は揺れない)。
-  (setq ghostel-spinner-type ["⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"])
+  ;;
+  ;; ブレイルは既定フォントに無く Apple Braille に落ちる。総高は同じでも
+  ;; descent が 2px 深いので、そのまま出すと mode-line や本文の行が伸びて
+  ;; 画面が揺れる。Apple Braille 自体を既定の枠に収まる大きさへ縮め、
+  ;; mode-line に出すスピナーだけ face で元の大きさへ戻す
+  ;; (理由と倍率は term-modeline.el の「ブレイルの大きさ」)。
+  (add-to-list 'face-font-rescale-alist
+               (cons "Apple Braille" wamei/term-modeline-braille-rescale))
+  (setq ghostel-spinner-type
+        (vconcat (mapcar (lambda (frame)
+                           (propertize frame 'face wamei/term-modeline-braille-unscale))
+                         '("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"))))
 
   ;; ここで貼るキーは ghostel-semi-char-mode-map (ghostel-keymap-exceptions の
   ;; :set が作るマップ) に直接足しているだけなので、init 後に M-x customize で
@@ -522,6 +534,17 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; 使う magit-status を足す。任意の関数を呼ばせない仕組みなので、ここに無い
   ;; 名前は黙って無視される。
   (add-to-list 'ghostel-eval-cmds '("magit-status-setup-buffer" magit-status-setup-buffer))
+
+  ;; macOS の IME の変換中文字は point に置いた overlay の after-string として
+  ;; 描かれる。ghostel の再描画で置き去りになるとカーソルと無関係な行に出るので、
+  ;; 再描画のたびにカーソルへ張り直す (term-input.el の「IME の変換中文字」)。
+  (advice-add 'ghostel--redraw-now :after #'wamei/term-input--ns-after-redraw)
+
+  ;; ウィンドウの本文高さが行高で割り切れないと、ghostel が端数を
+  ;; window-vscroll で払い、選択中のウィンドウが端数ぶん上下に揺れる。
+  ;; 端数が出ないようフレーム高さを詰める (term-panel.el の「行グリッドへの整列」)。
+  ;; フックは redisplay の最中に走るので、リサイズはその外へ逃がしている。
+  (add-hook 'window-size-change-functions #'wamei/term--schedule-grid-align)
 
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)

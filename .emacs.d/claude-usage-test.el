@@ -359,6 +359,21 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
   (should (eq (wamei/claude-usage--face '(:percent 99 :severity "critical"))
               'wamei/claude-usage-critical)))
 
+;;; mode-line の高さ固定
+
+(ert-deftest wamei/claude-usage-mode-line-pins-height ()
+  "mode-line の先頭は高さ固定用のブレイル空白。
+ghostel のスピナー (ブレイル) は Apple Braille に落ちて descent が既定より
+深いので、スピナーが出ている間だけ mode-line が高くなり、ウィンドウの本文高さが
+行グリッドから外れる。同じフォントの空白文字を常駐させて高さを固定する。"
+  (let ((pin (car wamei/claude-usage--mode-line-format)))
+    (should (stringp pin))
+    ;; U+2800 BRAILLE PATTERN BLANK
+    (should (= (aref pin 0) ?\u2800))
+    ;; 本文向けに縮めた Apple Braille をスピナーと同じ大きさへ戻す倍率
+    (should (equal (get-text-property 0 'face pin)
+                   wamei/term-modeline-braille-unscale))))
+
 (provide 'claude-usage-test)
 ;;; 取得の取り回し
 

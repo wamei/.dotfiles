@@ -187,6 +187,37 @@ ROOT 直下なら nil。ROOT の外や ROOT が nil なら絶対パス (HOME は
             (when dir
               (concat separator (propertize dir 'face 'shadow))))))
 
+;;; ブレイルの大きさ
+
+;; ghostel の進捗スピナー (`ghostel-spinner-type') はブレイル。既定フォントは
+;; ブレイルを持たないので Apple Braille に落ちるが、これは総高が既定と同じ
+;; 18px でも descent が 5px 深い (既定は 3px)。Emacs の行高はその行の
+;; max(ascent) + max(descent) なので、ブレイルが 1 文字混ざった行だけ 2px 伸びる。
+;;
+;; 端末バッファでこれが起きると、ghostel が端末グリッドを下端に揃えるときに
+;; その 2px を `window-vscroll' として払い、選択中のウィンドウが 2px 上下に
+;; 揺れる (term-panel.el の「行グリッドへの整列」)。mode-line で起きると、
+;; スピナーの出入りで mode-line の高さが 1px 変わり、ウィンドウの本文高さが
+;; 行グリッドから外れる。
+;;
+;; そこで Apple Braille 自体は既定の枠に収まる大きさへ縮め
+;; (init.el の font ブロックで `face-font-rescale-alist' に入れる)、
+;; mode-line に出すスピナーだけ face の :height で元の大きさへ戻す。
+;; 見た目はスピナーだけ従来どおりで、行高はどこも動かない。
+
+(defconst wamei/term-modeline-braille-rescale 0.625
+  "Apple Braille を既定フォントの枠に収める倍率。
+16px の 0.625 倍 = 10px で ascent 8 / descent 3 になり、既定フォントの
+ascent 15 / descent 3 に収まる。`face-font-rescale-alist' に入れる値。
+0.625 より大きいと descent が 4px 以上残って行が伸びる (実測)。")
+
+(defconst wamei/term-modeline-braille-unscale
+  (list :height (/ 1.0 wamei/term-modeline-braille-rescale))
+  "縮めた Apple Braille を元の大きさへ戻す face。
+`wamei/term-modeline-braille-rescale' の逆数。mode-line のスピナーと
+高さ固定用の空白に付ける。倍率を掛けた要求サイズに rescale が掛かるので、
+結果は縮める前と同じ px になる。")
+
 ;;; mode-line-format
 
 (defun wamei/term-modeline--status ()
