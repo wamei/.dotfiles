@@ -5,13 +5,18 @@
 ;; フレーム下部の端末パネル (term-panel.el) に出ている ghostel バッファへ、
 ;; 情報を絞った 1 行の mode-line を入れる。
 ;;
-;;   2/3  ls -al   src/lib                                    ✗1  ⠹
-;;   └番号 └タイトル └cwd                                     └status └入力モード/進捗
+;;   2/3  ls -al  2026-09-10 22:42:15- (18s)   src/lib  ✗1  ⠹
+;;   └番号 └タイトル └実行時刻                 └cwd     └status └入力モード/進捗
 ;;
 ;; - 番号 (N/M): バッファ名 "*term: <project>[ N]*" から取る。端末が 1 つしか
 ;;   ないときは出さない。プロジェクト名は出さない (タブと重複するため)。
 ;; - タイトル: `ghostel-title' (OSC 0/2)。.zshrc の preexec が最後に実行した
 ;;   コマンドを流している。無ければシェル名。
+;; - 実行時刻: 最後のコマンドの開始時刻と終了時刻、その所要時間。OSC 133;C /
+;;   133;D の公開フックで挟んで測る。上は実行中の形で、終わると開始時刻の右が
+;;   埋まって "2026-09-10 22:42:15-22:45:06 (2m51s320ms)" になる。所要時間の
+;;   ミリ秒は終わってから出す (実行中は 1 秒ごとにしか描き直さないので、
+;;   出しても止まって見える)。
 ;; - cwd: `default-directory' (OSC 7 で追従) を、その端末を開いたディレクトリ
 ;;   からの相対で出す。直下なら出さない。外に出たら絶対パス。
 ;; - 終了ステータス: OSC 133;D の公開フック `ghostel-command-finish-functions'
@@ -36,6 +41,39 @@
 (defvar ghostel-shell)                  ; ghostel.el
 (defvar ghostel-title)                  ; ghostel.el (buffer-local)
 (declare-function hide-mode-line-mode "hide-mode-line")
+
+(defgroup wamei/term-modeline nil
+  "端末パネルの mode-line。"
+  :group 'tools)
+
+(defface wamei/term-modeline-time '((t :foreground "#9B9B9B"))
+  "選択中のウィンドウでの実行時刻の色。
+`shadow' (doom-molokai では #555556) は mode-line の地色 #2d2e2e に沈んで
+読めず、mode-line の前景色 #d6d6d4 だとタイトルと同じ強さで主張しすぎる。
+その中間の灰色で、同じ理由で選んだ `wamei/claude-usage-dim' と同じ値。
+地色から前景色までの 65% の位置にあたる。"
+  :group 'wamei/term-modeline)
+
+(defface wamei/term-modeline-time-inactive '((t :foreground "#3B3B3C"))
+  "選択していないウィンドウでの実行時刻の色。
+face に前景色を直に持たせると `mode-line-inactive' に切り替わっても暗く
+ならないので、選択の有無で face ごと差し替える (`wamei/term-modeline--time-face')。
+色は `wamei/term-modeline-time' と同じ置き方 — `mode-line-inactive' の
+地色 #171819 から前景色 #4e4e4e までの 65% の位置。"
+  :group 'wamei/term-modeline)
+
+(defface wamei/term-modeline-dim '((t :inherit shadow))
+  "選択中のウィンドウでの、番号と cwd の色。
+テーマの `shadow' そのまま (doom-molokai では #555556。mode-line の地色
+#2d2e2e から前景色 #d6d6d4 までの 24% の位置)。"
+  :group 'wamei/term-modeline)
+
+(defface wamei/term-modeline-dim-inactive '((t :foreground "#242526"))
+  "選択していないウィンドウでの、番号と cwd の色。
+`shadow' は自前の前景色を持つので `mode-line-inactive' でも暗くならず、
+周りの本文 #4e4e4e より明るく浮いてしまう。`wamei/term-modeline-dim' と
+同じ 24% を `mode-line-inactive' の #171819〜#4e4e4e に当てた値。"
+  :group 'wamei/term-modeline)
 
 ;;; mode-line の共通部品 (claude-usage.el と共有)
 
@@ -121,13 +159,22 @@ ROOT 直下なら nil。ROOT の外や ROOT が nil なら絶対パス (HOME は
   "OSC 133;C (コマンド開始) を見たら非 nil。
 プロンプトの再描画も D を出すので、C を伴わない D は無視するために持つ。")
 
+(defvar-local wamei/term-modeline--start-time nil
+  "最後に始まったコマンドの開始時刻 (エポック秒)。未実行なら nil。")
+
+(defvar-local wamei/term-modeline--end-time nil
+  "最後のコマンドの終了時刻 (エポック秒)。未実行と実行中は nil。")
+
 (defun wamei/term-modeline--on-command-start (buffer)
   "BUFFER でコマンドが始まった。`ghostel-command-start-functions' から。"
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (setq wamei/term-modeline--command-seen t
-            wamei/term-modeline--exit-status nil)
-      (force-mode-line-update))))
+            wamei/term-modeline--exit-status nil
+            wamei/term-modeline--start-time (float-time)
+            wamei/term-modeline--end-time nil)
+      (force-mode-line-update))
+    (wamei/term-modeline--start-tick buffer)))
 
 (defun wamei/term-modeline--on-command-finish (buffer status)
   "BUFFER のコマンドが STATUS で終わった。`ghostel-command-finish-functions' から。"
@@ -135,8 +182,10 @@ ROOT 直下なら nil。ROOT の外や ROOT が nil なら絶対パス (HOME は
     (with-current-buffer buffer
       (when wamei/term-modeline--command-seen
         (setq wamei/term-modeline--command-seen nil
-              wamei/term-modeline--exit-status status)
-        (force-mode-line-update)))))
+              wamei/term-modeline--exit-status status
+              wamei/term-modeline--end-time (float-time))
+        (force-mode-line-update)))
+    (wamei/term-modeline--stop-tracking buffer)))
 
 (defun wamei/term-modeline--status-string (status &optional separate)
   "STATUS の表示。0 と nil のときは空文字列。
@@ -147,11 +196,113 @@ ROOT 直下なら nil。ROOT の外や ROOT が nil なら絶対パス (HOME は
               (if separate " " ""))
     ""))
 
+;;; 実行時刻
+
+(defconst wamei/term-modeline--duration-units
+  '((3600000 . "h") (60000 . "m") (1000 . "s") (1 . "ms"))
+  "所要時間を割る単位。ミリ秒あたりの大きさと接尾辞の組を、大きい順に。")
+
+(defun wamei/term-modeline--format-duration (seconds &optional precision)
+  "SECONDS を \"2m51s320ms\" の形にする。0 の単位は間にあっても出さない
+\(3605 秒なら \"1h5s\")。全部 0 なら一番小さい単位で 0 を出す。
+PRECISION が `milliseconds' ならミリ秒まで、既定は秒まで。実行中は 1 秒ごと
+にしか描き直さないので、そこにミリ秒を出しても止まって見えるだけになる。"
+  (let* ((units (if (eq precision 'milliseconds)
+                    wamei/term-modeline--duration-units
+                  (butlast wamei/term-modeline--duration-units)))
+         (rest (max 0 (round (* 1000 (or seconds 0)))))
+         (parts nil))
+    (dolist (unit units)
+      (let ((n (/ rest (car unit))))
+        (when (> n 0)
+          (push (format "%d%s" n (cdr unit)) parts))
+        (setq rest (% rest (car unit)))))
+    (if parts
+        (string-join (nreverse parts))
+      (concat "0" (cdr (car (last units)))))))
+
+(defconst wamei/term-modeline--date-time-format "%Y-%m-%d %H:%M:%S"
+  "年月日から秒まで。開始時刻はいつも、終了時刻は日をまたいだときだけこの形。")
+
+(defconst wamei/term-modeline--time-only-format "%H:%M:%S"
+  "時刻だけ。同じ日に終わった終了時刻は年月日を繰り返さない。")
+
+(defun wamei/term-modeline--time-string (start end now &optional zone)
+  "最後のコマンドの時刻。START が nil (まだ何も実行していない) なら nil。
+END が nil (実行中) なら開始時刻と NOW までの経過時間、終わっていれば
+開始から終了までとその所要時間を出す。ZONE は `format-time-string' に渡す
+\(テストから UTC を指定するため。既定はローカル)。"
+  (when start
+    (let ((from (format-time-string wamei/term-modeline--date-time-format start zone)))
+      (if end
+          (format "%s-%s (%s)"
+                  from
+                  (format-time-string
+                   (if (equal (format-time-string "%F" start zone)
+                              (format-time-string "%F" end zone))
+                       wamei/term-modeline--time-only-format
+                     wamei/term-modeline--date-time-format)
+                   end zone)
+                  (wamei/term-modeline--format-duration (- end start) 'milliseconds))
+        (format "%s- (%s)" from
+                (wamei/term-modeline--format-duration (- now start)))))))
+
+;;; 実行中の再描画
+
+;; 実行中は経過時間が毎秒伸びるので、こちらから mode-line を叩きに行かないと
+;; 止まって見える。走っている端末が 1 つも無い間はタイマーを持たない。
+
+(defvar wamei/term-modeline--running nil
+  "コマンドが走っている端末バッファ。")
+
+(defvar wamei/term-modeline--tick-timer nil
+  "経過時間を伸ばすための 1 秒ごとのタイマー。走っている端末が無ければ nil。")
+
+(defun wamei/term-modeline--tick ()
+  "走っている端末の mode-line を描き直す。
+端末を殺したままコマンドが終わらないことがある (ghostel ごと消える) ので、
+死んだバッファはここで落とす。全部いなくなればタイマーも止める。"
+  (setq wamei/term-modeline--running
+        (seq-filter #'buffer-live-p wamei/term-modeline--running))
+  (dolist (buffer wamei/term-modeline--running)
+    (with-current-buffer buffer
+      (force-mode-line-update)))
+  (unless wamei/term-modeline--running
+    (wamei/term-modeline--stop-tick)))
+
+(defun wamei/term-modeline--start-tick (buffer)
+  "BUFFER を走っている端末に加え、タイマーが止まっていれば回し始める。"
+  (unless (memq buffer wamei/term-modeline--running)
+    (push buffer wamei/term-modeline--running))
+  (unless wamei/term-modeline--tick-timer
+    (setq wamei/term-modeline--tick-timer
+          (run-at-time 1 1 #'wamei/term-modeline--tick))))
+
+(defun wamei/term-modeline--stop-tracking (buffer)
+  "BUFFER を走っている端末から外し、どこも走っていなければタイマーを止める。"
+  (setq wamei/term-modeline--running (delq buffer wamei/term-modeline--running))
+  (unless wamei/term-modeline--running
+    (wamei/term-modeline--stop-tick)))
+
+(defun wamei/term-modeline--stop-tick ()
+  "タイマーを止める。何度呼んでもよい。"
+  (when wamei/term-modeline--tick-timer
+    (cancel-timer wamei/term-modeline--tick-timer)
+    (setq wamei/term-modeline--tick-timer nil)))
+
 ;;; 1 行の組み立て
 
 (defconst wamei/term-modeline--title-min-width 8
   "ディレクトリを残したままタイトルに確保したい最小の桁数。
 これを割るならディレクトリを捨ててタイトルに幅を回す。")
+
+(defun wamei/term-modeline--time-face (selected)
+  "実行時刻の face。SELECTED が nil (非アクティブな mode-line) なら暗いほう。"
+  (if selected 'wamei/term-modeline-time 'wamei/term-modeline-time-inactive))
+
+(defun wamei/term-modeline--dim-face (selected)
+  "番号と cwd の face。SELECTED が nil (非アクティブな mode-line) なら暗いほう。"
+  (if selected 'wamei/term-modeline-dim 'wamei/term-modeline-dim-inactive))
 
 (defun wamei/term-modeline--state ()
   "1 行に出す材料を集める。"
@@ -164,28 +315,55 @@ ROOT 直下なら nil。ROOT の外や ROOT が nil なら絶対パス (HOME は
           :title (or (and (boundp 'ghostel-title) ghostel-title)
                      (file-name-nondirectory
                       (if (boundp 'ghostel-shell) ghostel-shell shell-file-name)))
+          :selected (mode-line-window-selected-p)
+          :time (wamei/term-modeline--time-string
+                 wamei/term-modeline--start-time
+                 wamei/term-modeline--end-time
+                 (float-time))
           :dir (wamei/term-modeline--relative-dir
                 default-directory wamei/term-modeline--root))))
 
+(defun wamei/term-modeline--segment-width (separator string)
+  "STRING を SEPARATOR 付きで足したときに増える桁数。STRING が nil なら 0。"
+  (if string (+ (string-width separator) (string-width string)) 0))
+
 (defun wamei/term-modeline--render (state width)
-  "STATE を WIDTH 桁に収まる 1 行にする。"
+  "STATE を WIDTH 桁に収まる 1 行にする。
+タイトルに `wamei/term-modeline--title-min-width' 桁を残せないときは、
+cwd・実行時刻の順に捨ててタイトルへ幅を回す (どの端末かを見失うのが一番困る)。"
   (let* ((position (plist-get state :position))
          (title (or (plist-get state :title) ""))
+         (time (plist-get state :time))
          (dir (plist-get state :dir))
-         (head (if position (concat (propertize position 'face 'shadow) "  ") ""))
+         ;; 選択の有無が無ければアクティブ扱い (テストと、状態を作らずに
+         ;; 描くとき)。`mode-line-window-selected-p' は :eval の中でしか
+         ;; 正しく答えられないので、状態に採ってから渡す。
+         (selected (if (plist-member state :selected)
+                       (plist-get state :selected)
+                     t))
+         (time-face (wamei/term-modeline--time-face selected))
+         (dim-face (wamei/term-modeline--dim-face selected))
+         (head (if position (concat (propertize position 'face dim-face) "  ") ""))
          (avail (max 0 (- width (string-width head))))
-         (separator "   ")
-         (title-width (if dir
-                          (- avail (string-width dir) (length separator))
-                        avail)))
+         (time-separator "  ")
+         (dir-separator "   ")
+         (title-width (- avail
+                         (wamei/term-modeline--segment-width time-separator time)
+                         (wamei/term-modeline--segment-width dir-separator dir))))
     (when (and dir (< title-width wamei/term-modeline--title-min-width))
       (setq dir nil
+            title-width (- avail (wamei/term-modeline--segment-width
+                                  time-separator time))))
+    (when (and time (< title-width wamei/term-modeline--title-min-width))
+      (setq time nil
             title-width avail))
     (concat head
             (propertize (truncate-string-to-width title (max 0 title-width) nil nil t)
                         'face 'mode-line-buffer-id)
+            (when time
+              (concat time-separator (propertize time 'face time-face)))
             (when dir
-              (concat separator (propertize dir 'face 'shadow))))))
+              (concat dir-separator (propertize dir 'face dim-face))))))
 
 ;;; ブレイルの大きさ
 

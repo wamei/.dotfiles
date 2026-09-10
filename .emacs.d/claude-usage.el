@@ -497,6 +497,9 @@ remap には色を直接入れてあるので、テーマが変わったら入�
   ;; バッファは下の `wamei/claude-usage--mode-line-faces' で mode-line の
   ;; 地色をパネルに合わせているので、厚くしても下端の余白に見える。
   '((:eval (wamei/term-modeline-grid-pad-spacer))
+    ;; 詰め物は幅 1px の画像なので、左端の余白は自分で 1 桁置く
+    ;; (term-modeline.el の `wamei/term-modeline-format' と同じ形)。
+    " "
     (:eval (wamei/claude-usage-mode-line))
     ;; ghostel の入力モードタグ (":Copy" など) を右端に出す。既定の
     ;; `mode-line-format' を丸ごと置き換えているので、足さないと
