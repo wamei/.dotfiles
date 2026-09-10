@@ -158,3 +158,27 @@ test("sessions-index: originalPath と entries の 2 つのパスを置換する
 test("sessions-index: entries が無くても落ちない", () => {
   expect(rewriteSessionsIndex({ version: 1 }, r)).toEqual({ version: 1 });
 });
+
+test("claude.json: 複数の旧キーが同じ新キーに畳まれる場合は先に見た方を優先する", () => {
+  // スラッグ変換が非可逆で多対一であるように (mc-data-catalog と mc_data_catalog が
+  // 同じスラッグになる)、.projects のキーでも異なる旧パスが同じ新パスへ畳まれる
+  // ことがありうる。その場合に「後から見た方で黙って上書きされる」のか「決まった
+  // 側 (先に見た方) が残る」のかを固定するテスト。
+  const r2 = makeRewriter([
+    { from: "/Users/w/projects/mc-data-catalog", to: "/Users/w/projects/github.com/o/data-catalog" },
+    { from: "/Users/w/projects/mc_data_catalog", to: "/Users/w/projects/github.com/o/data-catalog" },
+  ]);
+  const out = rewriteClaudeJson(
+    {
+      projects: {
+        "/Users/w/projects/mc-data-catalog": { allowedTools: ["hyphen"], onlyHyphen: true },
+        "/Users/w/projects/mc_data_catalog": { allowedTools: ["underscore"] },
+      },
+    },
+    r2,
+  ) as any;
+  expect(Object.keys(out.projects)).toEqual(["/Users/w/projects/github.com/o/data-catalog"]);
+  const merged = out.projects["/Users/w/projects/github.com/o/data-catalog"];
+  expect(merged.allowedTools).toEqual(["hyphen"]);
+  expect(merged.onlyHyphen).toBe(true);
+});
