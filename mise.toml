@@ -92,6 +92,11 @@ adopt = true
 # brew の coreutils を [tools] の aqua:uutils/coreutils に移した際、brew 版の
 # uninstall で /opt/homebrew/bin/gls が消えたため、その代替として要る。
 "~/bin/gls" = { source = "bin/gls", mode = "symlink" }
+# ~/projects のプロジェクトを ghq レイアウトへ移し、Claude のセッション履歴を
+# 追随させる 2 本。分かれているのは ~/.claude.json が Claude 起動中ずっと
+# 書き戻されており、移動と同じタイミングでは触れないため。
+"~/bin/project-move" = { source = "tools/project-move/cli/project-move.ts", mode = "symlink" }
+"~/bin/claude-state-move" = { source = "tools/project-move/cli/claude-state-move.ts", mode = "symlink" }
 "~/.config/karabiner/assets/complex_modifications/ja.json" = { source = ".config/karabiner/assets/complex_modifications/ja.json", mode = "symlink" }
 "~/.gitconfig" = { source = ".gitconfig", mode = "symlink" }
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }

@@ -1,6 +1,14 @@
 // tools/project-move/src/project-move.test.ts
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyFixups, isEmacsRunning } from "./project-move.ts";
@@ -133,4 +141,34 @@ test("変更行数を複数行にわたって正しく数える", async () => {
 
   const entry = r.rewrittenFiles.find((x) => x.path === f);
   expect(entry?.changedLines).toBe(50);
+});
+
+// --- Task 9: symlink 経由の実行 ---------------------------------------------
+//
+// mise の [dotfiles] は cli/project-move.ts を ~/bin/project-move へ
+// mode = "symlink" で配置する。cli/project-move.ts は "../src/..." という
+// 相対 import を使っているので、~/bin 側の symlink 越しに起動したときに
+// bun がその import をどう解決するかが未検証だった。目視では判断できない
+// (bun がエントリポイントの realpath を基準に解決するのか、symlink 自体の
+// パスを基準にするのかはドキュメントを読むだけでは確証が持てない) ので、
+// 実際に symlink を張ってサブプロセス起動し、証拠として確認する。
+test("symlink 経由でも相対 import が解決する", () => {
+  const link = join(root, "project-move-link");
+  symlinkSync(new URL("../cli/project-move.ts", import.meta.url).pathname, link);
+
+  // project-move.ts はトップレベルで homedir() を読み、EMACS_STATE_FILES や
+  // moves ログのパスをそこから組み立てる。--dry-run 単体 (位置引数なし) では
+  // for ループが空になり実際にはどこにも書き込まないはずだが、実装が変わって
+  // 書き込み経路が増えても実ホームを汚さないよう、他の CLI テスト
+  // (cli/project-move.test.ts の runCli) と同じ流儀で HOME を tmpdir に
+  // 差し替えておく。
+  const fakeHome = join(root, "fake-home");
+  mkdirSync(fakeHome, { recursive: true });
+  const r = spawnSync(link, ["--dry-run"], {
+    encoding: "utf8",
+    env: { ...process.env, HOME: fakeHome },
+  });
+
+  expect(r.status).toBe(0);
+  expect(r.stderr).not.toMatch(/Cannot find module/);
 });
