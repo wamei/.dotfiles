@@ -1,0 +1,21 @@
+# 実パス <TAB> Claude Code が作るスラッグ。実機の ~/.claude/projects から採取した。
+# BeecoV2 の worktree 行は jsonl の cwd (親を指す) ではなく worktree の実パスである
+# ことに注意。cwd からはこのディレクトリ名を導けない。
+/Users/wamei/.dotfiles	-Users-wamei--dotfiles
+/Users/wamei/Documents/Dominion	-Users-wamei-Documents-Dominion
+/Users/wamei/projects/BeecoV2	-Users-wamei-projects-BeecoV2
+/Users/wamei/projects/BeecoV2/.claude-worktrees/pr1054-test-fix	-Users-wamei-projects-BeecoV2--claude-worktrees-pr1054-test-fix
+/Users/wamei/projects/apple-reminder-sync	-Users-wamei-projects-apple-reminder-sync
+/Users/wamei/projects/dominion-card-generator	-Users-wamei-projects-dominion-card-generator
+/Users/wamei/projects/github.com/wamei/.dotfiles	-Users-wamei-projects-github-com-wamei--dotfiles
+/Users/wamei/projects/hama-reminder	-Users-wamei-projects-hama-reminder
+/Users/wamei/projects/ietateru	-Users-wamei-projects-ietateru
+/Users/wamei/projects/ImportApps	-Users-wamei-projects-ImportApps
+/Users/wamei/projects/mc-data-catalog	-Users-wamei-projects-mc-data-catalog
+/Users/wamei/projects/mc-gpt	-Users-wamei-projects-mc-gpt
+/Users/wamei/projects/mcwf-api	-Users-wamei-projects-mcwf-api
+/Users/wamei/projects/mcwf-web	-Users-wamei-projects-mcwf-web
+/Users/wamei/projects/rit-dev-book	-Users-wamei-projects-rit-dev-book
+/Users/wamei/projects/rither	-Users-wamei-projects-rither
+/Users/wamei/projects/SDXFW_TEMPLATE	-Users-wamei-projects-SDXFW-TEMPLATE
+/Users/wamei/projects/waminder	-Users-wamei-projects-waminder
