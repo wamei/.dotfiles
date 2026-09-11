@@ -254,3 +254,78 @@ test("symlink 経由でも相対 import が解決する", () => {
   expect(r.status).toBe(0);
   expect(r.stderr).not.toMatch(/Cannot find module/);
 });
+
+// --- I11: git hook の todo が偽陽性 / 誤ったパッケージマネージャを案内する ------
+//
+// 実際に踏んだ形: 移行後の SDXFW_TEMPLATE で `--fixups-only` が
+// `.git/hooks` 19 本すべてに「旧パスを指しているので `npm install` しろ」と
+// todo を出した。しかし husky v4 が旧パスを書いているのは
+// `#   From: <old>/node_modules/husky` という**コメント行だけ**で、実行される
+// のは husky.local.sh の `cd "."` (相対) なので hook は移動後もそのまま動く。
+// 案内どおり `npm install` を実行すると、この repo は bun 管理 (bun.lock /
+// husky.local.sh に packageManager=bun) なのに npm の peer 解決が走り
+// ERESOLVE で失敗した。何もしなくてよかった上に、誤ったツールを案内していた。
+
+test("I11: 旧パスがコメント行にしか無い git hook は todo にしない", async () => {
+  mkdirSync(join(plan.to, ".git", "hooks"), { recursive: true });
+  writeFileSync(
+    join(plan.to, ".git", "hooks", "pre-commit"),
+    // husky v4 が実際に生成する形。旧パスは "From:" のコメントだけ。
+    `#!/bin/sh\n# husky\n\n# Created by Husky v4.3.8\n#   At: 6/9/2026, 10:57:06 AM\n#   From: ${plan.from}/node_modules/husky (undefined)\n\n. "$(dirname "$0")/husky.sh"\n`,
+  );
+
+  const r = await applyFixups(plan, { emacsStateFiles: [], dryRun: false, emacsRunning: false });
+
+  expect(r.manualSteps.join(" ")).not.toContain("pre-commit");
+});
+
+test("I11: コメントと実行行の両方に旧パスがあれば todo に出す", async () => {
+  mkdirSync(join(plan.to, ".git", "hooks"), { recursive: true });
+  writeFileSync(
+    join(plan.to, ".git", "hooks", "pre-push"),
+    `#!/bin/sh\n#   From: ${plan.from}/node_modules/husky\nexec ${plan.from}/node_modules/.bin/lefthook run pre-push\n`,
+  );
+
+  const r = await applyFixups(plan, { emacsStateFiles: [], dryRun: false, emacsRunning: false });
+
+  expect(r.manualSteps.join(" ")).toContain("pre-push");
+});
+
+test("I11: lockfile が bun.lock なら bun install を案内する", async () => {
+  mkdirSync(join(plan.to, ".git", "hooks"), { recursive: true });
+  writeFileSync(join(plan.to, "bun.lock"), "");
+  writeFileSync(
+    join(plan.to, ".git", "hooks", "pre-push"),
+    `#!/bin/sh\nexec ${plan.from}/node_modules/.bin/husky-run pre-push\n`,
+  );
+
+  const r = await applyFixups(plan, { emacsStateFiles: [], dryRun: false, emacsRunning: false });
+
+  expect(r.manualSteps.join(" ")).toContain("bun install");
+  expect(r.manualSteps.join(" ")).not.toContain("npm install");
+});
+
+test("I11: lockfile が pnpm/yarn ならそれぞれの install を案内する", async () => {
+  mkdirSync(join(plan.to, ".git", "hooks"), { recursive: true });
+  writeFileSync(join(plan.to, "pnpm-lock.yaml"), "");
+  writeFileSync(
+    join(plan.to, ".git", "hooks", "pre-push"),
+    `#!/bin/sh\nexec ${plan.from}/node_modules/.bin/husky-run pre-push\n`,
+  );
+
+  const r = await applyFixups(plan, { emacsStateFiles: [], dryRun: false, emacsRunning: false });
+
+  expect(r.manualSteps.join(" ")).toContain("pnpm install");
+});
+
+test("I11: lockfile が無ければ従来どおり npm install を案内する", async () => {
+  mkdirSync(join(plan.to, ".git", "hooks"), { recursive: true });
+  writeFileSync(
+    join(plan.to, ".git", "hooks", "pre-push"),
+    `#!/bin/sh\nexec ${plan.from}/node_modules/.bin/husky-run pre-push\n`,
+  );
+
+  const r = await applyFixups(plan, { emacsStateFiles: [], dryRun: false, emacsRunning: false });
+
+  expect(r.manualSteps.join(" ")).toContain("npm install");
+});
