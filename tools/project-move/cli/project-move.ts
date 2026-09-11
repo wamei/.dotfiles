@@ -10,7 +10,13 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { ghqProbe, planMove, type MovePlan } from "../src/plan-move.ts";
 import { applyFixups, isEmacsRunning, preflightStatus } from "../src/project-move.ts";
-import { defaultMovesLogPath, formatMoveRow, parseMovesTsv, type Move } from "../src/moves.ts";
+import {
+  appliedMovesLogPath,
+  defaultMovesLogPath,
+  formatMoveRow,
+  parseMovesTsv,
+  type Move,
+} from "../src/moves.ts";
 import { parseArgs } from "../src/args.ts";
 
 // 値を取るオプションはここ project-move では --to だけ。claude-state-move.ts と
@@ -89,11 +95,21 @@ if (fixupsOnly) {
   if (dirs.length === 2) {
     targets = [{ from: resolve(dirs[0]), to: resolve(dirs[1]) }];
   } else if (dirs.length === 0) {
-    if (!existsSync(log)) {
+    // I10: 退避済みのログ (moves.applied.tsv) も対象に含める。
+    //
+    // claude-state-move (I5) は適用に成功すると moves.tsv の中身を
+    // moves.applied.tsv へ移して元を消す。つまり「移動もクレーム状態の
+    // 書き換えも全部終わった直後」という --fixups-only を一番使いたい瞬間に、
+    // 位置引数を省いた形は必ず `no moves log` で落ちていた (実際に踏んだ)。
+    // 手当ては何度走らせても副作用が増えない (rewriteText は既に新パスに
+    // なった箇所に一致しない) ので、退避済みと未適用の両方を素直に読む。
+    const logs = [appliedMovesLogPath(log), log].filter((p) => existsSync(p));
+    if (logs.length === 0) {
       console.error(`no moves log at ${log}; pass <old> <new> instead`);
       process.exit(2);
     }
-    targets = parseMovesTsv(await readFile(log, "utf8"));
+    targets = [];
+    for (const p of logs) targets.push(...parseMovesTsv(await readFile(p, "utf8")));
   } else {
     console.error("--fixups-only expects 0 or 2 positional arguments (<old> <new>)");
     process.exit(2);
