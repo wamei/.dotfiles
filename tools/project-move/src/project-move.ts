@@ -153,12 +153,18 @@ export async function applyFixups(
   //    node_modules のバイナリを絶対パスで起動するので、再インストールが正解。
   const hooks = join(projectRoot, ".git", "hooks");
   if (existsSync(hooks)) {
+    const tool = installCommand(projectRoot);
     for (const name of await readdir(hooks)) {
       const p = join(hooks, name);
       const body = await readFile(p, "utf8").catch(() => "");
-      if (!body.includes(plan.from)) continue;
-      const tool = body.includes("lefthook") ? "npx lefthook install" : "npm install";
-      report.manualSteps.push(`${p} still points at the old path; run \`${tool}\` in ${plan.to}`);
+      // I11: コメント行を除いて判定する。husky v4 は生成した全 hook に
+      // `#   From: <old>/node_modules/husky` を刻むが、実際に走るのは
+      // husky.local.sh の `cd "."` (相対) なので移動しても動く。素の
+      // includes() だと hook 19 本すべてが偽陽性の todo になり、しかも
+      // 「何もしなくてよい」のに再インストールを促してしまう。
+      if (!stripShellComments(body).includes(plan.from)) continue;
+      const cmd = body.includes("lefthook") ? "npx lefthook install" : tool;
+      report.manualSteps.push(`${p} still points at the old path; run \`${cmd}\` in ${plan.to}`);
     }
   }
 
@@ -168,4 +174,28 @@ export async function applyFixups(
   }
 
   return report;
+}
+
+/** 行頭 (空白を除く) が `#` の行を落とす。shell script の素朴なコメント除去。 */
+function stripShellComments(body: string): string {
+  return body
+    .split("\n")
+    .filter((l) => !l.trimStart().startsWith("#"))
+    .join("\n");
+}
+
+/**
+ * hook 再生成に使うべき install コマンドを lockfile から決める (I11)。
+ *
+ * 以前は無条件に `npm install` を案内していた。bun 管理のプロジェクト
+ * (SDXFW_TEMPLATE) でそのとおり実行したところ、npm の strict な peer 解決で
+ * ERESOLVE になって失敗した。npm が通っていたら通っていたで、bun.lock しか
+ * 無い repo に package-lock.json を書き足すところだった。
+ */
+function installCommand(projectRoot: string): string {
+  const has = (f: string) => existsSync(join(projectRoot, f));
+  if (has("bun.lock") || has("bun.lockb")) return "bun install";
+  if (has("pnpm-lock.yaml")) return "pnpm install";
+  if (has("yarn.lock")) return "yarn install";
+  return "npm install";
 }
