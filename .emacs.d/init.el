@@ -2708,6 +2708,28 @@ claude-complete と copilot のゴーストテキストも point の直後に描
                      (copilot--overlay-visible)))
       (apply fn args)))
 
+  (defun wamei/eldoc-box-help-at-point-guard (fn &rest args)
+    "doc buffer がまだ無いときに `eldoc-box-help-at-point' が落ちるのを防ぐ。
+
+本家は `eldoc--doc-buffer' が bound かどうかだけを見て `with-current-buffer' に
+渡すが、この変数は global で初期値 nil、eldoc が一度 doc を作る
+(`eldoc-display-in-buffer') まで nil のままなので、その前に呼ぶと
+set-buffer nil で (wrong-type-argument stringp nil) になる。point 上に doc が
+無いバッファでも eldoc は doc buffer を作らないため、起動直後に C-c h を押すと
+普通に踏む。まず eldoc を手動で走らせ、それでも doc が無ければ空のバッファを
+渡して本家の \"no doc to display\" 表示に落とす (非同期の eglot は後から
+`eldoc-box--help-at-point-async-update' が child frame を差し替える)。"
+    (unless (buffer-live-p (bound-and-true-p eldoc--doc-buffer))
+      (when (bound-and-true-p eldoc-mode)
+        ;; interactive 引数は渡さない (t だと doc buffer を window に表示してしまう)
+        (eldoc-print-current-symbol-info)))
+    (let ((placeholder (unless (buffer-live-p (bound-and-true-p eldoc--doc-buffer))
+                         (generate-new-buffer " *eldoc-box-no-doc*"))))
+      (unwind-protect
+          (let ((eldoc--doc-buffer (or placeholder eldoc--doc-buffer)))
+            (apply fn args))
+        (when placeholder (kill-buffer placeholder)))))
+
   (defun wamei/eldoc-box-quit-on-completion ()
     "補完が始まったら表示中の eldoc-box を閉じる。"
     (when (and (bound-and-true-p completion-in-region-mode)
@@ -2732,4 +2754,6 @@ claude-complete と copilot のゴーストテキストも point の直後に描
                 #'wamei/eldoc-box-tty-update-childframe-geometry))
   (advice-add 'eldoc-box--eldoc-display-function :around
               #'wamei/eldoc-box-inhibit-during-completion)
+  (advice-add 'eldoc-box-help-at-point :around
+              #'wamei/eldoc-box-help-at-point-guard)
   (add-hook 'completion-in-region-mode-hook #'wamei/eldoc-box-quit-on-completion))
