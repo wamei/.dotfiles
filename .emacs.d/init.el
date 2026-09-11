@@ -717,9 +717,93 @@ claude のバッファの中から呼ばれたときはそのセッションの�
           ;; タブ名は wamei/tab-bar-tab-name-project がプロジェクト名にしている。
           (equal (alist-get 'name tab) name))))))
 
+  ;; プロジェクト選択の候補一覧で、パスの左にプロジェクト名のカラムを出す。
+  ;; 候補文字列 (= パス) は加工せず affixation-function の prefix として足すので、
+  ;; 絞り込みも履歴も戻り値も upstream のままになる。
+  (defface wamei/project-prompt-name
+    '((((class color) (min-colors 88)) :foreground "#fb2874")
+      (t :foreground "magenta"))
+    "プロジェクト選択の候補で名前カラムに使う face (doom-molokai の magenta)。")
+
+  (defvar wamei/project-prompt--name-width nil
+    "非 nil なら候補の左に出す名前カラムの幅 (桁)。
+`wamei/project-prompt-project-dir' の実行中だけ束縛され、
+`wamei/project-prompt--affixate' はこの間だけ働く。")
+
+  (defun wamei/project-prompt--name (cand)
+    "候補 CAND のプロジェクト名を返す。CAND がパスでなければ nil。"
+    (and (file-name-absolute-p cand)
+         (file-name-nondirectory (directory-file-name cand))))
+
+  (defun wamei/project-prompt--column-width ()
+    "名前カラムの桁数。名前の最大幅 + パスとの間のガター 2 桁。"
+    (+ wamei/project-prompt--name-width 2))
+
+  (defun wamei/project-prompt--column (cand)
+    "CAND の名前カラムを返す。幅は `wamei/project-prompt--column-width'。
+`... (choose a dir)' のような非パス候補は空白で埋めて桁を揃える。"
+    (let ((name (or (wamei/project-prompt--name cand) "")))
+      (concat (propertize name 'face 'wamei/project-prompt-name)
+              (make-string (max 1 (- (wamei/project-prompt--column-width)
+                                     (string-width name)))
+                           ?\s))))
+
+  (defun wamei/project-prompt--affixate (orig metadata prop)
+    "`completion-metadata-get' の :around advice。affixation の prefix に名前カラムを足す。
+marginalia の advice は :before-until なので、テーブルの metadata に affixation-function
+を入れても marginalia に勝てない。そこで nerd-icons-completion と同じく
+completion-metadata-get を包み、marginalia の注釈 (右) と nerd-icons のアイコンを
+保ったまま左にカラムを重ねる。この advice は marginalia より外側 (depth -100) に
+置かないと、:before-until で打ち切られて呼ばれない。
+project-file 以外のカテゴリには触らない。`... (choose a dir)' を選んだあとの
+`read-directory-name' はこの束縛の内側で走るので、カテゴリで弾かないとファイル名の
+候補にも空のカラムが付く。
+ORIG・METADATA・PROP は `completion-metadata-get' のもの。"
+    (if (not (and wamei/project-prompt--name-width
+                  (eq prop 'affixation-function)
+                  (eq (funcall orig metadata 'category) 'project-file)))
+        (funcall orig metadata prop)
+      (let ((aff (or (funcall orig metadata 'affixation-function)
+                     (when-let* ((ann (funcall orig metadata 'annotation-function)))
+                       (lambda (cands)
+                         (mapcar (lambda (cand)
+                                   (list cand "" (or (funcall ann cand) "")))
+                                 cands)))
+                     (lambda (cands)
+                       (mapcar (lambda (cand) (list cand "" "")) cands)))))
+        (lambda (cands)
+          ;; marginalia は注釈の整列位置を (+ left marginalia--cand-width-max) で決めるが、
+          ;; この幅は候補文字列だけから計算され prefix を見ない。そのままだと
+          ;; prefix + パスが整列位置を追い越した行 (長いパス) だけ注釈が右にずれるので、
+          ;; prefix の分を marginalia-align-offset に足して作り直させる。prefix の幅は
+          ;; アイコンを足す nerd-icons 側の都合で決まるため、1 度呼んで実測する
+          ;; (marginalia も nerd-icons も注釈とアイコンをキャッシュ済みなので 2 度目は安い)。
+          (let* ((rows (funcall aff cands))
+                 (marginalia-align-offset
+                  (+ (or (bound-and-true-p marginalia-align-offset) 0)
+                     (wamei/project-prompt--column-width)
+                     (cl-loop for row in rows
+                              maximize (string-width (nth 1 row))))))
+            (mapcar (pcase-lambda (`(,cand ,prefix ,suffix))
+                      ;; アイコン (既存の prefix) の右に名前カラムを置き、
+                      ;; [アイコン] [プロジェクト名] [path] [注釈] の順にする。
+                      (list cand (concat prefix (wamei/project-prompt--column cand)) suffix))
+                    (funcall aff cands)))))))
+
+  (defun wamei/project-prompt-project-dir (&optional prompt predicate require-known)
+    "名前カラム付きで `project-prompt-project-dir' を呼ぶ。
+PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
+    (let ((wamei/project-prompt--name-width
+           (seq-reduce (lambda (width root)
+                         (max width (string-width
+                                     (or (wamei/project-prompt--name root) ""))))
+                       (project-known-project-roots)
+                       0)))
+      (project-prompt-project-dir prompt predicate require-known)))
+
   (defun wamei/project-switch-project-in-tab (dir)
     "DIR のプロジェクト用タブへ移動する。無ければ新規タブを作って開く。"
-    (interactive (list (project-prompt-project-dir)))
+    (interactive (list (funcall project-prompter)))
     (let* ((root (expand-file-name (file-name-as-directory dir)))
            (index (wamei/project--find-tab-index root)))
       (if index
@@ -738,7 +822,14 @@ claude のバッファの中から呼ばれたときはそのセッションの�
   ;; プレフィクス無しの C-x C-j は dired-jump で、これは default-directory では
   ;; なく buffer-file-name のディレクトリへ飛ぶので、メモからだと ~/org/ に着く。
   (project-switch-commands . #'wamei/project-memo-switch-setup)
+  ;; プロジェクトを選ぶすべての入口 (project-switch-project / project-forget-project
+  ;; など) を名前カラム付きのプロンプタにする。
+  (project-prompter . #'wamei/project-prompt-project-dir)
   :config
+  ;; 名前カラムを足す advice。marginalia の :before-until より外側に居る必要があるので
+  ;; depth を明示する (詳細は wamei/project-prompt--affixate の docstring)。
+  (advice-add 'completion-metadata-get :around #'wamei/project-prompt--affixate
+              '((depth . -100)))
   ;; 未訪問・ignore 済みファイルを project-find-file と consult-project-buffer の
   ;; 候補に足す。init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
   (load (expand-file-name "project-extra-files"
