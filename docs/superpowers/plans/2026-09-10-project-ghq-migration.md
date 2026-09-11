@@ -1774,10 +1774,17 @@ cd ~/.claude/projects && ls -d ./-Users-wamei-projects-mc-research* ./-Users-wam
 衝突があると `claude-state-move` は **exit 1 で何も書き換えずに止まる** (安全側)。
 そこで、この 2 組だけログから外して個別に適用する:
 
+**注意: 適用済みログの退避は `--from-log` に渡したファイルに対して働く。**
+一時ファイルを渡すとそちらが `*.applied.tsv` になり、本物の `moves.tsv` は
+40 行そのまま残る。実際にこれを踏んで「ログがおかしい」状態になった。
+一時ファイルは使わず、**本物のログを退避してから絞り込んだものを元の場所に戻す**。
+
 ```bash
 # 1. 該当 2 組を除いた分をまとめて適用
-grep -v -e '/mc-research' -e '/memotan' ~/.local/state/project-move/moves.tsv > /tmp/moves-bulk.tsv
-claude-state-move --from-log /tmp/moves-bulk.tsv
+cd ~/.local/state/project-move
+cp moves.tsv moves.split-backup.tsv                      # 全 40 行を控える
+grep -v -e '/mc-research' -e '/memotan' moves.split-backup.tsv > moves.tsv
+claude-state-move                                        # moves.tsv を消費して moves.applied.tsv へ
 
 # 2. 残りを 1 組ずつ位置引数で適用 (位置引数経路は検査対象がその 1 組だけになる)
 claude-state-move ~/projects/mc-research        ~/projects/local/mc-research
@@ -1786,7 +1793,18 @@ claude-state-move ~/projects/memotan            ~/projects/local/memotan
 claude-state-move ~/projects/memotan_knowledge  ~/projects/local/memotan_knowledge
 ```
 
-Expected: 1 も 2 も rename と rewrite が出て、`refusing to apply` が出ないこと
+**位置引数モードはログを退避しない** (渡されたログが無いため)。そこで最後に、
+個別適用した 4 行を手で退避先へ寄せ、控えを片付ける:
+
+```bash
+cd ~/.local/state/project-move
+grep -e '/mc-research' -e '/memotan' moves.split-backup.tsv >> moves.applied.tsv
+rm moves.split-backup.tsv
+wc -l moves.applied.tsv        # 42 行 (canary 2 + 本体 40) になっていること
+```
+
+Expected: 1 も 2 も rename と rewrite が出て、`refusing to apply` が出ないこと。
+最後に `moves.tsv` が消えていて `moves.applied.tsv` が 42 行あること
 
 - [ ] **Step 5: BeecoV2 の worktree が生きていることを確認する**
 
