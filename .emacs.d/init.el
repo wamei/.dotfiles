@@ -738,6 +738,17 @@ claude のバッファの中から呼ばれたときはそのセッションの�
     (and (file-name-absolute-p cand)
          (file-name-nondirectory (directory-file-name cand))))
 
+  (defun wamei/project-prompt--searchable (entry)
+    "候補 ENTRY に `wamei/project-prompt-new-label' を隠して埋め込む。
+絞り込みは候補文字列にしか効かず、名前カラム (affixation の prefix) は対象外なので、
+`... (choose a dir)' の行を \"new project\" で引けるようにするには候補側に文字を足す
+必要がある。display \"\" にしておけば表示は今までのまま。
+プロジェクトの entry (cons) は触らない。"
+    (if (consp entry)
+        entry
+      (concat entry (propertize (concat " " wamei/project-prompt-new-label)
+                                'display ""))))
+
   (defun wamei/project-prompt--column-width ()
     "名前カラムの桁数。名前とラベルの広い方 + パスとの間のガター 2 桁。
 ラベルを勘定に入れないと、名前が短いプロジェクトばかりのときに
@@ -804,13 +815,35 @@ ORIG・METADATA・PROP は `completion-metadata-get' のもの。"
   (defun wamei/project-prompt-project-dir (&optional prompt predicate require-known)
     "名前カラム付きで `project-prompt-project-dir' を呼ぶ。
 PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
-    (let ((wamei/project-prompt--name-width
-           (seq-reduce (lambda (width root)
-                         (max width (string-width
-                                     (or (wamei/project-prompt--name root) ""))))
-                       (project-known-project-roots)
-                       0)))
-      (project-prompt-project-dir prompt predicate require-known)))
+    (let* ((wamei/project-prompt--name-width
+            (seq-reduce (lambda (width root)
+                          (max width (string-width
+                                      (or (wamei/project-prompt--name root) ""))))
+                        (project-known-project-roots)
+                        0))
+           ;; 候補テーブルは本体の中で作られるので、作る関数を包んで
+           ;; `... (choose a dir)' の行に隠しラベルを足す。包む前の定義は
+           ;; symbol-function で実体を掴んでおく (シンボル越しに呼ぶと
+           ;; 差し替えた自分自身を呼んで無限再帰する)。
+           (table (symbol-function 'project--file-completion-table))
+           (dir (cl-letf (((symbol-function 'project--file-completion-table)
+                           (lambda (all)
+                             (funcall table
+                                      (mapcar #'wamei/project-prompt--searchable all)))))
+                  (project-prompt-project-dir
+                   prompt
+                   (and predicate
+                        (lambda (cand)
+                          ;; 候補名が変わった分、本体の (equal choice dir-choice) が
+                          ;; 外れて predicate に回ってくる。パスでない候補 (=
+                          ;; `... (choose a dir)' の行) は本体と同じように通す。
+                          (or (not (file-name-absolute-p cand))
+                              (funcall predicate cand))))
+                   require-known))))
+      (if (file-name-absolute-p dir)
+          dir
+        ;; 同じ理由で本体のディレクトリ選択への分岐も外れるので、こちらで訊く。
+        (read-directory-name "Select directory: " default-directory nil t))))
 
   (defun wamei/project-switch-project-in-tab (dir)
     "DIR のプロジェクト用タブへ移動する。無ければ新規タブを作って開く。"
