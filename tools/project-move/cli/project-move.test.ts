@@ -21,7 +21,7 @@ import {
 import { spawnSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { defaultMovesLogPath } from "../src/moves.ts";
+import { appliedMovesLogPath, defaultMovesLogPath } from "../src/moves.ts";
 
 const CLI = join(import.meta.dir, "project-move.ts");
 
@@ -351,4 +351,60 @@ test("I9: --fixups-only に位置引数を 1 つだけ渡すとエラーで終�
   const { exitCode, stderr } = runCli(["--fixups-only", "/only-one"]);
   expect(exitCode).not.toBe(0);
   expect(stderr).toContain("--fixups-only");
+});
+
+// --- I10: --fixups-only が消費済みログを見失う ---------------------------------
+//
+// 実際に踏んだ形: `project-move` で 2 件移動 → `claude-state-move` で適用 →
+// `project-move --fixups-only` が `no moves log ...` の exit 2 で落ちた。
+// claude-state-move (I5) は適用したログを moves.applied.tsv へ退避して
+// moves.tsv を消すので、「移動が全部終わった直後」という --fixups-only を
+// 一番使いたい瞬間に、位置引数を省いた形が必ず失敗する。
+// 手当ては何度走らせても副作用が増えない前提なので、退避済みのログも
+// 対象に含める。
+test("I10: --fixups-only は moves.tsv が消費済みでも moves.applied.tsv を読む", () => {
+  const oldPath = join(root, "archived-old");
+  const newPath = join(root, "archived-new");
+  mkdirSync(join(newPath, ".claude"), { recursive: true });
+  writeFileSync(
+    join(newPath, ".claude", "settings.local.json"),
+    JSON.stringify({ permissions: { allow: [`Bash(grep x ${oldPath}/a)`] } }),
+  );
+  const log = defaultMovesLogPath(fakeHome);
+  mkdirSync(dirname(log), { recursive: true });
+  // claude-state-move が適用後に残す状態: moves.tsv は消え、applied だけがある。
+  writeFileSync(appliedMovesLogPath(log), `2026-09-11T00:00:00.000Z\t${oldPath}\t${newPath}\n`);
+
+  const { exitCode, stdout } = runCli(["--fixups-only"]);
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain(`fixups ${oldPath} -> ${newPath}`);
+  const settings = readFileSync(join(newPath, ".claude", "settings.local.json"), "utf8");
+  expect(settings).toContain(`${newPath}/a`);
+  expect(settings).not.toContain(oldPath);
+});
+
+test("I10: moves.tsv と moves.applied.tsv の両方があれば両方を対象にする", () => {
+  const mk = (name: string) => {
+    const oldPath = join(root, `${name}-old`);
+    const newPath = join(root, `${name}-new`);
+    mkdirSync(join(newPath, ".claude"), { recursive: true });
+    writeFileSync(
+      join(newPath, ".claude", "settings.local.json"),
+      JSON.stringify({ permissions: { allow: [`Bash(grep x ${oldPath}/a)`] } }),
+    );
+    return { oldPath, newPath };
+  };
+  const done = mk("both-done");
+  const pending = mk("both-pending");
+  const log = defaultMovesLogPath(fakeHome);
+  mkdirSync(dirname(log), { recursive: true });
+  writeFileSync(appliedMovesLogPath(log), `2026-09-11T00:00:00.000Z\t${done.oldPath}\t${done.newPath}\n`);
+  writeFileSync(log, `2026-09-11T00:01:00.000Z\t${pending.oldPath}\t${pending.newPath}\n`);
+
+  const { exitCode, stdout } = runCli(["--fixups-only"]);
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain(`fixups ${done.oldPath} -> ${done.newPath}`);
+  expect(stdout).toContain(`fixups ${pending.oldPath} -> ${pending.newPath}`);
 });
