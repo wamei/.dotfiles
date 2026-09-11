@@ -1050,7 +1050,22 @@ init.el は symlink (~/.emacs.d/init.el → ~/.dotfiles/.emacs.d/init.el) なの
          ("C-b" . backward-char)
          ("C-f" . forward-char)))
   :preface
-  (setq dired-dwim-target t)
+  ;; R / C の移動先の既定は「別 window に出ている dired のディレクトリ」。sidebar も
+  ;; 中身は dired なので、本文の dired で R を押すとプロジェクトルート (sidebar が
+  ;; 映しているディレクトリ) が既定になってしまう。sidebar の window は候補から外す。
+  (defun wamei/dired-dwim-target-without-sidebar ()
+    "他の window に出ている dired のディレクトリ。sidebar は除く。
+`dired-dwim-target-next' と同じ並び (選択 window の次から) だが、
+`wamei/project-sidebar-mode' の window は候補にしない。
+候補が無ければ nil を返し、`dired-dwim-target-directory' は自分のディレクトリに落ちる。"
+    (mapcan (lambda (win)
+              (with-current-buffer (window-buffer win)
+                (when (and (eq major-mode 'dired-mode)
+                           (not (bound-and-true-p wamei/project-sidebar-mode)))
+                  (list (dired-current-directory)))))
+            (delq (selected-window)
+                  (window-list-1 (next-window nil 'nomini) 'nomini))))
+  (setq dired-dwim-target #'wamei/dired-dwim-target-without-sidebar)
   (setq dired-recursive-copies 'always)
   (setq dired-isearch-filenames t)
   (setq dired-auto-revert-buffer t)
