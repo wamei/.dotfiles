@@ -2569,6 +2569,41 @@ PATH を見る (/docker:… でコンテナ内のファイルを開いたとき�
        ;; エントリはあるのに起動できないときだけ echo area に理由を出す。
        ((stringp status) (message "eglot: %s ので起動しない" status)))))
 
+  (defun wamei/eglot-ts--tsserver (dir root)
+    "DIR から ROOT まで遡って node_modules の tsserver.js を探す。無ければ nil。
+monorepo でパッケージ側にも typescript があるときは近い方が勝つ。ROOT の外
+\(~/node_modules など) は拾わない。ROOT が nil なら上限を設けない。"
+    (let* ((rel "node_modules/typescript/lib/tsserver.js")
+           (found (locate-dominating-file dir rel)))
+      (and found
+           (or (null root)
+               (string-prefix-p (expand-file-name root) (expand-file-name found)))
+           (expand-file-name rel found))))
+
+  (defun wamei/eglot-ts-contact (_interactive project)
+    "TypeScript / JavaScript の言語サーバをプロジェクトごとに選ぶ。
+`eglot-server-programs' の contact 関数 (INTERACTIVE と PROJECT を受ける)。
+
+typescript を依存に持つプロジェクトでは typescript-language-server に
+そのプロジェクトの tsserver を渡す。TypeScript 7 の tsc (typescript-go) は
+baseUrl・moduleResolution=node10・target=es5 を削除したので、それらを使う
+既存プロジェクトでは tsconfig ごと拒否され、非相対 import が軒並み
+\"Cannot find module\" になる。CI と同じ TS で診断させるためにも、
+プロジェクトの TS があるならそちらを使う。
+
+無いプロジェクトでは TS 7 の tsc --lsp に落ちる。typescript-language-server は
+tsserver を自前では持たないので、そこでは起動できない。"
+    (let ((tsserver (wamei/eglot-ts--tsserver default-directory
+                                              (and project (project-root project)))))
+      (if tsserver
+          ;; tsserver の場所は CLI オプションではなく initializationOptions で渡す
+          ;; (tsls 6 に --tsserver-path は無い)。パスはサーバを起動する側 (TRAMP なら
+          ;; リモート) が解釈するので TRAMP の prefix は落とす。
+          (list "typescript-language-server" "--stdio"
+                :initializationOptions
+                (list :tsserver (list :path (file-local-name tsserver))))
+        '("tsc" "--lsp" "-stdio"))))
+
   (defun wamei/sqls-switch-connection ()
     "sqls が持っている接続 (.dir-locals.el の :sqls :connections) を選び直す。
 sqls は同時に 1 接続しか見ないので、複数 DB を行き来するときに使う。"
@@ -2625,20 +2660,19 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
               #'wamei/eglot-code-action-hint-strip-args)
   (advice-add 'wamei/eldoc-mouse--display :filter-args
               #'wamei/eglot-code-action-hint-strip-args)
-  ;; TypeScript / JavaScript は typescript-language-server ではなく tsc 本体を使う。
-  ;; TypeScript 7 の tsc は native バイナリ (typescript-go) で、--lsp を付けると
-  ;; 言語サーバになる。サーバがバイナリそのものなので、プロジェクトに typescript が
-  ;; 入っていないディレクトリでも動く (typescript-language-server は node_modules の
-  ;; typescript を探して見つからないと initialize で失敗する)。診断は
-  ;; publishDiagnostics ではなく pull (textDocument/diagnostic) で返るが、eglot は
-  ;; :diagnosticProvider があればそちらを使う。languageId は組み込みエントリと同じに
-  ;; 揃える (tsx は "typescriptreact"、js は "javascript")。
+  ;; TypeScript / JavaScript のサーバはプロジェクトごとに選ぶ (wamei/eglot-ts-contact)。
+  ;; プロジェクトの typescript があれば typescript-language-server にその tsserver を
+  ;; 渡し、無ければ TypeScript 7 の tsc --lsp (native バイナリなので typescript が
+  ;; 入っていないディレクトリでも動く)。tsc --lsp の診断は publishDiagnostics ではなく
+  ;; pull (textDocument/diagnostic) で返るが、eglot は :diagnosticProvider があれば
+  ;; そちらを使う。languageId は組み込みエントリと同じに揃える
+  ;; (tsx は "typescriptreact"、js は "javascript")。
   (add-to-list 'eglot-server-programs
                '(((js-mode :language-id "javascript")
                   (js-ts-mode :language-id "javascript")
                   (tsx-ts-mode :language-id "typescriptreact")
                   (typescript-ts-mode :language-id "typescript"))
-                 . ("tsc" "--lsp" "-stdio")))
+                 . wamei/eglot-ts-contact))
   ;; eglot 組み込みに Prisma のエントリは無い。@prisma/language-server は
   ;; プロジェクトの依存に入らないのが普通なので mise で入れ (~/.config/mise/config.toml)、
   ;; PATH から解決する (mise が差し込む bin を exec-path-from-shell で引き継ぐ)。

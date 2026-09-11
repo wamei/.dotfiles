@@ -14,13 +14,20 @@ go = "1"
 "npm:@biomejs/biome" = "latest"
 "npm:prettier" = "latest"
 # TypeScript 7 の tsc は native バイナリ (typescript-go) で、`tsc --lsp -stdio` が
-# そのまま言語サーバになる (init.el の eglot ブロックがこれを起動する)。そのため
-# typescript-language-server は入れない。
+# そのまま言語サーバになる。ただし TS 7 は baseUrl / moduleResolution=node10 /
+# target=es5 を削除したので、それらを使う既存プロジェクトでは tsconfig ごと拒否され、
+# 非相対 import が全部 "Cannot find module" になる。そこで init.el の eglot ブロックは
+# プロジェクトに typescript があれば typescript-language-server にその tsserver を
+# 渡し、無いときだけ tsc --lsp に落とす (wamei/eglot-ts-contact)。両方入れておく。
 # npm backend は install 先の node_modules/.bin も PATH に出すので、
 # vscode-langservers-extracted が依存で抱える typescript 4.9.5 の tsc / tsserver まで
 # 漏れてくる。PATH の優先順はこのファイルの記述順なので、tsc を 7 系にするには
 # typescript を vscode-langservers-extracted より前に置く (入れ替えると 4.9.5 が勝つ)。
 "npm:typescript" = "latest"
+# 上記のとおり既存プロジェクト用。依存を同梱した単一 bin なので tsserver は持たず、
+# プロジェクトの node_modules の tsserver を initializationOptions で受け取る
+# (6.0 に --tsserver-path オプションは無い)。
+"npm:typescript-language-server" = "latest"
 "npm:vscode-langservers-extracted" = "latest"
 "npm:@prisma/language-server" = "latest"
 # Emacs の eglot が起動する言語サーバ。dockerfile-language-server-nodejs の bin は
