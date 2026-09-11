@@ -2425,37 +2425,47 @@ child frame (eldoc-box / eldoc-mouse) の表示関数への :filter-args advice�
 ヒントは echo area に出すので、child frame には重複させない。"
     (cons (cl-remove-if #'wamei/eglot-code-action-hint-p (car args)) (cdr args)))
 
-  (defun wamei/eglot-server-available-p ()
-    "現在のバッファを担当する言語サーバが起動できそうなら非 nil。
-`eglot-server-programs' から実行ファイルを引いて `executable-find' で探す。
-REMOTE 引数を渡すので、TRAMP 越しのバッファではリモート側の PATH を見る
-\(/docker:… でコンテナ内のファイルを開いたとき、mac 側の道具を誤って
+  (defun wamei/eglot-server-availability ()
+    "現在のバッファを担当する言語サーバの状態を返す。
+`available' なら起動できる、`none' なら `eglot-server-programs' に該当エントリが
+無い、文字列なら起動できない理由 (そのまま echo area に出せる)。
+`executable-find' に REMOTE 引数を渡すので、TRAMP 越しのバッファではリモート側の
+PATH を見る (/docker:… でコンテナ内のファイルを開いたとき、mac 側の道具を誤って
 見つけない)。host + port の接続は実行ファイルではないので判定せず許可する。"
-    ;; `eglot--guess-contact' は該当エントリが無いと contact に nil を返し、
-    ;; `eglot-alternatives' のエントリは候補が全滅すると error を投げる。
-    ;; どちらも「起動できない」なので nil に畳む。
-    (ignore-errors
-      (let ((contact (nth 3 (eglot--guess-contact))))
-        (when contact
-          (let ((program (and (stringp (car contact))
-                              ;; ("host" 1234) は TCP 接続で実行ファイルではない
-                              (or (null (cdr contact)) (stringp (cadr contact)))
-                              (car contact))))
-            (if program
-                (and (executable-find program t) t)
-              t))))))
+    ;; eglot--guess-contact は autoload されていない。eglot をロードせずに呼ぶと
+    ;; void-function になり、下の condition-case がそれを握り潰して「サーバが無い」
+    ;; と誤判定する。このフックが走る時点では eglot は未ロードなのが普通なので、
+    ;; 判定の前に必ずロードする (これが無いと .ts を開いても eglot が起動しない)。
+    (require 'eglot)
+    (condition-case err
+        ;; `eglot--guess-contact' は該当エントリが無いと contact に nil を返す。
+        (let ((contact (nth 3 (eglot--guess-contact))))
+          (cond
+           ((null contact) 'none)
+           ;; ("host" 1234) は TCP 接続、関数 contact も実行ファイルではない
+           ((not (and (stringp (car contact))
+                      (or (null (cdr contact)) (stringp (cadr contact)))))
+            'available)
+           ((executable-find (car contact) t) 'available)
+           (t (format "言語サーバ %s が見つからない" (car contact)))))
+      ;; `eglot-alternatives' のエントリは候補が全滅すると error を投げる
+      (error (error-message-string err))))
 
   (defun wamei/eglot-ensure-if-available ()
     "言語サーバの実行ファイルが見つかるときだけ eglot を起動する。
 言語サーバはプロジェクトの依存ではなく mise で入れる道具なので
-\(~/.config/mise/config.toml)、入っていない環境ではエラーにせず黙って諦める。
+\(~/.config/mise/config.toml)、入っていない環境ではエラーにせず諦める。
 これが無いと、TRAMP でコンテナ内のファイルを開いたときに eglot が
 リモートで存在しないコマンドを起動しようとする。リモートではコマンドが
 シェル越しに起動する (`eglot--cmd') ので `make-process' 自体は成功し、
 死んだプロセスに initialize を送って \"Output file descriptor … is closed\"
 になる (`debug-on-error' が t だとデバッガが開く)。"
-    (when (wamei/eglot-server-available-p)
-      (eglot-ensure)))
+    (let ((status (wamei/eglot-server-availability)))
+      (cond
+       ((eq status 'available) (eglot-ensure))
+       ;; 完全に黙って諦めると「なぜ eglot が起動しないのか」が分からないので、
+       ;; エントリはあるのに起動できないときだけ echo area に理由を出す。
+       ((stringp status) (message "eglot: %s ので起動しない" status)))))
 
   (defun wamei/sqls-switch-connection ()
     "sqls が持っている接続 (.dir-locals.el の :sqls :connections) を選び直す。
@@ -2480,7 +2490,7 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
   ;; refactor アクションを返すサーバ (tsserver 系) では常時点灯になるので使わない。
   (eglot-code-action-indications . '(eldoc-hint))
   ;; eglot-ensure ではなく wamei/eglot-ensure-if-available を通す (:preface 参照)。
-  ;; サーバが PATH に無い環境では黙って諦める。
+  ;; サーバが PATH に無い環境では起動せず、理由を echo area に出す。
   :hook ((typescript-ts-mode-hook
           tsx-ts-mode-hook
           js-ts-mode-hook
