@@ -2489,6 +2489,12 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
   ;; (wamei/eglot-code-action-hint-display)。left-fringe の雷マークは、どこでも
   ;; refactor アクションを返すサーバ (tsserver 系) では常時点灯になるので使わない。
   (eglot-code-action-indications . '(eldoc-hint))
+  :custom-face
+  ;; カーソル下のシンボルの他の出現箇所 (textDocument/documentHighlight) は既定だと
+  ;; bold になるだけで、doom-themes-enable-bold な環境ではキーワードなどと紛れて
+  ;; 気づきにくい。選択範囲と同じ背景で塗って目に入るようにする。region を継承して
+  ;; おけばテーマを変えてもその配色に追従する (doom-molokai なら base4 = #4e4e4e)。
+  (eglot-highlight-symbol-face . '((t (:inherit (region bold)))))
   ;; eglot-ensure ではなく wamei/eglot-ensure-if-available を通す (:preface 参照)。
   ;; サーバが PATH に無い環境では起動せず、理由を echo area に出す。
   :hook ((typescript-ts-mode-hook
