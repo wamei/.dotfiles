@@ -725,6 +725,9 @@ claude のバッファの中から呼ばれたときはそのセッションの�
       (t :foreground "magenta"))
     "プロジェクト選択の候補で名前カラムに使う face (doom-molokai の magenta)。")
 
+  (defconst wamei/project-prompt-new-label "new project"
+    "`... (choose a dir)' の行で名前カラムに出す文字列。")
+
   (defvar wamei/project-prompt--name-width nil
     "非 nil なら候補の左に出す名前カラムの幅 (桁)。
 `wamei/project-prompt-project-dir' の実行中だけ束縛され、
@@ -736,16 +739,24 @@ claude のバッファの中から呼ばれたときはそのセッションの�
          (file-name-nondirectory (directory-file-name cand))))
 
   (defun wamei/project-prompt--column-width ()
-    "名前カラムの桁数。名前の最大幅 + パスとの間のガター 2 桁。"
-    (+ wamei/project-prompt--name-width 2))
+    "名前カラムの桁数。名前とラベルの広い方 + パスとの間のガター 2 桁。
+ラベルを勘定に入れないと、名前が短いプロジェクトばかりのときに
+`wamei/project-prompt-new-label' がカラムを溢れてその行だけずれる。"
+    (+ (max wamei/project-prompt--name-width
+            (string-width wamei/project-prompt-new-label))
+       2))
 
   (defun wamei/project-prompt--column (cand)
     "CAND の名前カラムを返す。幅は `wamei/project-prompt--column-width'。
-`... (choose a dir)' のような非パス候補は空白で埋めて桁を揃える。"
-    (let ((name (or (wamei/project-prompt--name cand) "")))
-      (concat (propertize name 'face 'wamei/project-prompt-name)
+パスでない候補 (`... (choose a dir)' = 新規追加の行) にはラベルを出す。
+ラベルは face を付けず、パスと同じ見た目にする。"
+    (let* ((name (wamei/project-prompt--name cand))
+           (text (if name
+                     (propertize name 'face 'wamei/project-prompt-name)
+                   wamei/project-prompt-new-label)))
+      (concat text
               (make-string (max 1 (- (wamei/project-prompt--column-width)
-                                     (string-width name)))
+                                     (string-width text)))
                            ?\s))))
 
   (defun wamei/project-prompt--affixate (orig metadata prop)
