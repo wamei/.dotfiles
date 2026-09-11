@@ -19,10 +19,43 @@ export type FixupReport = {
  * 起動中に書き換えても保存で上書きされるので、その場合は触らず警告に回す。
  */
 export function isEmacsRunning(
-  exec: (cmd: string, args: string[]) => number = (cmd, args) =>
-    spawnSync(cmd, args).status ?? 1,
+  exec: (cmd: string, args: string[]) => { status: number; stdout: string } = (cmd, args) => {
+    const r = spawnSync(cmd, args, { encoding: "utf8" });
+    return { status: r.status ?? 1, stdout: r.stdout ?? "" };
+  },
 ): boolean {
-  return exec("pgrep", ["-x", "Emacs"]) === 0;
+  // I12: pgrep ではなく ps の一覧を直接読む。
+  //
+  // 元の実装は `pgrep -x Emacs` だったが、これは 2 つの逆向きの誤りを同時に
+  // 起こしていた。(1) 偽陰性: Emacs.app を GUI 起動した本命のプロセスを
+  // pgrep がそもそも拾わない (同じ UID・同じ ucomm=Emacs で ps からは見える
+  // のに -x / -f / -i のどれでもヒットしない)。(2) 偽陽性: 置き去りになった
+  // headless の `emacs -Q -nw -l probe.el` を拾い、自然には終了しないので
+  // 「Emacs を終了してから再実行」してもガードが永久に解けない。
+  // 守りたい相手を見逃して無害な相手で止まる、という最悪の組み合わせだった。
+  const pids: string[] = [];
+  for (const line of exec("ps", ["-Ao", "pid=,ucomm="]).stdout.split("\n")) {
+    const m = line.trim().match(/^(\d+)\s+(.*)$/);
+    if (m && m[2].trim().toLowerCase() === "emacs") pids.push(m[1]);
+  }
+  if (pids.length === 0) return false;
+
+  // -Q / --batch は init を読まないので recentf / desktop / savehist /
+  // projectile が有効にならず、このガードが防ごうとしている「終了時の
+  // 書き戻し」を起こしえない。よって数に入れない。
+  const lines = exec("ps", ["-o", "args=", "-p", pids.join(",")])
+    .stdout.split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  // 引数が読めなければ判定を諦め、安全側 (触らない = 起動中) に倒す。
+  if (lines.length === 0) return true;
+  return lines.some((l) => !isHeadlessEmacs(l));
+}
+
+/** init を読まない起動オプションが付いているか (トークン一致で見る)。 */
+function isHeadlessEmacs(args: string): boolean {
+  const flags = new Set(["-Q", "--quick", "-q", "--no-init-file", "--batch", "-batch", "--script"]);
+  return args.split(/\s+/).some((t) => flags.has(t));
 }
 
 export type PreflightStatus = { uncommitted: string; unpushed: string; stash: string };

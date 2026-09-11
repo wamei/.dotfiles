@@ -68,9 +68,72 @@ test("dry-run は書き換えない", async () => {
   expect(readFileSync(f, "utf8")).toContain(`${plan.from}/a.el`);
 });
 
-test("pgrep の結果で Emacs の起動を判定する", () => {
-  expect(isEmacsRunning(() => 0)).toBe(true);
-  expect(isEmacsRunning(() => 1)).toBe(false);
+// isEmacsRunning の exec seam は ps を 2 回呼ぶ (一覧 → 引数) ので、
+// 引数で応答を出し分ける fake を組む。
+function fakePs(list: string, args: string) {
+  return (_cmd: string, a: string[]) =>
+    a.some((x) => x.startsWith("-A")) ? { status: 0, stdout: list } : { status: 0, stdout: args };
+}
+
+test("ps の結果で Emacs の起動を判定する", () => {
+  expect(
+    isEmacsRunning(fakePs("62493 Emacs\n", "/Applications/Emacs.app/Contents/MacOS/Emacs\n")),
+  ).toBe(true);
+  expect(isEmacsRunning(fakePs("501 zsh\n", ""))).toBe(false);
+});
+
+test("emacsclient は Emacs 本体と区別する", () => {
+  expect(isEmacsRunning(fakePs("62493 emacsclient\n", "emacsclient -n foo.el\n"))).toBe(false);
+});
+
+// --- I12: Emacs 検出が両方向に壊れていた -------------------------------------
+//
+// 実際に踏んだ形: Emacs を終了してから `--fixups-only` を実行したのに
+// 「emacs is running」の警告が出続け、状態ファイルが手つかずのままだった。
+//
+// 原因は `pgrep -x Emacs` で、2 つの逆向きの誤りを同時に起こしていた:
+//
+//  1. 偽陽性: 2 日前の Claude セッションが tmux に置き去りにした
+//     `emacs -Q -nw -l .../scratchpad/spin-probe.el` 2 プロセスを拾う。
+//     自然に終了しないのでガードが永久に解けない。
+//  2. 偽陰性: 肝心の GUI Emacs (Emacs.app, PPID 1) を pgrep がそもそも
+//     拾わない。同じ UID・同じ ucomm=Emacs で ps からは見えるのに、
+//     `pgrep -x` / `-f` / `-i` のどれでもヒットしない (sandbox 外でも再現)。
+//
+// つまり「守りたい相手を見逃し、無害な相手で止まる」状態だった。ps の一覧を
+// 直接読み、ucomm が emacs のものだけを対象にし、init を読まない
+// -Q / --batch を除く形に置き換える。
+
+test("I12: pgrep が拾えない GUI Emacs も ps 経由で検出する", () => {
+  // Emacs.app を Finder / launchd から起動した形。args にオプションが無い。
+  const list = "62493 Emacs\n";
+  const args = "/Applications/Emacs.app/Contents/MacOS/Emacs\n";
+  expect(isEmacsRunning(fakePs(list, args))).toBe(true);
+});
+
+test("I12: -Q で起動した Emacs だけなら「起動中」と扱わない", () => {
+  const list = "52111 Emacs\n61834 Emacs\n";
+  const args =
+    "/Applications/Emacs.app/Contents/MacOS/Emacs -Q -nw -l /tmp/scratch/spin-probe.el\n" +
+    "/Applications/Emacs.app/Contents/MacOS/Emacs -Q -nw -l /tmp/scratch/tm-probe.el\n";
+  expect(isEmacsRunning(fakePs(list, args))).toBe(false);
+});
+
+test("I12: --batch の Emacs も除外する", () => {
+  expect(isEmacsRunning(fakePs("100 Emacs\n", "emacs --batch -l /tmp/x.el\n"))).toBe(false);
+});
+
+test("I12: -Q のプロセスに混じって通常の Emacs がいれば「起動中」", () => {
+  const list = "52111 Emacs\n62493 Emacs\n";
+  const args =
+    "/Applications/Emacs.app/Contents/MacOS/Emacs -Q -nw -l /tmp/scratch/spin-probe.el\n" +
+    "/Applications/Emacs.app/Contents/MacOS/Emacs\n";
+  expect(isEmacsRunning(fakePs(list, args))).toBe(true);
+});
+
+test("I12: 一覧に Emacs がいるのに引数が読めなければ安全側に倒す", () => {
+  // 判定を諦めるときは「触らない」(= 起動中) 側へ。状態ファイルを壊すより警告。
+  expect(isEmacsRunning(fakePs("62493 Emacs\n", ""))).toBe(true);
 });
 
 // --- 差し替え 1 (Ruling R10): dry-run はプロジェクト内のファイルを plan.from
