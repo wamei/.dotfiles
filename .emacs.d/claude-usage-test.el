@@ -361,13 +361,22 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
 
 ;;; mode-line の高さ
 
-(ert-deftest wamei/claude-usage-mode-line-pads-to-grid ()
-  "mode-line の先頭は行グリッドへの詰め物。
-ghostel は端末グリッドをウィンドウ下端に揃え、本文高さが行高で割り切れない
-ぶんを window-vscroll として払う。mode-line を余りぶんだけ厚くして
-本文高さを行境界に乗せる (term-modeline.el の「行グリッドへの詰め物」)。"
+(ert-deftest wamei/claude-usage-mode-line-fixes-its-height ()
+  "mode-line の先頭は高さを固定する詰め物。
+高さが動くと端末の本文高さが動き、ghostel が払う下端揃えの端数が変わって
+画面が跳ねる (term-modeline.el の「高さを固定する詰め物」)。"
   (should (equal (car wamei/claude-usage--mode-line-format)
-                 '(:eval (wamei/term-modeline-grid-pad-spacer)))))
+                 '(:eval (wamei/term-modeline-pad-spacer
+                          wamei/claude-usage-mode-line-height)))))
+
+(ert-deftest wamei/claude-usage-mode-line-height-covers-the-spinner ()
+  "固定する高さは、スピナーが出ているときの自然な高さ (実測 22px) 以上。
+下回ると詰め物が効かず、スピナーの出入りで mode-line が動く。"
+  (should (>= wamei/claude-usage-mode-line-height 22)))
+
+(ert-deftest wamei/claude-usage-mode-line-height-wastes-nothing ()
+  "固定する高さは自然な最大 (22px) ちょうど。ここから増やすと端末が狭くなる。"
+  (should (= wamei/claude-usage-mode-line-height 22)))
 
 (provide 'claude-usage-test)
 ;;; 取得の取り回し
