@@ -482,6 +482,63 @@ sidebar 側の move-back と同じ考え方に揃えている。"
       (wamei/term--remember-previous)
       (wamei/term--show (or (wamei/term--current)
                             (wamei/term--create 1)))))))
+;;; 下端揃えの端数
+
+;; ghostel は端末グリッドをウィンドウの下端に揃える (`ghostel--anchor-window')。
+;; ウィンドウの本文高さが行高で割り切れないぶんは `window-vscroll' として払われ、
+;; 先頭行がその端数ぶん切れた状態になる。切れていること自体は問題ないが、
+;; **端数が動くと端末の中身が丸ごと数 px 上下する**。
+;;
+;; 動く経路は 2 つある。
+;;
+;; 1. mode-line の高さが変わって本文高さが変わる。スピナーの出入りで起きるので、
+;;    mode-line 側で高さを固定してある (term-modeline.el の「mode-line の高さの
+;;    固定」)。
+;; 2. ghostel が端末カーソルの行を切らないよう、カーソルが最上行に来たフレーム
+;;    だけ vscroll を 0 にする。画面を毎フレーム上から描き直す TUI では
+;;    カーソルが最上行を通るたびに端数が出入りして画面が跳ねる。
+;;
+;; 2 をここで潰す。下端揃えができているウィンドウなら、カーソルが最上行に来ても
+;; 端数を保つ (カーソル行の上端が少し切れるが、揺れないことを取る)。ウィンドウが
+;; カーソル行にクランプされているとき (start が下端揃えの位置と違うとき) は
+;; ghostel の判断どおり 0 のままにする。そこで端数を払うとカーソル行が本当に
+;; 見えなくなる。
+
+(declare-function ghostel--pixel-anchor "ghostel" (window target))
+
+(defun wamei/term-anchor-vscroll (vscroll fraction start anchor)
+  "ghostel が要求した VSCROLL の代わりに使う値を返す。
+FRACTION はウィンドウの本文高さを行高で割った余り、START はウィンドウの
+`window-start'、ANCHOR は `ghostel--pixel-anchor' の戻り値
+\(START VSCROLL HEIGHT)。
+
+VSCROLL が 0 でも、端数があり・ウィンドウが下端揃えの位置にあり・下端揃えが
+端数を要求しているなら、その端数を返す。それ以外は VSCROLL をそのまま返す。"
+  (if (and (eql vscroll 0)
+           (not (eql fraction 0))
+           anchor
+           (eql start (nth 0 anchor))
+           (not (eql (nth 1 anchor) 0)))
+      (nth 1 anchor)
+    vscroll))
+
+(defun wamei/term--pin-anchor-vscroll (fn window vscroll &optional pixels-p preserve-p)
+  "`ghostel--set-window-vscroll' の :around アドバイス。
+FN に渡す VSCROLL を `wamei/term-anchor-vscroll' で差し替える。
+`ghostel--pixel-anchor' の測り直しは、ghostel が 0 を要求していて端数がある
+ときだけ (= カーソルが最上行に来たフレームだけ) なので、毎フレームの負荷には
+ならない。"
+  (let ((fraction (and pixels-p (eql vscroll 0)
+                       (mod (window-body-height window t)
+                            (default-line-height)))))
+    (funcall fn window
+             (if (and fraction (not (eql fraction 0)))
+                 (wamei/term-anchor-vscroll
+                  vscroll fraction (window-start window)
+                  (ghostel--pixel-anchor window (point-max)))
+               vscroll)
+             pixels-p preserve-p)))
+
 ;;; 結線
 
 (defun wamei/term-panel-setup ()

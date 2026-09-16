@@ -427,5 +427,30 @@ Emacs は ascent px を (高さ * 百分率 / 100) の整数除算で出すの�
       (should (eq a b))
       (should-not (eq a c)))))
 
+;;; mode-line の高さの固定
+
+(ert-deftest wamei/term-modeline-spinner-pad-height-reserves-braille-descent ()
+  "ブレイルの深い descent ぶんだけ既定の行高より高い値を返す。
+この高さで詰め物を置いておくと、スピナーが出入りしても mode-line の高さが
+動かない (動くと端末の本文高さが動き、下端揃えの端数が変わって画面が跳ねる)。"
+  (should (= (wamei/term-modeline-spinner-pad-height 18)
+             (+ 18 wamei/term-modeline-braille-descent-excess)))
+  (should (= (wamei/term-modeline-spinner-pad-height 24)
+             (+ 24 wamei/term-modeline-braille-descent-excess))))
+
+(ert-deftest wamei/term-modeline-spinner-pad-height-guards-line-height ()
+  "行高が取れないときは詰め物を出さない (batch の tty など)。"
+  (should-not (wamei/term-modeline-spinner-pad-height 0))
+  (should-not (wamei/term-modeline-spinner-pad-height nil)))
+
+(ert-deftest wamei/term-modeline-spinner-pad-spacer-is-empty-on-tty ()
+  "tty にはピクセルの概念が無いので何も出さない。"
+  (should (equal (wamei/term-modeline-spinner-pad-spacer) "")))
+
+(ert-deftest wamei/term-modeline-format-starts-with-spinner-pad ()
+  "端末パネルの mode-line の先頭は高さを固定する詰め物。"
+  (should (equal (car wamei/term-modeline-format)
+                 '(:eval (wamei/term-modeline-spinner-pad-spacer)))))
+
 (provide 'term-modeline-test)
 ;;; term-modeline-test.el ends here

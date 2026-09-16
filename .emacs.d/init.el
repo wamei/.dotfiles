@@ -541,6 +541,11 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; 再描画のたびにカーソルへ張り直す (term-input.el の「IME の変換中文字」)。
   (advice-add 'ghostel--redraw-now :after #'wamei/term-input--ns-after-redraw)
 
+  ;; ghostel は端末カーソルが最上行に来たフレームだけ vscroll を 0 にするので、
+  ;; 下端揃えの端数が出入りして端末の中身が数 px 上下する。下端揃えができて
+  ;; いるウィンドウでは端数を保つ (term-panel.el の「下端揃えの端数」)。
+  (advice-add 'ghostel--set-window-vscroll :around #'wamei/term--pin-anchor-vscroll)
+
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)
