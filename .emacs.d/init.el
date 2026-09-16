@@ -2476,6 +2476,22 @@ yamllint は mise で入れてある (~/.config/mise/config.toml) ので通常�
                '("/\\(?:docker-\\)?compose\\(?:\\.[^/]*\\)?\\.ya?ml\\'"
                  . wamei/docker-compose-ts-mode)))
 
+(leaf git-modes
+  :doc "git 設定ファイルのメジャーモード (gitignore / gitconfig / gitattributes)"
+  :ensure t
+  ;; .gitignore / .git/info/exclude / .gitconfig / .git/config / .gitmodules /
+  ;; .gitattributes の auto-mode-alist 登録はパッケージ側の autoload が持つので
+  ;; :mode は要らない (add-to-list なので .gitconfig を conf-mode に振る組み込みの
+  ;; エントリより前に積まれて勝つ)。素の conf-mode との差は font-lock と、
+  ;; gitconfig の tab インデント、gitattributes の属性 eldoc。
+  :init
+  ;; git 以外の ignore ファイル (.dockerignore / .npmignore / .prettierignore /
+  ;; .secretlintignore など) はパターン構文がほぼ同じなので gitignore-mode に寄せる。
+  ;; 組み込みの auto-mode-alist には無く fundamental-mode になっていた。
+  ;; .gitignore 自身にも一致するが振り先が同じなので害はない。
+  (add-to-list 'auto-mode-alist
+               '("/\\.[-[:alnum:]_]+ignore\\'" . gitignore-mode)))
+
 (leaf eglot
   :doc "LSP クライアント (Emacs 組み込み)"
   :ensure nil
