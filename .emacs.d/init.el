@@ -1134,6 +1134,40 @@ minor mode の hook は無効化のときにも走るので `smerge-mode' で絞
 (leaf ediff
   :doc "差分マージ (Emacs 組み込み)"
   :ensure nil
+  :preface
+  (defun wamei/ediff--side-windows-p ()
+    "選択中のフレームに side window があるか。"
+    (seq-some (lambda (w) (window-parameter w 'window-side)) (window-list)))
+
+  (defun wamei/ediff--save-window-config ()
+    "ediff を始める前の window 構成を控え、side window を畳む。
+
+`no-delete-other-windows' の付いた side window (sidebar / 端末パネル /
+claude-code-ide) が残っていると `ediff-setup-windows' が
+`ediff-control-window' を作れない。すると `ediff-setup' の
+\='(when (window-live-p ediff-control-window) (select-window ...))\=' が飛ばされ、
+startup hook が side window のバッファで走って、control buffer のバッファ
+ローカルな `ediff-number-of-differences' が nil に見え、マージが
+\='(wrong-type-argument number-or-marker-p nil)\=' で落ちる。
+`ediff-window-setup-function' の 3 種すべてで起き、`emacs -Q' でも再現する
+\(Emacs 31)。"
+    (set-frame-parameter nil 'wamei/ediff-window-config (current-window-configuration))
+    (when (wamei/ediff--side-windows-p)
+      (window-toggle-side-windows)))
+
+  (defun wamei/ediff--restore-window-config ()
+    "`wamei/ediff--save-window-config' が控えた window 構成に戻す。"
+    (when-let* ((config (frame-parameter nil 'wamei/ediff-window-config)))
+      (set-frame-parameter nil 'wamei/ediff-window-config nil)
+      (set-window-configuration config)))
+  :init
+  (add-hook 'ediff-before-setup-hook #'wamei/ediff--save-window-config)
+  ;; 復元は `ediff-cleanup-mess' より後に走らせる。あれは `balance-windows' を
+  ;; 呼ぶので、先に戻すと全 window が均等割りされて side window の幅も潰れる
+  ;; (`smerge-ediff' も自前で window 構成を戻すが、同じ理由で潰される)。
+  ;; `ediff-quit-hook' の既定値が (ediff-cleanup-mess) なので depth で後ろに置く。
+  (add-hook 'ediff-quit-hook #'wamei/ediff--restore-window-config 90)
+  (add-hook 'ediff-suspend-hook #'wamei/ediff--restore-window-config 90)
   ;; 既定の ediff-setup-windows-default は GUI だと制御パネルを別フレームに出す。
   ;; 同じフレームの window に出してフレームを増やさない。
   :custom ((ediff-window-setup-function . #'ediff-setup-windows-plain)))
