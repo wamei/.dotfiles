@@ -983,6 +983,156 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
   :custom ((magit-display-buffer-function . #'magit-display-buffer-fullframe-status-v1)
            (magit-bury-buffer-function . #'magit-restore-window-configuration)))
 
+(leaf smerge-mode
+  :doc "コンフリクトマーカーの解決 (Emacs 組み込み)"
+  :ensure nil
+  :preface
+  (defun wamei/smerge-maybe-start-session ()
+    "コンフリクトマーカーがあるときだけ `smerge-start-session' を呼ぶ。
+
+`find-file-hook' に `smerge-start-session' を直に置くと、ファイルを 1 つ開いた
+だけで smerge-mode.el と (:config 経由で) transient まで読み込まれる。
+マーカーの有無は素の正規表現で判る。ここで先に弾いて遅延ロードを保つ
+\(`smerge-begin-re' と同じ意味の正規表現だが、変数を参照した時点で
+smerge-mode.el を読んでしまうので直接書く)。"
+    (when (save-excursion
+            (goto-char (point-min))
+            (re-search-forward "^<<<<<<< " nil t))
+      (smerge-start-session)))
+  :hook (find-file-hook . wamei/smerge-maybe-start-session)
+  :config
+  ;; transient-define-prefix には autoload cookie が無いので、マクロが void に
+  ;; ならないよう自分で読む。この :config はコンフリクトのあるファイルを開いた
+  ;; ときにしか走らないので、遅延ロードは保たれる。
+  (require 'transient)
+
+  (defun wamei/smerge--conflict-p ()
+    "点がコンフリクトの中にあるか。"
+    (and (smerge-check 1) t))
+
+  (defun wamei/smerge--base-p ()
+    "点のあるコンフリクトが base を持つか。
+
+git の merge.conflictStyle が diff3 / zdiff3 のときだけ `|||||||' の節が付く。
+既定の merge スタイルでは base が無く、`smerge-keep-base' は error になるので
+淡色化して押せないようにする。"
+    (and (smerge-check 2) t))
+
+  (defun wamei/smerge--version-p ()
+    "点が (マーカー行ではなく) どれかの版の中にあるか。
+`smerge-keep-current' はこのときだけ意味を持つ。"
+    (and (smerge-check 1) (> (smerge-get-current) 0)))
+
+  (defun wamei/smerge--summary ()
+    "メニューの見出し。バッファに残るコンフリクト数と、その何番目にいるか。
+
+解決したコンフリクトはバッファから消えるので、総数がそのまま残件数になる。"
+    (let ((pos (point)) (total 0) (index 0))
+      (save-excursion
+        (goto-char (point-min))
+        (while (re-search-forward smerge-begin-re nil t)
+          (setq total (1+ total))
+          (when (<= (match-beginning 0) pos)
+            (setq index total))))
+      (cond ((zerop total) "No conflicts")
+            ((and (> index 0) (smerge-check 1)) (format "Conflict %d/%d" index total))
+            ((= total 1) "1 conflict")
+            (t (format "%d conflicts" total)))))
+
+  (transient-define-prefix wamei/smerge-diff-menu ()
+    "Diff two versions of the conflict at point."
+    [["Diff"
+      ("<" "base vs upper" smerge-diff-base-upper :inapt-if-not wamei/smerge--base-p)
+      (">" "base vs lower" smerge-diff-base-lower :inapt-if-not wamei/smerge--base-p)
+      ("=" "upper vs lower" smerge-diff-upper-lower :inapt-if-not wamei/smerge--conflict-p)]])
+
+  (transient-define-prefix wamei/smerge-menu ()
+    "Resolve the conflict markers in this buffer."
+    ;; どの suffix を押してもメニューは開いたまま (transient--do-stay) にして、
+    ;; n で送りながら u / l を連打できるようにする。q と C-g だけが抜ける。
+    ;; transient-quit-one は transient-predicate-map に固有の述語を持つので、
+    ;; この既定値には上書きされない。
+    :transient-suffix 'transient--do-stay
+    ;; 淡色化 (:inapt-if-not) は既定だとメニューを開いた時点で固定される。
+    ;; コンフリクトを解決したり n で移動したりするたびに評価し直させる。
+    :refresh-suffixes t
+    [:description wamei/smerge--summary
+     ["Move"
+      ("p" "previous" smerge-prev)
+      ("n" "next" smerge-next)
+      ("N" "next file" smerge-vc-next-conflict)]
+     ["Keep"
+      ("u" "upper" smerge-keep-upper :inapt-if-not wamei/smerge--conflict-p)
+      ("l" "lower" smerge-keep-lower :inapt-if-not wamei/smerge--conflict-p)
+      ("b" "base" smerge-keep-base :inapt-if-not wamei/smerge--base-p)
+      ("c" "current" smerge-keep-current :inapt-if-not wamei/smerge--version-p)
+      ("a" "all" smerge-keep-all :inapt-if-not wamei/smerge--conflict-p)]
+     ["Resolve"
+      ("r" "auto" smerge-resolve :inapt-if-not wamei/smerge--conflict-p)
+      ("!" "auto (buffer)" smerge-resolve-all)
+      ("C" "combine next" smerge-combine-with-next :inapt-if-not wamei/smerge--conflict-p)
+      ;; ediff は window 構成を作り替えるので、メニューを畳んでから渡す。
+      ("E" "ediff" smerge-ediff :inapt-if-not wamei/smerge--conflict-p :transient nil)]
+     ;; 1 段に収めるため、Exit は独立した段ではなく Inspect 列の続きに置く。
+     ;; 列の中の素の文字列は見出しとして描画される。
+     ["Inspect"
+      ("R" "refine" smerge-refine :inapt-if-not wamei/smerge--conflict-p)
+      ("=" "diff" wamei/smerge-diff-menu :inapt-if-not wamei/smerge--conflict-p)
+      ""
+      "Exit"
+      ("q" "quit" transient-quit-one)]]
+    ;; 操作説明には載せず、キーだけ生かす。メニューを開いている間は未束縛の
+    ;; キーが「Unbound suffix」警告になるので、解決の途中で当たり前に使うものは
+    ;; 打てるようにしておく。:hide は描画 (transient--insert-groups) でしか
+    ;; 見られず、キーマップの元になる transient--flatten-suffixes は素通しする
+    ;; ので、載せずに束縛だけ残せる。グローバルの s-z / s-Z (undo-tree) に合わせる。
+    [:hide always
+     ("C-x C-s" "save" save-buffer)
+     ("s-z" "undo" undo-tree-undo)
+     ("s-Z" "redo" undo-tree-redo)])
+
+  (defun wamei/smerge-menu--show-in (buffer)
+    "BUFFER が選択中の window に出ていれば `wamei/smerge-menu' を出す。
+
+vc は window に出していないバッファで smerge-mode を有効にすることがあるので、
+表示されているものだけに絞る。N (`smerge-vc-next-conflict') で別ファイルへ
+移ったときは既にメニューが開いているので、開き直さない。"
+    (when (and (buffer-live-p buffer)
+               (eq buffer (window-buffer (selected-window)))
+               (buffer-local-value 'smerge-mode buffer)
+               (not transient--prefix))
+      (with-current-buffer buffer
+        (wamei/smerge-menu))))
+
+  (defun wamei/smerge-menu-maybe-show ()
+    "smerge-mode が有効になったら `wamei/smerge-menu' を出す。
+
+minor mode の hook は無効化のときにも走るので `smerge-mode' で絞る。
+
+表示の判定はその場ではできない。`find-file-hook' は `find-file-noselect' の
+中 (= バッファを window に出す前) で走るので、ここで `get-buffer-window' を
+見ると常に nil になる。コマンドループが空くまで待ってから判定する。
+
+バッファはクロージャで捕捉せずタイマーの引数で渡す。leaf の `:config' は
+`eval-after-load' で遅延され、`eval-after-load' は呼ばれた時点の
+`lexical-binding' でクロージャを作るので、init.el を普通に load する分には
+レキシカルでも、`lexical-binding' が nil の文脈 (`emacsclient --eval' で
+このブロックだけ評価し直す等) では動的束縛になり捕捉した変数が void になる。
+引数で渡せばその壊れ方をしないうえ、`list-timers' の表示も読める。"
+    (when (and smerge-mode (not noninteractive))
+      (run-with-idle-timer 0 nil #'wamei/smerge-menu--show-in (current-buffer))))
+
+  (add-hook 'smerge-mode-hook #'wamei/smerge-menu-maybe-show)
+  ;; C-c ^ は smerge-mode の既定プレフィックス。q で閉じた後に開き直す用。
+  (keymap-set smerge-mode-map "C-c ^ ^" #'wamei/smerge-menu))
+
+(leaf ediff
+  :doc "差分マージ (Emacs 組み込み)"
+  :ensure nil
+  ;; 既定の ediff-setup-windows-default は GUI だと制御パネルを別フレームに出す。
+  ;; 同じフレームの window に出してフレームを増やさない。
+  :custom ((ediff-window-setup-function . #'ediff-setup-windows-plain)))
+
 (leaf docker
   :doc "コンテナ / イメージ / compose の操作 (transient)"
   :ensure t
