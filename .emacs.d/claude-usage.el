@@ -491,12 +491,19 @@ remap には色を直接入れてあるので、テーマが変わったら入�
                        (wamei/claude-usage--render wamei/claude-usage--state now)))))
     (cdr wamei/claude-usage--cache)))
 
+(defconst wamei/claude-usage-mode-line-height 22
+  "Claude のパネルの mode-line の高さ (ピクセル)。
+中身が自然に取る高さは 21px (使用量バーの画像と文字、ascent 17 / descent 4)
+で、ghostel の進捗スピナー (ブレイル、descent 5) が出ている間は 22px になる
+\(実測)。高さが動くと端末の本文高さが動き、ghostel が払う下端揃えの端数が
+変わって画面が跳ねるので、詰め物で 22px に固定する (term-modeline.el の
+「高さを固定する詰め物」)。自然な最大と同じ値なので、固定しても 1px も
+無駄にならない。")
+
 (defconst wamei/claude-usage--mode-line-format
-  ;; 先頭は行グリッドへの詰め物。mode-line を端数ぶん厚くして端末の本文高さを
-  ;; 行境界に乗せる (term-modeline.el の「行グリッドへの詰め物」)。この
-  ;; バッファは下の `wamei/claude-usage--mode-line-faces' で mode-line の
-  ;; 地色をパネルに合わせているので、厚くしても下端の余白に見える。
-  '((:eval (wamei/term-modeline-grid-pad-spacer))
+  ;; 先頭は mode-line の高さを固定する詰め物
+  ;; (term-modeline.el の「高さを固定する詰め物」)。
+  '((:eval (wamei/term-modeline-pad-spacer wamei/claude-usage-mode-line-height))
     ;; 詰め物は幅 1px の画像なので、左端の余白は自分で 1 桁置く
     ;; (term-modeline.el の `wamei/term-modeline-format' と同じ形)。
     " "

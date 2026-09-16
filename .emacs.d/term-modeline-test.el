@@ -386,48 +386,37 @@
                    (:eval (wamei/term-modeline--status))
                    mode-line-process))))
 
-;;; 行グリッドへの詰め物
+;;; 高さを固定する詰め物
 
-(ert-deftest wamei/term-modeline-grid-pad-height-lands-on-grid ()
-  "残りの高さが行高で割り切れる mode-line の高さを返す。"
-  (dolist (available '(1809 1810 1814 1818 1822 1826 1843 1692))
-    (let ((h (wamei/term-modeline-grid-pad-height available 18)))
-      (should (zerop (mod (- available h) 18))))))
-
-(ert-deftest wamei/term-modeline-grid-pad-height-is-smallest-above-floor ()
-  "床以上で最小の高さを選ぶ。無駄な余白は 1 行ぶん未満に収まる。"
-  (dolist (available '(1809 1810 1814 1818 1822 1826 1843 1692))
-    (let ((h (wamei/term-modeline-grid-pad-height available 18)))
-      (should (>= h wamei/term-modeline-height-floor))
-      (should (< h (+ wamei/term-modeline-height-floor 18))))))
-
-(ert-deftest wamei/term-modeline-grid-pad-height-guards-line-height ()
-  "行高が取れないときは床をそのまま返す (batch の tty など)。"
-  (should (= (wamei/term-modeline-grid-pad-height 1809 0)
-             wamei/term-modeline-height-floor))
-  (should (= (wamei/term-modeline-grid-pad-height 1809 nil)
-             wamei/term-modeline-height-floor)))
-
-(ert-deftest wamei/term-modeline-grid-pad-ascent-reserves-descent ()
-  "descent を必要な px だけ確保する。
-Emacs は ascent px を (高さ * 百分率 / 100) の整数除算で出すので、
-百分率を切り上げると descent が 1px 足りなくなり、mode-line に出る
-ブレイルの descent がはみ出して高さが 1px 狂う。"
-  (dolist (h (number-sequence 24 41))
-    (let* ((pct (wamei/term-modeline-grid-pad-ascent h))
+(ert-deftest wamei/term-modeline-pad-ascent-splits-exactly ()
+  "descent をちょうど必要な px だけ取り、残りを ascent にする。
+Emacs は ascent px を (高さ * 百分率 / 100) の整数除算で出す。切り捨てると
+ascent が 1px 足りず、その 1px を descent が余分に取るので、中身の ascent が
+詰め物より高いところで行が 1px 伸びる。"
+  (dolist (h (number-sequence 20 41))
+    (let* ((pct (wamei/term-modeline-pad-ascent h))
            (ascent (/ (* h pct) 100)))
-      (should (>= (- h ascent) wamei/term-modeline-grid-pad-descent)))))
+      (should (= (- h ascent) wamei/term-modeline-pad-descent))
+      (should (<= pct 100)))))
 
-(ert-deftest wamei/term-modeline-grid-pad-spacer-is-cached ()
+(ert-deftest wamei/term-modeline-pad-image-is-cached ()
   "同じ高さの詰め物は作り直さない (mode-line は毎フレーム評価される)。"
-  (let ((wamei/term-modeline--grid-pad-cache nil))
-    (let ((a (wamei/term-modeline-grid-pad-image 27))
-          (b (wamei/term-modeline-grid-pad-image 27))
-          (c (wamei/term-modeline-grid-pad-image 28)))
+  (let ((wamei/term-modeline--pad-cache nil))
+    (let ((a (wamei/term-modeline-pad-image 23))
+          (b (wamei/term-modeline-pad-image 23))
+          (c (wamei/term-modeline-pad-image 24)))
       (should (eq a b))
       (should-not (eq a c)))))
 
-;;; mode-line の高さの固定
+(ert-deftest wamei/term-modeline-pad-spacer-is-empty-without-height ()
+  "高さが無ければ何も出さない。"
+  (should (equal (wamei/term-modeline-pad-spacer nil) "")))
+
+(ert-deftest wamei/term-modeline-pad-spacer-is-empty-on-tty ()
+  "tty にはピクセルの概念が無いので何も出さない。"
+  (should (equal (wamei/term-modeline-pad-spacer 23) "")))
+
+;;; 端末パネルの mode-line の高さ
 
 (ert-deftest wamei/term-modeline-spinner-pad-height-reserves-braille-descent ()
   "ブレイルの深い descent ぶんだけ既定の行高より高い値を返す。
