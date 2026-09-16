@@ -349,5 +349,29 @@ term-panel.el で defun されているので leaf の `:bind' が張る autoloa
         (wamei/term-previous)
         (should (eq (window-buffer (wamei/term--window)) second))))))
 
+;;; 下端揃えの端数
+
+(ert-deftest wamei/term-anchor-vscroll-keeps-the-fraction-on-the-top-row ()
+  "ghostel がカーソル行のために 0 にした vscroll を端数へ戻す。"
+  (should (= (wamei/term-anchor-vscroll 0 11 500 '(500 7 607)) 7)))
+
+(ert-deftest wamei/term-anchor-vscroll-without-fraction ()
+  "本文高さが行高で割り切れているなら払う端数が無い。"
+  (should (= (wamei/term-anchor-vscroll 0 0 500 '(500 7 607)) 0)))
+
+(ert-deftest wamei/term-anchor-vscroll-keeps-a-clamped-start ()
+  "start が下端揃えの位置と違うなら、カーソル行が上に居るのでそのまま。
+ここで端数を払うとカーソル行が切れる (ghostel の `ghostel--anchor-window')。"
+  (should (= (wamei/term-anchor-vscroll 0 11 480 '(500 7 607)) 0)))
+
+(ert-deftest wamei/term-anchor-vscroll-keeps-an-unfilled-grid ()
+  "中身がウィンドウより短いときは下端揃えでも端数が出ない。"
+  (should (= (wamei/term-anchor-vscroll 0 11 500 '(500 0 300)) 0))
+  (should (= (wamei/term-anchor-vscroll 0 11 500 nil) 0)))
+
+(ert-deftest wamei/term-anchor-vscroll-passes-other-values-through ()
+  "ghostel が 0 以外を要求したときは触らない。"
+  (should (= (wamei/term-anchor-vscroll 7 11 500 '(500 7 607)) 7)))
+
 (provide 'term-panel-test)
 ;;; term-panel-test.el ends here

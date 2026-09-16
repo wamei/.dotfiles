@@ -474,6 +474,43 @@ Emacs は ascent の px を (高さ * 百分率 / 100) の整数除算で出す�
             (window-bottom-divider-width window))
          (with-selected-window window (default-line-height))))))))
 
+;;; mode-line の高さの固定
+
+;; mode-line の高さはそこに載る一番背の高いグリフで決まるので、スピナー
+;; (ブレイル) の出入りで 18px ↔ 20px と動く。端末パネルではこれが致命的で、
+;; mode-line が動くとウィンドウの本文高さが動き、本文高さを行高で割った端数も
+;; 動く。ghostel は端末グリッドを下端に揃えるときこの端数を `window-vscroll'
+;; として払う (term-panel.el の「下端揃えの端数」) ので、端数が動くたびに端末の
+;; 中身が数 px 上下する。スピナーは実行中ずっと出ているため、コマンドを走らせる
+;; たびに画面が跳ねていた。
+;;
+;; ブレイルと同じ descent を最初から確保した詰め物を mode-line に常駐させれば、
+;; スピナーが出ても高さは変わらない。Claude のパネルは「行グリッドへの詰め物」の
+;; 床 (24px) が同じ役目を兼ねている。
+
+(defconst wamei/term-modeline-braille-descent-excess 2
+  "ブレイル (Apple Braille) の descent が既定フォントより深い px 数。
+既定フォントの descent 3px に対してブレイルは 5px (実測)。ascent は既定より
+浅いので、ブレイルが混ざった行の高さはちょうど行高 + この値になる。")
+
+(defun wamei/term-modeline-spinner-pad-height (line-height)
+  "スピナーが出入りしても動かない mode-line の高さを返す。
+LINE-HEIGHT が取れないときは nil (詰め物なし)。"
+  (when (and (integerp line-height) (> line-height 0))
+    (+ line-height wamei/term-modeline-braille-descent-excess)))
+
+(defun wamei/term-modeline-spinner-pad-spacer (&optional window)
+  "mode-line の先頭に置く、高さを固定する詰め物。`:eval' から呼ぶ。
+TTY にはピクセルの概念が無いので何も出さない。"
+  (let ((window (or window (selected-window))))
+    (if (not (display-graphic-p (window-frame window)))
+        ""
+      (let ((height (wamei/term-modeline-spinner-pad-height
+                     (with-selected-window window (default-line-height)))))
+        (if height
+            (propertize " " 'display (wamei/term-modeline-grid-pad-image height))
+          "")))))
+
 ;;; mode-line-format
 
 (defun wamei/term-modeline--status ()
@@ -499,7 +536,10 @@ Emacs は ascent の px を (高さ * 百分率 / 100) の整数除算で出す�
   (wamei/term-modeline-align (wamei/term-modeline--right-width)))
 
 (defconst wamei/term-modeline-format
-  '(" " (:eval (wamei/term-modeline--left))
+  ;; 先頭は mode-line の高さを固定する詰め物 (「mode-line の高さの固定」)。
+  ;; 幅 1px の画像なので、左端の余白は続く " " で自分で置く。
+  '((:eval (wamei/term-modeline-spinner-pad-spacer))
+    " " (:eval (wamei/term-modeline--left))
     (:eval (wamei/term-modeline--spacer))
     (:eval (wamei/term-modeline--status))
     mode-line-process)
