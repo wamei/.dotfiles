@@ -64,6 +64,7 @@ adopt = true
 "brew-cask:slack" = "latest"
 "brew-cask:orbstack" = "latest"
 "brew-cask:postman" = "latest"
+"brew-cask:background-music" = "latest"
 # フォント
 "brew-cask:font-blex-mono-nerd-font" = "latest"
 "brew-cask:font-hackgen" = "latest"

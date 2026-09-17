@@ -81,6 +81,7 @@ go = "1"
 "aqua:pnpm/pnpm" = "latest"
 "npm:yarn" = "1"
 java = "17"
+"ubi:sst/opencode" = "latest"
 
 [settings]
 # nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む
