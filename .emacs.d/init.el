@@ -218,14 +218,28 @@
     ;; Apple Braille の縮小は ghostel ブロックで入れる (理由と倍率は
     ;; term-modeline.el の「ブレイルの大きさ」)。ここではまだ
     ;; term-modeline.el を読んでいないので定数が使えない。
-    (dolist (range '(;(#x2190 . #x21FF)    ; Arrows
-                     ;(#x2300 . #x23FF)    ; Misc Technical (⌃ ⏎ ...)
-                     ;(#x2600 . #x26FF)    ; Misc Symbols (⚙ ⚠ ...)
-                     (#x2700 . #x27BF)    ; Dingbats (✢ ✳ ✶ ✻ ...)
-                     ;(#x2900 . #x2BFF)    ; Supplemental Arrows / Misc Symbols and Arrows
-                     ))
+    ;; 既定フォントに無い記号は、放っておくと Arial Unicode MS に落ちる。
+    ;; これは 16px でも ascent 17 / descent 4 = 21px (既定は 15/3 = 18px)、
+    ;; 幅も 10px (セルは 8px) あるので、その文字が出た行だけ 3px 伸びて横にも
+    ;; ずれる。端末では行が伸びるとウィンドウの本文高さに対する端数が動き、
+    ;; ghostel が下端揃えで払う vscroll が変わって画面全体が上下する
+    ;; (term-panel.el の「下端揃えの端数」)。mise のスピナー (◜◝◞◟◠◡) と
+    ;; タスク行の ⇢ で実際に起きた。
+    ;;
+    ;; 既定フォントの字形は残したいので font-family を先に置き、寸法の揃った
+    ;; フォールバックを 'append で後ろに足す。HackGen Console NF は
+    ;; ascent 15 / descent 3・幅 8px が既定と完全に一致し、Arrows と
+    ;; Geometric Shapes で UDEV Gothic が持たない 122 文字を全部埋める (実測)。
+    ;; Dingbats は HackGen が持たないので Menlo (0.9 に縮めてある)。
+    ;; 他のブロックで同じことが起きたら、寸法を測ってからここに足す
+    ;; (Misc Technical の ⏺⏵⧉ は STIX Two Math しか持たず 20px になるので、
+    ;; ghostel ブロックの display table で同形の記号に置き換えている)。
+    (pcase-dolist (`(,range . ,fallback)
+                   '(((#x2190 . #x21FF) . "HackGen Console NF")  ; Arrows (⇢ ...)
+                     ((#x25A0 . #x25FF) . "HackGen Console NF")  ; Geometric Shapes (◜◝◞◟ ...)
+                     ((#x2700 . #x27BF) . "Menlo")))             ; Dingbats (✢ ✳ ✶ ✻ ...)
       (set-fontset-font t range (font-spec :family font-family))
-      (set-fontset-font t range (font-spec :family "Menlo") nil 'append))))
+      (set-fontset-font t range (font-spec :family fallback) nil 'append))))
 
 (leaf doom-themes
   :doc "テーマ"
