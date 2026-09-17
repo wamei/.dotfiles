@@ -1,6 +1,7 @@
 ;;; claude-cli-test.el --- tests for claude-cli -*- lexical-binding: t; -*-
 ;;; Commentary:
 ;; emacs -Q --batch -l claude-cli-test.el -f ert-run-tests-batch-and-exit
+;; 共通部分 (プロセス配管・コミットメッセージ) の試験は llm-cli-test.el にある。
 ;;; Code:
 
 (require 'ert)
@@ -77,152 +78,19 @@ claude の代わりに `wamei/claude-cli-program' へ設定して使う。"
       (wamei/claude-cli-test--wait process)
       (should (equal result "hello\nworld")))))
 
-(ert-deftest wamei/claude-cli-run-trims-trailing-newline ()
-  (wamei/claude-cli-test--with-stub "echo answer"
-    (let* ((result nil)
-           (process (wamei/claude-cli-run "haiku" ""
-                                          (lambda (text) (setq result text)))))
-      (wamei/claude-cli-test--wait process)
-      (should (equal result "answer")))))
-
-(ert-deftest wamei/claude-cli-run-reports-failure-with-message ()
+(ert-deftest wamei/claude-cli-run-reports-failure-with-the-model-in-the-label ()
   (wamei/claude-cli-test--with-stub "exit 3"
-    (let* ((messages nil)
-           (process (cl-letf (((symbol-function 'message)
-                               (lambda (fmt &rest args)
-                                 (when fmt (push (apply #'format fmt args) messages)))))
-                      (let ((process (wamei/claude-cli-run "haiku" "" #'ignore)))
-                        (wamei/claude-cli-test--wait process)
-                        process))))
-      (ignore process)
-      (should (cl-some (lambda (m) (string-match-p "failed" m)) messages)))))
-
-(ert-deftest wamei/claude-cli-run-stays-silent-when-cancelled ()
-  (wamei/claude-cli-test--with-stub "sleep 5"
     (let ((messages nil))
       (cl-letf (((symbol-function 'message)
                  (lambda (fmt &rest args)
                    (when fmt (push (apply #'format fmt args) messages)))))
-        (let ((process (wamei/claude-cli-run "haiku" "" #'ignore)))
-          (process-put process 'wamei/claude-cli-cancelled t)
-          (delete-process process)
-          (wamei/claude-cli-test--wait process)))
-      (should-not messages))))
-
-(ert-deftest wamei/claude-cli-run-skips-callback-on-failure ()
-  (wamei/claude-cli-test--with-stub "echo boom >&2; exit 1"
-    (let* ((called nil)
-           (messages nil)
-           (process
-            (cl-letf (((symbol-function 'message)
-                       (lambda (fmt &rest args)
-                         (push (apply #'format fmt args) messages))))
-              (let ((p (wamei/claude-cli-run "haiku" ""
-                                             (lambda (_) (setq called t)))))
-                (wamei/claude-cli-test--wait p)
-                p))))
-      (ignore process)
-      (should-not called)
-      (should (cl-some (lambda (m) (string-match-p "boom" m)) messages)))))
+        (wamei/claude-cli-test--wait (wamei/claude-cli-run "haiku" "" #'ignore)))
+      (should (cl-some (lambda (m) (string-match-p "claude (haiku) failed" m)) messages)))))
 
 ;;; 汎用コマンド
 
 (ert-deftest wamei/claude-cli-defines-a-command-per-model ()
   (dolist (model wamei/claude-cli-models)
     (should (commandp (intern (format "wamei/claude-%s" model))))))
-
-(ert-deftest wamei/claude-cli-show-result-puts-text-in-claude-buffer ()
-  (when (get-buffer "*claude*") (kill-buffer "*claude*"))
-  (wamei/claude-cli--show-result "haiku" "some answer")
-  (with-current-buffer "*claude*"
-    (should (string-match-p "some answer" (buffer-string)))))
-
-;;; コミットメッセージ
-
-(ert-deftest wamei/claude-commit-message-prompt-asks-for-commit-tags ()
-  (should (string-match-p "<commit>" (wamei/claude-commit-message--prompt "d" "l"))))
-
-(ert-deftest wamei/claude-commit-message-extract-takes-tagged-part-only ()
-  (should (equal (wamei/claude-commit-message--extract
-                  "I'll write a message.\n<commit>\nfix foo\n\nbody line\n</commit>\nDone.")
-                 "fix foo\n\nbody line")))
-
-(ert-deftest wamei/claude-commit-message-extract-falls-back-to-whole-output ()
-  (should (equal (wamei/claude-commit-message--extract "fix foo\n") "fix foo")))
-
-(ert-deftest wamei/claude-commit-message-extract-strips-code-fences ()
-  (should (equal (wamei/claude-commit-message--extract "```\nfix foo\n```") "fix foo")))
-
-(ert-deftest wamei/claude-commit-message-prompt-includes-diff-and-log ()
-  (let ((prompt (wamei/claude-commit-message--prompt
-                 "+added line" "9fedd0b 表記崩れを修正")))
-    (should (string-match-p "\\+added line" prompt))
-    (should (string-match-p "表記崩れを修正" prompt))))
-
-(ert-deftest wamei/claude-commit-message-first-line-empty-in-fresh-buffer ()
-  (with-temp-buffer
-    (insert "\n\n# Please enter the commit message.\n")
-    (should (wamei/claude-commit-message--first-line-empty-p))))
-
-(ert-deftest wamei/claude-commit-message-first-line-empty-in-empty-buffer ()
-  (with-temp-buffer
-    (should (wamei/claude-commit-message--first-line-empty-p))))
-
-(ert-deftest wamei/claude-commit-message-first-line-empty-ignores-later-lines ()
-  (with-temp-buffer
-    (insert "\nnotes below\n\n# Please enter the commit message.\n")
-    (should (wamei/claude-commit-message--first-line-empty-p))))
-
-(ert-deftest wamei/claude-commit-message-first-line-not-empty-when-summary-present ()
-  (with-temp-buffer
-    (insert "fix foo\n\n# Please enter the commit message.\n")
-    (should-not (wamei/claude-commit-message--first-line-empty-p))))
-
-(ert-deftest wamei/claude-commit-message-first-line-not-empty-when-only-spaces-then-text ()
-  (with-temp-buffer
-    (insert "   \nfix foo\n# c\n")
-    (should (wamei/claude-commit-message--first-line-empty-p))))
-
-(ert-deftest wamei/claude-commit-message-insert-keeps-text-below-empty-first-line ()
-  (with-temp-buffer
-    (insert "\nnotes below\n\n# Please enter the commit message.\n")
-    (wamei/claude-commit-message--insert "new message" "#")
-    (should (equal (buffer-string)
-                   "new message\n\nnotes below\n\n# Please enter the commit message.\n"))))
-
-(ert-deftest wamei/claude-commit-message-insert-keeps-existing-comment-gap ()
-  (with-temp-buffer
-    (insert "\n\n# Please enter the commit message.\n")
-    (wamei/claude-commit-message--insert "new message" "#")
-    (should (equal (buffer-string)
-                   "new message\n\n# Please enter the commit message.\n"))))
-
-(ert-deftest wamei/claude-commit-message-insert-into-empty-buffer ()
-  (with-temp-buffer
-    (insert "\n# Please enter the commit message.\n")
-    (wamei/claude-commit-message--insert "new message" "#")
-    (should (equal (buffer-string)
-                   "new message\n\n# Please enter the commit message.\n"))
-    (should (= (point) (point-min)))))
-
-(ert-deftest wamei/claude-commit-message-insert-replaces-existing-text ()
-  (with-temp-buffer
-    (insert "old summary\n\nold body\n\n# Please enter the commit message.\n")
-    (wamei/claude-commit-message--insert "new message" "#")
-    (should (equal (buffer-string)
-                   "new message\n\n# Please enter the commit message.\n"))))
-
-(ert-deftest wamei/claude-commit-message-insert-without-comment-block ()
-  (with-temp-buffer
-    (wamei/claude-commit-message--insert "new message" "#")
-    (should (equal (buffer-string) "new message\n"))))
-
-(ert-deftest wamei/claude-commit-message-prompt-truncates-long-diff ()
-  (let* ((wamei/claude-commit-message-max-diff-chars 20)
-         (prompt (wamei/claude-commit-message--prompt
-                  (make-string 100 ?x) "log entry")))
-    (should-not (string-match-p (make-string 21 ?x) prompt))
-    (should (string-match-p (make-string 20 ?x) prompt))
-    (should (string-match-p "truncated" prompt))))
 
 ;;; claude-cli-test.el ends here
