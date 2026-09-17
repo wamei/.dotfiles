@@ -213,7 +213,7 @@ CONTEXT は `wamei/claude-complete--context' の plist。"
   "走行中の claude プロセスを静かに止める。"
   (when-let* ((process wamei/claude-complete--process))
     (when (process-live-p process)
-      (process-put process 'wamei/claude-cli-cancelled t)
+      (process-put process 'wamei/llm-cli-cancelled t)
       (delete-process process))
     (setq wamei/claude-complete--process nil)))
 

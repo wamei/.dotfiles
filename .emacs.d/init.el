@@ -1308,20 +1308,23 @@ shadow に塗り替える。tabulated-list は行単位の face を持たない�
    ;; 現在の project → 他の compose プロジェクト (名前順) → compose 以外 の順に並ぶ。
    (docker-container-default-sort-key . '("Project" . nil))))
 
-(leaf claude-cli
-  :doc "claude -p でコミットメッセージ生成と単発 prompt"
+(leaf llm-cli
+  :doc "claude / opencode でコミットメッセージ生成と単発 prompt"
   :ensure nil
   :preface
-  ;; 実体は claude-cli.el。init.el は ~/.emacs.d/init.el への symlink なので
-  ;; 実体の隣から読む (desktop-side-windows と同じ)。
-  (load (expand-file-name "claude-cli"
-                          (file-name-directory (file-truename user-init-file)))
-        nil t)
+  ;; 実体は llm-cli.el (共通) と claude-cli.el / opencode-cli.el (backend)。
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む
+  ;; (desktop-side-windows と同じ)。
+  (let ((directory (file-name-directory (file-truename user-init-file))))
+    (dolist (file '("llm-cli" "claude-cli" "opencode-cli"))
+      (load (expand-file-name file directory) nil t)))
   :config
   ;; git-commit-mode-map は magit 同梱の git-commit が定義するので、その後に束縛する。
-  ;; wamei/claude-haiku / -sonnet / -opus は M-x から使う想定でキーは割り当てない。
+  ;; C-u 付きで haiku / sonnet / opus / opencode から選ぶ。
+  ;; wamei/claude-haiku / -sonnet / -opus と wamei/opencode は M-x から使う想定で
+  ;; キーは割り当てない。
   (with-eval-after-load 'git-commit
-    (define-key git-commit-mode-map (kbd "C-c C-m") #'wamei/claude-commit-message)))
+    (define-key git-commit-mode-map (kbd "C-c C-m") #'wamei/llm-commit-message)))
 
 (leaf claude-complete
   :doc "claude -p によるゴーストテキスト補完"
