@@ -19,8 +19,10 @@
 ;;    ように丸ごと ignore されたディレクトリは依存物か生成物なので中に降りない
 ;;    (`--directory' で畳む)。例外は `wamei/project-ignored-files-include-dirs'。
 ;;
-;; どのソースも、既に開いているものと recentf にあるものは他のソースが出すので
-;; 除いて重複を避ける。
+;; どのソースも、consult の "Project File" ソースが出すもの (= recentf にあって
+;; 開いていないファイル) は除いて重複を避ける。開いているファイルはあえて残す。
+;; "Project Buffer" ソースはバッファ名しか出さないので、ここで落とすとパスでの
+;; 絞り込みができなくなるため (バッファ名とパスの両方で引けるようにする)。
 ;;
 ;; project-find-file への追加は `project-files' を直接いじらず、
 ;; `project-find-file' の実行中だけフラグを立てて advice で足す。project-files
@@ -41,21 +43,29 @@
 
 ;;; 共通
 
-(defun wamei/project-extra-files--visited-hash ()
-  "開いているバッファのファイルと recentf のファイルを絶対パスで持つハッシュ。"
-  (let ((table (consult--buffer-file-hash)))
+(defun wamei/project-extra-files--covered-hash ()
+  "consult の \"Project File\" ソースが出すファイルを絶対パスで持つハッシュ。
+`consult-source-project-recent-file' は recentf のうち開いていないものを出すので、
+その集合がこちらと重複する分になる。開いているファイルを除かないのは意図的で、
+\"Project Buffer\" ソースはバッファ名しか出さず、そこに任せるとパスで絞り込めなく
+なるため。結果、開いているファイルはバッファ名 (Project Buffer) とパス
+\(Project Files / Project Ignored) の両方で引ける。"
+  (let ((buffers (consult--buffer-file-hash))
+        (table (make-hash-table :test #'equal)))
     (dolist (file (bound-and-true-p recentf-list) table)
-      (puthash (expand-file-name file) t table))))
+      (let ((file (expand-file-name file)))
+        (unless (gethash file buffers)
+          (puthash file t table))))))
 
 (defun wamei/project-extra-files--relative-items (root files)
-  "ROOT 配下で未訪問の FILES を (相対パス . 絶対パス) のリストにする。"
+  "ROOT 配下で他のソースが出さない FILES を (相対パス . 絶対パス) のリストにする。"
   (let ((len (length root))
-        (visited (wamei/project-extra-files--visited-hash))
+        (covered (wamei/project-extra-files--covered-hash))
         items)
     (dolist (file files (nreverse items))
       (let ((file (expand-file-name file)))
         (when (and (string-prefix-p root file)
-                   (not (gethash file visited)))
+                   (not (gethash file covered)))
           (push (cons (substring file len) file) items))))))
 
 ;;; 未訪問のファイル

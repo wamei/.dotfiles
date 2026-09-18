@@ -78,23 +78,35 @@ ROOT にリポジトリの絶対パス (末尾 /) を束縛する。"
     (let ((item (assoc "untracked.el" (wamei/consult-project-files--items))))
       (should (equal (cdr item) (expand-file-name "untracked.el" root))))))
 
-(ert-deftest wamei/consult-project-files-excludes-open-buffers ()
-  "既に開いているファイルは Project Buffer ソース側に出るので重複させない。"
+(ert-deftest wamei/consult-project-files-includes-open-buffers ()
+  "開いているファイルも残す。Project Buffer ソースはバッファ名しか出さないので、
+ここに残さないとパスで絞り込む手段が無くなる。"
   (wamei/consult-project-files-test--with-repo root
     (let ((buf (find-file-noselect (expand-file-name "tracked.el" root))))
       (unwind-protect
           (let ((names (wamei/consult-project-files-test--names)))
-            (should-not (member "tracked.el" names))
+            (should (member "tracked.el" names))
             (should (member "untracked.el" names)))
         (kill-buffer buf)))))
 
 (ert-deftest wamei/consult-project-files-excludes-recentf ()
-  "recentf にあるものは Project File ソース側に出るので重複させない。"
+  "recentf にあって開いていないものは Project File ソース側に出るので重複させない。"
   (wamei/consult-project-files-test--with-repo root
     (let ((recentf-list (list (expand-file-name "untracked.el" root))))
       (let ((names (wamei/consult-project-files-test--names)))
         (should-not (member "untracked.el" names))
         (should (member "tracked.el" names))))))
+
+(ert-deftest wamei/consult-project-files-includes-open-buffers-in-recentf ()
+  "recentf にあっても開いていれば残す。consult の Project File ソースは
+開いているものを落とすので、そちらと重複しない。"
+  (wamei/consult-project-files-test--with-repo root
+    (let* ((file (expand-file-name "untracked.el" root))
+           (recentf-list (list file))
+           (buf (find-file-noselect file)))
+      (unwind-protect
+          (should (member "untracked.el" (wamei/consult-project-files-test--names)))
+        (kill-buffer buf)))))
 
 (ert-deftest wamei/consult-project-files-nil-outside-project ()
   "プロジェクト外では候補なし。"
@@ -169,13 +181,14 @@ node_modules のような重いものも .next のような生成物も、名前
                      (expand-file-name ".env.local" root)))
       (should-not (assoc "tracked.el" items)))))
 
-(ert-deftest wamei/consult-project-ignored-files-excludes-open-and-recent ()
+(ert-deftest wamei/consult-project-ignored-files-keeps-open-excludes-recent ()
+  "ignore 済みでも、開いているものは残し、recentf にあって開いていないものは落とす。"
   (wamei/consult-project-files-test--with-repo root
     (let ((buf (find-file-noselect (expand-file-name ".env.local" root)))
           (recentf-list (list (expand-file-name "ignored.log" root))))
       (unwind-protect
           (let ((names (mapcar #'car (wamei/consult-project-ignored-files--items))))
-            (should-not (member ".env.local" names))
+            (should (member ".env.local" names))
             (should-not (member "ignored.log" names)))
         (kill-buffer buf)))))
 
