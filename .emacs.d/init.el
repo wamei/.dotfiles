@@ -527,6 +527,7 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
     (setq-local nobreak-char-display nil))
   :init
   ;; 端末は下部 side window の slot 0、一覧は同じ side の slot 1 (右隣) へ。
+  ;; コマンドの開始・終了で一覧の ● を描き直すフックもここで足す。
   ;; :config だと ghostel がロードされるまで登録されないので :init で行う。
   (wamei/term-panel-setup)
   :config
