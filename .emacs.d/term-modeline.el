@@ -5,11 +5,15 @@
 ;; フレーム下部の端末パネル (term-panel.el) に出ている ghostel バッファへ、
 ;; 情報を絞った 1 行の mode-line を入れる。
 ;;
-;;   2/3  ls -al  2026-09-10 22:42:15- (18s)   src/lib  ✗1  ⠹
-;;   └番号 └タイトル └実行時刻                 └cwd     └status └入力モード/進捗
+;;   ● ls -al  2026-09-10 22:42:15- (18s)   src/lib  ✗1  ⠹
+;;   │ └タイトル └実行時刻                 └cwd     └status └入力モード/進捗
+;;   └実行状態
 ;;
-;; - 番号 (N/M): バッファ名 "*term: <project>[ N]*" から取る。端末が 1 つしか
-;;   ないときは出さない。プロジェクト名は出さない (タブと重複するため)。
+;; - 実行状態: 最後のコマンドがどうなったかを ● の色だけで出す (実行中は灰、
+;;   正常終了は緑、異常終了は赤、一度も実行していなければ黄)。見ている材料は
+;;   終了ステータスと同じ OSC 133;C / 133;D。そのコマンド (タイトル) の直前に
+;;   置く。端末一覧 (term-panel.el) にも同じ位置で同じ ● を出す。
+;;   どの端末かは一覧とタイトルで分かるので、端末番号は出さない。
 ;; - タイトル: `ghostel-title' (OSC 0/2)。.zshrc の preexec が最後に実行した
 ;;   コマンドを流している。無ければシェル名。
 ;; - 実行時刻: 最後のコマンドの開始時刻と終了時刻、その所要時間。OSC 133;C /
@@ -35,6 +39,7 @@
 
 ;;; Code:
 
+(require 'color)
 (require 'seq)
 (require 'subr-x)
 
@@ -110,29 +115,14 @@ ghostel はここに入力モードのタグ (\":Copy\" など) と OSC 9;4 の�
 ;;; バッファ名
 
 (defconst wamei/term-modeline--name-regexp
-  "\\`\\*term: \\(.+?\\)\\(?: \\([0-9]+\\)\\)?\\*\\'"
-  "端末パネルのバッファ名。1 番目がプロジェクト名、2 番目が端末番号。
-プロジェクト名は空白を含みうるので最短一致にし、末尾の数字だけを番号として
-切り出す (term-panel.el の `wamei/term--buffer-name' と対の形)。")
+  "\\`\\*term: \\(?:.+?\\)\\(?: [0-9]+\\)?\\*\\'"
+  "端末パネルのバッファ名 (term-panel.el の `wamei/term--buffer-name' と対の形)。
+プロジェクト名は空白を含みうるので最短一致にし、末尾の数字は端末番号として
+別に見る。どちらも表には出さないので取り出さない。")
 
-(defun wamei/term-modeline--parse-name (name)
-  "NAME が端末パネルのバッファなら (プロジェクト名 . 番号) を返す。違えば nil。"
-  (when (string-match wamei/term-modeline--name-regexp name)
-    (cons (match-string 1 name)
-          (string-to-number (or (match-string 2 name) "1")))))
-
-(defun wamei/term-modeline--count (project)
-  "PROJECT の端末バッファの数。
-`wamei/term--buffers' と違い `project-current' を通らない (redisplay ごとに
-呼ばれるため)。バッファ名から見えるプロジェクト名で数えるだけ。"
-  (seq-count (lambda (buffer)
-               (equal project (car (wamei/term-modeline--parse-name
-                                    (buffer-name buffer)))))
-             (buffer-list)))
-
-(defun wamei/term-modeline--position (index total)
-  "端末番号の表示。TOTAL が 1 なら nil (番号に意味がない)。"
-  (and index (> total 1) (format "%d/%d" index total)))
+(defun wamei/term-modeline--panel-buffer-p (name)
+  "NAME が端末パネルのバッファなら非 nil。"
+  (string-match-p wamei/term-modeline--name-regexp name))
 
 ;;; カレントディレクトリ
 
@@ -195,6 +185,126 @@ ROOT 直下なら nil。ROOT の外や ROOT が nil なら絶対パス (HOME は
       (concat " " (propertize (format "✗%d" status) 'face 'error)
               (if separate " " ""))
     ""))
+
+;;; 実行状態の ●
+
+;; mode-line と一覧 (term-panel.el) の行頭に、最後のコマンドがどうなったかを
+;; 色だけで出す。状態は「終了ステータス」で既に追っている変数から導くので、
+;; ここが新しく持つ状態は無い。
+;;
+;;   実行中   灰 (`shadow')    開始 (133;C) を見て、まだ終了 (133;D) が来ていない
+;;   正常終了 緑 (`success')   0 で終わった
+;;   異常終了 赤 (`error')     0 以外で終わった
+;;   未実行   黄 (`warning')   一度も実行していない (開いた直後と desktop の復元後)
+;;
+;; 選択していないウィンドウでは暗く落とすが、落としきらない
+;; (`wamei/term-modeline-status-inactive-ratio')。一覧 (term-panel.el) は
+;; 通常のバッファなので落とさない。
+
+(defconst wamei/term-modeline-mark-string "●"
+  "実行状態を出す印。
+既定フォントに無い記号を使うと、その行だけ行高が伸びて端末の中身が
+上下する (init.el の `wamei/term-glyph-substitutions')。● は端末バッファで
+背の高い記号の置換先として使っているものと同じで、既定の枠に収まる。")
+
+(defface wamei/term-modeline-status-running '((t :inherit shadow))
+  "実行中の ● の色。走っている間は結果がまだ無いので、控えめな灰色。"
+  :group 'wamei/term-modeline)
+
+(defface wamei/term-modeline-status-success '((t :inherit success))
+  "正常終了した ● の色。"
+  :group 'wamei/term-modeline)
+
+(defface wamei/term-modeline-status-failure '((t :inherit error))
+  "異常終了した ● の色。終了ステータス (✗N) と重なるが、
+一覧にはステータスを出さないのでこちらだけが手がかりになる。"
+  :group 'wamei/term-modeline)
+
+(defface wamei/term-modeline-status-idle '((t :inherit warning))
+  "一度もコマンドを実行していない ● の色。"
+  :group 'wamei/term-modeline)
+
+(defun wamei/term-modeline-status (&optional buffer)
+  "BUFFER (既定はカレント) の実行状態。
+`running' / `failure' / `success' / `idle' のいずれか。
+終了ステータスが整数で来ないときは異常扱いにしない
+\(`wamei/term-modeline--status-string' と同じ判断)。"
+  (with-current-buffer (or buffer (current-buffer))
+    (cond
+     (wamei/term-modeline--command-seen 'running)
+     ((null wamei/term-modeline--start-time) 'idle)
+     ((and (integerp wamei/term-modeline--exit-status)
+           (/= wamei/term-modeline--exit-status 0))
+      'failure)
+     (t 'success))))
+
+(defun wamei/term-modeline-status-face (status)
+  "STATUS の face。知らない状態は未実行と同じ扱い。"
+  (pcase status
+    ('running 'wamei/term-modeline-status-running)
+    ('success 'wamei/term-modeline-status-success)
+    ('failure 'wamei/term-modeline-status-failure)
+    (_ 'wamei/term-modeline-status-idle)))
+
+(defconst wamei/term-modeline-status-inactive-ratio 0.55
+  "非アクティブな mode-line で ● に残す色の割合。残りは `mode-line-inactive'
+の地色。
+他の要素 (`wamei/term-modeline-dim-inactive' など) は、周りの非アクティブ
+文字と同じ 0.3 相当まで落としてある。● も同じ強さにすると 4 色の見分けが
+付かなくなる (実測: 緑 #465524 / 赤 #552723 / 黄 #534c33 が並ぶと区別
+できない) ので、色相が残るところで止める。")
+
+(defun wamei/term-modeline-blend-color (color background ratio)
+  "COLOR を BACKGROUND へ寄せた色を \"#rrggbb\" で返す。
+RATIO が COLOR の残る割合。どちらかが色として読めなければ nil
+\(tty の \"unspecified-bg\" など)。"
+  (let ((fg (and (stringp color) (color-name-to-rgb color)))
+        (bg (and (stringp background) (color-name-to-rgb background))))
+    (when (and fg bg)
+      (apply #'color-rgb-to-hex
+             (append (seq-mapn (lambda (f b) (+ (* ratio f) (* (- 1 ratio) b))) fg bg)
+                     (list 2))))))
+
+(defvar wamei/term-modeline--dim-color-cache nil
+  "(前景色 . 地色) から暗くした色への alist。
+`:eval' から呼ばれるので毎フレーム混ぜ直さない。テーマを変えたら
+`wamei/term-modeline--forget-dim-colors' が捨てる。")
+
+(defun wamei/term-modeline--dim-color (color background)
+  "COLOR を BACKGROUND へ寄せた色。計算できなければ nil。結果は覚えておく。"
+  (let ((key (cons color background)))
+    (if-let* ((hit (assoc key wamei/term-modeline--dim-color-cache)))
+        (cdr hit)
+      (let ((dim (wamei/term-modeline-blend-color
+                  color background wamei/term-modeline-status-inactive-ratio)))
+        (push (cons key dim) wamei/term-modeline--dim-color-cache)
+        dim))))
+
+(defun wamei/term-modeline--forget-dim-colors (&rest _)
+  "暗くした色のキャッシュを捨てる。`enable-theme-functions' から。"
+  (setq wamei/term-modeline--dim-color-cache nil))
+
+(defun wamei/term-modeline--mark-face (status dim)
+  "● に付ける face。DIM が非 nil なら `mode-line-inactive' の地色へ寄せる。
+face に前景色を直に持たせると `mode-line-inactive' に切り替わっても暗く
+ならないので、他の要素 (`wamei/term-modeline--dim-face') と同じく自分で
+落とす。ただしこちらはテーマの `success' / `error' / `warning' をそのまま
+使いたいので、暗いほうは色を混ぜて作る。混ぜられなければ元の face
+\(tty など、前景色や地色が色として読めないとき)。"
+  (let ((face (wamei/term-modeline-status-face status)))
+    (if (not dim)
+        face
+      (or (when-let* ((dimmed (wamei/term-modeline--dim-color
+                               (face-attribute face :foreground nil t)
+                               (face-attribute 'mode-line-inactive :background nil t))))
+            (list :foreground dimmed))
+          face))))
+
+(defun wamei/term-modeline-mark (status &optional dim)
+  "STATUS の ●。DIM が非 nil なら非アクティブな mode-line 用に暗くする。
+一覧 (term-panel.el) は通常のバッファなので暗くしない (渡さない)。"
+  (propertize wamei/term-modeline-mark-string
+              'face (wamei/term-modeline--mark-face status dim)))
 
 ;;; 実行時刻
 
@@ -306,22 +416,17 @@ END が nil (実行中) なら開始時刻と NOW までの経過時間、終わ
 
 (defun wamei/term-modeline--state ()
   "1 行に出す材料を集める。"
-  (let* ((parsed (wamei/term-modeline--parse-name (buffer-name)))
-         (project (car parsed))
-         (index (cdr parsed)))
-    (list :position (and project
-                         (wamei/term-modeline--position
-                          index (wamei/term-modeline--count project)))
-          :title (or (and (boundp 'ghostel-title) ghostel-title)
-                     (file-name-nondirectory
-                      (if (boundp 'ghostel-shell) ghostel-shell shell-file-name)))
-          :selected (mode-line-window-selected-p)
-          :time (wamei/term-modeline--time-string
-                 wamei/term-modeline--start-time
-                 wamei/term-modeline--end-time
-                 (float-time))
-          :dir (wamei/term-modeline--relative-dir
-                default-directory wamei/term-modeline--root))))
+  (list :status (wamei/term-modeline-status)
+        :title (or (and (boundp 'ghostel-title) ghostel-title)
+                   (file-name-nondirectory
+                    (if (boundp 'ghostel-shell) ghostel-shell shell-file-name)))
+        :selected (mode-line-window-selected-p)
+        :time (wamei/term-modeline--time-string
+               wamei/term-modeline--start-time
+               wamei/term-modeline--end-time
+               (float-time))
+        :dir (wamei/term-modeline--relative-dir
+              default-directory wamei/term-modeline--root)))
 
 (defun wamei/term-modeline--segment-width (separator string)
   "STRING を SEPARATOR 付きで足したときに増える桁数。STRING が nil なら 0。"
@@ -330,8 +435,9 @@ END が nil (実行中) なら開始時刻と NOW までの経過時間、終わ
 (defun wamei/term-modeline--render (state width)
   "STATE を WIDTH 桁に収まる 1 行にする。
 タイトルに `wamei/term-modeline--title-min-width' 桁を残せないときは、
-cwd・実行時刻の順に捨ててタイトルへ幅を回す (どの端末かを見失うのが一番困る)。"
-  (let* ((position (plist-get state :position))
+cwd・実行時刻の順に捨ててタイトルへ幅を回す (どの端末かを見失うのが一番困る)。
+タイトル手前の ● (実行状態) は捨てない。"
+  (let* ((status (plist-get state :status))
          (title (or (plist-get state :title) ""))
          (time (plist-get state :time))
          (dir (plist-get state :dir))
@@ -343,7 +449,8 @@ cwd・実行時刻の順に捨ててタイトルへ幅を回す (どの端末か
                      t))
          (time-face (wamei/term-modeline--time-face selected))
          (dim-face (wamei/term-modeline--dim-face selected))
-         (head (if position (concat (propertize position 'face dim-face) "  ") ""))
+         ;; ● はタイトルの手前に必ず出す (幅が足りなくても捨てない)。
+         (head (concat (wamei/term-modeline-mark status (not selected)) " "))
          (avail (max 0 (- width (string-width head))))
          (time-separator "  ")
          (dir-separator "   ")
@@ -521,7 +628,7 @@ HEIGHT が nil のとき、また WINDOW (既定は選択中の window) が TTY 
 端末パネルのバッファには自前の 1 行を入れ、それ以外の ghostel バッファ
 \(Claude のパネルなど) は今までどおり mode-line を隠す。Claude のパネルは
 claude-usage.el が改めて表に戻して使用量を出す。"
-  (if (wamei/term-modeline--parse-name (buffer-name))
+  (if (wamei/term-modeline--panel-buffer-p (buffer-name))
       (progn
         ;; 既に隠されているバッファに入れ直すとき (設定の再読み込みなど) は
         ;; 先に戻す。hide-mode-line-mode は自分を切るときに元の
@@ -534,11 +641,15 @@ claude-usage.el が改めて表に戻して使用量を出す。"
       (hide-mode-line-mode 1))))
 
 (defun wamei/term-modeline-enable ()
-  "終了ステータスの追従を有効にする。何度呼んでもよい。
+  "終了ステータスの追従と、テーマ変更時の色の作り直しを有効にする。
+何度呼んでもよい。
 `ghostel-command-start-functions' / `-finish-functions' は端末ごとではなく
 グローバルなフック (バッファを引数に取る) なので、ここで 1 度だけ足す。"
   (add-hook 'ghostel-command-start-functions #'wamei/term-modeline--on-command-start)
-  (add-hook 'ghostel-command-finish-functions #'wamei/term-modeline--on-command-finish))
+  (add-hook 'ghostel-command-finish-functions #'wamei/term-modeline--on-command-finish)
+  ;; ● を暗くした色は `mode-line-inactive' の地色で混ぜてあるので、テーマを
+  ;; 変えたら作り直す。
+  (add-hook 'enable-theme-functions #'wamei/term-modeline--forget-dim-colors))
 
 (provide 'term-modeline)
 ;;; term-modeline.el ends here

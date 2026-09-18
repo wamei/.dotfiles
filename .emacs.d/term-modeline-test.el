@@ -8,44 +8,24 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (load (expand-file-name "term-modeline.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
 
 ;;; バッファ名
 
-(ert-deftest wamei/term-modeline-test-parse-name-without-index ()
-  "番号なしの端末バッファは 1 番。"
-  (should (equal (wamei/term-modeline--parse-name "*term: dotfiles*")
-                 '("dotfiles" . 1))))
+(ert-deftest wamei/term-modeline-test-panel-buffer-p-accepts-terminals ()
+  "端末パネルのバッファ (番号の有無・プロジェクト名の空白を問わず)。"
+  (should (wamei/term-modeline--panel-buffer-p "*term: dotfiles*"))
+  (should (wamei/term-modeline--panel-buffer-p "*term: dotfiles 3*"))
+  (should (wamei/term-modeline--panel-buffer-p "*term: my project 2*")))
 
-(ert-deftest wamei/term-modeline-test-parse-name-with-index ()
-  "末尾の数字が端末番号。"
-  (should (equal (wamei/term-modeline--parse-name "*term: dotfiles 3*")
-                 '("dotfiles" . 3))))
-
-(ert-deftest wamei/term-modeline-test-parse-name-keeps-spaces-in-project ()
-  "プロジェクト名に空白があっても数字だけを番号として切り出す。"
-  (should (equal (wamei/term-modeline--parse-name "*term: my project*")
-                 '("my project" . 1)))
-  (should (equal (wamei/term-modeline--parse-name "*term: my project 2*")
-                 '("my project" . 2))))
-
-(ert-deftest wamei/term-modeline-test-parse-name-rejects-other-buffers ()
+(ert-deftest wamei/term-modeline-test-panel-buffer-p-rejects-other-buffers ()
   "端末パネル以外のバッファは nil。"
-  (should-not (wamei/term-modeline--parse-name "*claude-code[.dotfiles]*"))
-  (should-not (wamei/term-modeline--parse-name "*scratch*"))
-  (should-not (wamei/term-modeline--parse-name "*terminals: dotfiles*")))
-
-;;; 端末番号
-
-(ert-deftest wamei/term-modeline-test-position-hidden-when-alone ()
-  "端末が 1 つしかなければ番号は出さない (意味がない)。"
-  (should-not (wamei/term-modeline--position 1 1)))
-
-(ert-deftest wamei/term-modeline-test-position-shows-index-and-total ()
-  "2 つ以上あるときだけ N/M を出す。"
-  (should (equal (wamei/term-modeline--position 2 3) "2/3")))
+  (should-not (wamei/term-modeline--panel-buffer-p "*claude-code[.dotfiles]*"))
+  (should-not (wamei/term-modeline--panel-buffer-p "*scratch*"))
+  (should-not (wamei/term-modeline--panel-buffer-p "*terminals: dotfiles*")))
 
 ;;; カレントディレクトリ
 
@@ -218,11 +198,159 @@
       (wamei/term-modeline--on-command-finish (current-buffer) 0)
       (should-not wamei/term-modeline--end-time))))
 
+;;; 実行状態の ●
+
+(ert-deftest wamei/term-modeline-test-status-idle-before-any-command ()
+  "一度もコマンドを実行していなければ未実行。"
+  (with-temp-buffer
+    (should (eq (wamei/term-modeline-status) 'idle))))
+
+(ert-deftest wamei/term-modeline-test-status-running ()
+  "開始を見てから終了までは実行中。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (should (eq (wamei/term-modeline-status) 'running)))))
+
+(ert-deftest wamei/term-modeline-test-status-success ()
+  "0 で終わったら正常終了。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (wamei/term-modeline--on-command-finish (current-buffer) 0)
+      (should (eq (wamei/term-modeline-status) 'success)))))
+
+(ert-deftest wamei/term-modeline-test-status-failure ()
+  "0 以外で終わったら異常終了。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (wamei/term-modeline--on-command-finish (current-buffer) 130)
+      (should (eq (wamei/term-modeline-status) 'failure)))))
+
+(ert-deftest wamei/term-modeline-test-status-non-integer-is-not-a-failure ()
+  "終了ステータスが整数で来なければ異常扱いにしない (`--status-string' と同じ判断)。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (wamei/term-modeline--on-command-finish (current-buffer) nil)
+      (should (eq (wamei/term-modeline-status) 'success)))))
+
+(ert-deftest wamei/term-modeline-test-status-of-another-buffer ()
+  "引数で渡したバッファの状態を見る (一覧はこちらで呼ぶ)。"
+  (wamei/term-modeline-test--with-clean-tick
+    (let ((buffer (generate-new-buffer " *term-status*")))
+      (unwind-protect
+          (progn
+            (wamei/term-modeline--on-command-start buffer)
+            (should (eq (wamei/term-modeline-status buffer) 'running))
+            (should (eq (wamei/term-modeline-status) 'idle)))
+        (kill-buffer buffer)))))
+
+(ert-deftest wamei/term-modeline-test-status-face-per-state ()
+  "4 状態にそれぞれの face。知らない状態は未実行と同じ扱い。"
+  (should (eq (wamei/term-modeline-status-face 'running)
+              'wamei/term-modeline-status-running))
+  (should (eq (wamei/term-modeline-status-face 'success)
+              'wamei/term-modeline-status-success))
+  (should (eq (wamei/term-modeline-status-face 'failure)
+              'wamei/term-modeline-status-failure))
+  (should (eq (wamei/term-modeline-status-face 'idle)
+              'wamei/term-modeline-status-idle))
+  (should (eq (wamei/term-modeline-status-face nil)
+              'wamei/term-modeline-status-idle)))
+
+(ert-deftest wamei/term-modeline-test-mark-is-a-filled-circle ()
+  "● に状態の face が付く。"
+  (let ((mark (wamei/term-modeline-mark 'failure)))
+    (should (equal (substring-no-properties mark) wamei/term-modeline-mark-string))
+    (should (eq (get-text-property 0 'face mark)
+                'wamei/term-modeline-status-failure))))
+
+(ert-deftest wamei/term-modeline-test-mark-is-not-dimmed-by-default ()
+  "DIM を渡さなければ face はそのまま (一覧はこちらを使う)。"
+  (let ((wamei/term-modeline--dim-color-cache nil))
+    (cl-letf (((symbol-function 'face-attribute)
+               (lambda (face attribute &rest _)
+                 (cond ((eq face 'mode-line-inactive) "#000000")
+                       ((eq attribute :foreground) "#ffffff")))))
+      (should (eq (get-text-property 0 'face (wamei/term-modeline-mark 'failure))
+                  'wamei/term-modeline-status-failure)))))
+
+(ert-deftest wamei/term-modeline-test-blend-color ()
+  "2 色を混ぜる。RATIO が 1 なら前景色そのまま、0 なら地色。
+\(`color-rgb-to-hex' は端数を切り捨てるので中間は #7f7f7f)。"
+  (should (equal (wamei/term-modeline-blend-color "#ffffff" "#000000" 0.5) "#7f7f7f"))
+  (should (equal (wamei/term-modeline-blend-color "#ffffff" "#000000" 1.0) "#ffffff"))
+  (should (equal (wamei/term-modeline-blend-color "#ffffff" "#000000" 0.0) "#000000")))
+
+(ert-deftest wamei/term-modeline-test-blend-color-needs-real-colors ()
+  "色として読めない指定 (tty の unspecified-bg など) では混ぜない。"
+  (should-not (wamei/term-modeline-blend-color "#ffffff" "unspecified-bg" 0.3))
+  (should-not (wamei/term-modeline-blend-color "unspecified-fg" "#000000" 0.3))
+  (should-not (wamei/term-modeline-blend-color nil "#000000" 0.3)))
+
+(ert-deftest wamei/term-modeline-test-mark-face-dims-when-not-selected ()
+  "非アクティブな mode-line では、● の色を mode-line-inactive の地色へ寄せる。"
+  (let ((wamei/term-modeline--dim-color-cache nil))
+    (cl-letf (((symbol-function 'face-attribute)
+               (lambda (face attribute &rest _)
+                 (cond ((eq face 'mode-line-inactive) "#000000")
+                       ((eq attribute :foreground) "#ffffff")))))
+      (should (equal (wamei/term-modeline--mark-face 'success t)
+                     (list :foreground
+                           (wamei/term-modeline-blend-color
+                            "#ffffff" "#000000"
+                            wamei/term-modeline-status-inactive-ratio)))))))
+
+(ert-deftest wamei/term-modeline-test-mark-face-keeps-the-hues-apart ()
+  "暗くしても 4 色の区別が付く強さにする。
+前に周りの非アクティブ文字と同じ 0.3 まで落としたら見分けが付かなかった。"
+  (should (>= wamei/term-modeline-status-inactive-ratio 0.5)))
+
+(ert-deftest wamei/term-modeline-test-mark-face-falls-back-when-uncolorable ()
+  "色が取れないとき (batch の tty など) は face をそのまま使う。"
+  (let ((wamei/term-modeline--dim-color-cache nil))
+    (cl-letf (((symbol-function 'face-attribute)
+               (lambda (&rest _) "unspecified-bg")))
+      (should (eq (wamei/term-modeline--mark-face 'success t)
+                  'wamei/term-modeline-status-success)))))
+
+(ert-deftest wamei/term-modeline-test-enable-forgets-dim-colors-on-theme-change ()
+  "テーマを変えたら暗くした色を捨てる (前のテーマの地色で混ぜた色が残らない)。"
+  (wamei/term-modeline-enable)
+  (should (memq #'wamei/term-modeline--forget-dim-colors
+                (default-value 'enable-theme-functions)))
+  (let ((wamei/term-modeline--dim-color-cache '((("#ffffff" . "#000000") . "#4c4c4c"))))
+    (wamei/term-modeline--forget-dim-colors 'some-theme)
+    (should-not wamei/term-modeline--dim-color-cache)))
+
+(ert-deftest wamei/term-modeline-test-render-dims-the-mark-when-not-selected ()
+  "1 行を組み立てるときも、選択していなければ暗いほうを使う。"
+  (let ((wamei/term-modeline--dim-color-cache nil))
+    (cl-letf (((symbol-function 'face-attribute)
+               (lambda (face attribute &rest _)
+                 (cond ((eq face 'mode-line-inactive) "#000000")
+                       ((eq attribute :foreground) "#ffffff")))))
+      (let ((line (wamei/term-modeline--render
+                   (wamei/term-modeline-test--state :status 'failure :selected nil)
+                   60)))
+        (should (equal (get-text-property (string-match "●" line) 'face line)
+                       (wamei/term-modeline--mark-face 'failure t)))))))
+
+(ert-deftest wamei/term-modeline-test-state-includes-status ()
+  "1 行に出す材料に実行状態が入る。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (rename-buffer "*term: dotfiles*")
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (should (eq (plist-get (wamei/term-modeline--state) :status) 'running)))))
+
 ;;; 1 行の組み立て
 
 (defun wamei/term-modeline-test--state (&rest overrides)
   "テスト用の状態。OVERRIDES で上書きする。"
-  (let ((state (list :position "2/3" :title "ls -al" :dir "src/lib")))
+  (let ((state (list :status 'success :title "ls -al" :dir "src/lib")))
     (while overrides
       (setq state (plist-put state (pop overrides) (pop overrides))))
     state))
@@ -231,30 +359,23 @@
   "幅が足りていれば 番号・タイトル・ディレクトリを並べる。"
   (should (equal (substring-no-properties
                   (wamei/term-modeline--render (wamei/term-modeline-test--state) 60))
-                 "2/3  ls -al   src/lib")))
-
-(ert-deftest wamei/term-modeline-test-render-without-position ()
-  "端末が 1 つなら番号の分の空白も入れない。"
-  (should (equal (substring-no-properties
-                  (wamei/term-modeline--render
-                   (wamei/term-modeline-test--state :position nil) 60))
-                 "ls -al   src/lib")))
+                 "● ls -al   src/lib")))
 
 (ert-deftest wamei/term-modeline-test-render-without-dir ()
   "ルート直下ならタイトルだけ。"
   (should (equal (substring-no-properties
                   (wamei/term-modeline--render
                    (wamei/term-modeline-test--state :dir nil) 60))
-                 "2/3  ls -al")))
+                 "● ls -al")))
 
 (ert-deftest wamei/term-modeline-test-render-drops-dir-when-narrow ()
   "タイトルに 8 桁も残らないならディレクトリを捨てて、タイトルに幅を回す。"
   (let ((line (substring-no-properties
                (wamei/term-modeline--render
-                (wamei/term-modeline-test--state :title "npm run build:watch") 20))))
+                (wamei/term-modeline-test--state :title "npm run build:watch") 18))))
     (should-not (string-match-p "src/lib" line))
-    (should (string-prefix-p "2/3  npm run" line))
-    (should (<= (string-width line) 20))))
+    (should (string-prefix-p "● npm run" line))
+    (should (<= (string-width line) 18))))
 
 (ert-deftest wamei/term-modeline-test-render-truncates-title ()
   "それでも収まらなければタイトルを詰める。"
@@ -266,14 +387,31 @@
     (should (string-suffix-p "…" line))))
 
 (ert-deftest wamei/term-modeline-test-render-faces ()
-  "タイトルは mode-line-buffer-id、番号とディレクトリは控えめなほう。"
+  "タイトルは mode-line-buffer-id、ディレクトリは控えめなほう。"
   (let ((line (wamei/term-modeline--render (wamei/term-modeline-test--state) 60)))
-    (should (eq (get-text-property (string-match "2/3" line) 'face line)
-                'wamei/term-modeline-dim))
     (should (eq (get-text-property (string-match "ls" line) 'face line)
                 'mode-line-buffer-id))
     (should (eq (get-text-property (string-match "src" line) 'face line)
-                'wamei/term-modeline-dim))))
+                'wamei/term-modeline-dim))
+    (should (eq (get-text-property (string-match "●" line) 'face line)
+                'wamei/term-modeline-status-success))))
+
+(ert-deftest wamei/term-modeline-test-render-marks-the-title ()
+  "実行状態の ● はタイトル (最後に実行したコマンド) の直前。"
+  (let ((line (wamei/term-modeline--render
+               (wamei/term-modeline-test--state :status 'running) 60)))
+    (should (string-prefix-p (concat wamei/term-modeline-mark-string " ls -al")
+                             (substring-no-properties line)))
+    (should (eq (get-text-property (string-match "●" line) 'face line)
+                'wamei/term-modeline-status-running))))
+
+(ert-deftest wamei/term-modeline-test-render-mark-takes-width-from-the-title ()
+  "● のぶんだけタイトルに使える幅が減る (1 行は指定の幅に収まる)。"
+  (let ((line (substring-no-properties
+               (wamei/term-modeline--render
+                (wamei/term-modeline-test--state :title (make-string 100 ?x) :dir nil)
+                20))))
+    (should (= (string-width line) 20))))
 
 (ert-deftest wamei/term-modeline-test-render-time-after-title ()
   "実行時刻はタイトルのすぐ右、ディレクトリの手前。"
@@ -282,7 +420,7 @@
                    (wamei/term-modeline-test--state
                     :time "2026-09-10 22:42:15-22:45:06 (2m51s320ms)")
                    80))
-                 (concat "2/3  ls -al  2026-09-10 22:42:15-22:45:06 (2m51s320ms)"
+                 (concat "● ls -al  2026-09-10 22:42:15-22:45:06 (2m51s320ms)"
                          "   src/lib"))))
 
 (ert-deftest wamei/term-modeline-test-render-drops-dir-before-time ()
@@ -306,7 +444,7 @@
                  :time "2026-09-10 22:42:15-22:45:06 (2m51s320ms)")
                 40))))
     (should-not (string-match-p "2026-09-10" line))
-    (should (string-prefix-p "2/3  npm run" line))
+    (should (string-prefix-p "● npm run" line))
     (should (<= (string-width line) 40))))
 
 (ert-deftest wamei/term-modeline-test-faces-follow-selection ()
@@ -319,15 +457,13 @@
               'wamei/term-modeline-dim-inactive)))
 
 (ert-deftest wamei/term-modeline-test-render-dims-when-not-selected ()
-  "選択していないウィンドウでは、時刻も番号も cwd も暗いほうへ落とす。"
+  "選択していないウィンドウでは、時刻も cwd も暗いほうへ落とす。"
   (let ((line (wamei/term-modeline--render
                (wamei/term-modeline-test--state
                 :time "2026-09-10 22:42:15- (18s)" :selected nil)
                80)))
     (should (eq (get-text-property (string-match "2026" line) 'face line)
                 'wamei/term-modeline-time-inactive))
-    (should (eq (get-text-property (string-match "2/3" line) 'face line)
-                'wamei/term-modeline-dim-inactive))
     (should (eq (get-text-property (string-match "src" line) 'face line)
                 'wamei/term-modeline-dim-inactive))))
 

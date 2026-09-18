@@ -2,6 +2,7 @@
 ;;; Commentary:
 ;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
 ;; 出す。端末が 2 つ以上あるときは右隣に一覧 (`wamei/term-list-mode') を出す。
+;; 一覧の各行は "● ls -al" の形で、● はその端末の実行状態 (term-modeline.el)。
 ;;
 ;; どのプロジェクトの端末かはタブに紐づいたプロジェクト (project-tabs.el) で
 ;; 決める。カレントバッファ基準ではないので、*scratch* や claude パネルに
@@ -18,6 +19,8 @@
 
 (require 'project)
 (require 'seq)
+;; 一覧の行頭に出す ● (実行状態) は term-modeline.el が持っている。
+(require 'term-modeline)
 
 (defvar ghostel-shell)                  ; ghostel.el
 (defvar ghostel-title)                  ; ghostel.el (buffer-local)
@@ -36,6 +39,19 @@
 (defvar wamei/term-height 0.3
   "端末ウィンドウの高さ (フレームに対する割合)。
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
+
+(defgroup wamei/term-panel nil
+  "フレーム下部の端末パネルと端末一覧。"
+  :group 'tools)
+
+(defface wamei/term-list-current-row '((t :inherit hl-line :extend t))
+  "一覧で今パネルに出ている端末の行の背景。
+sidebar の現在行 (`wamei/project-sidebar-current-row') と同じ作りにしてある。
+ずっと出ている背景なので、マウスが乗っている間だけの `mouse-face'
+\(dired と同じ `highlight') とは別にする。`highlight' は背景がテーマの
+アクセント色 (doom-molokai ではオレンジ) で派手なうえ前景色 (base0) も持つ
+ため、常時これだと ● の色も失われる。`hl-line' は背景色しか持たない。"
+  :group 'wamei/term-panel)
 
 (defvar wamei/term-list-width 36
   "端末一覧ウィンドウの幅 (文字数)。
@@ -290,30 +306,81 @@ symbol を special にするだけで束縛はしないため。ghostel 未ロ�
   (or (and (boundp 'ghostel-title) (buffer-local-value 'ghostel-title buffer))
       (file-name-nondirectory (if (boundp 'ghostel-shell) ghostel-shell shell-file-name))))
 
+(defun wamei/term--list-line-width ()
+  "一覧の 1 行に入る桁数。
+window が出ていればその本文の桁数 (フリンジを除いた幅)。ちょうどこの桁数の
+行は折り返さない。まだ出ていなければ、覚えている幅からフリンジのぶんを引いた
+見積もり (実測でフリンジは左右 1 桁ずつ、= `window-body-width' と一致する)。
+
+`window-max-chars-per-line' はフリンジの設定をカレントバッファから読むので、
+別のバッファから呼ぶと小さすぎる値を返す (実測: 本文 34 桁の window で 30)。"
+  (let ((window (wamei/term--list-window)))
+    (if (window-live-p window)
+        (window-body-width window)
+      (max 8 (- wamei/term-list-width 2)))))
+
 (defun wamei/term--list-refresh ()
-  "現在のプロジェクトの端末一覧を描き直し、そのバッファを返す。"
+  "現在のプロジェクトの端末一覧を描き直し、そのバッファを返す。
+各行はコマンド名と、その直前の実行状態の ● (term-modeline.el) だけ。
+端末番号は出さない (並び順と名前で足りる)。"
   (with-current-buffer (wamei/term--list-buffer)
-    (let ((inhibit-read-only t)
-          (current (wamei/term--current))
-          (width (max 8 (- wamei/term-list-width 2))))
+    (let* ((inhibit-read-only t)
+           (current (wamei/term--current))
+           (mark-width (1+ (string-width wamei/term-modeline-mark-string)))
+           (line-width (wamei/term--list-line-width))
+           (width (max 8 (- line-width mark-width))))
       (erase-buffer)
       (dolist (buffer (wamei/term--buffers))
-        (let* ((index (wamei/term--index buffer))
-               (label (format "%d: %s" index
+        (let* ((start (point))
+               (label (format "%s %s"
+                              (wamei/term-modeline-mark
+                               (wamei/term-modeline-status buffer))
                               (truncate-string-to-width
-                               (wamei/term--label buffer) width nil nil t)))
-               (start (point)))
-          (insert label "\n")
+                               (wamei/term--label buffer) width nil nil t))))
+          ;; 行末まで選べるように、残りを空白で埋めてからプロパティを張る
+          ;; (プロパティの無いところはクリックしても何も起きず、マウス強調も
+          ;; 文字のぶんで途切れる)。
+          (insert label
+                  (make-string (max 0 (- line-width (string-width label))) ?\s)
+                  "\n")
           (add-text-properties
            start (1- (point))
            (list 'wamei/term-buffer buffer
-                 'mouse-face 'highlight
                  'keymap wamei/term-list-mode-map
                  'help-echo "mouse-1: 切り替え / d: 削除"))
+          ;; マウス強調は dired と同じ `highlight'。行の中は ● も含めて同じ値
+          ;; にし、改行では切る。`mouse-face' が光るのは「マウス位置から同じ値が
+          ;; 続く範囲」なので、行の中で値を変えると 1 行が分断され、改行にも
+          ;; 同じ値を張ると全行が一続きになって一度に光る。
+          (put-text-property start (1- (point)) 'mouse-face 'highlight)
+          ;; 今パネルに出ている端末の行。行末の改行まで掛けるのは、face の
+          ;; `:extend' が効くのが改行の face だから (掛けないと背景が文字の
+          ;; ぶんで途切れる)。後ろに足すのは、前景色を持つ face に差し替えた
+          ;; ときでも ● の色を残すため。
           (when (eq buffer current)
-            (add-face-text-property start (1- (point)) 'highlight)))))
+            (add-face-text-property start (point) 'wamei/term-list-current-row t)))))
     (goto-char (point-min))
     (current-buffer)))
+
+(defun wamei/term--on-command-state (buffer &rest _)
+  "BUFFER でコマンドが始まった・終わったら一覧の ● を描き直す。
+`ghostel-command-start-functions' と `-finish-functions' の両方から呼ぶ
+\(終了のフックは終了ステータスも渡すので捨てる)。
+
+タイトルは変わらないので `wamei/term--on-title-change' では拾えない。
+フックには後ろから足すこと — 状態を記録する term-modeline.el の
+`wamei/term-modeline--on-command-start' / `-finish' が先に走らないと、
+一覧に 1 つ前の ● が出る (`wamei/term-panel-setup' で append している)。
+
+`wamei/term--on-title-change' と同じく端末の出力処理 (プロセスフィルタ) の
+中で呼ばれるので、再描画の signal は外へ漏らさない。"
+  (with-demoted-errors "端末一覧の再描画に失敗しました: %S"
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (when (and (string-prefix-p "*term: " (buffer-name))
+                   (get-buffer (wamei/term--list-buffer-name)))
+          (wamei/term--list-refresh)))))
+  nil)
 
 (defun wamei/term--list-update ()
   "パネルの端末と同じプロジェクトの端末が 2 つ以上のときだけ一覧を表示する。
@@ -570,7 +637,12 @@ ghostel がロードされる前に登録しておく必要があるので、ini
                  (window-width . wamei/term--set-list-width)
                  (dedicated . t)
                  (window-parameters . ((no-other-window . t)
-                                       (no-delete-other-windows . t))))))
+                                       (no-delete-other-windows . t)))))
+  ;; コマンドの開始・終了で一覧の ● を描き直す。append で足すのは、状態を
+  ;; 記録する term-modeline.el のフックより後に走らせるため
+  ;; (`wamei/term--on-command-state')。
+  (add-hook 'ghostel-command-start-functions #'wamei/term--on-command-state t)
+  (add-hook 'ghostel-command-finish-functions #'wamei/term--on-command-state t))
 
 (provide 'term-panel)
 ;;; term-panel.el ends here
