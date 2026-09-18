@@ -2,7 +2,7 @@
 ;;; Commentary:
 ;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
 ;; 出す。端末が 2 つ以上あるときは右隣に一覧 (`wamei/term-list-mode') を出す。
-;; 一覧の各行は "● ls -al" の形で、● はその端末の実行状態 (term-modeline.el)。
+;; 一覧の各行は " ● ls -al" の形で、● はその端末の実行状態 (term-modeline.el)。
 ;;
 ;; どのプロジェクトの端末かはタブに紐づいたプロジェクト (project-tabs.el) で
 ;; 決める。カレントバッファ基準ではないので、*scratch* や claude パネルに
@@ -306,6 +306,11 @@ symbol を special にするだけで束縛はしないため。ghostel 未ロ�
   (or (and (boundp 'ghostel-title) (buffer-local-value 'ghostel-title buffer))
       (file-name-nondirectory (if (boundp 'ghostel-shell) ghostel-shell shell-file-name))))
 
+(defconst wamei/term--list-row-prefix " "
+  "一覧の各行の頭に置く詰め物。
+● のグリフは送り幅 8px に対して左へ 1px はみ出す (lbearing -1) ので、
+行頭に置くと window の左端で欠ける。1 桁ぶん右へずらして逃がす。")
+
 (defun wamei/term--list-line-width ()
   "一覧の 1 行に入る桁数。
 window が出ていればその本文の桁数 (フリンジを除いた幅)。ちょうどこの桁数の
@@ -326,13 +331,17 @@ window が出ていればその本文の桁数 (フリンジを除いた幅)。�
   (with-current-buffer (wamei/term--list-buffer)
     (let* ((inhibit-read-only t)
            (current (wamei/term--current))
-           (mark-width (1+ (string-width wamei/term-modeline-mark-string)))
+           (head-width (+ (string-width wamei/term--list-row-prefix)
+                          (string-width wamei/term-modeline-mark-string)
+                          1))
            (line-width (wamei/term--list-line-width))
-           (width (max 8 (- line-width mark-width))))
+           (width (max 8 (- line-width head-width))))
       (erase-buffer)
       (dolist (buffer (wamei/term--buffers))
         (let* ((start (point))
-               (label (format "%s %s"
+               (mark-start (+ start (length wamei/term--list-row-prefix)))
+               (label (format "%s%s %s"
+                              wamei/term--list-row-prefix
                               (wamei/term-modeline-mark
                                (wamei/term-modeline-status buffer))
                               (truncate-string-to-width
@@ -348,6 +357,8 @@ window が出ていればその本文の桁数 (フリンジを除いた幅)。�
            (list 'wamei/term-buffer buffer
                  'keymap wamei/term-list-mode-map
                  'help-echo "mouse-1: 切り替え / d: 削除"))
+          ;; ● の位置を覚えておく (アニメーションで face だけ差し替えるため)。
+          (put-text-property mark-start (1+ mark-start) 'wamei/term-mark t)
           ;; マウス強調は dired と同じ `highlight'。行の中は ● も含めて同じ値
           ;; にし、改行では切る。`mouse-face' が光るのは「マウス位置から同じ値が
           ;; 続く範囲」なので、行の中で値を変えると 1 行が分断され、改行にも
@@ -361,6 +372,46 @@ window が出ていればその本文の桁数 (フリンジを除いた幅)。�
             (add-face-text-property start (point) 'wamei/term-list-current-row t)))))
     (goto-char (point-min))
     (current-buffer)))
+
+(defun wamei/term--list-mark-face (old new)
+  "● に付いている OLD の 1 つ目を NEW に差し替えた face の値。
+現在行の背景 (`add-face-text-property' が後ろに足したもの) は残す。
+OLD が単独の色指定 (`(:foreground ...)') のときは、それ全体で 1 つの face
+なので丸ごと置き換える。"
+  (let ((rest (cond ((not (consp old)) nil)
+                    ((keywordp (car old)) nil)
+                    (t (cdr old)))))
+    (if rest (cons new rest) new)))
+
+(defun wamei/term--list-animate-marks ()
+  "一覧に出ている実行中の端末の ● を、今の色に差し替える。
+`wamei/term-modeline-tick-functions' から毎秒 10 回呼ばれるので、一覧を
+描き直さず (`project-current' や `buffer-list' の走査を通さず)、● 1 文字の
+face だけを書き換える。一覧が出ていなければ何もしない。"
+  (when-let* ((window (wamei/term--list-window))
+              (buffer (window-buffer window)))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t)
+            (modified (buffer-modified-p))
+            (color (wamei/term-modeline--running-color (float-time))))
+        (when color
+          (save-excursion
+            (goto-char (point-min))
+            (while (not (eobp))
+              (let ((term (get-text-property (point) 'wamei/term-buffer))
+                    (mark (text-property-any (point) (line-end-position)
+                                             'wamei/term-mark t)))
+                (when (and mark (buffer-live-p term)
+                           (eq (wamei/term-modeline-status term) 'running))
+                  (put-text-property
+                   mark (1+ mark) 'face
+                   (wamei/term--list-mark-face
+                    (get-text-property mark 'face)
+                    (list :foreground color)))))
+              (forward-line 1))))
+        ;; テキストプロパティの変更でもバッファは modified になる。一覧は
+        ;; ファイルではないので実害は無いが、印を付け替えない。
+        (set-buffer-modified-p modified)))))
 
 (defun wamei/term--on-command-state (buffer &rest _)
   "BUFFER でコマンドが始まった・終わったら一覧の ● を描き直す。
@@ -642,7 +693,9 @@ ghostel がロードされる前に登録しておく必要があるので、ini
   ;; 記録する term-modeline.el のフックより後に走らせるため
   ;; (`wamei/term--on-command-state')。
   (add-hook 'ghostel-command-start-functions #'wamei/term--on-command-state t)
-  (add-hook 'ghostel-command-finish-functions #'wamei/term--on-command-state t))
+  (add-hook 'ghostel-command-finish-functions #'wamei/term--on-command-state t)
+  ;; 実行中の ● の呼吸は term-modeline.el のタイマーに相乗りする。
+  (add-hook 'wamei/term-modeline-tick-functions #'wamei/term--list-animate-marks))
 
 (provide 'term-panel)
 ;;; term-panel.el ends here
