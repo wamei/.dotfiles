@@ -1937,6 +1937,20 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
   :bind (("C-a" . mwim-beginning-of-line-or-code)
          ("C-e" . mwim-end-of-line-or-code)))
 
+(leaf view-vim
+  :doc "view-mode を vim のキー配置で読む"
+  :ensure nil
+  :preface
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "view-vim"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :config
+  ;; view-mode-map の作り替えと view-read-only の設定。read-only の方も
+  ;; :custom ではなくこちら側に置いてある。「vim で読む」という 1 つの
+  ;; 設定の入り口と中身なので、片方だけ外れている状態を作らないため。
+  (wamei/view-vim-setup))
+
 (leaf undo-tree
   :doc "undoを強化する"
   :ensure t
