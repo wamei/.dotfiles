@@ -258,6 +258,31 @@ file-notify のイベントは command loop 経由で届き batch では配送�
         (kill-buffer buf)
         (should-not (gethash root wamei/dired-git-status--git-watches))))))
 
+(ert-deftest wamei/dired-git-status-git-dir-event-ignores-lock-files ()
+  "`git status' 自身が .git/index.lock を作って消すので、lock の出入りで再取得すると
+git status → index.lock → 通知 → git status の自己持続ループになる。debounce は
+間隔を空けるだけで止められない。"
+  (should-not (wamei/dired-git-status--git-dir-event-p
+               (list 1 'created "/r/.git/index.lock")))
+  (should-not (wamei/dired-git-status--git-dir-event-p
+               (list 1 'deleted "/r/.git/index.lock")))
+  (should-not (wamei/dired-git-status--git-dir-event-p
+               (list 1 'created "/r/.git/HEAD.lock"))))
+
+(ert-deftest wamei/dired-git-status-git-dir-event-ignores-stopped ()
+  "`stopped' は監視が終わった通知で、.git の変化ではない。"
+  (should-not (wamei/dired-git-status--git-dir-event-p
+               (list 1 'stopped "/r/.git"))))
+
+(ert-deftest wamei/dired-git-status-git-dir-event-keeps-real-changes ()
+  "lock でない実体の変化は取りこぼさない。index.lock からの rename も index の変化。"
+  (should (wamei/dired-git-status--git-dir-event-p
+           (list 1 'created "/r/.git/COMMIT_EDITMSG")))
+  (should (wamei/dired-git-status--git-dir-event-p
+           (list 1 'changed "/r/.git/HEAD")))
+  (should (wamei/dired-git-status--git-dir-event-p
+           (list 1 'renamed "/r/.git/index.lock" "/r/.git/index"))))
+
 (defun wamei/dired-git-status--test-timer-pending-p (root)
   "ROOT の debounce タイマーが予約されているか。"
   (timerp (gethash root wamei/dired-git-status--git-timers)))
