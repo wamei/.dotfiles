@@ -9,10 +9,10 @@
 ;;   │ └タイトル └実行時刻                 └cwd     └status └入力モード/進捗
 ;;   └実行状態
 ;;
-;; - 実行状態: 最後のコマンドがどうなったかを ● の色だけで出す (実行中は灰、
-;;   正常終了は緑、異常終了は赤、一度も実行していなければ黄)。見ている材料は
-;;   終了ステータスと同じ OSC 133;C / 133;D。そのコマンド (タイトル) の直前に
-;;   置く。端末一覧 (term-panel.el) にも同じ位置で同じ ● を出す。
+;; - 実行状態: 最後のコマンドがどうなったかを ● の色だけで出す (実行中は灰と
+;;   緑の間を往復、正常終了は緑、異常終了は赤、一度も実行していなければ黄)。
+;;   見ている材料は終了ステータスと同じ OSC 133;C / 133;D。そのコマンド
+;;   (タイトル) の直前に置く。端末一覧 (term-panel.el) にも同じ位置で同じ ● を出す。
 ;;   どの端末かは一覧とタイトルで分かるので、端末番号は出さない。
 ;; - タイトル: `ghostel-title' (OSC 0/2)。.zshrc の preexec が最後に実行した
 ;;   コマンドを流している。無ければシェル名。
@@ -39,6 +39,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'color)
 (require 'seq)
 (require 'subr-x)
@@ -280,31 +281,104 @@ RATIO が COLOR の残る割合。どちらかが色として読めなければ 
         (push (cons key dim) wamei/term-modeline--dim-color-cache)
         dim))))
 
-(defun wamei/term-modeline--forget-dim-colors (&rest _)
-  "暗くした色のキャッシュを捨てる。`enable-theme-functions' から。"
-  (setq wamei/term-modeline--dim-color-cache nil))
+;;; 実行中の呼吸
 
-(defun wamei/term-modeline--mark-face (status dim)
+;; 実行中の ● は灰 (`shadow') と緑 (`success') の間を往復する。色は先に段ごと
+;; 作っておき、毎フレームは配列を引くだけにする (`:eval' から呼ばれる)。
+;;
+;; 位相はタイマーの発火回数ではなく時刻から出す。タイマーが遅れても色が飛ばず、
+;; 複数の端末が同じ色で揃う。cos なので端で自然に減速する。
+
+(defconst wamei/term-modeline-running-period 2.8
+  "実行中の ● が灰 → 緑 → 灰 と一往復する秒数。
+`wamei/term-modeline-tick-interval' が 0.1 秒なので、1 往復が 28 フレーム。")
+
+(defconst wamei/term-modeline-running-peak 0.75
+  "一番明るいところで、正常終了の緑にどこまで寄せるか。
+1.0 にすると `success' そのものになり、静止した「正常終了の緑」と見分けが
+付かなくなるので手前で折り返す。")
+
+(defconst wamei/term-modeline-running-steps 16
+  "灰から緑までを何段に刻むか。
+段のぶんだけ色を作って持つので、増やすとなめらかになる代わりに
+`wamei/term-modeline--dim-color' のキャッシュも段数だけ増える。16 段だと
+1 往復 (1.6 秒) で 30 段ぶん動くので、10fps でも段の切り替わりは見えない。")
+
+(defvar wamei/term-modeline--running-colors nil
+  "灰から緑の手前までの色のベクタ。まだ作っていなければ nil。
+テーマを変えたら `wamei/term-modeline--forget-dim-colors' が捨てる。")
+
+(defun wamei/term-modeline--running-phase (time)
+  "TIME (エポック秒) での位相。灰が 0、緑が 1 の往復。
+\(- 0.5 (* 0.5 (cos ...))) は 0 → 1 → 0 を描き、端で減速する。"
+  (let ((turn (/ (mod time wamei/term-modeline-running-period)
+                 wamei/term-modeline-running-period)))
+    (- 0.5 (* 0.5 (cos (* 2 float-pi turn))))))
+
+(defun wamei/term-modeline--running-step (time)
+  "TIME での段 (0 から `wamei/term-modeline-running-steps' - 1)。"
+  (let ((last (1- wamei/term-modeline-running-steps)))
+    (min last (max 0 (round (* last (wamei/term-modeline--running-phase time)))))))
+
+(defun wamei/term-modeline--running-colors ()
+  "灰から緑の手前 (`wamei/term-modeline-running-peak') までの色のベクタ。
+端点の色が読めなければ nil。結果は覚えておく。"
+  (or wamei/term-modeline--running-colors
+      (let ((from (face-attribute 'wamei/term-modeline-status-running
+                                  :foreground nil t))
+            (to (face-attribute 'wamei/term-modeline-status-success
+                                :foreground nil t))
+            (last (1- wamei/term-modeline-running-steps)))
+        (when-let* ((colors
+                     (and (stringp from) (stringp to)
+                          (cl-loop for i from 0 to last
+                                   for color = (wamei/term-modeline-blend-color
+                                                to from
+                                                (* wamei/term-modeline-running-peak
+                                                   (/ (float i) last)))
+                                   unless color return nil
+                                   collect color))))
+          (setq wamei/term-modeline--running-colors (vconcat colors))))))
+
+(defun wamei/term-modeline--running-color (time)
+  "TIME での実行中の色。勾配を作れなければ nil。"
+  (when-let* ((colors (wamei/term-modeline--running-colors)))
+    (aref colors (wamei/term-modeline--running-step time))))
+
+(defun wamei/term-modeline--forget-dim-colors (&rest _)
+  "混ぜて作った色 (暗いほうと実行中の勾配) を捨てる。`enable-theme-functions' から。"
+  (setq wamei/term-modeline--dim-color-cache nil
+        wamei/term-modeline--running-colors nil))
+
+(defun wamei/term-modeline--mark-face (status dim &optional time)
   "● に付ける face。DIM が非 nil なら `mode-line-inactive' の地色へ寄せる。
+TIME (既定は現在時刻) は実行中の呼吸の位相を決める。
+
 face に前景色を直に持たせると `mode-line-inactive' に切り替わっても暗く
 ならないので、他の要素 (`wamei/term-modeline--dim-face') と同じく自分で
 落とす。ただしこちらはテーマの `success' / `error' / `warning' をそのまま
 使いたいので、暗いほうは色を混ぜて作る。混ぜられなければ元の face
 \(tty など、前景色や地色が色として読めないとき)。"
-  (let ((face (wamei/term-modeline-status-face status)))
-    (if (not dim)
-        face
-      (or (when-let* ((dimmed (wamei/term-modeline--dim-color
-                               (face-attribute face :foreground nil t)
-                               (face-attribute 'mode-line-inactive :background nil t))))
-            (list :foreground dimmed))
-          face))))
+  (let* ((face (wamei/term-modeline-status-face status))
+         ;; 実行中だけは face の前景色ではなく、その時刻の勾配の色
+         (color (if (eq status 'running)
+                    (wamei/term-modeline--running-color (or time (float-time)))
+                  (face-attribute face :foreground nil t)))
+         (color (if dim
+                    (and (stringp color)
+                         (wamei/term-modeline--dim-color
+                          color (face-attribute 'mode-line-inactive
+                                                :background nil t)))
+                  ;; 暗くしないなら、勾配のときだけ色で上書きする
+                  (and (eq status 'running) color))))
+    (if color (list :foreground color) face)))
 
-(defun wamei/term-modeline-mark (status &optional dim)
+(defun wamei/term-modeline-mark (status &optional dim time)
   "STATUS の ●。DIM が非 nil なら非アクティブな mode-line 用に暗くする。
+TIME は実行中の呼吸の位相 (既定は現在時刻)。
 一覧 (term-panel.el) は通常のバッファなので暗くしない (渡さない)。"
   (propertize wamei/term-modeline-mark-string
-              'face (wamei/term-modeline--mark-face status dim)))
+              'face (wamei/term-modeline--mark-face status dim time)))
 
 ;;; 実行時刻
 
@@ -359,24 +433,38 @@ END が nil (実行中) なら開始時刻と NOW までの経過時間、終わ
 
 ;;; 実行中の再描画
 
-;; 実行中は経過時間が毎秒伸びるので、こちらから mode-line を叩きに行かないと
-;; 止まって見える。走っている端末が 1 つも無い間はタイマーを持たない。
+;; 実行中は経過時間が毎秒伸び、● も呼吸するので、こちらから mode-line を
+;; 叩きに行かないと止まって見える。走っている端末が 1 つも無い間はタイマーを
+;; 持たない。
 
 (defvar wamei/term-modeline--running nil
   "コマンドが走っている端末バッファ。")
 
 (defvar wamei/term-modeline--tick-timer nil
-  "経過時間を伸ばすための 1 秒ごとのタイマー。走っている端末が無ければ nil。")
+  "経過時間と実行中の ● を動かすタイマー。走っている端末が無ければ nil。")
+
+(defconst wamei/term-modeline-tick-interval 0.1
+  "タイマーの間隔 (秒)。実行中の ● の呼吸がなめらかに見える速さ。
+経過時間の表示は 1 秒刻みでよいが、同じタイマーに相乗りさせる。")
+
+(defvar wamei/term-modeline-tick-functions nil
+  "tick のたびに呼ぶ関数。引数なし。
+一覧の ● を動かす term-panel.el がここに入る (逆向きの依存を作らないため)。")
 
 (defun wamei/term-modeline--tick ()
   "走っている端末の mode-line を描き直す。
 端末を殺したままコマンドが終わらないことがある (ghostel ごと消える) ので、
-死んだバッファはここで落とす。全部いなくなればタイマーも止める。"
+死んだバッファはここで落とす。全部いなくなればタイマーも止める。
+
+毎秒 10 回走るので、描き直すのは window に出ているバッファだけにする
+\(見えていなければ次に出したときの redisplay で新しい色になる)。"
   (setq wamei/term-modeline--running
         (seq-filter #'buffer-live-p wamei/term-modeline--running))
   (dolist (buffer wamei/term-modeline--running)
-    (with-current-buffer buffer
-      (force-mode-line-update)))
+    (when (get-buffer-window buffer 'visible)
+      (with-current-buffer buffer
+        (force-mode-line-update))))
+  (run-hooks 'wamei/term-modeline-tick-functions)
   (unless wamei/term-modeline--running
     (wamei/term-modeline--stop-tick)))
 
@@ -386,7 +474,9 @@ END が nil (実行中) なら開始時刻と NOW までの経過時間、終わ
     (push buffer wamei/term-modeline--running))
   (unless wamei/term-modeline--tick-timer
     (setq wamei/term-modeline--tick-timer
-          (run-at-time 1 1 #'wamei/term-modeline--tick))))
+          (run-at-time wamei/term-modeline-tick-interval
+                       wamei/term-modeline-tick-interval
+                       #'wamei/term-modeline--tick))))
 
 (defun wamei/term-modeline--stop-tracking (buffer)
   "BUFFER を走っている端末から外し、どこも走っていなければタイマーを止める。"

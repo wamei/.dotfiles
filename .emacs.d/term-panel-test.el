@@ -232,6 +232,14 @@ term-panel.el で defun されているので leaf の `:bind' が張る autoloa
   (with-current-buffer list-buffer
     (buffer-substring (point-min) (line-end-position))))
 
+(defun wamei/term-panel-test--mark-position (&optional line)
+  "LINE 行目 (既定は 1) の ● の位置。"
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line (1- (or line 1)))
+    (text-property-any (line-beginning-position) (line-end-position)
+                       'wamei/term-mark t)))
+
 (defun wamei/term-panel-test--mark-face (row)
   "ROW の ● に付いている face の一覧。
 現在の端末の行には行背景の face も重ねて付くので、リストで受ける。"
@@ -245,7 +253,7 @@ term-panel.el で defun されているので leaf の `:bind' が張る autoloa
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
       (let ((row (wamei/term-panel-test--first-row (wamei/term--list-refresh))))
-        (should (string-prefix-p (concat wamei/term-modeline-mark-string " ")
+        (should (string-prefix-p (concat " " wamei/term-modeline-mark-string " ")
                                  (substring-no-properties row)))
         (should-not (string-match-p "\\`[0-9]" (substring-no-properties row)))
         (should (memq 'wamei/term-modeline-status-idle
@@ -304,6 +312,77 @@ face は ● の後ろに足す (前に足すと、前景色を持つ face の�
         (forward-line 1)
         (should (eq (get-text-property (point) 'mouse-face) 'highlight))))))
 
+(ert-deftest wamei/term-panel-list-mark-face-replaces-only-the-first ()
+  "● の face を差し替えても、後ろに重ねてある現在行の背景は残す。"
+  ;; propertize が置いた素の face
+  (should (equal (wamei/term--list-mark-face 'old 'new) 'new))
+  ;; 現在行で add-face-text-property が足したあと
+  (should (equal (wamei/term--list-mark-face '(old wamei/term-list-current-row) 'new)
+                 '(new wamei/term-list-current-row)))
+  ;; 既に差し替えたあと (単独の色指定は 1 つの face なので、丸ごと置き換える)
+  (should (equal (wamei/term--list-mark-face '(:foreground "#123456") 'new) 'new))
+  (should (equal (wamei/term--list-mark-face
+                  '((:foreground "#123456") wamei/term-list-current-row) 'new)
+                 '(new wamei/term-list-current-row))))
+
+(ert-deftest wamei/term-panel-list-animates-only-running-marks ()
+  "tick では一覧を描き直さず、実行中の行の ● だけ色を差し替える。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (wamei/term--create 2)
+      (with-current-buffer (get-buffer "*term: alpha*")
+        (setq-local wamei/term-modeline--command-seen t
+                    wamei/term-modeline--start-time 1))
+      (let ((list-buffer (wamei/term--list-refresh)))
+        (set-window-buffer (selected-window) list-buffer)
+        (with-current-buffer list-buffer
+          (let ((before (buffer-string))
+                (idle-face (get-text-property (wamei/term-panel-test--mark-position 2)
+                                              'face)))
+            (cl-letf (((symbol-function 'wamei/term--list-window)
+                       (lambda () (selected-window)))
+                      ((symbol-function 'wamei/term-modeline--running-color)
+                       (lambda (&rest _) "#123456")))
+              (wamei/term--list-animate-marks))
+            ;; 文字は 1 つも動かない (描き直していない)
+            (should (equal (substring-no-properties (buffer-string))
+                           (substring-no-properties before)))
+            ;; 実行中の行の ● だけ新しい色 (この行は現在行でもあるので、
+            ;; 後ろに重ねてある行背景はそのまま残る)
+            (should (equal (get-text-property (wamei/term-panel-test--mark-position)
+                                             'face)
+                           '((:foreground "#123456") wamei/term-list-current-row)))
+            ;; 実行中でない行はそのまま
+            (should (equal (get-text-property (wamei/term-panel-test--mark-position 2)
+                                             'face)
+                           idle-face))))))))
+
+(ert-deftest wamei/term-panel-list-animation-skips-a-hidden-list ()
+  "一覧が出ていなければ何もしない (毎秒 10 回走るので)。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (with-current-buffer (get-buffer "*term: alpha*")
+        (setq-local wamei/term-modeline--command-seen t
+                    wamei/term-modeline--start-time 1))
+      (let ((list-buffer (wamei/term--list-refresh)))
+        (with-current-buffer list-buffer
+          (let ((before (get-text-property (wamei/term-panel-test--mark-position)
+                                           'face)))
+            (cl-letf (((symbol-function 'wamei/term--list-window) (lambda () nil))
+                      ((symbol-function 'wamei/term-modeline--running-color)
+                       (lambda (&rest _) "#123456")))
+              (wamei/term--list-animate-marks))
+            (should (equal (get-text-property (wamei/term-panel-test--mark-position)
+                                             'face)
+                           before))))))))
+
+(ert-deftest wamei/term-panel-list-animation-is-wired-to-the-tick ()
+  "一覧の ● は term-modeline.el の tick に相乗りする。"
+  (should (memq #'wamei/term--list-animate-marks
+                (default-value 'wamei/term-modeline-tick-functions))))
+
 (ert-deftest wamei/term-panel-list-current-row-inherits-hl-line ()
   "行背景は sidebar の現在行 (`wamei/project-sidebar-current-row') と同じ作り。
 `hl-line' は背景色しか持たないので ● の色を塗り替えない。"
@@ -341,6 +420,15 @@ face は ● の後ろに足す (前に足すと、前景色を持つ face の�
           (should (eq (get-text-property last 'wamei/term-buffer)
                       (get-buffer "*term: alpha*")))
           (should (eq (get-text-property last 'mouse-face) 'highlight)))))))
+
+(ert-deftest wamei/term-panel-list-indents-the-mark ()
+  "● は行頭に置かない。グリフが左に 1px はみ出す (lbearing -1) ので、
+window の左端に置くと欠ける。空白 1 つぶん右にずらす。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--create 1)
+      (with-current-buffer (wamei/term--list-refresh)
+        (should (= (wamei/term-panel-test--mark-position) (1+ (point-min))))))))
 
 (ert-deftest wamei/term-panel-list-mark-does-not-widen-the-row ()
   "● のぶんはタイトルから引く。行は一覧の幅に収まる。"

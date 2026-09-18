@@ -75,6 +75,115 @@
   ;; 出すものが無ければ区切りも要らない
   (should (equal (wamei/term-modeline--status-string 0 t) "")))
 
+(ert-deftest wamei/term-modeline-test-running-phase-breathes ()
+  "位相は 0 → 1 → 0 の往復。端で減速する (cos の形)。"
+  (let ((period wamei/term-modeline-running-period))
+    (should (< (abs (- (wamei/term-modeline--running-phase 0) 0.0)) 1e-9))
+    (should (< (abs (- (wamei/term-modeline--running-phase (/ period 2.0)) 1.0)) 1e-9))
+    (should (< (abs (- (wamei/term-modeline--running-phase period) 0.0)) 1e-9))
+    ;; 往路は単調に増える
+    (should (< (wamei/term-modeline--running-phase (* period 0.1))
+               (wamei/term-modeline--running-phase (* period 0.25))
+               (wamei/term-modeline--running-phase (* period 0.4))))
+    ;; 端 (0 の近く) のほうが真ん中より変化が小さい = 減速している
+    (let ((at-edge (- (wamei/term-modeline--running-phase (* period 0.05))
+                      (wamei/term-modeline--running-phase 0)))
+          (at-middle (- (wamei/term-modeline--running-phase (* period 0.3))
+                        (wamei/term-modeline--running-phase (* period 0.25)))))
+      (should (< at-edge at-middle)))))
+
+(ert-deftest wamei/term-modeline-test-running-phase-is-time-based ()
+  "位相はタイマーの発火回数ではなく時刻から出す (遅れても飛ばない・端末間で揃う)。"
+  (let ((period wamei/term-modeline-running-period))
+    (should (< (abs (- (wamei/term-modeline--running-phase 12.3)
+                       (wamei/term-modeline--running-phase (+ 12.3 (* 5 period)))))
+               1e-9))))
+
+(ert-deftest wamei/term-modeline-test-running-step-covers-both-ends ()
+  "段は 0 から最終段までで、範囲の外に出ない。"
+  (let ((period wamei/term-modeline-running-period)
+        (last (1- wamei/term-modeline-running-steps)))
+    (should (= (wamei/term-modeline--running-step 0) 0))
+    (should (= (wamei/term-modeline--running-step (/ period 2.0)) last))
+    (dotimes (i 40)
+      (let ((step (wamei/term-modeline--running-step (* period (/ i 40.0)))))
+        (should (<= 0 step last))))))
+
+(defmacro wamei/term-modeline-test--with-colors (from to &rest body)
+  "灰と緑の端点を FROM / TO に差し替えて BODY を評価する。
+batch では face の前景色が `unspecified' なので、勾配を作るには色を与える。"
+  (declare (indent 2))
+  `(let ((wamei/term-modeline--running-colors nil)
+         (wamei/term-modeline--dim-color-cache nil))
+     (cl-letf (((symbol-function 'face-attribute)
+                (lambda (face &rest _)
+                  (pcase face
+                    ('wamei/term-modeline-status-running ,from)
+                    ('wamei/term-modeline-status-success ,to)
+                    ('mode-line-inactive "#000000")
+                    (_ "#ffffff")))))
+       ,@body)))
+
+(ert-deftest wamei/term-modeline-test-running-colors-span-grey-to-green ()
+  "勾配は実行中の灰から始まり、緑の手前 (`wamei/term-modeline-running-peak')
+で折り返す。"
+  (wamei/term-modeline-test--with-colors "#000000" "#ffffff"
+    (let ((colors (wamei/term-modeline--running-colors)))
+      (should (= (length colors) wamei/term-modeline-running-steps))
+      (should (equal (aref colors 0) "#000000"))
+      (should (equal (aref colors (1- (length colors)))
+                     (wamei/term-modeline-blend-color
+                      "#ffffff" "#000000" wamei/term-modeline-running-peak))))))
+
+(ert-deftest wamei/term-modeline-test-running-peak-stops-short-of-green ()
+  "一番明るいところでも正常終了の緑そのものにはしない (静止した緑と紛れる)。"
+  (should (< wamei/term-modeline-running-peak 1.0)))
+
+(ert-deftest wamei/term-modeline-test-running-colors-are-computed-once ()
+  "勾配は作り直さない (`:eval' から毎フレーム呼ばれる)。"
+  (wamei/term-modeline-test--with-colors "#000000" "#ffffff"
+    (should (eq (wamei/term-modeline--running-colors)
+                (wamei/term-modeline--running-colors)))))
+
+(ert-deftest wamei/term-modeline-test-running-colors-forgotten-with-the-theme ()
+  "テーマを変えたら勾配も作り直す。"
+  (wamei/term-modeline-test--with-colors "#000000" "#ffffff"
+    (wamei/term-modeline--running-colors)
+    (should wamei/term-modeline--running-colors)
+    (wamei/term-modeline--forget-dim-colors 'some-theme)
+    (should-not wamei/term-modeline--running-colors)))
+
+(ert-deftest wamei/term-modeline-test-running-mark-uses-the-gradient ()
+  "実行中の ● は勾配の色。位相が違えば色も違う。"
+  (wamei/term-modeline-test--with-colors "#000000" "#ffffff"
+    (let* ((period wamei/term-modeline-running-period)
+           (at-start (wamei/term-modeline--mark-face 'running nil 0))
+           (at-peak (wamei/term-modeline--mark-face 'running nil (/ period 2.0))))
+      (should (equal at-start '(:foreground "#000000")))
+      (should (equal at-peak
+                     (list :foreground
+                           (wamei/term-modeline-blend-color
+                            "#ffffff" "#000000"
+                            wamei/term-modeline-running-peak)))))))
+
+(ert-deftest wamei/term-modeline-test-running-mark-dims-when-not-selected ()
+  "非アクティブな mode-line では勾配の色をさらに地色へ寄せる。"
+  (wamei/term-modeline-test--with-colors "#000000" "#ffffff"
+    (let ((period wamei/term-modeline-running-period))
+      (should (equal (wamei/term-modeline--mark-face 'running t (/ period 2.0))
+                     (list :foreground
+                           (wamei/term-modeline-blend-color
+                            (wamei/term-modeline-blend-color
+                             "#ffffff" "#000000" wamei/term-modeline-running-peak)
+                            "#000000"
+                            wamei/term-modeline-status-inactive-ratio)))))))
+
+(ert-deftest wamei/term-modeline-test-running-mark-falls-back-without-colors ()
+  "端点の色が読めなければ (batch の tty など) 勾配は作らず face のまま。"
+  (let ((wamei/term-modeline--running-colors nil))
+    (should (eq (wamei/term-modeline--mark-face 'running nil 0)
+                'wamei/term-modeline-status-running))))
+
 ;;; 実行時刻
 
 (ert-deftest wamei/term-modeline-test-format-duration-omits-empty-units ()
@@ -171,6 +280,42 @@
             (should-not wamei/term-modeline--tick-timer))
         (kill-buffer a)
         (kill-buffer b)))))
+
+(ert-deftest wamei/term-modeline-test-tick-skips-invisible-buffers ()
+  "見えていない端末は描き直さない (アニメーションのために毎秒 10 回走るので)。"
+  (wamei/term-modeline-test--with-clean-tick
+    (let ((seen nil))
+      (with-temp-buffer
+        (wamei/term-modeline--on-command-start (current-buffer))
+        (cl-letf (((symbol-function 'get-buffer-window) (lambda (&rest _) nil))
+                  ((symbol-function 'force-mode-line-update)
+                   (lambda (&rest _) (setq seen t))))
+          (wamei/term-modeline--tick))
+        (should-not seen)
+        (cl-letf (((symbol-function 'get-buffer-window) (lambda (&rest _) t))
+                  ((symbol-function 'force-mode-line-update)
+                   (lambda (&rest _) (setq seen t))))
+          (wamei/term-modeline--tick))
+        (should seen)))))
+
+(ert-deftest wamei/term-modeline-test-tick-runs-the-hook ()
+  "tick では一覧の ● も動かす (term-panel.el が足す)。"
+  (wamei/term-modeline-test--with-clean-tick
+    (let* ((calls 0)
+           (wamei/term-modeline-tick-functions
+            (list (lambda () (setq calls (1+ calls))))))
+      (with-temp-buffer
+        (wamei/term-modeline--on-command-start (current-buffer))
+        (wamei/term-modeline--tick))
+      (should (= calls 1)))))
+
+(ert-deftest wamei/term-modeline-test-tick-interval-is-the-animation-interval ()
+  "タイマーはアニメーションの間隔で回す (経過時間の表示もこれに相乗り)。"
+  (wamei/term-modeline-test--with-clean-tick
+    (with-temp-buffer
+      (wamei/term-modeline--on-command-start (current-buffer))
+      (should (= (timer--repeat-delay wamei/term-modeline--tick-timer)
+                 wamei/term-modeline-tick-interval)))))
 
 (ert-deftest wamei/term-modeline-test-tick-drops-dead-buffers ()
   "端末を殺したままコマンドが終わらなくても、次の tick でタイマーは止まる。"
