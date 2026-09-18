@@ -98,6 +98,34 @@
   (prefer-coding-system 'utf-8)
   (defalias 'yes-or-no-p 'y-or-n-p))
 
+(leaf gc
+  :doc "タイプ中の GC を止め、入力が途切れた隙に回収する"
+  ;; 既定の `gc-cons-threshold' は 800KB。生存 Lisp オブジェクトが 50MB ほどある
+  ;; 状態だと、`gc-cons-percentage' 0.1 と合わせて実効 5MB ごとに GC が走り、
+  ;; 毎回その 50MB をマークするので 1 回 50〜90ms 止まる。カーソルを連続で
+  ;; 動かしたときの「数行進んで一瞬止まる」はこれ。
+  ;; 閾値を上げて操作中は回収させず、入力が途切れたところで 1 回だけ GC する。
+  ;; 予約は `post-command-hook' で張り直すので、席を外している間に GC が
+  ;; 回り続けることはない (コマンドが来なければ予約もされない)。
+  ;; 閾値は残り続けるので、端末出力だけでメモリが伸びる経路では閾値側で止まる。
+  :custom (gc-cons-threshold . 134217728)
+  :preface
+  (defvar wamei/gc--idle-timer nil
+    "アイドル GC の予約。張り直すときに使う。")
+
+  (defun wamei/gc--idle-collect ()
+    "アイドル GC の本体。"
+    (setq wamei/gc--idle-timer nil)
+    (garbage-collect))
+
+  (defun wamei/gc-schedule-idle-collect ()
+    "アイドル 1 秒後に GC するよう予約し直す。`post-command-hook' 用。"
+    (when (timerp wamei/gc--idle-timer)
+      (cancel-timer wamei/gc--idle-timer))
+    (setq wamei/gc--idle-timer
+          (run-with-idle-timer 1 nil #'wamei/gc--idle-collect)))
+  :hook (post-command-hook . wamei/gc-schedule-idle-collect))
+
 (leaf server
   :doc "サーバー"
   :ensure nil

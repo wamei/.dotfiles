@@ -244,9 +244,14 @@ dired 標準の `dired-restore-positions' も window ごとの復元を持つが
                                   (message "dired-tree: revert failed: %s"
                                            (error-message-string err))))))))))))
 
-(defun wamei/dired-tree--watch-callback (buffer _event)
-  "file-notify のコールバック。BUFFER の revert を予約する。"
-  (wamei/dired-tree--schedule-revert buffer))
+(defun wamei/dired-tree--watch-callback (buffer event)
+  "file-notify のコールバック。BUFFER の revert を予約する。
+`stopped' は「監視が終わった」通知で、ディレクトリの変化ではないので無視する。
+`file-notify-rm-watch' 自身が `stopped' を送るため、これで revert を予約すると
+revert → `dired-after-readin-hook' → `wamei/dired-tree--reconcile-watches' →
+rm-watch → `stopped' → revert という自己持続ループになる。"
+  (unless (eq (nth 1 event) 'stopped)
+    (wamei/dired-tree--schedule-revert buffer)))
 
 (defun wamei/dired-tree--reconcile-watches ()
   "監視対象を、いま見えている展開ディレクトリに合わせる。"

@@ -209,6 +209,25 @@ subtree 行のマークだけ落ちる。top-level の行は標準の復元で�
     (should (equal (car diff) '("/c")))
     (should (equal (cdr diff) '("/a")))))
 
+(ert-deftest wamei/dired-tree-watch-callback-ignores-stopped ()
+  "`stopped' は「監視が終わった」通知で、ディレクトリの変化ではない。
+`file-notify-rm-watch' 自身が `stopped' を送るので、revert → `dired-after-readin-hook'
+→ `wamei/dired-tree--reconcile-watches' → rm-watch → `stopped' → revert という
+自己持続ループになる。"
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree--watch-callback
+       buf (list 1 'stopped (expand-file-name "a" root)))
+      (should-not wamei/dired-tree--revert-timer))))
+
+(ert-deftest wamei/dired-tree-watch-callback-schedules-on-change ()
+  "`stopped' 以外の通知では revert を予約する。"
+  (wamei/dired-tree-test--with-tree root
+    (wamei/dired-tree-test--with-dired root buf
+      (wamei/dired-tree--watch-callback
+       buf (list 1 'created (expand-file-name "a/new.txt" root)))
+      (should (timerp wamei/dired-tree--revert-timer)))))
+
 (ert-deftest wamei/dired-tree-visible-expanded-follows-overlays ()
   (wamei/dired-tree-test--with-tree root
     (wamei/dired-tree-test--with-dired root buf

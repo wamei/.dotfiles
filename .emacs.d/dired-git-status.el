@@ -263,13 +263,35 @@ dired バッファが無ければ何もしない。dired バッファ自身の r
 ;;; .git の監視 (B)
 
 (defvar wamei/dired-git-status-git-dir-delay 0.3
-  ".git の変化から再取得までの待ち時間 (秒)。index.lock の出入りなど連続する通知をまとめる。")
+  ".git の変化から再取得までの待ち時間 (秒)。連続する通知をまとめる。
+lock ファイルの出入りは `wamei/dired-git-status--git-dir-event-p' が捨てるので、
+ここに届くのは実体の変化だけ。")
 
 (defvar wamei/dired-git-status--git-watches (make-hash-table :test 'equal)
   "ルート → .git ディレクトリの file-notify descriptor。")
 
 (defvar wamei/dired-git-status--git-timers (make-hash-table :test 'equal)
   "ルート → 予約中の再取得タイマー。")
+
+(defun wamei/dired-git-status--lock-file-p (file)
+  "FILE が git の一時 lock ファイルか。"
+  (and (stringp file)
+       (string-suffix-p ".lock" (file-name-nondirectory file))))
+
+(defun wamei/dired-git-status--git-dir-event-p (event)
+  "EVENT が再取得に値する .git の変化か。
+`stopped' は「監視が終わった」通知で、.git の変化ではない。
+git は書き込みのために `index.lock' などを作って消すが、`git status' 自身も
+これを作るので、lock の出入りで再取得すると git status → index.lock → 通知 →
+git status の自己持続ループになる (debounce は間隔を空けるだけで止められない)。
+lock だけが動いたイベントは捨て、lock 以外の実体が絡むものは通す。
+`index.lock' → `index' の rename は index が変わっているので通る。"
+  (let ((action (nth 1 event))
+        (files (delq nil (list (nth 2 event) (nth 3 event)))))
+    (and (not (eq action 'stopped))
+         (or (null files)
+             (not (seq-every-p #'wamei/dired-git-status--lock-file-p files)))
+         t)))
 
 (defun wamei/dired-git-status--git-dir-changed (root)
   ".git に変化があった。debounce してから ROOT を再取得する。"
@@ -296,7 +318,9 @@ git は index や HEAD を lock ファイル経由の rename で書くので、�
         (puthash root
                  (file-notify-add-watch
                   gitdir '(change)
-                  (lambda (_event) (wamei/dired-git-status--git-dir-changed root)))
+                  (lambda (event)
+                    (when (wamei/dired-git-status--git-dir-event-p event)
+                      (wamei/dired-git-status--git-dir-changed root))))
                  wamei/dired-git-status--git-watches)))))
 
 (defun wamei/dired-git-status--unwatch-git-dir (root)
