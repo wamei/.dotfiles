@@ -2021,12 +2021,50 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
   (git-gutter:modified-sign . " ")
   (git-gutter:added-sign    . " ")
   (git-gutter:deleted-sign  . " ")
+  ;; 既定の 0 だと保存するまで差分が変わらない。アイドル 1 秒で編集中の
+  ;; バッファ内容と比べ直す (内容が変わっていなければ何もしない)。
+  (git-gutter:update-interval . 1)
+  :preface
+  ;; git-gutter は保存・revert・find-file でしか差分を取り直さないので、
+  ;; commit / stage / checkout のようにファイルの中身が変わらない操作や、
+  ;; 表示中の他のバッファは古いまま残る。アイドル時と magit の refresh で
+  ;; 表示中のバッファをまとめて取り直す。
+  (defvar wamei/git-gutter--refresh-timer nil
+    "表示中バッファの差分を取り直すアイドルタイマー。")
+
+  (defun wamei/git-gutter--refresh-target-p (buf)
+    "BUF の差分をファイル基準で取り直してよいか。
+変更中のバッファは `git-gutter:live-update' に任せる (ファイル基準で
+取り直すと未保存の編集が消えて見える)。リモートは毎回 git を回すと重い。"
+    (with-current-buffer buf
+      (and (bound-and-true-p git-gutter-mode)
+           buffer-file-name
+           (not (buffer-modified-p))
+           (not (file-remote-p buffer-file-name)))))
+
+  (defun wamei/git-gutter-refresh-visible ()
+    "表示中のバッファの差分を取り直す。"
+    (let (seen)
+      (walk-windows
+       (lambda (win)
+         (let ((buf (window-buffer win)))
+           (unless (memq buf seen)
+             (push buf seen)
+             (when (wamei/git-gutter--refresh-target-p buf)
+               (with-current-buffer buf (git-gutter))))))
+       'nomini 'visible)))
+  :config
+  (when (timerp wamei/git-gutter--refresh-timer)
+    (cancel-timer wamei/git-gutter--refresh-timer))
+  (setq wamei/git-gutter--refresh-timer
+        (run-with-idle-timer 2 t #'wamei/git-gutter-refresh-visible))
   :custom-face
   (git-gutter:modified . '((t (:background "#f1fa8c"))))
   (git-gutter:added    . '((t (:background "#50fa7b"))))
   (git-gutter:deleted  . '((t (:background "#ff79c6"))))
   :hook
-  (after-init-hook . global-git-gutter-mode))
+  (after-init-hook . global-git-gutter-mode)
+  (magit-post-refresh-hook . wamei/git-gutter-refresh-visible))
 
 (leaf vertico
   :doc "minibuffer補完"
