@@ -589,6 +589,10 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; いるウィンドウでは端数を保つ (term-panel.el の「下端揃えの端数」)。
   (advice-add 'ghostel--set-window-vscroll :around #'wamei/term--pin-anchor-vscroll)
 
+  ;; パネルの端末がプロジェクトの外へ cd しても default-directory をルートに
+  ;; 留め、プロジェクトバッファと端末一覧から消えないようにする (term-panel.el)。
+  (advice-add 'ghostel--update-directory :around #'wamei/term--keep-in-project)
+
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
   ;; 高さの記憶、kill 時の後始末、非アクティブ時のカーソル非表示 (term-panel.el)

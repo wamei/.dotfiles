@@ -152,6 +152,91 @@ term-panel.el で defun されているので leaf の `:bind' が張る autoloa
     (wamei/term-panel-test--in alpha
       (should (equal (wamei/term--root) alpha)))))
 
+;;; cd してもプロジェクトの端末のまま
+
+(defun wamei/term-panel-test--cd (buffer dir)
+  "BUFFER の端末で DIR へ cd したときの OSC 7 を、パネルの advice 越しに処理する。
+ghostel の `ghostel--update-directory' の代わりに `default-directory' だけ書き換える。"
+  (with-current-buffer buffer
+    (wamei/term--keep-in-project
+     (lambda (d) (setq default-directory (file-name-as-directory d)
+                       list-buffers-directory default-directory))
+     dir)))
+
+(ert-deftest wamei/term-panel-cd-outside-project-keeps-project-root ()
+  "プロジェクトの外へ cd しても `default-directory' はプロジェクトルートに留まる。
+project.el (`project-buffers') も consult のプロジェクトバッファも
+`default-directory' の前方一致で所属を決めるので、外に出すと消えてしまう。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((term (wamei/term-panel-test--in alpha (wamei/term--create 1))))
+      (wamei/term-panel-test--cd term base)
+      (with-current-buffer term
+        (should (equal default-directory alpha))
+        (should (equal list-buffers-directory alpha)))
+      (should (memq term (project-buffers (cons 'transient alpha)))))))
+
+(ert-deftest wamei/term-panel-cd-inside-project-follows-the-shell ()
+  "プロジェクト内の cd はそのまま追従する (C-x C-f の起点がシェルと揃う)。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((term (wamei/term-panel-test--in alpha (wamei/term--create 1)))
+          (sub (file-name-as-directory (expand-file-name "sub" alpha))))
+      (make-directory sub)
+      (wamei/term-panel-test--cd term sub)
+      (should (equal (buffer-local-value 'default-directory term) sub)))))
+
+(ert-deftest wamei/term-panel-cd-leaves-other-ghostel-buffers-alone ()
+  "パネルの端末以外 (claude のバッファなど) の cd には手を出さない。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (with-temp-buffer
+      (setq default-directory alpha)
+      (wamei/term-panel-test--cd (current-buffer) base)
+      (should (equal default-directory base)))))
+
+(ert-deftest wamei/term-panel-terminal-remembers-its-project ()
+  "端末は作ったときのプロジェクトを覚えていて、`default-directory' が
+別プロジェクトを指しても名前・一覧はそのプロジェクトのまま。"
+  (wamei/term-panel-test--with-projects (alpha beta)
+    (wamei/term-panel-test--in alpha (wamei/term--create 1) (wamei/term--create 2))
+    (with-current-buffer "*term: alpha 2*"
+      (setq default-directory beta)
+      (should (equal (wamei/term--root) alpha))
+      (should (equal (mapcar #'buffer-name (wamei/term--buffers))
+                     '("*term: alpha*" "*term: alpha 2*"))))))
+
+(ert-deftest wamei/term-panel-setup-buffer-finds-project-by-buffer-name ()
+  "desktop で復元した端末は、保存時の作業ディレクトリがプロジェクト内の
+別リポジトリ (サブモジュールなど) でも、バッファ名のプロジェクトを覚える。"
+  (let* ((base (file-name-as-directory (file-truename (make-temp-file "term-panel-" t))))
+         (alpha (file-name-as-directory (expand-file-name "alpha" base)))
+         (inner (file-name-as-directory (expand-file-name "inner" alpha)))
+         ;; 内側を先に並べて、inner の中では inner が見つかるようにする
+         (wamei/term-panel-test--roots (list inner alpha))
+         (project-find-functions (list #'wamei/term-panel-test--find-project)))
+    (unwind-protect
+        (progn
+          (make-directory inner t)
+          (with-current-buffer (get-buffer-create "*term: alpha 2*")
+            (setq default-directory inner)
+            (wamei/term--setup-buffer)
+            (should (equal wamei/term--project-root alpha))))
+      (kill-buffer "*term: alpha 2*")
+      (delete-directory base t))))
+
+(ert-deftest wamei/term-panel-setup-buffer-skips-unknown-project ()
+  "バッファ名のプロジェクトが上にたどっても見つからなければ覚えない。
+既に外へ cd していた端末に別プロジェクトを覚えさせると、名前と一覧がずれる。"
+  (wamei/term-panel-test--with-projects (alpha beta)
+    (with-current-buffer (get-buffer-create "*term: alpha*")
+      (setq default-directory beta)
+      (wamei/term--setup-buffer)
+      (should-not wamei/term--project-root))))
+
+(ert-deftest wamei/term-panel-setup-buffer-ignores-non-panel-buffers ()
+  "パネルの端末でない ghostel バッファにはプロジェクトを覚えさせない。"
+  (with-temp-buffer
+    (wamei/term--setup-buffer)
+    (should-not wamei/term--project-root)))
+
 ;;; バッファ名
 
 (ert-deftest wamei/term-panel-buffer-name-uses-project-and-index ()
