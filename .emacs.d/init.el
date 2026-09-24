@@ -219,6 +219,36 @@
 (defvar font-size 160)
 (defvar font-family "UDEV Gothic NF")
 
+(defconst wamei/font-emoji-ranges
+  '(#x203C #x2049                        ; ‼ ⁉
+    (#x2100 . #x214F)                    ; Letterlike Symbols (™ ℹ)
+    (#x2190 . #x21FF)                    ; Arrows (↔ ↗ ↩)
+    (#x2300 . #x23FF)                    ; Misc Technical (⌚ ⌨ ⏩ ⏱ ⏸)
+    (#x2460 . #x24FF)                    ; Enclosed Alphanumerics (Ⓜ)
+    (#x25A0 . #x25FF)                    ; Geometric Shapes (▪ ▶ ◀ ◻)
+    (#x2600 . #x26FF)                    ; Misc Symbols (☀ ⚠ ⚡ ⛅)
+    (#x2700 . #x27BF)                    ; Dingbats (✅ ✔ ✨ ❤ ➡)
+    (#x2900 . #x297F)                    ; Supplemental Arrows-B (⤴ ⤵)
+    (#x2B00 . #x2BFF)                    ; Misc Symbols and Arrows (⬅ ⬛ ⭐ ⭕)
+    #x3030 #x303D #x3297 #x3299          ; 〰 〽 ㊗ ㊙
+    (#x1F000 . #x1FAFF))                 ; 麻雀牌〜Symbols and Pictographs Extended-A
+  "Apple Color Emoji を既定フォントより優先するコードポイント (文字か範囲)。
+© ® (U+00A9/AE) も Apple Color Emoji は持つが入れない。Latin-1 の文字は
+フレームの fontset に足しても既定フォントのまま動かない (実測) うえ、コード
+コメントの著作権表記まで絵文字になるのは望ましくない。")
+
+(defconst wamei/font-fallbacks
+  '(((#x2190 . #x21FF) . "HackGen Console NF") ; Arrows (⇢ ...)
+    ((#x25A0 . #x25FF) . "HackGen Console NF") ; Geometric Shapes (◜◝◞◟ ...)
+    ((#x2700 . #x27BF) . "Menlo"))             ; Dingbats (✢ ✶ ✻ ...)
+  "既定フォントに無い記号の補助フォント ((範囲 . フォント) の alist)。
+HackGen Console NF は ascent 15 / descent 3・幅 8px が既定と完全に一致し、
+Arrows と Geometric Shapes で UDEV Gothic が持たない 122 文字を全部埋める (実測)。
+Dingbats は HackGen が持たないので Menlo (0.9 に縮めてある)。
+他のブロックで同じことが起きたら、寸法を測ってからここに足す
+\(Misc Technical の ⏺⏵⧉ は STIX Two Math しか持たず 20px になるので、
+ghostel ブロックの display table で同形の記号に置き換えている)。")
+
 (leaf font
   :doc "フォント"
   :config
@@ -240,12 +270,41 @@
     (set-face-attribute 'mode-line nil :family font-family :height font-size)
     (set-face-attribute 'mode-line-inactive nil :family font-family :height font-size)
     (set-face-attribute 'tooltip nil :family font-family :height font-size)
-    (set-fontset-font nil 'japanese-jisx0208
-                      (font-spec :family font-family :height font-size))
     (add-to-list 'face-font-rescale-alist '("Menlo" . 0.9))
     ;; Apple Braille の縮小は ghostel ブロックで入れる (理由と倍率は
     ;; term-modeline.el の「ブレイルの大きさ」)。ここではまだ
     ;; term-modeline.el を読んでいないので定数が使えない。
+    ;;
+    ;; 既定フォント以外の文字は次の順で探す。
+    ;;
+    ;;   1. Apple Color Emoji  (`wamei/font-emoji-ranges') 持っていれば絵文字で出す
+    ;;   2. font-family        既定フォント
+    ;;   3. 寸法の揃った補助    (`wamei/font-fallbacks') 既定に無い記号
+    ;;   4. Emacs の既定       fontset-default (Arial Unicode MS / STIX Two Math など)
+    ;;
+    ;; 1 と 2 はフレームの fontset (nil) に入れる。フォント名で指定した既定の
+    ;; face には Emacs が fontset-auto<N> を作り、そこでは既定フォントが「全文字の
+    ;; 先頭」になるので、fontset-default (t) にいくら足しても既定フォントが持つ
+    ;; 文字 (⚠ ▶ ☀ ↗ など) には届かない。大きさの違う face もこの fontset から
+    ;; 作られるので、nil に入れれば全体に効く。3 は既定に無い文字だけが
+    ;; 落ちてくる t に入れる。
+    ;;
+    ;; `use-default-font-for-symbols' (既定 t) は記号と句読点について fontset より
+    ;; 先に既定フォントを試すので、これも切らないと 1 が効かない。既定フォントを
+    ;; 最初に試すことは 2 (fontset-auto の先頭) がそのまま受け持つ。
+    (setq use-default-font-for-symbols nil)
+    (set-fontset-font nil 'japanese-jisx0208
+                      (font-spec :family font-family :height font-size))
+    ;; 絵文字は Apple Color Emoji が持つ文字を含むブロック単位で先頭に置く。
+    ;; 持っていない文字は次の候補へ落ちるので、範囲を字単位で合わせる必要は無い。
+    ;; ただし NBSP (U+00A0)・行区切り (U+2028/9)・ZWJ・異体字セレクタのように
+    ;; フォントが持っていても絵文字で描いてはいけないものがあるので、それを含む
+    ;; ブロック (General Punctuation / CJK Symbols) は字単位で拾う。
+    ;; 絵文字は行を 26px に伸ばすが、縮めない判断をしている (高さが動くときだけ
+    ;; 揺れる)。端末のスピナーのように動くものは ghostel ブロックの display table
+    ;; (`wamei/term-glyph-substitutions') で絵文字でない記号に置き換えている。
+    (dolist (range wamei/font-emoji-ranges)
+      (set-fontset-font nil range (font-spec :family "Apple Color Emoji") nil 'prepend))
     ;; 既定フォントに無い記号は、放っておくと Arial Unicode MS に落ちる。
     ;; これは 16px でも ascent 17 / descent 4 = 21px (既定は 15/3 = 18px)、
     ;; 幅も 10px (セルは 8px) あるので、その文字が出た行だけ 3px 伸びて横にも
@@ -253,19 +312,9 @@
     ;; ghostel が下端揃えで払う vscroll が変わって画面全体が上下する
     ;; (term-panel.el の「下端揃えの端数」)。mise のスピナー (◜◝◞◟◠◡) と
     ;; タスク行の ⇢ で実際に起きた。
-    ;;
-    ;; 既定フォントの字形は残したいので font-family を先に置き、寸法の揃った
-    ;; フォールバックを 'append で後ろに足す。HackGen Console NF は
-    ;; ascent 15 / descent 3・幅 8px が既定と完全に一致し、Arrows と
-    ;; Geometric Shapes で UDEV Gothic が持たない 122 文字を全部埋める (実測)。
-    ;; Dingbats は HackGen が持たないので Menlo (0.9 に縮めてある)。
-    ;; 他のブロックで同じことが起きたら、寸法を測ってからここに足す
-    ;; (Misc Technical の ⏺⏵⧉ は STIX Two Math しか持たず 20px になるので、
-    ;; ghostel ブロックの display table で同形の記号に置き換えている)。
-    (pcase-dolist (`(,range . ,fallback)
-                   '(((#x2190 . #x21FF) . "HackGen Console NF")  ; Arrows (⇢ ...)
-                     ((#x25A0 . #x25FF) . "HackGen Console NF")  ; Geometric Shapes (◜◝◞◟ ...)
-                     ((#x2700 . #x27BF) . "Menlo")))             ; Dingbats (✢ ✳ ✶ ✻ ...)
+    ;; 範囲を置き換えるので font-family を先頭に戻し、補助は 'append で後ろに足す
+    ;; (t の中の順序。フレームの fontset では 1・2 が先に当たる)。
+    (pcase-dolist (`(,range . ,fallback) wamei/font-fallbacks)
       (set-fontset-font t range (font-spec :family font-family))
       (set-fontset-font t range (font-spec :family fallback) nil 'append))))
 
@@ -492,13 +541,17 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
         nil t)
 
   (defconst wamei/term-glyph-substitutions
-    '((?⏺ . ?●)    ; claude の応答・ツール呼び出しの行頭
-      (?⏵ . ?▶)    ; claude の "⏵⏵ auto mode on"
-      (?⧉ . ?❐))   ; claude の "⧉ In file" (❐ は Menlo が持つ)
+    '((?⏺ . ?●)    ; claude の応答・ツール呼び出しの行頭 (点滅する)
+      (?⏵ . ?►)    ; claude の "⏵⏵ auto mode on" (▶ は絵文字になる)
+      (?⧉ . ?❐)    ; claude の "⧉ In file" (❐ は Menlo が持つ)
+      (?✳ . ?✱))   ; claude のスピナー (✢✳✶✻✽ の 1 コマ。✱ は Menlo が持つ)
     "端末バッファで表示だけ置き換える文字の alist (元の文字 . 表示する文字)。
-これらは手元のどのフォントでも行高が既定フォント (20px) に収まらず
-(STIX Two Math は descent 9px)、含む行だけ伸びて TUI の画面が上下に揺れる。
-バッファの内容は変えず display table で同形の記号を描く。")
+これらは行高が既定フォント (20px) に収まらないフォントで描かれ
+\(STIX Two Math は descent 9px、Apple Color Emoji は 26px)、しかも Claude の
+TUI では点滅やアニメーションで出入りするので、含む行の高さが動いて画面が
+上下に揺れる。バッファの内容は変えず display table で既定の寸法に収まる
+同形の記号を描く。置き換え先は絵文字で描かれない (`wamei/font-emoji-ranges' の
+中でも Apple Color Emoji が持たない) 文字にすること。")
 
   (defun wamei/term--substitute-tall-glyphs ()
     "`wamei/term-glyph-substitutions' を現在のバッファの display table に登録する。
