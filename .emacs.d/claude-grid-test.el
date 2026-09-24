@@ -271,7 +271,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
 (ert-deftest wamei/claude-grid-tab-creates-named-tab ()
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (should (member "Claude Code" (wamei/claude-grid-test--tab-names)))
       (should (equal (alist-get 'name (tab-bar--current-tab-find)) "Claude Code"))
       (should (equal (wamei/claude-grid-test--rows) (list (list a)))))))
@@ -280,27 +280,27 @@ side window とミニバッファは除く。行は上から、各行は左か�
   "再実行では同じタブを使い、今のセッションで組み直す。"
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (let ((count (length (wamei/claude-grid-test--tab-names)))
             (b (wamei/claude-grid-test--session "/tmp/proj/" "b")))
         (tab-bar-select-tab 1)
-        (wamei/claude-grid-tab)
+        (wamei/claude-grid-tab t)
         (should (= count (length (wamei/claude-grid-test--tab-names))))
         (should (equal (wamei/claude-grid-test--rows) (list (list a b))))))))
 
 (ert-deftest wamei/claude-grid-tab-uses-separate-tab-per-project ()
-  "C-u ではカレントプロジェクトだけを別のタブに並べる。"
+  "引数なしではカレントプロジェクトだけを別のタブに並べる。"
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
           (other (wamei/claude-grid-test--session "/tmp/other/")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       ;; other < proj:a
       (should (equal (wamei/claude-grid-test--rows) (list (list other a))))
       ;; default-directory はバッファローカルなので、プロジェクトのバッファから
       ;; 叩いた状況を作る
       (with-temp-buffer
         (setq default-directory "/tmp/proj/")
-        (wamei/claude-grid-tab t))
+        (wamei/claude-grid-tab))
       (should (equal (alist-get 'name (tab-bar--current-tab-find))
                      "Claude Code - proj"))
       (should (equal (wamei/claude-grid-test--rows) (list (list a))))
@@ -308,13 +308,13 @@ side window とミニバッファは除く。行は上から、各行は左か�
       (should (member "Claude Code - proj" (wamei/claude-grid-test--tab-names))))))
 
 (ert-deftest wamei/claude-grid-tab-uses-session-project-in-claude-buffer ()
-  "グリッドの中で C-u を叩いたら、見ているセッションのプロジェクトが対象になる。"
+  "グリッドの中で叩いたら、見ているセッションのプロジェクトが対象になる。"
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
           (other (wamei/claude-grid-test--session "/tmp/other/")))
       (ignore other)
       (with-current-buffer a
-        (wamei/claude-grid-tab t))
+        (wamei/claude-grid-tab))
       (should (equal (alist-get 'name (tab-bar--current-tab-find))
                      "Claude Code - proj"))
       (should (equal (wamei/claude-grid-test--rows) (list (list a)))))))
@@ -322,7 +322,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
 (ert-deftest wamei/claude-grid-tab-does-nothing-without-sessions ()
   (wamei/claude-grid-test--with-env
     (let ((before (wamei/claude-grid-test--tab-names)))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (should (equal before (wamei/claude-grid-test--tab-names))))))
 
 ;;; タブの範囲
@@ -360,7 +360,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
           (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
           (c (wamei/claude-grid-test--session "/tmp/proj/" "c")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (should (equal (wamei/claude-grid-test--rows) (list (list a b c))))
       (let ((kill-buffer-hook nil)) (kill-buffer b))
       (wamei/claude-grid-rearrange)
@@ -369,7 +369,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
 (ert-deftest wamei/claude-grid-rearrange-adds-a-new-session ()
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (let ((b (wamei/claude-grid-test--session "/tmp/proj/" "b")))
         (wamei/claude-grid-rearrange)
         (should (equal (wamei/claude-grid-test--rows) (list (list a b))))))))
@@ -380,7 +380,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
           (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
           (c (wamei/claude-grid-test--session "/tmp/proj/" "c")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (select-window (get-buffer-window c))
       (let ((kill-buffer-hook nil)) (kill-buffer a))
       (wamei/claude-grid-rearrange)
@@ -392,7 +392,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
       (with-temp-buffer
         (setq default-directory "/tmp/proj/")
-        (wamei/claude-grid-tab t))
+        (wamei/claude-grid-tab))
       (wamei/claude-grid-test--session "/tmp/other/")
       (wamei/claude-grid-rearrange)
       (should (equal (wamei/claude-grid-test--rows) (list (list a))))
@@ -414,7 +414,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
   "最後のセッションが終わったらタブごと閉じる。"
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (should (member "Claude Code" (wamei/claude-grid-test--tab-names)))
       (let ((kill-buffer-hook nil)) (kill-buffer a))
       (wamei/claude-grid-rearrange)
@@ -460,7 +460,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
           (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
           (wamei/claude-grid--rearrange-timer nil))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (let ((kill-buffer-hook nil)) (kill-buffer b))
       (wamei/claude-grid--schedule-rearrange)
       ;; バッファを消した直後は組み直していない (sentinel の中では動かさない)
@@ -477,7 +477,7 @@ side window とミニバッファは除く。行は上から、各行は左か�
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a"))
           (b (wamei/claude-grid-test--session "/tmp/proj/" "b"))
           (wamei/claude-grid--rearrange-timer nil))
-      (wamei/claude-grid-tab)
+      (wamei/claude-grid-tab t)
       (let ((kill-buffer-hook nil)) (kill-buffer b))
       (unwind-protect
           (progn

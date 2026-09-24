@@ -7,8 +7,8 @@
 ;; タブを作る。`wamei/claude-grid-tab' は専用タブへ移動し、その中を window 分割
 ;; してセッションを並べる。
 ;;
-;; - 対象: 引数なしなら全プロジェクトのセッション、C-u 付きならカレント
-;;   プロジェクトのセッションだけ。タブ名が別 ("Claude Code" と
+;; - 対象: 引数なしならカレントプロジェクトのセッションだけ、C-u 付きなら
+;;   全プロジェクトのセッション。タブ名が別 ("Claude Code" と
 ;;   "Claude Code - <project>") なのでタブも別に持てる。
 ;; - タブ: 名前で探して使い回す。移動のたびに今のセッションで組み直すので、
 ;;   セッションが増減してもタブは増えない。
@@ -65,9 +65,9 @@
        (file-name-nondirectory (directory-file-name project-dir))))
 
 (defun wamei/claude-grid--project-dir ()
-  "C-u のときに対象にするプロジェクト。
+  "引数なしのときに対象にするプロジェクト。
 Claude バッファにいればそのセッションのプロジェクト (グリッドの中から
-C-u を叩いたときに、見ているセッションのプロジェクトが対象になる)。
+叩いたときに、見ているセッションのプロジェクトが対象になる)。
 それ以外はカレントバッファの作業ディレクトリ。"
   (or (when-let* ((session (claude-code-ide--buffer-session (current-buffer))))
         (claude-code-ide-mcp-session-project-dir session))
@@ -324,17 +324,17 @@ side window を作るが、組み直しは side window を消してから組む�
 (defun wamei/claude-grid-tab (&optional arg)
   "実行中の claude-code-ide のバッファを分割して並べたタブへ移動する。
 
-引数なしでは全プロジェクトのセッションを \"Claude Code\" タブに並べる。
-ARG (C-u) 付きではカレントプロジェクト (Claude バッファにいればその
+引数なしではカレントプロジェクト (Claude バッファにいればその
 セッションのプロジェクト) のセッションだけを \"Claude Code - <project>\"
-タブに並べる。
+タブに並べる。ARG (C-u) 付きでは全プロジェクトのセッションを
+\"Claude Code\" タブに並べる。
 
 タブは名前で使い回し、移動のたびに今のセッションで組み直す。
 セッションが無ければ何もしない。"
   (interactive "P")
   ;; 自前のコマンドなのでパッケージの autoload は効かない
   (require 'claude-code-ide)
-  (let* ((project-dir (and arg (wamei/claude-grid--project-dir)))
+  (let* ((project-dir (and (not arg) (wamei/claude-grid--project-dir)))
          (buffers (wamei/claude-grid--buffers project-dir)))
     (if (null buffers)
         (message "実行中の Claude セッションがありません")
