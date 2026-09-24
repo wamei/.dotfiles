@@ -12,6 +12,11 @@
 ;; プロジェクト名で分ける。一覧は表示中の端末と同じプロジェクトのものを出すので、
 ;; タブ (プロジェクト) を切り替えても別プロジェクトの端末が並ばない。
 ;;
+;; 端末は作ったときのプロジェクト (`wamei/term--project-root') を覚えていて、
+;; シェルがプロジェクトの外へ cd しても `default-directory' はルートに留める
+;; (`wamei/term--keep-in-project')。所属を `default-directory' で決める
+;; project-buffers や consult のプロジェクトバッファから消えないように。
+;;
 ;; ghostel そのものへの結線 (display-buffer-alist、ghostel-mode-hook、
 ;; ghostel-buffer-name-function) は init.el の ghostel ブロックで行う。
 ;; テストは term-panel-test.el。
@@ -25,6 +30,7 @@
 (defvar ghostel-shell)                  ; ghostel.el
 (defvar ghostel-title)                  ; ghostel.el (buffer-local)
 (declare-function ghostel-create "ghostel" (&optional name display identity))
+(declare-function ghostel--buffer-identification-update "ghostel" ())
 (declare-function wamei/project-tabs-current-root "project-tabs" (&optional frame))
 
 ;; `ghostel-create' には ghostel 側に autoload cookie が無いので自分で張る。
@@ -125,6 +131,12 @@ window に付いた幅は残らない。変数に覚えておき wamei/term--set
     (or (string-prefix-p "*term: " name)
         (string-prefix-p wamei/term-list-buffer-prefix name))))
 
+(defvar-local wamei/term--project-root nil
+  "端末バッファが属するプロジェクトのルート。パネルの端末以外では nil。
+`wamei/term--create' と `wamei/term--setup-buffer' (desktop で復元した端末) が
+入れる。モードを掛け直しても消えないよう permanent-local にしてある。")
+(put 'wamei/term--project-root 'permanent-local t)
+
 (defun wamei/term--tab-root ()
   "カレントタブに紐づいたプロジェクトルート。無ければ nil。
 
@@ -145,8 +157,13 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
 端末本体と一覧の中から呼ばれたときはそのバッファのプロジェクトを見る。
 一覧の再描画やタイトル変更 (プロセスフィルタ) はパネルに出ている端末を
 基準に動くので、ここでタブに引っぱられると別プロジェクトの一覧を描いて
-しまう。タブに紐づけが無ければ従来どおりバッファ基準。"
+しまう。タブに紐づけが無ければ従来どおりバッファ基準。
+
+端末本体は作ったときのプロジェクト (`wamei/term--project-root') を優先する。
+シェルの cd で `default-directory' が動いても、名前と一覧が別プロジェクトに
+すり替わらないように。"
   (or (and (not (wamei/term--panel-buffer-p)) (wamei/term--tab-root))
+      wamei/term--project-root
       (if-let* ((project (project-current nil)))
           (project-root project)
         default-directory)))
@@ -209,6 +226,9 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
 シェルのカーソル位置と重なって紛らわしいだけなので、パネルが非アクティブの
 ときは出さない。高さの記憶と kill 時の後始末もここで登録する。"
   (setq-local cursor-in-non-selected-windows nil)
+  (when-let* (((not wamei/term--project-root))
+              (name (wamei/term--name-project (buffer-name))))
+    (setq wamei/term--project-root (wamei/term--locate-root default-directory name)))
   (add-hook 'window-configuration-change-hook #'wamei/term--remember-height nil t)
   ;; シェル終了などでバッファが消えたらパネルと一覧を追従させる
   (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
@@ -217,8 +237,48 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
   "INDEX 番目の端末を作って返す。
 `ghostel-create' は DISPLAY を渡さなければ表示しないので、window 構成は変わらない
 \(パネルへの表示は `wamei/term--show' が display-buffer で行う)。"
-  (let ((default-directory (wamei/term--root)))
-    (ghostel-create (wamei/term--buffer-name index))))
+  (let* ((root (wamei/term--root))
+         (default-directory root))
+    (with-current-buffer (ghostel-create (wamei/term--buffer-name index))
+      (setq wamei/term--project-root root)
+      (current-buffer))))
+
+(defun wamei/term--name-project (name)
+  "端末バッファ名 NAME (\"*term: <project>[ N]*\") のプロジェクト名。違えば nil。"
+  (when (string-match "\\`\\*term: \\(.+?\\)\\(?: [0-9]+\\)?\\*\\'" name)
+    (match-string 1 name)))
+
+(defun wamei/term--locate-root (dir name)
+  "DIR から上へたどって、名前が NAME のプロジェクトのルートを返す。無ければ nil。
+desktop で復元した端末は保存時の作業ディレクトリで起動するので、そこが
+プロジェクト内の別リポジトリ (サブモジュールなど) だと `project-current'
+だけでは内側を拾ってしまう。バッファ名のプロジェクトを手がかりに外側を探す。
+既にプロジェクトの外にいる (この仕組みより前に cd した端末) と見つからない。
+そのときは別のプロジェクトを覚えて名前とずれるより、nil で従来どおりにする。"
+  (let ((dir (file-name-as-directory (expand-file-name dir))))
+    (catch 'found
+      (while-let ((project (project-current nil dir)))
+        (let* ((root (file-name-as-directory (expand-file-name (project-root project))))
+               (parent (file-name-directory (directory-file-name root))))
+          (when (equal (file-name-nondirectory (directory-file-name root)) name)
+            (throw 'found root))
+          ;; ルート (/) まで来たら打ち切る
+          (when (equal parent root) (throw 'found nil))
+          (setq dir parent))))))
+
+(defun wamei/term--keep-in-project (orig dir)
+  "`ghostel--update-directory' (ORIG) の :around advice。
+パネルの端末がプロジェクトの外へ cd したら、`default-directory' を
+プロジェクトルートに留める。project.el の `project-buffers' も consult の
+プロジェクトバッファも `default-directory' の前方一致で所属を決めるので、
+外に出すと端末がプロジェクトから消える。プロジェクト内の cd はそのまま追う。"
+  (funcall orig dir)
+  (when-let* ((root wamei/term--project-root)
+              ((not (string-prefix-p root (expand-file-name default-directory)))))
+    (setq default-directory root
+          list-buffers-directory root)
+    (when (fboundp 'ghostel--buffer-identification-update)
+      (ghostel--buffer-identification-update))))
 
 ;;; 一覧
 
