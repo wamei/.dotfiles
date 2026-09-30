@@ -101,6 +101,12 @@ adopt = true
 "~/.config/karabiner/assets/complex_modifications/ja.json" = { source = ".config/karabiner/assets/complex_modifications/ja.json", mode = "symlink" }
 "~/.gitconfig" = { source = ".gitconfig", mode = "symlink" }
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }
+# Claude Code のユーザー設定。リポジトリの .claude/ に置くとこの repo を開いたときに
+# project 設定として二重に読まれる (hook が 2 回走る) ので claude/ に置く。
+"~/.claude/CLAUDE.md" = { source = "claude/CLAUDE.md", mode = "symlink" }
+"~/.claude/settings.json" = { source = "claude/settings.json", mode = "symlink" }
+# グローバルの skill 宣言。`apm install -g` で ~/.claude/skills/ に deploy される。
+"~/.apm/apm.yml" = { source = ".apm/apm.yml", mode = "symlink" }
 
 # ---------------------------------------------------------------------------
 # macOS のシステム設定
