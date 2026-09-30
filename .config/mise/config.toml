@@ -82,6 +82,9 @@ go = "1"
 "npm:yarn" = "1"
 java = "17"
 "ubi:sst/opencode" = "latest"
+# APM (Agent Package Manager)。~/.claude/CLAUDE.md の skill 運用 (global の meta skill、
+# repo ごとの apm.yml) が前提にしている。
+"github:microsoft/apm" = "latest"
 
 [settings]
 # nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む
