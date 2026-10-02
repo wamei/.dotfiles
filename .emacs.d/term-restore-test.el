@@ -675,6 +675,147 @@ desktop を読めなくても 30 秒アイドルの autosave が記録を埋め�
                 (should-not (getenv "WAMEI_TERM_RESTORE")))))
         (kill-buffer "*term: foo*")))))
 
+;;; 閉じたタブの端末
+
+(defmacro wamei/term-restore-test--with-closed (&rest body)
+  "閉じたタブの記録と置き場を空にして BODY を評価する。
+起動時の desktop 復元は済んだもの (`wamei/term-restore--restoring' は nil) とする。"
+  (declare (indent 0))
+  `(wamei/term-restore-test--with-saved-dir
+     (let ((wamei/term-restore-closed nil)
+           (wamei/term-restore--restoring nil))
+       ,@body)))
+
+(defun wamei/term-restore-test--terminal (name directory &optional title output)
+  "端末バッファ NAME を作って返す。"
+  (with-current-buffer (get-buffer-create name)
+    (setq default-directory directory)
+    (when title (setq-local ghostel-title title))
+    (when output (insert output))
+    (current-buffer)))
+
+(ert-deftest wamei/term-restore-stash-records-terminals-of-closed-project ()
+  "消す端末のスクロールバックを書き出し、root ごとに記録する。端末以外は無視する。"
+  (wamei/term-restore-test--with-closed
+    (let ((term (wamei/term-restore-test--terminal "*term: foo 2*" "/tmp/foo/src/" "make" "hello\n"))
+          (other (get-buffer-create "foo.el")))
+      (unwind-protect
+          (progn
+            (wamei/term-restore-stash "/tmp/foo/" (list term other))
+            (should (= (length wamei/term-restore-closed) 1))
+            (let ((entry (car wamei/term-restore-closed)))
+              (should (equal (plist-get entry :root) "/tmp/foo/"))
+              (should (equal (plist-get entry :name) "*term: foo 2*"))
+              (should (equal (plist-get entry :directory) "/tmp/foo/src/"))
+              (should (equal (plist-get entry :title) "make"))
+              (should (equal (with-temp-buffer
+                               (insert-file-contents (plist-get entry :scrollback))
+                               (buffer-string))
+                             "hello\n"))))
+        (kill-buffer term)
+        (kill-buffer other)))))
+
+(ert-deftest wamei/term-restore-stash-replaces-records-of-same-root ()
+  "同じ root をもう一度閉じたら記録を差し替える。別の root の記録は残す。"
+  (wamei/term-restore-test--with-closed
+    (let ((term (wamei/term-restore-test--terminal "*term: foo*" "/tmp/foo/" nil "new\n")))
+      (unwind-protect
+          (progn
+            (setq wamei/term-restore-closed
+                  (list (list :root "/tmp/foo/" :name "*term: foo 3*")
+                        (list :root "/tmp/bar/" :name "*term: bar*")))
+            (wamei/term-restore-stash "/tmp/foo/" (list term))
+            (should (equal (mapcar (lambda (e) (plist-get e :name)) wamei/term-restore-closed)
+                           '("*term: foo*" "*term: bar*"))))
+        (kill-buffer term)))))
+
+(ert-deftest wamei/term-restore-stash-separates-same-named-projects ()
+  "同名で root が違うプロジェクトのファイルは衝突させない。"
+  (wamei/term-restore-test--with-closed
+    (let ((term (wamei/term-restore-test--terminal "*term: foo*" "/tmp/a/foo/" nil "a\n")))
+      (unwind-protect
+          (progn
+            (wamei/term-restore-stash "/tmp/a/foo/" (list term))
+            (with-current-buffer term (setq default-directory "/tmp/b/foo/"))
+            (wamei/term-restore-stash "/tmp/b/foo/" (list term))
+            (let ((files (mapcar (lambda (e) (plist-get e :scrollback)) wamei/term-restore-closed)))
+              (should (= (length (delete-dups (copy-sequence files))) 2))))
+        (kill-buffer term)))))
+
+(ert-deftest wamei/term-restore-revive-recreates-terminals-with-scrollback ()
+  "root の記録から端末を作り直し、起動時に前回の出力を渡し、記録を消す。"
+  (wamei/term-restore-test--with-closed
+    (let ((file (expand-file-name "closed-foo.txt" wamei/term-restore-directory))
+          (envs nil))
+      (write-region "old\n" nil file nil 'silent)
+      (setq wamei/term-restore-closed
+            (list (list :root "/tmp/foo/" :name "*term: foo*" :directory "/tmp/"
+                        :title "make" :scrollback file)
+                  (list :root "/tmp/bar/" :name "*term: bar*" :directory "/tmp/"
+                        :title nil :scrollback file)))
+      (unwind-protect
+          (cl-letf (((symbol-function 'ghostel-create)
+                     (lambda (&optional name &rest _)
+                       (with-current-buffer (get-buffer-create name)
+                         (let ((process-environment (copy-sequence process-environment)))
+                           (run-hooks 'ghostel-pre-spawn-hook)
+                           (push (cons default-directory (getenv "WAMEI_TERM_RESTORE")) envs))
+                         (current-buffer)))))
+            (let ((ghostel-pre-spawn-hook '(wamei/term-restore--inject-scrollback)))
+              (wamei/term-restore-revive "/tmp/foo/"))
+            (should (equal envs `(("/tmp/" . ,file))))
+            (with-current-buffer "*term: foo*"
+              (should (equal ghostel-title "make"))
+              (should (equal wamei/term--project-root "/tmp/foo/")))
+            (should-not (get-buffer "*term: bar*"))
+            (should (equal (mapcar (lambda (e) (plist-get e :root)) wamei/term-restore-closed)
+                           '("/tmp/bar/"))))
+        (when (get-buffer "*term: foo*") (kill-buffer "*term: foo*"))))))
+
+(ert-deftest wamei/term-restore-revive-skips-live-terminals ()
+  "同名の端末が既にあれば作り直さない。"
+  (wamei/term-restore-test--with-closed
+    (let ((live (get-buffer-create "*term: foo*")))
+      (unwind-protect
+          (wamei/term-restore-test--with-fake-create
+            (setq wamei/term-restore-closed
+                  (list (list :root "/tmp/foo/" :name "*term: foo*" :directory "/tmp/")))
+            (wamei/term-restore-revive "/tmp/foo/")
+            (should-not calls)
+            (should-not wamei/term-restore-closed))
+        (kill-buffer live)))))
+
+(ert-deftest wamei/term-restore-revive-without-records-does-nothing ()
+  (wamei/term-restore-test--with-closed
+    (wamei/term-restore-test--with-fake-create
+      (wamei/term-restore-revive "/tmp/foo/")
+      (should-not calls))))
+
+(ert-deftest wamei/term-restore-pending-injects-only-inside-revive ()
+  "閉じたタブ分の注入は作り直している間だけ。その後の spawn には効かない。"
+  (wamei/term-restore-test--with-closed
+    (with-current-buffer (get-buffer-create "*term: foo*")
+      (unwind-protect
+          (let ((process-environment (copy-sequence process-environment)))
+            (wamei/term-restore--inject-scrollback)
+            (should-not (getenv "WAMEI_TERM_RESTORE")))
+        (kill-buffer (current-buffer))))))
+
+(ert-deftest wamei/term-restore-save-keeps-closed-scrollback ()
+  "desktop の保存は閉じたタブの記録が参照するファイルを消さず、参照の無いものは消す。"
+  (wamei/term-restore-test--with-closed
+    (let* ((dir (wamei/term-restore--closed-directory))
+           (kept (expand-file-name "kept.txt" dir))
+           (stale (expand-file-name "stale.txt" dir)))
+      (make-directory dir t)
+      (write-region "a\n" nil kept nil 'silent)
+      (write-region "b\n" nil stale nil 'silent)
+      (setq wamei/term-restore-closed
+            (list (list :root "/tmp/foo/" :name "*term: foo*" :scrollback kept)))
+      (wamei/term-restore-save)
+      (should (file-exists-p kept))
+      (should-not (file-exists-p stale)))))
+
 ;;; desktop への組み込み
 
 (ert-deftest wamei/term-restore-setup-hooks-into-desktop ()
@@ -691,6 +832,7 @@ desktop を読めなくても 30 秒アイドルの autosave が記録を埋め�
         (ghostel-pre-spawn-hook nil))
     (wamei/term-restore-setup)
     (should (memq 'wamei/term-restore-saved desktop-globals-to-save))
+    (should (memq 'wamei/term-restore-closed desktop-globals-to-save))
     (should (memq #'wamei/term-restore-save desktop-save-hook))
     (should (memq #'wamei/term-restore--inject-scrollback ghostel-pre-spawn-hook))
     (should (memq #'wamei/term-restore-ensure desktop-after-read-hook))

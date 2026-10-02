@@ -25,9 +25,19 @@
 ;;    バッファに関係なくその root を起点にする。project-current は eglot や
 ;;    apheleia からも呼ばれるため、対象コマンドの実行中だけ差し替える。
 ;;
+;; 4. タブを閉じたときの後始末 (`wamei/project-tabs--on-close')
+;;    閉じたタブのプロジェクトが他のどのタブにも紐づいていなければ、
+;;    そのプロジェクトのバッファ (端末・claude のセッションを含む) を消す。
+;;    他のタブの window に出ているバッファは残す。メモや sidebar のように
+;;    project-buffers で拾えないものは `wamei/project-tabs-extra-buffer-functions'
+;;    で足し、端末の履歴の退避などは `wamei/project-tabs-before-kill-functions'
+;;    で消す前に済ませる。タブを開き直したときの復元は
+;;    `wamei/project-tabs-root-set-functions' (タブに root が紐づいた時点) に掛ける。
+;;
 ;;; Code:
 
 (require 'project)
+(require 'seq)
 (require 'tab-bar)
 
 ;;; タブに紐づくプロジェクト
@@ -65,6 +75,11 @@ child frame にフォーカスがあるときのために `wamei/project-tabs-ba
   (wamei/project-tabs-root
    (assq 'current-tab (frame-parameter (wamei/project-tabs-base-frame frame) 'tabs))))
 
+(defvar wamei/project-tabs-root-set-functions nil
+  "カレントタブに root が新しく紐づいたときに root を受け取って呼ぶ関数のリスト。
+既に同じ root が紐づいていたときは呼ばない。閉じたプロジェクトのタブを
+開き直したときの復元 (端末の履歴など) に使う。")
+
 (defun wamei/project-tabs-set-root (root)
   "カレントタブに ROOT を紐づける。
 
@@ -78,9 +93,12 @@ child frame から呼ばれても親フレームのタブに書くよう
     (tab-bar-tabs)                      ; frame の tabs パラメータを確実に用意する
     (when-let* ((tab (tab-bar--current-tab-find))
                 (root (wamei/project-tabs--normalize-root root)))
-      (if-let* ((cell (assq 'wamei-project (cdr tab))))
-          (setcdr cell root)
-        (setcdr tab (cons (cons 'wamei-project root) (cdr tab))))
+      (let ((cell (assq 'wamei-project (cdr tab))))
+        (unless (equal (cdr cell) root)
+          (if cell
+              (setcdr cell root)
+            (setcdr tab (cons (cons 'wamei-project root) (cdr tab))))
+          (run-hook-with-args 'wamei/project-tabs-root-set-functions root)))
       root)))
 
 ;;; タブ名
@@ -160,6 +178,86 @@ frame をそのまま選択すると `tab-bar--current-tab' がそこに幻の t
 tab-rename は window 構成を変える処理を呼ぶことがあるので、再表示中に走る
 window change 関数の中では直接呼ばない。"
   (run-at-time 0 nil #'wamei/project-tabs-pin-name frame))
+
+;;; タブを閉じたときの後始末
+
+(defvar wamei/project-tabs-extra-buffer-functions nil
+  "root を受け取り、project-buffers 以外でそのプロジェクトに属するバッファを返す関数のリスト。
+メモ (実体は ~/org/ にあり、desktop から復元すると default-directory が
+root を向かない) や sidebar (空白始まりの内部バッファ) を足すのに使う。")
+
+(defvar wamei/project-tabs-before-kill-functions nil
+  "root と消すバッファのリストを受け取り、後始末でそれらを消す直前に呼ぶ関数のリスト。")
+
+(defun wamei/project-tabs-root-open-p (root)
+  "ROOT が、いずれかのフレームのいずれかのタブに紐づいていれば非 nil。
+tab-bar-tabs を通すとカレントタブ名の再計算が走るので、tabs パラメータを
+直接読む。child frame は tabs を持たないので全フレームを見てよい。"
+  (let ((root (wamei/project-tabs--normalize-root root)))
+    (seq-some (lambda (frame)
+                (seq-some (lambda (tab) (equal (wamei/project-tabs-root tab) root))
+                          (frame-parameter frame 'tabs)))
+              (frame-list))))
+
+(defun wamei/project-tabs--shown-buffers ()
+  "いずれかのタブの window に出ているバッファのリスト。
+カレントタブは生きている window から、それ以外のタブは切り替え時に
+保存された window の状態 (ws) から拾う。ws はバッファ名で持っている。"
+  (let ((buffers nil))
+    (dolist (frame (frame-list))
+      (dolist (window (window-list frame 'no-mini))
+        (push (window-buffer window) buffers))
+      (dolist (tab (frame-parameter frame 'tabs))
+        (unless (eq (car tab) 'current-tab)
+          (dolist (buffer (window-state-buffers (alist-get 'ws tab)))
+            (when-let* ((buffer (get-buffer buffer)))
+              (push buffer buffers))))))
+    (delete-dups buffers)))
+
+(defun wamei/project-tabs--buffers-to-kill (root)
+  "後始末で ROOT について消すバッファ。
+project-buffers から空白始まりの内部バッファを除き、
+`wamei/project-tabs-extra-buffer-functions' の分を足し、どこかのタブに
+出ているものを除く。内部バッファを外すのは、default-directory が root を
+向いているだけの eglot や git の作業用バッファまで巻き込まないため。
+root のディレクトリが消えていて project-current が nil のときも、
+default-directory の前方一致で拾えるよう transient で代用する。"
+  (let* ((project (or (project-current nil root) (cons 'transient root)))
+         (shown (wamei/project-tabs--shown-buffers))
+         (buffers (append
+                   (seq-remove (lambda (buffer)
+                                 (string-prefix-p " " (buffer-name buffer)))
+                               (project-buffers project))
+                   (mapcan (lambda (fn) (copy-sequence (funcall fn root)))
+                           wamei/project-tabs-extra-buffer-functions))))
+    (seq-filter (lambda (buffer)
+                  (and (buffer-live-p buffer) (not (memq buffer shown))))
+                (delete-dups buffers))))
+
+(defun wamei/project-tabs-cleanup-closed (root)
+  "ROOT がどのタブにも紐づいていなければ、そのプロジェクトのバッファを消す。
+端末や claude のセッションのようにプロセスが動いているバッファも確認なしで
+消す (`process-kill-buffer-query-function' を外す)。変更のあるファイルの
+バッファは kill-buffer 自身が確認する。"
+  (let ((root (wamei/project-tabs--normalize-root root)))
+    (unless (wamei/project-tabs-root-open-p root)
+      (when-let* ((buffers (wamei/project-tabs--buffers-to-kill root)))
+        (run-hook-with-args 'wamei/project-tabs-before-kill-functions root buffers)
+        (let ((kill-buffer-query-functions
+               (remq 'process-kill-buffer-query-function kill-buffer-query-functions)))
+          (dolist (buffer buffers)
+            (when (buffer-live-p buffer)
+              (kill-buffer buffer))))))))
+
+(defun wamei/project-tabs--on-close (tab last-tab-p)
+  "`tab-bar-tab-pre-close-functions' 用。閉じる TAB のプロジェクトの後始末を予約する。
+LAST-TAB-P (フレーム最後のタブ) は閉じられないので何もしない。
+後始末はタブが閉じて別のタブが選ばれた後 (次のコマンド境界) に回す。
+閉じる前だと、閉じるタブ自身の window に出ているバッファを
+「表示中」と数えてしまう。"
+  (when-let* (((not last-tab-p))
+              (root (wamei/project-tabs-root tab)))
+    (run-at-time 0 nil #'wamei/project-tabs-cleanup-closed root)))
 
 ;;; project 系コマンドの起点
 

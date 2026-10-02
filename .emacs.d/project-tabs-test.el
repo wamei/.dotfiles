@@ -340,5 +340,174 @@
             (should (alist-get 'explicit-name tab)))
           (should (equal (wamei/project-tabs-current-root parent) "/tmp/proj-a/")))))))
 
+;;; タブを閉じたときの後始末
+
+(defmacro wamei/project-tabs-test--with-buffers (specs &rest body)
+  "SPECS の (VAR NAME DIR) ごとにバッファを作って BODY を評価し、最後に消す。"
+  (declare (indent 1))
+  `(let ,(mapcar (lambda (spec)
+                   `(,(car spec) (with-current-buffer (generate-new-buffer ,(nth 1 spec))
+                                  (setq default-directory ,(nth 2 spec))
+                                  (current-buffer))))
+                 specs)
+     (unwind-protect (progn ,@body)
+       (dolist (buffer (list ,@(mapcar #'car specs)))
+         (when (buffer-live-p buffer)
+           (let ((kill-buffer-query-functions nil))
+             (kill-buffer buffer)))))))
+
+(defmacro wamei/project-tabs-test--with-cleanup-env (&rest body)
+  "/tmp/proj-a/ と /tmp/proj-b/ をプロジェクトにし、タブを 1 つにして BODY を評価する。
+選択 window は *scratch* にしておく (テストのバッファが表示中扱いにならないように)。"
+  (declare (indent 0))
+  `(let ((project-find-functions
+          (list (lambda (dir)
+                  (let ((dir (expand-file-name dir)))
+                    (cond ((string-prefix-p "/tmp/proj-a/" dir) (cons 'transient "/tmp/proj-a/"))
+                          ((string-prefix-p "/tmp/proj-b/" dir) (cons 'transient "/tmp/proj-b/")))))))
+         (wamei/project-tabs-extra-buffer-functions nil)
+         (wamei/project-tabs-before-kill-functions nil))
+     (wamei/project-tabs-test--with-tab-bar
+       (set-window-buffer (selected-window) (get-buffer-create "*scratch*"))
+       ,@body)))
+
+(ert-deftest wamei/project-tabs-root-open-p-sees-other-tabs ()
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-set-root "/tmp/proj-a/")
+    (tab-new)
+    (wamei/project-tabs-set-root "/tmp/proj-b/")
+    (should (wamei/project-tabs-root-open-p "/tmp/proj-a/"))
+    (should (wamei/project-tabs-root-open-p "/tmp/proj-b"))
+    (should-not (wamei/project-tabs-root-open-p "/tmp/proj-c/"))))
+
+(ert-deftest wamei/project-tabs-cleanup-kills-project-buffers ()
+  "どのタブにも紐づいていないプロジェクトのバッファは消し、他のプロジェクトのものは残す。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((a "a.el" "/tmp/proj-a/")
+                                            (a-sub "sub.el" "/tmp/proj-a/src/")
+                                            (b "b.el" "/tmp/proj-b/"))
+      (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+      (should-not (buffer-live-p a))
+      (should-not (buffer-live-p a-sub))
+      (should (buffer-live-p b)))))
+
+(ert-deftest wamei/project-tabs-cleanup-keeps-buffers-when-another-tab-has-root ()
+  "同じプロジェクトのタブが他に残っていれば何も消さない。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-set-root "/tmp/proj-a/")
+    (wamei/project-tabs-test--with-buffers ((a "a.el" "/tmp/proj-a/"))
+      (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+      (should (buffer-live-p a)))))
+
+(ert-deftest wamei/project-tabs-cleanup-keeps-buffers-shown-in-other-tabs ()
+  "別のタブの window に出ているバッファは残す (タブを切り替えた後の ws から拾う)。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((shown "shown.el" "/tmp/proj-a/")
+                                            (hidden "hidden.el" "/tmp/proj-a/"))
+      (wamei/project-tabs-set-root "/tmp/proj-b/")
+      (set-window-buffer (selected-window) shown)
+      (tab-new)
+      (set-window-buffer (selected-window) (get-buffer-create "*scratch*"))
+      (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+      (should (buffer-live-p shown))
+      (should-not (buffer-live-p hidden)))))
+
+(ert-deftest wamei/project-tabs-cleanup-keeps-buffers-shown-in-live-windows ()
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((shown "shown.el" "/tmp/proj-a/"))
+      (set-window-buffer (selected-window) shown)
+      (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+      (should (buffer-live-p shown)))))
+
+(ert-deftest wamei/project-tabs-cleanup-skips-hidden-buffers ()
+  "空白で始まる内部バッファは project-buffers に入っていても消さない。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((internal " *internal*" "/tmp/proj-a/"))
+      (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+      (should (buffer-live-p internal)))))
+
+(ert-deftest wamei/project-tabs-cleanup-kills-extra-buffers ()
+  "`wamei/project-tabs-extra-buffer-functions' が返すバッファも消す (メモや sidebar)。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((memo "proj-a.org" "/tmp/org/")
+                                            (sidebar " *sidebar: proj-a*" "/tmp/proj-a/"))
+      (let ((wamei/project-tabs-extra-buffer-functions
+             (list (lambda (root)
+                     (should (equal root "/tmp/proj-a/"))
+                     (list memo sidebar)))))
+        (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+        (should-not (buffer-live-p memo))
+        (should-not (buffer-live-p sidebar))))))
+
+(ert-deftest wamei/project-tabs-cleanup-runs-before-kill-functions ()
+  "消す直前に ROOT と消すバッファを渡す。渡された時点ではまだ生きている。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((a "a.el" "/tmp/proj-a/"))
+      (let* ((seen nil)
+             (wamei/project-tabs-before-kill-functions
+              (list (lambda (root buffers)
+                      (push (list root buffers (mapcar #'buffer-live-p buffers)) seen)))))
+        (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+        (should (equal seen `(("/tmp/proj-a/" (,a) (t)))))))))
+
+(ert-deftest wamei/project-tabs-cleanup-does-nothing-without-buffers ()
+  (wamei/project-tabs-test--with-cleanup-env
+    (let* ((called nil)
+           (wamei/project-tabs-before-kill-functions
+            (list (lambda (&rest _) (setq called t)))))
+      (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+      (should-not called))))
+
+(ert-deftest wamei/project-tabs-cleanup-kills-process-buffers-without-asking ()
+  "端末や claude のようにプロセスが動いているバッファも確認なしで消す。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((term "*term: proj-a*" "/tmp/proj-a/"))
+      ;; make-pipe-process はディレクトリが無くても作れる (/tmp/proj-a/ は実在しない)
+      (let ((process (make-pipe-process :name "term" :buffer term)))
+        (unwind-protect
+            (cl-letf (((symbol-function 'yes-or-no-p)
+                       (lambda (&rest _) (error "Asked"))))
+              (wamei/project-tabs-cleanup-closed "/tmp/proj-a/")
+              (should-not (buffer-live-p term)))
+          (when (process-live-p process) (delete-process process)))))))
+
+(ert-deftest wamei/project-tabs-close-cleans-up-closed-project ()
+  "タブを閉じると、そのプロジェクトのバッファを次のコマンド境界で消す。"
+  (wamei/project-tabs-test--with-cleanup-env
+    (wamei/project-tabs-test--with-buffers ((a "a.el" "/tmp/proj-a/")
+                                            (b "b.el" "/tmp/proj-b/"))
+      (let ((scheduled nil))
+        (cl-letf (((symbol-function 'run-at-time)
+                   (lambda (_time _repeat fn &rest args)
+                     (push (cons fn args) scheduled))))
+          (let ((tab-bar-tab-pre-close-functions '(wamei/project-tabs--on-close)))
+            (wamei/project-tabs-set-root "/tmp/proj-b/")
+            (tab-new)
+            (wamei/project-tabs-set-root "/tmp/proj-a/")
+            (tab-close)
+            ;; 閉じている最中には消さない
+            (should (buffer-live-p a))
+            (pcase-dolist (`(,fn . ,args) scheduled) (apply fn args))
+            (should-not (buffer-live-p a))
+            (should (buffer-live-p b))))))))
+
+(ert-deftest wamei/project-tabs-close-skips-last-tab-and-unbound-tab ()
+  "最後のタブ (閉じられない) と、プロジェクトが紐づいていないタブでは何もしない。"
+  (cl-letf (((symbol-function 'run-at-time)
+             (lambda (&rest _) (error "Scheduled"))))
+    (wamei/project-tabs--on-close '(tab (wamei-project . "/tmp/proj-a/")) t)
+    (wamei/project-tabs--on-close '(tab (name . "x")) nil)))
+
+(ert-deftest wamei/project-tabs-set-root-runs-root-set-functions ()
+  "root が新しく紐づいたときだけ `wamei/project-tabs-root-set-functions' を呼ぶ。"
+  (wamei/project-tabs-test--with-tab-bar
+    (let* ((seen nil)
+           (wamei/project-tabs-root-set-functions
+            (list (lambda (root) (push root seen)))))
+      (wamei/project-tabs-set-root "/tmp/proj-a")
+      (wamei/project-tabs-set-root "/tmp/proj-a/")
+      (wamei/project-tabs-set-root "/tmp/proj-b/")
+      (should (equal seen '("/tmp/proj-b/" "/tmp/proj-a/"))))))
+
 (provide 'project-tabs-test)
 ;;; project-tabs-test.el ends here

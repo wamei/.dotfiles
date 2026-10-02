@@ -76,6 +76,10 @@ kill した端末の出力が同じ名前で開き直した新しいシェルに
 `desktop-save-mode' の autosave は動き続けて記録を埋めるので、「記録が空だから
 注入は起きない」では済まない。")
 
+(defvar wamei/term-restore--pending nil
+  "端末を作り直している間だけ、その端末に渡すスクロールバックのファイル。
+`wamei/term-restore-revive' が `ghostel-create' の周りで束縛する。")
+
 ;;; バッファ名
 
 (defconst wamei/term-restore--name-regexp
@@ -273,11 +277,115 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
 
 (defun wamei/term-restore-save ()
   "全ての端末を `wamei/term-restore-saved' に記録し、スクロールバックを書き出す。
-`desktop-save-hook' から呼ぶ。"
+`desktop-save-hook' から呼ぶ。閉じたタブの置き場も記録に無いファイルを掃除する。"
   (let ((entries (mapcar (lambda (item) (apply #'wamei/term-restore--entry item))
                          (wamei/term-restore--terminal-buffers))))
     (wamei/term-restore--prune entries)
+    (wamei/term-restore--prune-closed)
     (setq wamei/term-restore-saved entries)))
+
+;;; 閉じたタブの端末
+
+;; タブを閉じてプロジェクトのバッファを消すとき (project-tabs.el の
+;; `wamei/project-tabs-before-kill-functions')、端末の記録を root ごとに
+;; `wamei/term-restore-closed' へ退避する。同じプロジェクトのタブが再び開いたとき
+;; (`wamei/project-tabs-root-set-functions') に端末を作り直し、前回の出力を
+;; 起動時の注入と同じ WAMEI_TERM_RESTORE で渡す。記録は desktop に保存するので
+;; 再起動を跨いでも残る。
+;;
+;; スクロールバックは置き場の closed/ に分けて置く。desktop の保存
+;; (`wamei/term-restore--prune') は置き場の直下だけを掃除し、生きている端末の
+;; ファイル名はプロジェクト名と番号だけで決まるので、同じ名前で別の場所にある
+;; プロジェクトの端末と食い合わないようにする。closed/ のファイル名には root の
+;; ハッシュを入れる。
+;;
+;; 作り直した端末のファイルはその場では消さない。シェルが起動して cat するのは
+;; 非同期なので、次の desktop の保存で参照が無くなったものとして掃除する。
+
+(defvar wamei/term-restore-closed nil
+  "閉じたタブで消した端末の記録。`wamei/term-restore-saved' の各要素に
+:root (プロジェクトルート) を足した plist のリスト。
+`desktop-globals-to-save' 経由で desktop ファイルに書かれる。")
+
+(defvar wamei/term--project-root)       ; term-panel.el (buffer-local)
+
+(defun wamei/term-restore--closed-directory ()
+  "閉じたタブの端末のスクロールバックを置くディレクトリ。"
+  (expand-file-name "closed/" wamei/term-restore-directory))
+
+(defun wamei/term-restore--closed-file (root name)
+  "ROOT のプロジェクトの端末 NAME のスクロールバックを置くファイル。"
+  (expand-file-name (format "%s-%s.txt"
+                            (substring (md5 root) 0 8)
+                            (replace-regexp-in-string "[^[:alnum:]._-]" "_" name))
+                    (wamei/term-restore--closed-directory)))
+
+(defun wamei/term-restore--prune-closed ()
+  "閉じたタブの置き場から `wamei/term-restore-closed' が参照しないファイルを消す。"
+  (let ((dir (wamei/term-restore--closed-directory)))
+    (when (file-directory-p dir)
+      (let ((referenced (mapcar (lambda (entry) (plist-get entry :scrollback))
+                                wamei/term-restore-closed)))
+        (dolist (file (directory-files dir t "\\`[^.]"))
+          (when (and (file-regular-p file)
+                     (not (member file referenced)))
+            (delete-file file)))))))
+
+(defun wamei/term-restore--without-root (root)
+  "`wamei/term-restore-closed' から ROOT の記録を除いたもの。"
+  (seq-remove (lambda (entry) (equal (plist-get entry :root) root))
+              wamei/term-restore-closed))
+
+(defun wamei/term-restore-stash (root buffers)
+  "BUFFERS のうち端末のものを ROOT の記録として `wamei/term-restore-closed' に退避する。
+スクロールバックは書き出しておく。ROOT の前の記録は差し替える。
+`wamei/project-tabs-before-kill-functions' から呼ぶ。"
+  (let ((entries
+         (delq nil
+               (mapcar
+                (lambda (buffer)
+                  (when (and (buffer-live-p buffer)
+                             (wamei/term-restore--parse-name (buffer-name buffer)))
+                    (with-current-buffer buffer
+                      (let ((file (wamei/term-restore--closed-file root (buffer-name))))
+                        (wamei/term-restore--write-scrollback
+                         file
+                         (wamei/term-restore--ansi
+                          (wamei/term-restore--tail (wamei/term-restore--content)
+                                                    wamei/term-restore-scrollback-lines)))
+                        (list :root root
+                              :name (buffer-name)
+                              :directory default-directory
+                              :title (and (boundp 'ghostel-title) ghostel-title)
+                              :scrollback file)))))
+                buffers))))
+    (setq wamei/term-restore-closed
+          (append entries (wamei/term-restore--without-root root)))))
+
+(defun wamei/term-restore-revive (root)
+  "ROOT の閉じたタブの記録から端末を作り直し、記録を消す。
+同名の端末が既にあればそのままにする。作り直した端末には前回の出力を
+起動時に渡し、タイトルを戻し、所属するプロジェクトを ROOT にする。
+`wamei/project-tabs-root-set-functions' から呼ぶ。"
+  (let ((entries (seq-filter (lambda (entry) (equal (plist-get entry :root) root))
+                             wamei/term-restore-closed)))
+    (setq wamei/term-restore-closed (wamei/term-restore--without-root root))
+    (dolist (entry entries)
+      (let ((name (plist-get entry :name)))
+        (unless (get-buffer name)
+          (condition-case err
+              (let ((buffer (let ((default-directory
+                                   (wamei/term-restore--entry-directory entry))
+                                  (wamei/term-restore--pending
+                                   (plist-get entry :scrollback)))
+                              (ghostel-create name))))
+                (with-current-buffer buffer
+                  (setq-local wamei/term--project-root root)
+                  (when-let* ((title (plist-get entry :title)))
+                    (unless (bound-and-true-p ghostel-title)
+                      (setq-local ghostel-title title)))))
+            (error (message "term-restore: %s を作り直せません: %s"
+                            name (error-message-string err)))))))))
 
 ;;; 復元
 
@@ -302,16 +410,22 @@ PROJECT と INDEX はスクロールバックのファイル名にだけ使う�
   desktop 復元の窓の中だけ。`wamei/term-restore-ensure' が窓を閉じるので、
   その後 `desktop-save-mode' の autosave が記録を作り直しても、端末を kill して
   同じ名前で開き直しても、死んだ端末の出力は再生されない。
-- 記録ごとの :injected の印: 窓の中で同じ記録から二重に注入しない。"
-  (when wamei/term-restore--restoring
-    (when-let* ((entry (wamei/term-restore--entry-for (buffer-name)))
-                ((not (plist-get entry :injected)))
-                (file (plist-get entry :scrollback)))
-      (when (file-readable-p file)
-        ;; entry は非 nil なので plist-put はその場で書き換わる
-        ;; (`wamei/term-restore-saved' に入っている cons をそのまま触る)
-        (plist-put entry :injected t)
-        (setenv "WAMEI_TERM_RESTORE" file)))))
+- 記録ごとの :injected の印: 窓の中で同じ記録から二重に注入しない。
+
+閉じたタブの端末を作り直している間 (`wamei/term-restore--pending' が
+束縛されている間) は、窓とは関係なくそのファイルを渡す。"
+  (if wamei/term-restore--pending
+      (when (file-readable-p wamei/term-restore--pending)
+        (setenv "WAMEI_TERM_RESTORE" wamei/term-restore--pending))
+    (when wamei/term-restore--restoring
+      (when-let* ((entry (wamei/term-restore--entry-for (buffer-name)))
+                  ((not (plist-get entry :injected)))
+                  (file (plist-get entry :scrollback)))
+	(when (file-readable-p file)
+          ;; entry は非 nil なので plist-put はその場で書き換わる
+          ;; (`wamei/term-restore-saved' に入っている cons をそのまま触る)
+          (plist-put entry :injected t)
+          (setenv "WAMEI_TERM_RESTORE" file))))))
 
 (defun wamei/term-restore--entry-directory (entry)
   "記録 ENTRY の作業ディレクトリ。無くなっていればホーム。
@@ -393,6 +507,7 @@ desktop 復元中の C-g (quit) でも記録とフラグが残らないように
   ;; 記録は desktop ファイルに永続化するが、`wamei/term-restore--restoring'
   ;; (復元中かどうか) は意図的に永続化しない。詳しくは同変数の docstring。
   (add-to-list 'desktop-globals-to-save 'wamei/term-restore-saved)
+  (add-to-list 'desktop-globals-to-save 'wamei/term-restore-closed)
   (add-hook 'desktop-save-hook #'wamei/term-restore-save)
   ;; 端末の起動時にスクロールバックを環境変数で渡す
   ;; (ghostel-desktop の復元経路でも wamei/term-restore-ensure でも通る)

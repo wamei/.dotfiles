@@ -1021,6 +1021,10 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   ;; 固定しないとカレントバッファのプロジェクトが変わるたびにタブ名が動く
   ;; (詳細は project-tabs.el の Commentary)。
   (add-hook 'window-buffer-change-functions #'wamei/project-tabs--pin-name-soon)
+  ;; タブを閉じたとき、そのプロジェクトのタブが他に無ければバッファを消す。
+  ;; メモ・sidebar・端末の履歴は各ブロックで project-tabs のフックに足している
+  ;; (詳細は project-tabs.el の Commentary)。
+  (add-hook 'tab-bar-tab-pre-close-functions #'wamei/project-tabs--on-close)
   ;; project 系の対話コマンドは、開いているバッファがプロジェクト外 (*scratch*
   ;; など) でも別プロジェクトでも、タブに紐づいたプロジェクトを起点にする
   ;; (詳細は project-tabs.el の Commentary)。
@@ -1682,7 +1686,12 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   :hook
   (wamei/project-sidebar-mode-hook . wamei/project-sidebar--sync-hide-mode-line)
   :config
-  (wamei/project-sidebar-follow-mode 1))
+  (wamei/project-sidebar-follow-mode 1)
+  ;; sidebar は空白始まりの内部バッファで、タブを閉じたときの後始末
+  ;; (project-tabs.el) が拾わないので足す。
+  (add-hook 'wamei/project-tabs-extra-buffer-functions
+            (lambda (root)
+              (ensure-list (get-buffer (wamei/project-sidebar--buffer-name root))))))
 
 (leaf org
   :doc "メモに使う分だけの org 設定 (agenda / capture は入れない)"
@@ -1736,7 +1745,16 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   ;; メモ専用のアイドルタイマーによる保存と、メモから離れたときの保存。
   ;; auto-save-visited-mode は使わない (save-some-buffers 経由なので
   ;; buffer-save-without-query の立ったバッファまで書いてしまう)。
-  (wamei/project-memo-autosave-setup))
+  (wamei/project-memo-autosave-setup)
+  ;; タブを閉じたときの後始末 (project-tabs.el) でメモも消す。実体は ~/org/ に
+  ;; あり、desktop から復元したメモは default-directory が root を向かないので
+  ;; project-buffers では拾えない。消す前に保存しておく (変更ありのまま
+  ;; kill-buffer すると確認が出る)。
+  (add-hook 'wamei/project-tabs-extra-buffer-functions
+            (lambda (root)
+              (when-let* ((project (project-current nil root)))
+                (ensure-list (get-file-buffer (wamei/project-memo-file project))))))
+  (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/project-memo-save-all))
 
 (leaf dired-toggle-sudo
   :ensure t
@@ -1879,6 +1897,10 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
           "\\` \\*sidebar: "))
   (wamei/desktop-side-setup)
   (wamei/term-restore-setup)
+  ;; タブを閉じて端末を消すときは履歴を退避し、同じプロジェクトのタブが
+  ;; 開き直されたら作り直す (term-restore.el の「閉じたタブの端末」)。
+  (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/term-restore-stash)
+  (add-hook 'wamei/project-tabs-root-set-functions #'wamei/term-restore-revive)
   ;; child frame は desktop に保存しない。
   ;; posframe / corfu / eldoc-box / tty-tip / dired のプレビューなどが作る child frame は
   ;; ポップアップなので復元する意味がない。それどころか tty では致命的で、
