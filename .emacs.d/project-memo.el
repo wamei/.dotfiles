@@ -380,8 +380,9 @@ dedicated を外しているため、最後に要求したバッファと実際�
 MINIMUM を下回らない。"
   (max minimum (round (* ratio total))))
 
-(defun wamei/project-memo--popup-color (face attribute)
-  "FACE の ATTRIBUTE の色。FACE が未定義か未指定なら nil。
+(defun wamei/project-memo--popup-color (face attribute &optional frame)
+  "FACE の ATTRIBUTE の色 (FRAME での値。nil なら選択中のフレーム)。
+FACE が未定義か未指定なら nil。
 
 枠と背景は init.el の *popup-appearance が定義する `wamei/popup-border' /
 `wamei/popup-body' から取る。あちらは init.el 側なので、モジュール単体で
@@ -389,7 +390,7 @@ MINIMUM を下回らない。"
 エラーを出す (\"Invalid face\") ので、存在するときだけ引く。nil を渡された
 posframe はフレーム既定の色を使う。"
   (when (facep face)
-    (let ((value (face-attribute face attribute nil t)))
+    (let ((value (face-attribute face attribute frame t)))
       (unless (eq value 'unspecified) value))))
 
 (defun wamei/project-memo-posframe-show (buffer)
@@ -769,9 +770,38 @@ tab-bar で開いているプロジェクトのメモをタブの順に、最後
     map)
   "小窓のメモでタブを切り替えるキー。")
 
+(defvar-local wamei/project-memo--tab-face-cookies nil
+  "`wamei/project-memo-tabs-mode' が重ねたタブの face (`face-remap-remove-relative' 用)。")
+
+(defun wamei/project-memo--remap-tab-faces ()
+  "カレントバッファのタブの地を小窓に合わせる。
+header-tabs.el の face は本文 window の地 (`default') の上に置く前提で、今のタブが
+本文と同じ色、他のタブがタブ列の色になっている。小窓の地はポップアップの背景色
+(`wamei/popup-body') なので、そのままだと他のタブが地と同じ色に沈み、今のタブ
+だけが浮く。今のタブをポップアップの背景色に、他のタブを本文の背景色に入れ替える。
+タブは小窓にしか出さない (window パラメータ) ので、バッファローカルで変えてよい。
+
+本文の背景色は本体のフレーム (`wamei/project-tabs-base-frame') から読む。
+小窓の中ではフレームの背景色がポップアップの色になっている (posframe の
+`:background-color') ので、選択中のフレームで読むと他のタブまで小窓の地と
+同じ色になる。"
+  (dolist (pair `((wamei/header-tab-current
+                   . ,(wamei/project-memo--popup-color 'wamei/popup-body :background))
+                  (wamei/header-tab
+                   . ,(wamei/project-memo--popup-color
+                       'default :background (wamei/project-tabs-base-frame)))))
+    (when (cdr pair)
+      (push (face-remap-add-relative (car pair) :background (cdr pair))
+            wamei/project-memo--tab-face-cookies))))
+
 (define-minor-mode wamei/project-memo-tabs-mode
-  "メモのバッファで、小窓のタブを C-<tab> / C-S-<tab> で切り替える。"
-  :keymap wamei/project-memo-tabs-mode-map)
+  "メモのバッファで、小窓のタブを C-<tab> / C-S-<tab> で切り替える。
+タブの色も小窓の地に合わせる (`wamei/project-memo--remap-tab-faces')。"
+  :keymap wamei/project-memo-tabs-mode-map
+  (mapc #'face-remap-remove-relative wamei/project-memo--tab-face-cookies)
+  (setq wamei/project-memo--tab-face-cookies nil)
+  (when wamei/project-memo-tabs-mode
+    (wamei/project-memo--remap-tab-faces)))
 
 (defun wamei/project-memo--posframe-update-tabs (window)
   "小窓の WINDOW がメモを映していれば header-line にタブを出し、でなければ外す。"

@@ -1473,6 +1473,33 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
             (should-not (window-parameter window 'header-line-format)))
         (set-window-parameter window 'header-line-format nil)))))
 
+(defun wamei/project-memo-test--remapped-background (face)
+  "カレントバッファで FACE に重ねた `:background'。重ねていなければ nil。"
+  (seq-some (lambda (spec) (and (consp spec) (plist-get spec :background)))
+            (cdr (assq face face-remapping-alist))))
+
+(ert-deftest wamei/project-memo-tabs-take-the-posframe-colors ()
+  "小窓の地はポップアップの背景色 (`wamei/popup-body') なので、今のタブをその色に、
+他のタブを本文の背景色にする。本体の tab-bar で今のタブが本文 window と同じ色に
+なっているのと同じ見え方にするため。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (let ((defined (facep 'wamei/popup-body)))
+      (unwind-protect
+          (progn
+            (unless defined
+              (custom-declare-face 'wamei/popup-body '((t (:background "#223344"))) "test"))
+            (set-face-background 'wamei/popup-body "#223344")
+            (with-current-buffer (wamei/project-memo-buffer nil)
+              (should (equal (wamei/project-memo-test--remapped-background
+                              'wamei/header-tab-current)
+                             "#223344"))
+              (should (equal (wamei/project-memo-test--remapped-background 'wamei/header-tab)
+                             (face-background 'default nil t)))
+              (wamei/project-memo-tabs-mode -1)
+              (should-not (wamei/project-memo-test--remapped-background
+                           'wamei/header-tab-current))))
+        (unless defined (put 'wamei/popup-body 'face-defface-spec nil))))))
+
 (ert-deftest wamei/project-memo-tabs-setup-watches-buffer-changes ()
   (let ((window-buffer-change-functions nil)
         (find-file-hook nil))
