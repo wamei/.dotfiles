@@ -167,7 +167,7 @@ alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 # 環境変数関係
 # PATH の組み立て順が重要:
 #   1. path_helper と brew shellenv はどちらも PATH を作り直して自分の dir を先頭に置くので最初に通す
-#      (direnv / mise の実体は brew 配下にあり、activate より前に brew が要る)
+#      (mise の実体は brew 配下にあり、activate より前に brew が要る)
 #   2. 各種ツールの bin を足す
 #   3. mise (node / bun / ruby / python) は他のどの dir より前に来る必要があるので最後に activate する
 # 親 shell (ghostel / tmux) から mise 入りの PATH を継いでいても、1 がその前に system dir や
@@ -196,10 +196,6 @@ case ":$PATH:" in
 esac
 # bun end
 
-# direnv
-eval "$(direnv hook zsh)"
-# direnv end
-
 # Added by Antigravity
 export PATH="/Users/wamei/.antigravity/antigravity/bin:$PATH"
 
@@ -211,6 +207,10 @@ export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
 # PATH を組み終えた最後に置く。設定は ~/.config/mise/config.toml (dotfiles の .config/mise)。
 eval "$(mise activate zsh)"
 # mise end
+
+# direnv。実体は mise 管理 (aqua:direnv/direnv) なので、mise activate で PATH に出てから hook する。
+eval "$(direnv hook zsh)"
+# direnv end
 
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
