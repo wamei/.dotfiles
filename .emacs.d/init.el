@@ -1125,14 +1125,24 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
     (let ((default-directory (or (wamei/magit--tab-toplevel) default-directory)))
       (call-interactively #'magit-status)))
   :bind ("C-x g" . wamei/magit-status)
+  :init
+  ;; 閉じたときに本体の window だけを戻す (magit-main-window.el)。
+  ;; init.el は symlink なので実体の隣から読む。
+  (load (expand-file-name "magit-main-window"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
   ;; status は side window (sidebar / claude-code-ide / 端末パネル) を残して
-  ;; 主領域いっぱいに表示し、q で開く前の window 構成に戻す。
+  ;; 主領域いっぱいに表示し、q で開く前の主領域の window 構成に戻す。
   ;; fullframe 化は delete-other-windows で行われるため、side window 側に
   ;; no-delete-other-windows パラメータが付いていることが前提
   ;; (claude-code-ide はパッケージが付け、sidebar と端末は display-buffer-alist で
   ;; 付けている)。
+  ;; 保存と復元は magit 既定 (フレーム全体の window 構成) ではなく主領域だけに
+  ;; する。既定だと、magit を開いている間に開いた claude パネルや変えた
+  ;; sidebar の幅まで q で巻き戻る。
   :custom ((magit-display-buffer-function . #'magit-display-buffer-fullframe-status-v1)
-           (magit-bury-buffer-function . #'magit-restore-window-configuration)))
+           (magit-pre-display-buffer-hook . '(wamei/magit-save-main-window))
+           (magit-bury-buffer-function . #'wamei/magit-restore-main-window)))
 
 (leaf smerge-mode
   :doc "コンフリクトマーカーの解決 (Emacs 組み込み)"
