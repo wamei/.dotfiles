@@ -164,6 +164,27 @@ function extract() {
 #圧縮ファイルを実行すると解凍するように
 alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 
+# gh のアカウントを cwd で切り替える。対応表は ~/.zshrc.local で連想配列に定義する (リポジトリに載せない):
+#   typeset -A GH_USER_BY_DIR=( $HOME/projects/github.com/work work-user  $HOME/projects me )
+# cwd を含むディレクトリのうち最も深いものを使う (キーを辞書順の降順で見ると、親より子が先に来る)。
+# gh auth switch (hosts.yml の書き換え) ではなく、keyring のトークンを GH_TOKEN でその 1 回にだけ渡す。
+# gh は mise 管理で PATH の先頭に来るため ~/bin のラッパーでは被せられず、関数にしている。
+# 明示的に GH_TOKEN を渡したときと gh auth 自体 (GH_TOKEN があると status / switch が狂う) は素通し。
+gh() {
+  local dir user
+  for dir in ${(Ok)GH_USER_BY_DIR}; do
+    if [[ $PWD/ == $dir/* ]]; then
+      user=$GH_USER_BY_DIR[$dir]
+      break
+    fi
+  done
+  if [[ -z $user || -n $GH_TOKEN || $1 == auth ]]; then
+    command gh "$@"
+    return
+  fi
+  GH_TOKEN=$(command gh auth token --user $user 2>/dev/null) command gh "$@"
+}
+
 # 環境変数関係
 # PATH の組み立て順が重要:
 #   1. path_helper と brew shellenv はどちらも PATH を作り直して自分の dir を先頭に置くので最初に通す

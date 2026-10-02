@@ -20,3 +20,7 @@
     required = true
     clean = git-lfs clean -- %f
     smudge = git-lfs smudge -- %f
+# マシン固有の設定 (仕事用の includeIf など、リポジトリに載せないもの)。無ければ黙って無視される。
+# 最後に読むので、ここまでの設定を上書きできる。
+[include]
+    path = ~/.gitconfig.local
