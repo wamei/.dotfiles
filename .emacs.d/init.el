@@ -1071,9 +1071,12 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   ;; display-buffer-in-side-window は同じ side・slot の window を dedicated でも
   ;; 再利用するため、メニューが端末パネルの window を奪い、終了時に端末が消える。
   ;; 選択中の window (magit status 等) の直下、主領域内に出すようにする。
+  ;; 既定の mode-line (line = 1px の区切り線) は下端の window divider と重なって、
+  ;; メニューの幅の分だけ境界が太くなる。区切りは divider に任せる。
   :custom ((transient-display-buffer-action . '(display-buffer-below-selected
                                                 (dedicated . t)
-                                                (inhibit-same-window . t)))))
+                                                (inhibit-same-window . t)))
+           (transient-mode-line-format . nil)))
 
 (leaf magit
   :doc "git操作"
@@ -2007,6 +2010,11 @@ divider は face の foreground で描かれる。幅 1 のときに 3 つのう
   ;; face remapping はバッファ単位だが、このパッケージは :filtered (:window ...) 付きの
   ;; remapping で window ごとに色を分け、選択の切り替えに追随する。
   :ensure t
+  :preface
+  (defface wamei/dim-tab-inactive '((t (:background "#0d0e0e")))
+    "暗転した window の非選択のタブ。
+今のタブは暗転すると非選択のタブと同じ色 (#121314) になるので、非選択のタブは
+もう少しだけ落として見分けられるようにする。落としすぎると逆に浮く。")
   :custom-face
   ;; 既定の "#122" は青緑がかって doom-molokai に合わないので、default (#1c1e1f) を
   ;; 落とした色にする。hide は org-hide 用で前景も背景に合わせる。
@@ -2026,7 +2034,10 @@ divider は face の foreground で描かれる。幅 1 のときに 3 つのう
        (org-hide . (auto-dim-other-buffers-hide . nil))
        (tab-line-tab . (auto-dim-other-buffers . nil))
        (tab-line-tab-current . (auto-dim-other-buffers . nil))
-       (wamei/header-tab-current . (auto-dim-other-buffers . nil))))
+       (wamei/header-tab-current . (auto-dim-other-buffers . nil))
+       ;; 今のタブが暗転すると非選択のタブと同色になるので、こちらは更に少し落とす
+       (wamei/header-tab . (wamei/dim-tab-inactive . nil))
+       (tab-line-tab-inactive . (wamei/dim-tab-inactive . nil))))
   :global-minor-mode auto-dim-other-buffers-mode)
 
 (leaf global-display-line-numbers
