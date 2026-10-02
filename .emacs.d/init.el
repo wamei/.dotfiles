@@ -740,10 +740,26 @@ claude のバッファの中から呼ばれたときはそのセッションの�
              (wamei/project-tabs-current-root))
         (funcall orig)))
 
+  (defun wamei/claude--conversation-exists-p (directory)
+    "DIRECTORY で以前の Claude Code の会話が残っていれば非 nil。
+
+Claude Code は会話を <設定ディレクトリ>/projects/<作業ディレクトリ>/*.jsonl に
+残す。<作業ディレクトリ> は実パス (getcwd) の英数字以外を - にしたもの。
+`claude -c' は続ける会話が無いと起動できないので、その前に確かめる。"
+    (let* ((config (or (getenv "CLAUDE_CONFIG_DIR") "~/.claude"))
+           (name (replace-regexp-in-string
+                  "[^[:alnum:]]" "-"
+                  (directory-file-name (file-truename directory))))
+           (dir (expand-file-name name (expand-file-name "projects" config))))
+      (and (file-directory-p dir)
+           (directory-files dir nil "\\.jsonl\\'" t 1)
+           t)))
+
   (defun wamei/claude-toggle (&optional arg)
     "claude-code-ide のパネルへ出入りする。
 
-- セッションが無ければ起動する
+- セッションが無ければ起動する。そのディレクトリに前の会話があれば
+  続きから (claude -c)、無ければ新しく始める
 - 非表示なら表示してフォーカスする
 - 表示中でフォーカスが無ければフォーカスを移す
 - フォーカス中なら元の window へ戻る (パネルは開いたまま)
@@ -766,11 +782,15 @@ claude のバッファの中から呼ばれたときはそのセッションの�
         (select-window window))
        (t
         (wamei/claude--remember-previous)
-        (if (claude-code-ide-mcp--sessions-for-project
-             (claude-code-ide--get-working-directory))
+        (let ((directory (claude-code-ide--get-working-directory)))
+          (cond
+           ((claude-code-ide-mcp--sessions-for-project directory)
             ;; 停止していないセッションがあるので開き直すだけ
-            (claude-code-ide-toggle)
-          (claude-code-ide))
+            (claude-code-ide-toggle))
+           ((wamei/claude--conversation-exists-p directory)
+            (claude-code-ide-continue))
+           (t
+            (claude-code-ide))))
         (when-let* ((window (wamei/claude--window)))
           (select-window window))))))
 
