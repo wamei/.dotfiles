@@ -1772,7 +1772,8 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   ;; auto-save-visited-mode は使わない (save-some-buffers 経由なので
   ;; buffer-save-without-query の立ったバッファまで書いてしまう)。
   (wamei/project-memo-autosave-setup)
-  ;; desktop の復元など、toggle を通らずに開いたメモにもタブを出す
+  ;; 小窓のメモのタブを、小窓の中身に合わせて付け外しする。desktop の復元
+  ;; など toggle を通らずに開いたメモにも C-<tab> の切り替えを付ける
   (wamei/project-memo-tabs-setup)
   ;; タブを閉じたときの後始末 (project-tabs.el) でメモも消す。実体は ~/org/ に
   ;; あり、desktop から復元したメモは default-directory が root を向かないので

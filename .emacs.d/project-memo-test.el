@@ -228,7 +228,8 @@ CALLS には呼び出しが (show BUFFER . ARGS) / (hide BUFFER) の形で新し
 作れないため)。
 
 `frame-root-window' / `set-window-dedicated-p' / `set-window-buffer' /
-`set-window-point' / `window-buffer' はダミーの \\='memo-posframe-frame /
+`set-window-point' / `window-buffer' / `set-window-parameter' /
+`window-parameter' はダミーの \\='memo-posframe-frame /
 \\='memo-posframe-window だけをダミー扱いし、それ以外はすべて素の実装へ流す
 (引数は実物と同じ `&optional' にする — 実物の `frame-root-window' も
 `frame-selected-window' も frame 引数は省略可能で、省略時は選択フレームを
@@ -244,7 +245,8 @@ window が無いので素のままだと wrong-type-argument になる) のた�
 window に呼ばれるとそこへ書き込む。`wamei/project-memo-posframe-show' が
 「既に同じバッファを映しているときは `set-window-buffer' を呼び直さない」
 (Minor 5 相当) ようになったため、この対で「ダミーの小窓は今何を映して
-いることになっているか」を素朴に模す必要がある。既定では 2 回目以降の同じ
+いることになっているか」を素朴に模す必要がある。window パラメータも
+同じくダミーの window の分だけこのマクロの中に持つ。既定では 2 回目以降の同じ
 BUFFER への show で `set-window-buffer' が呼ばれないことになる。
 
 `wamei/project-memo--posframe-buffer-shown' は既定で追跡変数
@@ -256,11 +258,14 @@ BODY の中でさらに `cl-letf' して上書きする。"
   (declare (indent 1))
   `(let ((,calls nil)
          (--dummy-window-buffer nil)
+         (--dummy-window-parameters nil)
          (--real-frame-root-window (symbol-function 'frame-root-window))
          (--real-set-window-dedicated-p (symbol-function 'set-window-dedicated-p))
          (--real-set-window-buffer (symbol-function 'set-window-buffer))
          (--real-set-window-point (symbol-function 'set-window-point))
-         (--real-window-buffer (symbol-function 'window-buffer)))
+         (--real-window-buffer (symbol-function 'window-buffer))
+         (--real-set-window-parameter (symbol-function 'set-window-parameter))
+         (--real-window-parameter (symbol-function 'window-parameter)))
      (cl-letf (((symbol-function 'posframe-show)
                 (lambda (buffer &rest args)
                   (push (cons 'show (cons buffer args)) ,calls)
@@ -296,6 +301,16 @@ BODY の中でさらに `cl-letf' して上書きする。"
                   (if (eq window 'memo-posframe-window)
                       --dummy-window-buffer
                     (funcall --real-window-buffer window))))
+               ((symbol-function 'set-window-parameter)
+                (lambda (window parameter value)
+                  (if (eq window 'memo-posframe-window)
+                      (setf (alist-get parameter --dummy-window-parameters) value)
+                    (funcall --real-set-window-parameter window parameter value))))
+               ((symbol-function 'window-parameter)
+                (lambda (window parameter)
+                  (if (eq window 'memo-posframe-window)
+                      (alist-get parameter --dummy-window-parameters)
+                    (funcall --real-window-parameter window parameter))))
                ((symbol-function 'wamei/project-memo--posframe-buffer-shown)
                 (lambda () wamei/project-memo--posframe-buffer))
                ((symbol-function 'posframe-workable-p) (lambda () t)))
@@ -542,8 +557,8 @@ BODY の中でさらに `cl-letf' して上書きする。"
 
 (ert-deftest wamei/project-memo-toggle-switches-the-posframe-to-a-different-target ()
   ;; 全体メモを posframe に出した状態でプロジェクトメモを求めたら、閉じる
-  ;; だけで終わらず新しい対象が show される (`wamei/project-memo-posframe-show'
-  ;; の「先に古いバッファを隠す」処理に切り替えを任せる)。記録された呼び出し
+  ;; だけで終わらず新しい対象が小窓に映る (`wamei/project-memo-posframe-show'
+  ;; の「同じフレームの中身を差し替える」処理に切り替えを任せる)。記録された呼び出し
   ;; 列全体を見て、部分一致で通ってしまわないようにする。
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
@@ -554,8 +569,8 @@ BODY の中でさらに `cl-letf' して上書きする。"
             (progn
               (wamei/project-memo-toggle-global)   ; 全体メモを posframe に出す
               (wamei/project-memo-toggle)           ; 別の対象 (プロジェクトメモ) を求める
-              (should (equal (mapcar #'car calls) '(show hide show)))
-              (should (equal (buffer-file-name (cadr (car calls)))
+              (should (equal (mapcar #'car calls) '(show show)))
+              (should (equal (buffer-file-name (window-buffer 'memo-posframe-window))
                              (wamei/project-memo-file (wamei/project-memo-test--project root))))
               (should (wamei/project-memo-posframe-frame)))
           (wamei/project-memo-posframe-hide))))))
@@ -612,7 +627,7 @@ BODY の中でさらに `cl-letf' して上書きする。"
                 (cl-letf (((symbol-function 'wamei/project-memo--posframe-buffer-shown)
                            (lambda () global-memo)))
                   (wamei/project-memo-toggle))
-                (should (equal (buffer-file-name (cadr (car calls)))
+                (should (equal (buffer-file-name (window-buffer 'memo-posframe-window))
                                (wamei/project-memo-file (wamei/project-memo-test--project root))))
                 (should (wamei/project-memo-posframe-frame))))
           (wamei/project-memo-posframe-hide))))))
@@ -787,24 +802,42 @@ BODY の中でさらに `cl-letf' して上書きする。"
               (should (member (list 'memo-posframe-window buffer) window-buffer-calls)))
           (wamei/project-memo-posframe-hide))))))
 
-(ert-deftest wamei/project-memo-posframe-show-hides-the-previous-buffer-first ()
-  ;; posframe.el の `posframe--frame' はバッファローカルなキャッシュなので、
-  ;; 隠さずに別バッファへ `posframe-show' すると古いフレームは追跡から外れた
-  ;; まま画面上に残ってしまう (leak)。2 回目の show の前に 1 回目の
-  ;; バッファを hide していることを確認する。
+(ert-deftest wamei/project-memo-posframe-show-reuses-the-frame-for-another-buffer ()
+  ;; 小窓が出ているまま別のメモを出すときは、小窓を隠して作り直さずに同じ
+  ;; child frame の中身だけを差し替える。隠すと macOS が親フレームへの
+  ;; switch-frame を後から送ってきて、その `handle-switch-frame' の
+  ;; post-command で「フォーカスが外れた」と読まれ、作り直した小窓まで閉じる
+  ;; (タブのクリックで実機で踏んだ)。posframe.el の `posframe--frame' は
+  ;; バッファローカルなので、フレームの持ち主 (最初に show したバッファ) の
+  ;; 名前で show し直し、hide もその名前で行う。
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls
       (let ((buffer-a (wamei/project-memo-buffer nil))
             (buffer-b (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
         (wamei/project-memo-posframe-show buffer-a)
         (wamei/project-memo-posframe-show buffer-b)
-        ;; calls は新しい順に積まれるので、古い順に戻して並びを確認する。
         (should (equal (mapcar (lambda (call) (cons (car call) (cadr call)))
                                (reverse calls))
                        (list (cons 'show buffer-a)
-                             (cons 'hide buffer-a)
-                             (cons 'show buffer-b)))))
-      (wamei/project-memo-posframe-hide))))
+                             (cons 'show buffer-a))))
+        (should (eq (window-buffer 'memo-posframe-window) buffer-b))
+        (should (eq (wamei/project-memo-posframe-buffer) buffer-b))
+        (wamei/project-memo-posframe-hide)
+        (should (equal (car calls) (list 'hide buffer-a)))))))
+
+(ert-deftest wamei/project-memo-posframe-show-recreates-when-the-owner-died ()
+  ;; フレームの持ち主のバッファが死んでいたら、それでは show し直せないので
+  ;; 隠してから新しいバッファで作る。
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((buffer-a (generate-new-buffer "memo-a"))
+            (buffer-b (wamei/project-memo-buffer nil)))
+        (wamei/project-memo-posframe-show buffer-a)
+        (kill-buffer buffer-a)
+        (wamei/project-memo-posframe-show buffer-b)
+        (should (equal (mapcar #'car (reverse calls)) '(show hide show)))
+        (should (eq (cadr (car calls)) buffer-b))
+        (wamei/project-memo-posframe-hide)))))
 
 (ert-deftest wamei/project-memo-posframe-frame-tracks-visibility ()
   (wamei/project-memo-test--with-project root
@@ -1391,29 +1424,76 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
                        '("alpha" "beta" "global")))
         (should (equal (wamei/project-memo-test--current-label tabs) "beta"))))))
 
-(ert-deftest wamei/project-memo-buffer-shows-the-tabs ()
-  "プロジェクトメモにも全体メモにも header-line にタブを出す。"
+(ert-deftest wamei/project-memo-buffer-leaves-the-header-line-alone ()
+  "メモのバッファ自体には header-line を付けない。本文 window に出したメモには
+タブを出さないため (タブは小窓の window パラメータで出す)。"
   (wamei/project-memo-test--with-tabs (alpha)
-    (should (equal (buffer-local-value 'header-line-format
-                                       (wamei/project-memo-buffer (project-current nil alpha)))
-                   wamei/project-memo--tabs-header-line))
-    (should (equal (buffer-local-value 'header-line-format (wamei/project-memo-buffer nil))
-                   wamei/project-memo--tabs-header-line))))
+    (should-not (buffer-local-value 'header-line-format
+                                    (wamei/project-memo-buffer (project-current nil alpha))))
+    (should-not (buffer-local-value 'header-line-format (wamei/project-memo-buffer nil)))))
+
+(ert-deftest wamei/project-memo-posframe-show-puts-the-tabs-on-the-window ()
+  "小窓に出したメモには、小窓の window の header-line にタブを出す。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (wamei/project-memo-test--with-posframe-stub calls
+      (unwind-protect
+          (progn
+            (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+            (should (equal (window-parameter 'memo-posframe-window 'header-line-format)
+                           wamei/project-memo--tabs-header-line)))
+        (wamei/project-memo-posframe-hide)))))
+
+(ert-deftest wamei/project-memo-posframe-buffer-change-follows-the-shown-buffer ()
+  "小窓の中で別のファイルを開いたらタブを外し、メモに戻ったらまた出す。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((other (find-file-noselect (expand-file-name "x.org" alpha))))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+              (set-window-buffer 'memo-posframe-window other)
+              (wamei/project-memo--posframe-buffer-change 'memo-posframe-frame)
+              (should-not (window-parameter 'memo-posframe-window 'header-line-format))
+              (set-window-buffer 'memo-posframe-window
+                                 (wamei/project-memo-buffer (project-current nil alpha)))
+              (wamei/project-memo--posframe-buffer-change 'memo-posframe-frame)
+              (should (equal (window-parameter 'memo-posframe-window 'header-line-format)
+                             wamei/project-memo--tabs-header-line)))
+          (wamei/project-memo-posframe-hide)
+          (kill-buffer other))))))
+
+(ert-deftest wamei/project-memo-posframe-buffer-change-ignores-other-frames ()
+  "小窓以外のフレームの window パラメータは触らない。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (let ((window (selected-window)))
+      (set-window-buffer window (wamei/project-memo-buffer nil))
+      (unwind-protect
+          (progn
+            (wamei/project-memo--posframe-buffer-change (selected-frame))
+            (should-not (window-parameter window 'header-line-format)))
+        (set-window-parameter window 'header-line-format nil)))))
+
+(ert-deftest wamei/project-memo-tabs-setup-watches-buffer-changes ()
+  (let ((window-buffer-change-functions nil)
+        (find-file-hook nil))
+    (wamei/project-memo-tabs-setup)
+    (should (memq #'wamei/project-memo--posframe-buffer-change
+                  (default-value 'window-buffer-change-functions)))))
 
 (ert-deftest wamei/project-memo-tabs-setup-covers-memos-opened-elsewhere ()
-  "desktop の復元など `wamei/project-memo-buffer' を通らずに開いたメモにもタブを出す。
-メモ以外のファイルには出さない。"
+  "desktop の復元など `wamei/project-memo-buffer' を通らずに開いたメモにも
+タブを切り替えるキーを付ける。メモ以外のファイルには付けない。"
   (wamei/project-memo-test--with-tabs (alpha)
-    (let ((find-file-hook nil))
+    (let ((find-file-hook nil)
+          (window-buffer-change-functions nil))
       (wamei/project-memo-tabs-setup)
       (let ((memo (find-file-noselect (expand-file-name "other.org"
                                                         wamei/project-memo-directory)))
             (other (find-file-noselect (expand-file-name "x.org" alpha))))
         (unwind-protect
             (progn
-              (should (equal (buffer-local-value 'header-line-format memo)
-                             wamei/project-memo--tabs-header-line))
-              (should-not (buffer-local-value 'header-line-format other)))
+              (should (buffer-local-value 'wamei/project-memo-tabs-mode memo))
+              (should-not (buffer-local-value 'wamei/project-memo-tabs-mode other)))
           (kill-buffer other))))))
 
 (defun wamei/project-memo-test--click (window tabs label)
@@ -1422,29 +1502,6 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
          (pos (string-search label string)))
     (list 'mouse-1 (list window 'header-line '(0 . 0) 0
                          (cons string pos) nil '(0 . 0) nil nil nil))))
-
-(ert-deftest wamei/project-memo-tab-click-in-main-window-switches-the-memo ()
-  "本文 window のメモのタブをクリックすると、その window のメモだけ差し替える。"
-  (wamei/project-memo-test--with-tabs (alpha beta)
-    (let ((main (selected-window)))
-      (set-window-buffer main (wamei/project-memo-buffer (project-current nil alpha)))
-      (wamei/project-memo-tab-select
-       (wamei/project-memo-test--click
-        main (with-current-buffer (window-buffer main) (wamei/project-memo--tabs)) "beta"))
-      (should (equal (buffer-file-name (window-buffer main))
-                     (wamei/project-memo-file (project-current nil beta))))
-      ;; tab-bar のタブは動かさない
-      (should (equal (wamei/project-tabs-current-root) alpha)))))
-
-(ert-deftest wamei/project-memo-tab-click-to-global ()
-  (wamei/project-memo-test--with-tabs (alpha)
-    (let ((main (selected-window)))
-      (set-window-buffer main (wamei/project-memo-buffer (project-current nil alpha)))
-      (wamei/project-memo-tab-select
-       (wamei/project-memo-test--click
-        main (with-current-buffer (window-buffer main) (wamei/project-memo--tabs)) "global"))
-      (should (equal (buffer-file-name (window-buffer main))
-                     (wamei/project-memo-global-file))))))
 
 (ert-deftest wamei/project-memo-tab-click-in-posframe-shows-the-memo-there ()
   "小窓のメモのタブをクリックすると、小窓にそのメモを出し直す。本文 window は触らない。"
@@ -1461,19 +1518,40 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
                 'memo-posframe-window
                 (with-current-buffer alpha-memo (wamei/project-memo--tabs)) "beta"))
               (should (eq (car (car calls)) 'show))
-              (should (equal (buffer-file-name (cadr (car calls)))
+              (should (equal (buffer-file-name (window-buffer 'memo-posframe-window))
                              (wamei/project-memo-file (project-current nil beta))))
               (should (eq (window-buffer main) main-buffer)))
           (wamei/project-memo-posframe-hide))))))
 
-(ert-deftest wamei/project-memo-posframe-show-keeps-the-header-line ()
-  "posframe は `:respect-header-line' が nil だと header-line を消すので、
-タブを残すために渡す。"
-  (wamei/project-memo-test--with-project root
+(ert-deftest wamei/project-memo-tab-cycle-moves-through-the-tabs ()
+  "C-<tab> / C-S-<tab> で小窓のメモを隣のタブへ。端は巻き戻る。"
+  (wamei/project-memo-test--with-tabs (alpha beta)
     (wamei/project-memo-test--with-posframe-stub calls
-      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
-      (should (plist-get (cddr (car calls)) :respect-header-line))
-      (wamei/project-memo-posframe-hide))))
+      (let ((alpha-memo (wamei/project-memo-buffer (project-current nil alpha))))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show alpha-memo)
+              (with-current-buffer alpha-memo (wamei/project-memo-tab-next))
+              (should (equal (buffer-file-name (window-buffer 'memo-posframe-window))
+                             (wamei/project-memo-file (project-current nil beta))))
+              (dotimes (_ 2)
+                (with-current-buffer (window-buffer 'memo-posframe-window)
+                  (wamei/project-memo-tab-previous)))
+              (should (equal (buffer-file-name (window-buffer 'memo-posframe-window))
+                             (wamei/project-memo-global-file))))
+          (wamei/project-memo-posframe-hide))))))
+
+(ert-deftest wamei/project-memo-tab-keys-are-bound-only-in-the-posframe ()
+  "タブを切り替えるキーは小窓の中でだけ効く。本文 window のメモにはタブが無いので
+端末の切り替え (init.el のグローバルな C-<tab>) に譲る。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (with-current-buffer (wamei/project-memo-buffer nil)
+      (cl-letf (((symbol-function 'wamei/project-memo--in-posframe-p) (lambda () t)))
+        (should (eq (key-binding (kbd "C-<tab>")) #'wamei/project-memo-tab-next))
+        (should (eq (key-binding (kbd "C-S-<tab>")) #'wamei/project-memo-tab-previous)))
+      (cl-letf (((symbol-function 'wamei/project-memo--in-posframe-p) #'ignore))
+        (should-not (memq (key-binding (kbd "C-<tab>"))
+                          '(wamei/project-memo-tab-next wamei/project-memo-tab-previous)))))))
 
 ;;; タブの初期画面
 

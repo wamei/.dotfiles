@@ -16,9 +16,10 @@
 ;; - 既定の表示先は画面中央の posframe (`wamei/project-memo-toggle')。
 ;;   `C-u' を付けると本文 window に出す。posframe が使えない環境
 ;;   (`posframe-workable-p' が nil) では `C-u' 無しでも本文 window に落とす
-;; - メモの上端 (header-line) には tab-bar で開いているプロジェクトのメモと
-;;   全体メモをタブで並べる (`wamei/project-memo--tabs')。タブをクリックすると
-;;   そのメモに差し替える。差し替えるのはメモだけで、tab-bar のタブは動かさない
+;; - 小窓に出したメモの上端 (header-line) には tab-bar で開いているプロジェクトの
+;;   メモと全体メモをタブで並べる (`wamei/project-memo--tabs')。タブをクリック
+;;   するか C-<tab> / C-S-<tab> でそのメモに差し替える。差し替えるのはメモだけで、
+;;   tab-bar のタブは動かさない。本文 window に出したメモにはタブを出さない
 ;; - posframe はフォーカスが外れたときと、もう一度トグルしたときに閉じる。
 ;;   いずれも閉じる前に保存する。ESC / C-g では閉じない (どちらも org の
 ;;   編集中に使う)。`posframe-show' は child frame の root window を強い
@@ -78,7 +79,7 @@
   :group 'wamei/project-memo)
 
 (defconst wamei/project-memo--tabs-header-line '(:eval (wamei/project-memo--tabs-format))
-  "メモバッファに入れる `header-line-format'。中身は「タブ」の節。")
+  "小窓の window パラメータに入れる `header-line-format'。中身は「タブ」の節。")
 
 ;;; パス解決
 
@@ -148,7 +149,7 @@ project-find-file などの起点もメモのディレクトリになってし�
 
 全体メモは (プロジェクトに属さないので) どちらも設定しない。
 
-header-line にはメモを切り替えるタブを出す (`wamei/project-memo--tabs')。"
+タブを切り替えるキー (`wamei/project-memo-tabs-mode') を有効にする。"
   (let* ((file (if project
                    (wamei/project-memo-file project)
                  (wamei/project-memo-global-file)))
@@ -173,7 +174,7 @@ header-line にはメモを切り替えるタブを出す (`wamei/project-memo--
             (setq-local project-current-directory-override root)
             (setq-local default-directory root))
         (kill-local-variable 'project-current-directory-override))
-      (setq header-line-format wamei/project-memo--tabs-header-line))
+      (wamei/project-memo-tabs-mode 1))
     buffer))
 
 ;;; 表示
@@ -341,7 +342,16 @@ posframe が使えない環境では `C-u' 無しでも本文 window に出る�
   "メモを出している posframe のフレーム。出ていなければ nil。")
 
 (defvar wamei/project-memo--posframe-buffer nil
-  "posframe に出しているメモバッファ。`posframe-hide' はバッファで指定する。")
+  "posframe に出しているメモバッファ。")
+
+(defvar wamei/project-memo--posframe-owner nil
+  "posframe のフレームを作ったときのバッファ。
+
+posframe.el はフレームをこのバッファ (のバッファローカル `posframe--frame'
+とフレームパラメータ `posframe-buffer') に紐づけるので、`posframe-show'
+で使い回すのも `posframe-hide' で隠すのもこのバッファで指定する。小窓の
+中身を別のメモに差し替えても (`wamei/project-memo-posframe-show') 持ち主は
+変えない。")
 
 (defun wamei/project-memo-posframe-frame ()
   "メモの posframe が出ていればそのフレーム。出ていなければ nil。"
@@ -412,12 +422,18 @@ nil で setq-local する。これは posframe を隠しても残るので、そ
 `set-window-buffer' がエラーになり `display-buffer' もこの window を避ける
 ので、他のバッファは強制的に親フレームへ出て行ってしまう。
 
-すでに別の BUFFER を出している posframe があれば、先にそれを隠す
-(`wamei/project-memo-posframe-hide' 経由で保存も伴う)。`posframe--frame' は
-バッファローカル (posframe.el) なので、隠さずに別バッファへ `posframe-show'
-すると古いフレームは追跡から外れたまま画面に残ってしまう。トグルや
-自動クローズなど `show' の呼び出し元が複数になる後続タスクのために、
-「show の前に自分で hide する」という前提を呼び出し側に負わせない。
+すでに posframe が出ていれば、隠して作り直さずに同じフレームの中身だけを
+BUFFER に差し替える。隠すと macOS が親フレームへの switch-frame を後から
+送ってきて、その `handle-switch-frame' の post-command で「フォーカスが
+外れた」(`wamei/project-memo--posframe-action') と読まれ、作り直した小窓
+まで閉じてしまう (タブのクリックで踏んだ)。`posframe--frame' はバッファ
+ローカル (posframe.el) なので、別バッファで `posframe-show' すると別の
+フレームになる。フレームの持ち主 (`wamei/project-memo--posframe-owner')
+で show し直し、中身は下で `set-window-buffer' する。持ち主のバッファが
+死んでいたらそれでは show できないので、隠してから BUFFER で作る。
+
+小窓の window の header-line にはメモのタブを出す
+(`wamei/project-memo--posframe-update-tabs')。
 
 `posframe-show' は `(selected-window)' の frame を親として使う
 (posframe.el、`:parent-frame' を渡す口が無い)。dedicated を外した (このあと)
@@ -451,13 +467,15 @@ window を取る。posframe.el 自身が同じ window を `posframe--create-posf
 は `unsplittable' なので selected-window と root-window は今のところ一致
 するが、指しているものが違うと読めてしまうのは避けたい。"
   (when (and (wamei/project-memo-posframe-frame)
-             (not (eq wamei/project-memo--posframe-buffer buffer)))
+             (not (buffer-live-p wamei/project-memo--posframe-owner)))
     (wamei/project-memo-posframe-hide))
+  (unless (wamei/project-memo-posframe-frame)
+    (setq wamei/project-memo--posframe-owner buffer))
   (setq wamei/project-memo--posframe-buffer buffer)
   (with-selected-frame (wamei/project-tabs-base-frame)
     (setq wamei/project-memo--posframe-frame
           (posframe-show
-           buffer
+           wamei/project-memo--posframe-owner
            :poshandler #'posframe-poshandler-frame-center
            :width (wamei/project-memo--posframe-size
                    wamei/project-memo-posframe-width-ratio
@@ -471,14 +489,13 @@ window を取る。posframe.el 自身が同じ window を `posframe--create-posf
            :accept-focus t
            :cursor 'box
            :respect-mode-line t
-           ;; 無いと posframe が header-line (メモのタブ) を消す
-           :respect-header-line t
            :window-point (with-current-buffer buffer (point))))
     (let ((window (frame-root-window wamei/project-memo--posframe-frame)))
       (set-window-dedicated-p window nil)
       (unless (eq (window-buffer window) buffer)
         (set-window-buffer window buffer))
-      (set-window-point window (with-current-buffer buffer (point)))))
+      (set-window-point window (with-current-buffer buffer (point)))
+      (wamei/project-memo--posframe-update-tabs window)))
   (add-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
   (select-frame-set-input-focus wamei/project-memo--posframe-frame)
   wamei/project-memo--posframe-frame)
@@ -514,10 +531,11 @@ frame に選択が残ると以後の入力がその不可視バッファに吸�
   (let ((frame (wamei/project-memo-posframe-frame)))
     (when frame
       (wamei/project-memo-save-all)
-      (posframe-hide wamei/project-memo--posframe-buffer))
+      (posframe-hide wamei/project-memo--posframe-owner))
     (remove-hook 'post-command-hook #'wamei/project-memo--posframe-post-command)
     (setq wamei/project-memo--posframe-frame nil)
     (setq wamei/project-memo--posframe-buffer nil)
+    (setq wamei/project-memo--posframe-owner nil)
     (when (and frame (eq (window-frame (selected-window)) frame))
       (let ((window (wamei/project-tabs-main-window)))
         (select-frame-set-input-focus (window-frame window))
@@ -631,10 +649,15 @@ tty の実機診断では、この分岐と下の「フォーカスが外れた�
 
 ;;; タブ
 
-;; メモの header-line に、tab-bar で開いているプロジェクトのメモと全体メモを
-;; window の幅を等分するタブで並べる (描画は header-tabs.el)。クリックすると
-;; その window (小窓か本文 window) のメモだけを差し替える。tab-bar のタブは
+;; 小窓のメモの header-line に、tab-bar で開いているプロジェクトのメモと全体
+;; メモを window の幅を等分するタブで並べる (描画は header-tabs.el)。クリック
+;; するか C-<tab> / C-S-<tab> で小窓のメモだけを差し替える。tab-bar のタブは
 ;; 動かさない。
+;;
+;; タブはメモのバッファの `header-line-format' ではなく小窓の window
+;; パラメータに入れる。バッファに入れると、`C-u' で本文 window に出したメモ
+;; にもタブが出てしまう。小窓の中でメモ以外のファイルを開いたら外す
+;; (`wamei/project-memo--posframe-buffer-change')。
 
 (defvar wamei/project-memo-tab-map
   (let ((map (make-sparse-keymap)))
@@ -690,32 +713,87 @@ tab-bar で開いているプロジェクトのメモをタブの順に、最後
   "メモの header-line の中身。`wamei/project-memo--tabs-header-line' から呼ぶ。"
   (wamei/header-tabs-format (wamei/project-memo--tabs)))
 
+(defun wamei/project-memo--tab-buffer (root file)
+  "タブ (ROOT と FILE は `wamei/project-memo--tab' のもの) のメモバッファ。"
+  (cond (root (wamei/project-memo-buffer (project-current nil root)))
+        ((equal file (wamei/project-memo-global-file))
+         (wamei/project-memo-buffer nil))
+        (t (find-file-noselect file))))
+
 (defun wamei/project-memo-tab-select (event)
-  "クリックしたタブのメモを、クリックした window に出す。
-小窓のタブなら小窓に出し直し (`wamei/project-memo-posframe-show')、本文
-window のタブならその window のバッファだけを差し替える。"
+  "クリックしたタブのメモを小窓に出し直す (`wamei/project-memo-posframe-show')。"
   (interactive "e")
   (when-let* ((file (wamei/header-tabs-event-property event 'wamei/project-memo-file)))
-    (let* ((root (wamei/header-tabs-event-property event 'wamei/project-memo-root))
-           (buffer (cond (root (wamei/project-memo-buffer (project-current nil root)))
-                         ((equal file (wamei/project-memo-global-file))
-                          (wamei/project-memo-buffer nil))
-                         (t (find-file-noselect file))))
-           (window (posn-window (event-start event)))
-           (frame (wamei/project-memo-posframe-frame)))
-      (if (and frame (eq window (frame-root-window frame)))
-          (wamei/project-memo-posframe-show buffer)
-        (set-window-buffer window buffer)
-        (select-window window)))))
+    (wamei/project-memo-posframe-show
+     (wamei/project-memo--tab-buffer
+      (wamei/header-tabs-event-property event 'wamei/project-memo-root) file))))
+
+(defun wamei/project-memo--tab-cycle (offset)
+  "カレントのメモから OFFSET 個ずれたタブのメモを小窓に出す。端は巻き戻る。"
+  (let* ((tabs (wamei/project-memo--tabs))
+         (index (or (seq-position tabs t (lambda (tab _) (plist-get tab :current))) 0))
+         (properties (plist-get (nth (mod (+ index offset) (length tabs)) tabs) :properties)))
+    (wamei/project-memo-posframe-show
+     (wamei/project-memo--tab-buffer (plist-get properties 'wamei/project-memo-root)
+                                     (plist-get properties 'wamei/project-memo-file)))))
+
+(defun wamei/project-memo-tab-next ()
+  "小窓のメモを次のタブのメモに切り替える。"
+  (interactive)
+  (wamei/project-memo--tab-cycle 1))
+
+(defun wamei/project-memo-tab-previous ()
+  "小窓のメモを前のタブのメモに切り替える。"
+  (interactive)
+  (wamei/project-memo--tab-cycle -1))
+
+(defun wamei/project-memo--in-posframe-p ()
+  "選択中の window が小窓か。"
+  (when-let* ((frame (wamei/project-memo-posframe-frame)))
+    (eq (selected-window) (frame-root-window frame))))
+
+(defun wamei/project-memo--posframe-only (command)
+  "小窓の中でだけ COMMAND を返す。キーマップの `:filter' 用。
+本文 window のメモではタブを出さないので、C-<tab> は端末の切り替え
+(init.el) に譲る。"
+  (and (wamei/project-memo--in-posframe-p) command))
+
+(defvar wamei/project-memo-tabs-mode-map
+  (let ((map (make-sparse-keymap)))
+    ;; org-mode-map の C-<tab> より優先させるためマイナーモードに持つ
+    (dolist (binding '(("C-<tab>" . wamei/project-memo-tab-next)
+                       ("C-S-<tab>" . wamei/project-memo-tab-previous)
+                       ("C-S-<iso-lefttab>" . wamei/project-memo-tab-previous)))
+      (define-key map (kbd (car binding))
+                  `(menu-item "" ,(cdr binding) :filter wamei/project-memo--posframe-only)))
+    map)
+  "小窓のメモでタブを切り替えるキー。")
+
+(define-minor-mode wamei/project-memo-tabs-mode
+  "メモのバッファで、小窓のタブを C-<tab> / C-S-<tab> で切り替える。"
+  :keymap wamei/project-memo-tabs-mode-map)
+
+(defun wamei/project-memo--posframe-update-tabs (window)
+  "小窓の WINDOW がメモを映していれば header-line にタブを出し、でなければ外す。"
+  (set-window-parameter window 'header-line-format
+                        (and (wamei/project-memo-buffer-p (window-buffer window))
+                             wamei/project-memo--tabs-header-line)))
+
+(defun wamei/project-memo--posframe-buffer-change (frame)
+  "`window-buffer-change-functions' 用。小窓の中身が変わったらタブを付け直す。"
+  (when (eq frame (wamei/project-memo-posframe-frame))
+    (wamei/project-memo--posframe-update-tabs (frame-root-window frame))))
 
 (defun wamei/project-memo--enable-tabs ()
-  "メモのファイルならタブを出す。`find-file-hook' 用。"
+  "メモのファイルならタブを切り替えるキーを有効にする。`find-file-hook' 用。"
   (when (wamei/project-memo-buffer-p)
-    (setq header-line-format wamei/project-memo--tabs-header-line)))
+    (wamei/project-memo-tabs-mode 1)))
 
 (defun wamei/project-memo-tabs-setup ()
-  "`wamei/project-memo-buffer' を通らずに開いたメモ (desktop の復元など) にも
-タブを出す。init.el から呼ぶ。"
+  "小窓のタブの配線。init.el から呼ぶ。
+小窓の中で開いたファイルに合わせてタブを付け外しし、`wamei/project-memo-buffer'
+を通らずに開いたメモ (desktop の復元など) にもタブを切り替えるキーを付ける。"
+  (add-hook 'window-buffer-change-functions #'wamei/project-memo--posframe-buffer-change)
   (add-hook 'find-file-hook #'wamei/project-memo--enable-tabs))
 
 ;;; 自動保存
