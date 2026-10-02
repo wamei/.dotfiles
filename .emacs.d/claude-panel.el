@@ -1,26 +1,27 @@
-;;; claude-panel.el --- claude-code-ide のセッションを 1 パネル + tab-line で切り替える -*- lexical-binding: t; -*-
+;;; claude-panel.el --- claude-code-ide のセッションを 1 パネル + タブで切り替える -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 
 ;; claude-code-ide はセッションごとに別 slot の side window を横に並べる。
 ;; ここでは端末パネル (C-z) と同じく「1 つの side window にバッファを差し替える」
-;; 方式にし、window 上部の tab-line に同じプロジェクトのセッションを並べる。
+;; 方式にし、window 上部の header-line に同じプロジェクトのセッションをタブで並べる。
+;; タブは端末パネルと同じ header-tabs.el で描く (見た目を揃えるため)。
 ;;
 ;; - 表示: `claude-code-ide--display-buffer-in-side-window' の前で、選択フレームに
 ;;   既に Claude の window があればセッションの slot をその window の slot に揃える。
 ;;   `display-buffer-in-side-window' は同じ slot の window を dedicated でも再利用
 ;;   するので、パッケージ側の表示処理 (フォーカス・寸法同期など) はそのまま通る。
-;; - 一覧: 表示後にバッファで `tab-line-mode' を有効にし、タブの中身と名前を
-;;   セッションから引く。並び順は最初に表示された順 (`wamei/claude-panel--order')。
+;; - 一覧: 表示後にバッファの `header-line-format' にタブを入れ、タブの中身と名前を
+;;   描くたびにセッションから引く。並び順は最初に表示された順 (`wamei/claude-panel--order')。
 ;;   パッケージのセッション一覧は順序不定なので自前で持つ。タブ名は Claude が
 ;;   端末タイトルで流してくる会話名を優先し、無ければセッション名 (proj:name)。
-;; - 切り替え: tab-line のクリックは dedicated window では switch-to-buffer が
-;;   失敗するため `tab-line-select-tab-buffer' に advice で割り込む。C-tab /
+;; - 切り替え: タブのクリック (`wamei/claude-panel-tab-select') はパッケージの
+;;   表示処理に回す (dedicated window では switch-to-buffer が失敗する)。C-tab /
 ;;   C-S-tab はバッファローカルなマイナーモード
 ;;   (`wamei/claude-panel-keys-mode') で端末パネルの巡回を上書きする。
 ;; - 終了: `claude-code-ide--cleanup-session' の前で、消えるセッションがパネルに
 ;;   出ていれば同じプロジェクトの別セッションに差し替え、パネルを残す。後で
-;;   tab-line を描き直す (バッファが消えるだけでは redisplay が走らない)。
+;;   タブを描き直す (バッファが消えるだけでは redisplay が走らない)。
 ;;   差し替えるのは side window に出ているときだけで、グリッド (claude-grid.el)
 ;;   の window はあちらの組み直しに任せる。
 
@@ -28,7 +29,8 @@
 
 (require 'seq)
 (require 'cl-lib)
-(require 'tab-line)
+;; タブは端末パネルと同じ部品で描く。
+(require 'header-tabs)
 ;; setf (claude-code-ide-mcp-session-window-slot ...) の setter を
 ;; byte-compile 時に知らせる。実行時は claude-code-ide が先に読み込む。
 (eval-when-compile (require 'claude-code-ide-mcp nil t))
@@ -70,10 +72,10 @@
   (when-let* ((session (claude-code-ide--buffer-session buffer)))
     (claude-code-ide-mcp-session-project-dir session)))
 
-;;; tab-line
+;;; タブ
 
 (defun wamei/claude-panel--tabs ()
-  "カレントバッファと同じプロジェクトの Claude バッファ。`tab-line-tabs-function' 用。"
+  "カレントバッファと同じプロジェクトの Claude バッファ。タブの並び。"
   (when-let* ((project-dir (wamei/claude-panel--project-dir (current-buffer))))
     (wamei/claude-panel--buffers project-dir)))
 
@@ -102,17 +104,36 @@ special にするだけで束縛はしないため。ghostel 未ロードのま�
               (title (buffer-local-value 'ghostel-title buffer)))
     (wamei/claude-panel--clean-title title)))
 
-(defun wamei/claude-panel--tab-name (buffer &optional _buffers)
+(defun wamei/claude-panel--tab-name (buffer)
   "BUFFER のタブ名。Claude の会話名、無ければセッション名 (proj または proj:name)。"
   (or (wamei/claude-panel--title buffer)
       (if-let* ((session (claude-code-ide--buffer-session buffer)))
           (claude-code-ide--session-display-name session)
         (buffer-name buffer))))
 
-(defun wamei/claude-panel--cache-key (tabs)
-  "tab-line のキャッシュキー。会話名の変化でも描き直すよう既定のキーに加える。"
-  (append (tab-line-cache-key-default tabs)
-          (mapcar #'wamei/claude-panel--title tabs)))
+(defvar wamei/claude-panel-tab-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [header-line mouse-1] #'wamei/claude-panel-tab-select)
+    map)
+  "Claude のタブの上でのマウス操作。")
+
+(defconst wamei/claude-panel--tabs-header-line '(:eval (wamei/claude-panel--tabs-format))
+  "Claude バッファに入れる `header-line-format'。")
+
+(defun wamei/claude-panel--tab-list ()
+  "カレントバッファの header-line に並べるタブ (`wamei/header-tabs-render' の形)。"
+  (mapcar (lambda (buffer)
+            (list :label (wamei/claude-panel--tab-name buffer)
+                  :current (eq buffer (current-buffer))
+                  :properties (list 'wamei/claude-buffer buffer
+                                    'local-map wamei/claude-panel-tab-map
+                                    'help-echo "mouse-1: 切り替え")))
+          (wamei/claude-panel--tabs)))
+
+(defun wamei/claude-panel--tabs-format ()
+  "Claude バッファの header-line の中身。`wamei/claude-panel--tabs-header-line' から呼ぶ。
+描くたびに作るので、会話名 (端末タイトル) が変わっても次の描画に出る。"
+  (wamei/header-tabs-format (wamei/claude-panel--tab-list)))
 
 (defvar wamei/claude-panel-map
   (let ((map (make-sparse-keymap)))
@@ -143,20 +164,17 @@ ghostel はローカルマップにキーマップ (`ghostel-semi-char-mode-map'
   :keymap wamei/claude-panel-map)
 
 (defun wamei/claude-panel--setup (buffer)
-  "BUFFER を一覧に登録し、tab-line と巡回キーを有効にする。何度呼んでもよい。"
+  "BUFFER を一覧に登録し、タブと巡回キーを有効にする。何度呼んでもよい。"
   (when (buffer-live-p buffer)
     (wamei/claude-panel--register buffer)
     (with-current-buffer buffer
       ;; ghostel のキーマップは全端末で共有なので触らず、巡回キーは
       ;; このバッファのマイナーモードで持つ
       (wamei/claude-panel-keys-mode 1)
-      (unless (bound-and-true-p tab-line-mode)
-        (setq-local tab-line-tabs-function #'wamei/claude-panel--tabs
-                    tab-line-tab-name-function #'wamei/claude-panel--tab-name
-                    tab-line-cache-key-function #'wamei/claude-panel--cache-key
-                    tab-line-new-button-show nil
-                    tab-line-close-button-show nil)
-        (tab-line-mode 1)))))
+      ;; 以前は tab-line で出していた。読み込み直したときに 2 段にならないよう切る
+      (when (bound-and-true-p tab-line-mode)
+        (tab-line-mode -1))
+      (setq header-line-format wamei/claude-panel--tabs-header-line))))
 
 ;;; 表示
 
@@ -180,7 +198,7 @@ ghostel はローカルマップにキーマップ (`ghostel-semi-char-mode-map'
     (setf (claude-code-ide-mcp-session-window-slot session) slot)))
 
 (defun wamei/claude-panel--after-display (buffer)
-  "表示した BUFFER に tab-line を付ける。
+  "表示した BUFFER にタブを付ける。
 `claude-code-ide--display-buffer-in-side-window' の :after advice。"
   (when (get-buffer-window buffer)
     (wamei/claude-panel--setup buffer)))
@@ -191,15 +209,15 @@ ghostel はローカルマップにキーマップ (`ghostel-semi-char-mode-map'
 
 ;;; 切り替え
 
-(defun wamei/claude-panel--select-tab-buffer (orig buffer &optional window)
-  "tab-line のクリックで Claude バッファならパネルに差し替える。
-`tab-line-select-tab-buffer' の :around advice。dedicated な window では
-switch-to-buffer が失敗するので、パッケージの表示処理に回す。"
-  (if (claude-code-ide--buffer-session buffer)
-      (with-selected-window (or window (selected-window))
-        (when-let* ((shown (wamei/claude-panel--show buffer)))
-          (select-window shown)))
-    (funcall orig buffer window)))
+(defun wamei/claude-panel-tab-select (event)
+  "クリックしたタブのセッションを、クリックした window に出す。
+dedicated な window では switch-to-buffer が失敗するので、パッケージの表示処理に回す。"
+  (interactive "e")
+  (when-let* ((buffer (wamei/header-tabs-event-property event 'wamei/claude-buffer))
+              ((buffer-live-p buffer)))
+    (with-selected-window (posn-window (event-start event))
+      (when-let* ((shown (wamei/claude-panel--show buffer)))
+        (select-window shown)))))
 
 (defun wamei/claude-panel--cycle (offset)
   "カレントの Claude バッファから OFFSET 個ずれたセッションに切り替える。端は巻き戻る。"
@@ -246,7 +264,7 @@ window は side window ではなく、あちらはセッションの増減で全
   (wamei/claude-panel--hand-over session))
 
 (defun wamei/claude-panel--after-cleanup (&rest _)
-  "`claude-code-ide--cleanup-session' の :after advice。tab-line を描き直す。
+  "`claude-code-ide--cleanup-session' の :after advice。タブを描き直す。
 終了したセッションのバッファは消えるが、残ったセッションの window 自体は
 変わらないので redisplay が走らず古いタブが残る (kill-buffer は mode-line の
 更新フラグを立てない)。全 window の mode-line 更新を要求して描き直させる。"
@@ -260,13 +278,13 @@ window は side window ではなく、あちらはセッションの増減で全
               :before #'wamei/claude-panel--redirect-slot)
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :after #'wamei/claude-panel--after-display)
-  (advice-add 'tab-line-select-tab-buffer
-              :around #'wamei/claude-panel--select-tab-buffer)
+  ;; 以前は tab-line のクリックに割り込んでいた。読み込み直したときに外す
+  (advice-remove 'tab-line-select-tab-buffer 'wamei/claude-panel--select-tab-buffer)
   (advice-add 'claude-code-ide--cleanup-session
               :before #'wamei/claude-panel--before-cleanup)
   (advice-add 'claude-code-ide--cleanup-session
               :after #'wamei/claude-panel--after-cleanup)
-  ;; 読み込み前から動いているセッションにも tab-line と巡回キーを付ける
+  ;; 読み込み前から動いているセッションにもタブと巡回キーを付ける
   (when (fboundp 'claude-code-ide-mcp--active-sessions)
     (dolist (session (claude-code-ide-mcp--active-sessions))
       (wamei/claude-panel--setup (claude-code-ide-mcp-session-buffer session)))))

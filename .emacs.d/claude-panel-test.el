@@ -10,7 +10,9 @@
 (require 'ert)
 (package-initialize)
 (require 'claude-code-ide)
-(require 'tab-line)
+(load (expand-file-name "header-tabs.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
 (load (expand-file-name "claude-panel.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
       nil t)
@@ -116,13 +118,13 @@
                            (claude-code-ide-mcp-session-buffer early)))))))
 
 (ert-deftest wamei/claude-panel-enable-sets-up-existing-sessions ()
-  "読み込み時点で動いているセッションのバッファにも tab-line を付ける。"
+  "読み込み時点で動いているセッションのバッファにもタブを付ける。"
   (wamei/claude-panel-test--with-env
     (let* ((early (wamei/claude-panel-test--session "/tmp/proj/"))
            (buffer (claude-code-ide-mcp-session-buffer early)))
       (wamei/claude-panel-enable)
       (with-current-buffer buffer
-        (should tab-line-mode)
+        (should (equal header-line-format wamei/claude-panel--tabs-header-line))
         (should (eq (key-binding (kbd "<C-tab>")) #'wamei/claude-panel-next))))))
 
 (ert-deftest wamei/claude-panel-register-is-idempotent ()
@@ -168,17 +170,24 @@
         (setq-local ghostel-title nil))
       (should (equal (wamei/claude-panel--tab-name buffer) "proj:a")))))
 
-(ert-deftest wamei/claude-panel-cache-key-changes-with-title ()
-  "タイトルが変わったら tab-line のキャッシュが無効になる。"
+(ert-deftest wamei/claude-panel-tab-list-labels-and-marks-the-current ()
+  "タブは同じプロジェクトのセッションを並べ、ラベルは会話名、今のバッファに印を付ける。
+描くたびに作るので、タイトルが変わればそのまま次の描画に出る。"
   (wamei/claude-panel-test--with-env
     (let* ((a (wamei/claude-panel-test--session "/tmp/proj/"))
-           (buffer (claude-code-ide-mcp-session-buffer a)))
-      (claude-code-ide--display-buffer-in-side-window buffer)
-      (with-current-buffer buffer
-        (should (eq tab-line-cache-key-function #'wamei/claude-panel--cache-key))
-        (let ((before (wamei/claude-panel--cache-key (list buffer))))
-          (with-current-buffer buffer (setq-local ghostel-title "✳ 新しい名前"))
-          (should-not (equal before (wamei/claude-panel--cache-key (list buffer)))))))))
+           (b (wamei/claude-panel-test--session "/tmp/proj/" "b")))
+      (dolist (session (list a b))
+        (claude-code-ide--display-buffer-in-side-window
+         (claude-code-ide-mcp-session-buffer session)))
+      (with-current-buffer (claude-code-ide-mcp-session-buffer b)
+        (setq-local ghostel-title "✳ 新しい名前")
+        (let ((tabs (wamei/claude-panel--tab-list)))
+          (should (equal (mapcar (lambda (tab) (plist-get tab :label)) tabs)
+                         '("proj" "新しい名前")))
+          (should (equal (mapcar (lambda (tab) (and (plist-get tab :current) t)) tabs)
+                         '(nil t)))
+          (should (eq (plist-get (plist-get (car tabs) :properties) 'wamei/claude-buffer)
+                      (claude-code-ide-mcp-session-buffer a))))))))
 
 (ert-deftest wamei/claude-panel-map-binds-super-v-to-paste ()
   "Claude のバッファでは Cmd+V がクリップボードの画像を端末へ渡す。"
@@ -211,17 +220,16 @@
       (should (eq (window-buffer window) (claude-code-ide-mcp-session-buffer other)))
       (should (= 1 (length (wamei/claude-panel-test--claude-windows)))))))
 
-(ert-deftest wamei/claude-panel-display-enables-tab-line-in-buffer ()
+(ert-deftest wamei/claude-panel-display-shows-tabs-in-header-line ()
+  "端末パネルと同じ header-tabs のタブを header-line に出す。tab-line は使わない。"
   (wamei/claude-panel-test--with-env
     (let* ((a (wamei/claude-panel-test--session "/tmp/proj/"))
            (buffer (claude-code-ide-mcp-session-buffer a)))
+      (with-current-buffer buffer (setq-local tab-line-mode t))
       (claude-code-ide--display-buffer-in-side-window buffer)
       (with-current-buffer buffer
-        (should tab-line-mode)
-        (should (eq tab-line-tabs-function #'wamei/claude-panel--tabs))
-        (should (eq tab-line-tab-name-function #'wamei/claude-panel--tab-name))
-        (should-not tab-line-new-button-show)
-        (should-not tab-line-close-button-show)
+        (should (equal header-line-format wamei/claude-panel--tabs-header-line))
+        (should-not (bound-and-true-p tab-line-mode))
         (should (memq buffer (wamei/claude-panel--buffers "/tmp/proj/")))))))
 
 (ert-deftest wamei/claude-panel-tabs-returns-current-project-buffers ()
@@ -239,7 +247,16 @@
 
 ;;; 切り替え
 
-(ert-deftest wamei/claude-panel-tab-line-click-switches-dedicated-panel ()
+(defun wamei/claude-panel-test--click (window label)
+  "WINDOW の header-line で LABEL のタブをクリックしたイベント。"
+  (let* ((string (with-current-buffer (window-buffer window)
+                   (wamei/header-tabs-render (wamei/claude-panel--tab-list) 80 800)))
+         (pos (string-search label string)))
+    (list 'mouse-1 (list window 'header-line '(0 . 0) 0
+                         (cons string pos) nil '(0 . 0) nil nil nil))))
+
+(ert-deftest wamei/claude-panel-tab-click-switches-dedicated-panel ()
+  "タブのクリックで、dedicated なパネルの中身をそのセッションに差し替える。"
   (wamei/claude-panel-test--with-env
     (let* ((a (wamei/claude-panel-test--session "/tmp/proj/"))
            (b (wamei/claude-panel-test--session "/tmp/proj/" "b"))
@@ -247,19 +264,9 @@
                     (claude-code-ide-mcp-session-buffer a))))
       (claude-code-ide--display-buffer-in-side-window
        (claude-code-ide-mcp-session-buffer b))
-      ;; tab-line のクリックは tab-line-select-tab-buffer に届く
-      (tab-line-select-tab-buffer (claude-code-ide-mcp-session-buffer a) window)
+      (wamei/claude-panel-tab-select (wamei/claude-panel-test--click window "proj "))
       (should (eq (window-buffer window) (claude-code-ide-mcp-session-buffer a)))
       (should (= 1 (length (wamei/claude-panel-test--claude-windows)))))))
-
-(ert-deftest wamei/claude-panel-tab-line-click-leaves-other-buffers-alone ()
-  (wamei/claude-panel-test--with-env
-    (let ((plain (generate-new-buffer "plain")))
-      (unwind-protect
-          (progn
-            (tab-line-select-tab-buffer plain (selected-window))
-            (should (eq (window-buffer (selected-window)) plain)))
-        (kill-buffer plain)))))
 
 (ert-deftest wamei/claude-panel-next-and-previous-cycle-with-wraparound ()
   (wamei/claude-panel-test--with-env
@@ -391,7 +398,7 @@ C-tab がグローバル (端末パネルの巡回) に戻ってしまっては�
 
 (ert-deftest wamei/claude-panel-cleanup-session-redraws-tab-line ()
   "終了したセッションのバッファが消えても window は変わらないので、
-tab-line は明示的に描き直しを要求しないと古いタブが残る。
+タブ (header-line) は明示的に描き直しを要求しないと古いタブが残る。
 kill-buffer は mode-line の更新フラグを立てない (Emacs の Fkill_buffer)。
 redisplay のフラグは Lisp から見えないため、要求の呼び出しを記録して確認する。"
   (wamei/claude-panel-test--with-env

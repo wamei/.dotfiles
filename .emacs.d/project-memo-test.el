@@ -1479,9 +1479,9 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
             (cdr (assq face face-remapping-alist))))
 
 (ert-deftest wamei/project-memo-tabs-take-the-posframe-colors ()
-  "小窓の地はポップアップの背景色 (`wamei/popup-body') なので、今のタブをその色に、
-他のタブを本文の背景色にする。本体の tab-bar で今のタブが本文 window と同じ色に
-なっているのと同じ見え方にするため。"
+  "小窓の地はポップアップの背景色 (`wamei/popup-body') なので、今のタブをその色に
+する。本体の tab-bar で今のタブが本文 window と同じ色になっているのと同じ見え方に
+するため。他のタブはタブ列の色のまま (重ねない)。"
   (wamei/project-memo-test--with-tabs (alpha)
     (let ((defined (facep 'wamei/popup-body)))
       (unwind-protect
@@ -1493,8 +1493,7 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
               (should (equal (wamei/project-memo-test--remapped-background
                               'wamei/header-tab-current)
                              "#223344"))
-              (should (equal (wamei/project-memo-test--remapped-background 'wamei/header-tab)
-                             (face-background 'default nil t)))
+              (should-not (wamei/project-memo-test--remapped-background 'wamei/header-tab))
               (wamei/project-memo-tabs-mode -1)
               (should-not (wamei/project-memo-test--remapped-background
                            'wamei/header-tab-current))))

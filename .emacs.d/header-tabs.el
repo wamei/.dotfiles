@@ -1,14 +1,14 @@
 ;;; header-tabs.el --- header-line に window の幅を等分するタブを描く -*- lexical-binding: t; -*-
 ;;; Commentary:
 ;; header-line に「window の幅を等分するタブ」を 1 行で描く部品。
-;; 端末パネル (term-panel.el) とメモ (project-memo.el) が使う。
+;; 端末パネル (term-panel.el)、claude パネル (claude-panel.el)、メモ (project-memo.el) が使う。
 ;;
 ;; 何をタブにするか・クリックで何をするかは呼び出し側が決める。ここは
 ;; タブの並び (plist のリスト) を受け取って、等分・切り詰め・見た目・
 ;; マウス強調を付けた文字列にするだけ。
 ;;
-;; 見た目は claude パネルの tab-line (claude-panel.el) に揃える。
-;; tab-line そのものを使わないのは、タブの幅を window の等分にできないため。
+;; face は tab-line のものを継ぐ。tab-line そのものを使わないのは、タブの幅を
+;; window の等分にできないため。
 ;;
 ;; テストは header-tabs-test.el。
 ;;; Code:
@@ -22,7 +22,7 @@
   :group 'convenience)
 
 (defface wamei/header-tab '((t :inherit tab-line-tab-inactive))
-  "タブの face。claude パネルの tab-line に揃えてある。"
+  "タブの face。tab-line の非選択のタブを継ぐ。"
   :group 'wamei/header-tabs)
 
 (defface wamei/header-tab-current '((t :inherit tab-line-tab-current))

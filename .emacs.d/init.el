@@ -351,6 +351,13 @@ ghostel ブロックの display table で同形の記号に置き換えている
        (t (:underline t :background "#005f00"))))
   :config
   (load-theme 'doom-molokai t)
+  ;; タブ列 (本体の tab-bar、claude パネル・端末・メモの header-tabs、tab-line) の
+  ;; 地と非選択のタブを、非選択の window (auto-dim-other-buffers の #121314) と同じ
+  ;; 色にする。テーマの bg-alt (#222323) だと選択中のタブ (#1c1e1f) との差が小さく、
+  ;; frame の透過越しでは見分けられない。:custom-face だと spec ごと置き換わって
+  ;; テーマの前景色を失うので、背景だけを上書きする。
+  (dolist (face '(tab-bar tab-bar-tab-inactive tab-line tab-line-tab-inactive))
+    (set-face-attribute face nil :background "#121314"))
   (set-frame-parameter nil 'alpha 90))
 
 (leaf tty-transparency
@@ -534,8 +541,8 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
-  ;; header-line に等分のタブを描く部品。端末パネルとメモ (project-memo.el)
-  ;; のタブが使うので、両方より先に読む。
+  ;; header-line に等分のタブを描く部品。端末パネル・claude パネル・メモ
+  ;; (project-memo.el) のタブが使うので、どれより先に読む。
   (load (expand-file-name "header-tabs"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
@@ -670,7 +677,7 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; 依存 (websocket / web-server / transient) は導入時に自動で入る。
   :ensure nil
   :preface
-  ;; 複数セッションを 1 つの右パネルに差し替え、上部の tab-line で切り替える。
+  ;; 複数セッションを 1 つの右パネルに差し替え、上部のタブ (header-line) で切り替える。
   ;; 実体は claude-panel.el (init.el は symlink なので実体の隣から読む)。
   (load (expand-file-name "claude-panel"
                           (file-name-directory (file-truename user-init-file)))
@@ -820,7 +827,7 @@ Claude Code は会話を <設定ディレクトリ>/projects/<作業ディレク
   ;; プロジェクトにする (project-tabs.el)
   (advice-add 'claude-code-ide--get-working-directory
               :around #'wamei/claude--tab-working-directory)
-  ;; セッションを 1 パネル + tab-line にまとめる (claude-panel.el)
+  ;; セッションを 1 パネル + タブにまとめる (claude-panel.el)
   (wamei/claude-panel-enable)
   ;; セッションの増減でグリッドのタブを組み直す (claude-grid.el)
   (wamei/claude-grid-enable)
@@ -2015,6 +2022,18 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
   :custom
   ;; ミニバッファに入っても直前の window を暗くしない (戻る場所が分かるように)
   (auto-dim-other-buffers-dim-on-switch-to-minibuffer . nil)
+  ;; 既定の 4 つに、window の上端に出す「今のタブ」を足す。今のタブは本文と同じ
+  ;; 色にしてあるので、本文だけ暗くなるとタブが浮く。端末・claude パネル・メモの
+  ;; header-tabs (header-tabs.el) は wamei/header-tab-current、tab-line (使う
+  ;; ときのため) は選択中の window で -current、他の window で tab-line-tab。
+  (auto-dim-other-buffers-affected-faces
+   . '((default . (auto-dim-other-buffers . nil))
+       (fringe . (auto-dim-other-buffers . nil))
+       (org-block . (auto-dim-other-buffers . nil))
+       (org-hide . (auto-dim-other-buffers-hide . nil))
+       (tab-line-tab . (auto-dim-other-buffers . nil))
+       (tab-line-tab-current . (auto-dim-other-buffers . nil))
+       (wamei/header-tab-current . (auto-dim-other-buffers . nil))))
   :global-minor-mode auto-dim-other-buffers-mode)
 
 (leaf global-display-line-numbers

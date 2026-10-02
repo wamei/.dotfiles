@@ -15,8 +15,8 @@
 (package-initialize)
 (require 'claude-code-ide)
 (require 'tab-bar)
-(require 'tab-line)
 (let ((dir (file-name-directory (or load-file-name buffer-file-name))))
+  (load (expand-file-name "header-tabs.el" dir) nil t)
   (load (expand-file-name "claude-panel.el" dir) nil t)
   (load (expand-file-name "claude-grid.el" dir) nil t))
 
@@ -243,13 +243,13 @@ side window とミニバッファは除く。行は上から、各行は左か�
       (wamei/claude-grid--build (list a b))
       (should (eq (window-buffer (selected-window)) a)))))
 
-(ert-deftest wamei/claude-grid-build-sets-up-tab-line ()
-  "グリッドで初めて表示したセッションにも tab-line と巡回キーを付ける。"
+(ert-deftest wamei/claude-grid-build-sets-up-tabs ()
+  "グリッドで初めて表示したセッションにもタブと巡回キーを付ける。"
   (wamei/claude-grid-test--with-env
     (let ((a (wamei/claude-grid-test--session "/tmp/proj/" "a")))
       (wamei/claude-grid--build (list a))
       (with-current-buffer a
-        (should tab-line-mode)
+        (should (equal header-line-format wamei/claude-panel--tabs-header-line))
         ;; グローバルの C-tab を上書きするバッファローカルなマイナーモードが付く
         ;; (init.el は tab-bar-mode-map の C-tab を外しているので、実機では
         ;; これがそのまま効く)
