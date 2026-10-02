@@ -11,7 +11,12 @@
 (defvar-local ghostel-title nil
   "端末が報告したタイトル (テスト用のスタブ定義)。")
 
-;; 一覧の ● は term-modeline.el の状態から作るので先に読む (term-panel.el の
+;; タブは header-tabs.el で描く (term-panel.el の (require 'header-tabs) を満たす)。
+(load (expand-file-name "header-tabs.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
+
+;; タブの ● は term-modeline.el の状態から作るので先に読む (term-panel.el の
 ;; (require 'term-modeline) を満たす)。
 (load (expand-file-name "term-modeline.el"
                         (file-name-directory (or load-file-name buffer-file-name)))
@@ -68,7 +73,7 @@
            ,@(mapcar (lambda (var) `(make-directory ,var t)) vars)
            ,@body)
        (dolist (buf (buffer-list))
-         (when (string-match-p "\\`\\*term\\(?:: \\|inals\\)" (buffer-name buf))
+         (when (string-match-p "\\`\\*term: " (buffer-name buf))
            (let ((kill-buffer-query-functions nil))
              (kill-buffer buf))))
        (delete-other-windows)
@@ -90,17 +95,31 @@
      (setq default-directory ,root)
      ,@body))
 
-(defun wamei/term-panel-test--list-entries (list-buffer)
-  "LIST-BUFFER の各行が指す端末バッファ名。"
-  (with-current-buffer list-buffer
-    (save-excursion
-      (goto-char (point-min))
-      (let (names)
-        (while (not (eobp))
-          (when-let* ((buffer (get-text-property (point) 'wamei/term-buffer)))
-            (push (buffer-name buffer) names))
-          (forward-line 1))
-        (nreverse names)))))
+(defun wamei/term-panel-test--tabs (string)
+  "header-line のタブ文字列 STRING を、タブごとの (端末バッファ名 . 文字列) にする。"
+  (let ((pos 0) tabs)
+    (while (< pos (length string))
+      (let ((next (or (next-single-property-change pos 'wamei/term-buffer string)
+                      (length string)))
+            (buffer (get-text-property pos 'wamei/term-buffer string)))
+        (when buffer
+          (push (cons (buffer-name buffer) (substring string pos next)) tabs))
+        (setq pos next)))
+    (nreverse tabs)))
+
+(defun wamei/term-panel-test--tab-names (string)
+  "STRING のタブが指す端末バッファ名。"
+  (mapcar #'car (wamei/term-panel-test--tabs string)))
+
+(defun wamei/term-panel-test--faces-at (string pos)
+  "STRING の POS に付いている face の一覧。"
+  (let ((face (get-text-property pos 'face string)))
+    (if (and (listp face) (not (keywordp (car face)))) face (list face))))
+
+(defun wamei/term-panel-test--render (&optional current width)
+  "カレントバッファのプロジェクトのタブを描く。CURRENT は今出ている端末、WIDTH は桁数。"
+  (wamei/term--tabs-string (wamei/term--buffers) current (or width 80) 800))
+
 
 ;;; ghostel のロード
 
@@ -132,19 +151,16 @@ term-panel.el で defun されているので leaf の `:bind' が張る autoloa
         (should (equal (wamei/term--root) alpha))))))
 
 (ert-deftest wamei/term-panel-root-in-panel-buffers-keeps-their-project ()
-  "端末と一覧の中では、タブが別プロジェクトでもそのバッファのプロジェクトを見る。
-一覧の再描画やタイトル変更 (プロセスフィルタ) はパネルに出ている端末を基準に
-動くので、ここでタブに引っぱられると別プロジェクトの一覧を描いてしまう。"
+  "端末の中では、タブが別プロジェクトでもそのバッファのプロジェクトを見る。
+端末タブの描画 (header-line) やタイトル変更 (プロセスフィルタ) は端末を基準に
+動くので、ここでタブに引っぱられると別プロジェクトのタブを描いてしまう。"
   (wamei/term-panel-test--with-projects (alpha beta)
     (wamei/term-panel-test--in beta (wamei/term--create 1) (wamei/term--create 2))
-    (let ((list-b (wamei/term-panel-test--in beta (wamei/term--list-buffer))))
-      (wamei/term-panel-test--with-tab-root alpha
-        (with-current-buffer "*term: beta*"
-          (should (equal (wamei/term--root) beta))
-          (should (equal (mapcar #'buffer-name (wamei/term--buffers))
-                         '("*term: beta*" "*term: beta 2*"))))
-        (with-current-buffer list-b
-          (should (equal (wamei/term--root) beta)))))))
+    (wamei/term-panel-test--with-tab-root alpha
+      (with-current-buffer "*term: beta*"
+        (should (equal (wamei/term--root) beta))
+        (should (equal (mapcar #'buffer-name (wamei/term--buffers))
+                       '("*term: beta*" "*term: beta 2*")))))))
 
 (ert-deftest wamei/term-panel-root-falls-back-to-buffer-project-without-tab ()
   "タブにプロジェクトが紐づいていなければ、従来どおりバッファ基準。"
@@ -262,280 +278,126 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
       (should (equal (mapcar #'buffer-name (wamei/term--buffers))
                      '("*term: alpha*"))))))
 
-;;; 一覧はプロジェクトごと
+;;; タブ (header-line)
 
-(ert-deftest wamei/term-panel-list-buffer-is-per-project ()
-  (wamei/term-panel-test--with-projects (alpha beta)
-    (let ((list-a (wamei/term-panel-test--in alpha (wamei/term--list-buffer)))
-          (list-b (wamei/term-panel-test--in beta (wamei/term--list-buffer))))
-      (should-not (eq list-a list-b))
-      (should (equal (buffer-name list-a) "*terminals: alpha*"))
-      (should (equal (buffer-local-value 'default-directory list-a) alpha))
-      (should (equal (buffer-local-value 'default-directory list-b) beta)))))
-
-(ert-deftest wamei/term-panel-list-refresh-shows-only-current-project ()
+(ert-deftest wamei/term-panel-tabs-show-only-current-project ()
+  "タブには同じプロジェクトの端末だけを番号順に並べる。"
   (wamei/term-panel-test--with-projects (alpha beta)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
-      (wamei/term--create 2)
-      (wamei/term--list-refresh))
+      (wamei/term--create 2))
     (wamei/term-panel-test--in beta
-      (wamei/term--create 1)
       (wamei/term--create 2)
-      (should (equal (wamei/term-panel-test--list-entries (wamei/term--list-refresh))
-                     '("*term: beta*" "*term: beta 2*"))))
-    ;; alpha の一覧は beta の操作で変わらない
-    (should (equal (wamei/term-panel-test--list-entries
-                    (wamei/term-panel-test--in alpha (wamei/term--list-buffer)))
-                   '("*term: alpha*" "*term: alpha 2*")))))
+      (wamei/term--create 1)
+      (should (equal (wamei/term-panel-test--tab-names (wamei/term-panel-test--render))
+                     '("*term: beta*" "*term: beta 2*"))))))
 
-(ert-deftest wamei/term-panel-list-refresh-in-list-buffer-uses-its-project ()
-  "一覧バッファの中から描き直しても (幅変更の hook)、そのプロジェクトの端末が並ぶ。"
+(ert-deftest wamei/term-panel-tabs-in-terminal-use-its-project ()
+  "端末の header-line から描いても (タブが別プロジェクトでも) その端末のプロジェクト。"
   (wamei/term-panel-test--with-projects (alpha beta)
     (wamei/term-panel-test--in alpha (wamei/term--create 1) (wamei/term--create 2))
     (wamei/term-panel-test--in beta (wamei/term--create 1))
-    (let ((list-a (wamei/term-panel-test--in alpha (wamei/term--list-buffer))))
-      (with-current-buffer list-a (wamei/term--list-refresh))
-      (should (equal (wamei/term-panel-test--list-entries list-a)
-                     '("*term: alpha*" "*term: alpha 2*"))))))
+    (wamei/term-panel-test--with-tab-root beta
+      (with-current-buffer (get-buffer "*term: alpha*")
+        (should (equal (wamei/term-panel-test--tab-names (wamei/term-panel-test--render))
+                       '("*term: alpha*" "*term: alpha 2*")))))))
 
-(ert-deftest wamei/term-panel-label-comes-from-ghostel-title ()
-  "一覧のラベルは端末が報告したタイトル (`ghostel-title') を出す。"
+(ert-deftest wamei/term-panel-tab-label-comes-from-ghostel-title ()
+  "タブのラベルは端末が報告したタイトル (`ghostel-title')、無ければシェル名。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
       (with-current-buffer (wamei/term--create 2)
         (setq-local ghostel-title "make test"))
-      (should (string-match-p "● make test"
-                              (with-current-buffer (wamei/term--list-refresh)
-                                (buffer-string)))))))
+      (let ((tabs (wamei/term-panel-test--tabs (wamei/term-panel-test--render))))
+        (should (string-match-p (concat "● " (regexp-quote
+                                              (file-name-nondirectory shell-file-name)))
+                                (cdr (nth 0 tabs))))
+        (should (string-match-p "● make test" (cdr (nth 1 tabs))))))))
 
-;;; 一覧の ●
-
-(defun wamei/term-panel-test--first-row (list-buffer)
-  "LIST-BUFFER の 1 行目 (テキストプロパティ付き)。"
-  (with-current-buffer list-buffer
-    (buffer-substring (point-min) (line-end-position))))
-
-(defun wamei/term-panel-test--mark-position (&optional line)
-  "LINE 行目 (既定は 1) の ● の位置。"
-  (save-excursion
-    (goto-char (point-min))
-    (forward-line (1- (or line 1)))
-    (text-property-any (line-beginning-position) (line-end-position)
-                       'wamei/term-mark t)))
-
-(defun wamei/term-panel-test--mark-face (row)
-  "ROW の ● に付いている face の一覧。
-現在の端末の行には行背景の face も重ねて付くので、リストで受ける。"
-  (let ((face (get-text-property (string-match "●" row) 'face row)))
-    (if (listp face) face (list face))))
-
-(ert-deftest wamei/term-panel-list-shows-status-mark ()
-  "一覧の各行はコマンド名と、その直前の実行状態の ● だけ。
-開いただけの端末は未実行 (黄) で、コマンド名の代わりにシェル名が出る。"
+(ert-deftest wamei/term-panel-tab-mark-follows-the-command-result ()
+  "● は直前の実行状態の色。開いただけなら未実行 (黄)、終われば結果の色。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
-      (let ((row (wamei/term-panel-test--first-row (wamei/term--list-refresh))))
-        (should (string-prefix-p (concat " " wamei/term-modeline-mark-string " ")
-                                 (substring-no-properties row)))
-        (should-not (string-match-p "\\`[0-9]" (substring-no-properties row)))
+      (wamei/term--create 2)
+      (let* ((string (wamei/term-panel-test--render))
+             (mark (string-match "●" string)))
         (should (memq 'wamei/term-modeline-status-idle
-                      (wamei/term-panel-test--mark-face row)))))))
-
-(ert-deftest wamei/term-panel-list-mark-follows-the-command-result ()
-  "コマンドが終わったら ● の色が結果に変わる。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
+                      (wamei/term-panel-test--faces-at string mark))))
       (with-current-buffer (get-buffer "*term: alpha*")
         (setq-local wamei/term-modeline--start-time 1
                     wamei/term-modeline--end-time 2
-                    wamei/term-modeline--exit-status 0))
-      (should (memq 'wamei/term-modeline-status-success
-                    (wamei/term-panel-test--mark-face
-                     (wamei/term-panel-test--first-row (wamei/term--list-refresh)))))
-      (with-current-buffer (get-buffer "*term: alpha*")
-        (setq-local wamei/term-modeline--exit-status 1))
-      (should (memq 'wamei/term-modeline-status-failure
-                    (wamei/term-panel-test--mark-face
-                     (wamei/term-panel-test--first-row (wamei/term--list-refresh))))))))
+                    wamei/term-modeline--exit-status 1))
+      (let* ((string (wamei/term-panel-test--render))
+             (mark (string-match "●" string)))
+        (should (memq 'wamei/term-modeline-status-failure
+                      (wamei/term-panel-test--faces-at string mark)))))))
 
-(ert-deftest wamei/term-panel-list-mark-keeps-its-color-on-the-current-row ()
-  "選択中の行の強調は sidebar と同じ控えめな行背景で、● は状態の色のまま。
-face は ● の後ろに足す (前に足すと、前景色を持つ face のとき ● が潰れる)。"
+(ert-deftest wamei/term-panel-tab-current-is-highlighted ()
+  "今パネルに出ている端末のタブは `wamei/header-tab-current'、他は `wamei/header-tab'。
+タブの face は ● の後ろに足す (● の状態の色を潰さない)。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
-      (cl-letf (((symbol-function 'wamei/term--current)
-                 (lambda () (get-buffer "*term: alpha*"))))
-        (let ((face (wamei/term-panel-test--mark-face
-                     (wamei/term-panel-test--first-row (wamei/term--list-refresh)))))
-          (should (memq 'wamei/term-list-current-row face))
-          (should (eq (car face) 'wamei/term-modeline-status-idle)))))))
+      (let* ((second (wamei/term--create 2))
+             (string (wamei/term-panel-test--render second))
+             (tabs (wamei/term-panel-test--tabs string))
+             (second-start (length (cdr (car tabs))))
+             (second-mark (string-match "●" string second-start)))
+        (should (memq 'wamei/header-tab (wamei/term-panel-test--faces-at string 0)))
+        (should (memq 'wamei/header-tab-current
+                      (wamei/term-panel-test--faces-at string second-start)))
+        (should (eq (car (wamei/term-panel-test--faces-at string second-mark))
+                    'wamei/term-modeline-status-idle))
+        (should (memq 'wamei/header-tab-current
+                      (wamei/term-panel-test--faces-at string second-mark)))))))
 
-(ert-deftest wamei/term-panel-list-hover-covers-exactly-one-row ()
-  "マウスが乗ったときの強調は dired と同じ `highlight' で、その行だけを
-一続きに光らせる。`mouse-face' が光るのは「マウス位置から同じ値が続く範囲」
-なので、行の中で値を変えると 1 行が [● ][ls -al] のように分断され、逆に
-改行にも同じ値を張ると全行が一続きになって一度に光る。"
+(defun wamei/term-panel-test--click (string pos)
+  "header-line の STRING の POS をクリックしたイベント。"
+  (list 'mouse-1 (list (selected-window) 'header-line '(0 . 0) 0
+                       (cons string pos) nil '(0 . 0) nil nil nil)))
+
+(ert-deftest wamei/term-panel-tab-click-shows-the-terminal ()
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--create 2)
-      (with-current-buffer (wamei/term--list-refresh)
-        (goto-char (point-min))
-        ;; 行の中は ● も含めて同じ値
-        (let (values)
-          (while (< (point) (line-end-position))
-            (push (get-text-property (point) 'mouse-face) values)
-            (forward-char 1))
-          (should (equal (delete-dups values) '(highlight))))
-        ;; 改行では切る (次の行と地続きにしない)
-        (should-not (get-text-property (line-end-position) 'mouse-face))
-        (forward-line 1)
-        (should (eq (get-text-property (point) 'mouse-face) 'highlight))))))
+      (let* ((first (wamei/term--create 1))
+             (second (wamei/term--create 2)))
+        (wamei/term--show first)
+        (let* ((string (with-current-buffer first (wamei/term-panel-test--render first)))
+               (pos (cdr (wamei/term-panel-test--tab-start string second))))
+          (wamei/term-tab-select (wamei/term-panel-test--click string pos)))
+        (should (eq (window-buffer (wamei/term--window)) second))))))
 
-(ert-deftest wamei/term-panel-list-mark-face-replaces-only-the-first ()
-  "● の face を差し替えても、後ろに重ねてある現在行の背景は残す。"
-  ;; propertize が置いた素の face
-  (should (equal (wamei/term--list-mark-face 'old 'new) 'new))
-  ;; 現在行で add-face-text-property が足したあと
-  (should (equal (wamei/term--list-mark-face '(old wamei/term-list-current-row) 'new)
-                 '(new wamei/term-list-current-row)))
-  ;; 既に差し替えたあと (単独の色指定は 1 つの face なので、丸ごと置き換える)
-  (should (equal (wamei/term--list-mark-face '(:foreground "#123456") 'new) 'new))
-  (should (equal (wamei/term--list-mark-face
-                  '((:foreground "#123456") wamei/term-list-current-row) 'new)
-                 '(new wamei/term-list-current-row))))
-
-(ert-deftest wamei/term-panel-list-animates-only-running-marks ()
-  "tick では一覧を描き直さず、実行中の行の ● だけ色を差し替える。"
+(ert-deftest wamei/term-panel-tab-middle-click-kills-the-terminal ()
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--create 2)
-      (with-current-buffer (get-buffer "*term: alpha*")
-        (setq-local wamei/term-modeline--command-seen t
-                    wamei/term-modeline--start-time 1))
-      (let ((list-buffer (wamei/term--list-refresh)))
-        (set-window-buffer (selected-window) list-buffer)
-        (with-current-buffer list-buffer
-          (let ((before (buffer-string))
-                (idle-face (get-text-property (wamei/term-panel-test--mark-position 2)
-                                              'face)))
-            (cl-letf (((symbol-function 'wamei/term--list-window)
-                       (lambda () (selected-window)))
-                      ((symbol-function 'wamei/term-modeline--running-color)
-                       (lambda (&rest _) "#123456")))
-              (wamei/term--list-animate-marks))
-            ;; 文字は 1 つも動かない (描き直していない)
-            (should (equal (substring-no-properties (buffer-string))
-                           (substring-no-properties before)))
-            ;; 実行中の行の ● だけ新しい色 (この行は現在行でもあるので、
-            ;; 後ろに重ねてある行背景はそのまま残る)
-            (should (equal (get-text-property (wamei/term-panel-test--mark-position)
-                                             'face)
-                           '((:foreground "#123456") wamei/term-list-current-row)))
-            ;; 実行中でない行はそのまま
-            (should (equal (get-text-property (wamei/term-panel-test--mark-position 2)
-                                             'face)
-                           idle-face))))))))
+      (let* ((first (wamei/term--create 1))
+             (second (wamei/term--create 2)))
+        (wamei/term--show first)
+        (let* ((string (with-current-buffer first (wamei/term-panel-test--render first)))
+               (pos (cdr (wamei/term-panel-test--tab-start string second))))
+          (wamei/term-tab-kill (wamei/term-panel-test--click string pos)))
+        (should-not (buffer-live-p second))
+        (should (eq (window-buffer (wamei/term--window)) first))))))
 
-(ert-deftest wamei/term-panel-list-animation-skips-a-hidden-list ()
-  "一覧が出ていなければ何もしない (毎秒 10 回走るので)。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (with-current-buffer (get-buffer "*term: alpha*")
-        (setq-local wamei/term-modeline--command-seen t
-                    wamei/term-modeline--start-time 1))
-      (let ((list-buffer (wamei/term--list-refresh)))
-        (with-current-buffer list-buffer
-          (let ((before (get-text-property (wamei/term-panel-test--mark-position)
-                                           'face)))
-            (cl-letf (((symbol-function 'wamei/term--list-window) (lambda () nil))
-                      ((symbol-function 'wamei/term-modeline--running-color)
-                       (lambda (&rest _) "#123456")))
-              (wamei/term--list-animate-marks))
-            (should (equal (get-text-property (wamei/term-panel-test--mark-position)
-                                             'face)
-                           before))))))))
+(defun wamei/term-panel-test--tab-start (string buffer)
+  "STRING で BUFFER のタブが始まる位置を (BUFFER . POS) で返す。"
+  (cons buffer (text-property-any 0 (length string) 'wamei/term-buffer buffer string)))
 
-(ert-deftest wamei/term-panel-list-animation-is-wired-to-the-tick ()
-  "一覧の ● は term-modeline.el の tick に相乗りする。"
-  (should (memq #'wamei/term--list-animate-marks
+(ert-deftest wamei/term-panel-tabs-redraw-on-tick ()
+  "実行中の ● の呼吸は term-modeline.el の tick に相乗りする。"
+  (should (memq #'wamei/term--tabs-tick
                 (default-value 'wamei/term-modeline-tick-functions))))
 
-(ert-deftest wamei/term-panel-list-current-row-inherits-hl-line ()
-  "行背景は sidebar の現在行 (`wamei/project-sidebar-current-row') と同じ作り。
-`hl-line' は背景色しか持たないので ● の色を塗り替えない。"
-  (should (equal (face-attribute 'wamei/term-list-current-row :inherit nil nil)
-                 'hl-line))
-  (should (eq (face-attribute 'wamei/term-list-current-row :extend nil nil) t)))
-
-(ert-deftest wamei/term-panel-list-current-row-covers-the-newline ()
-  "行背景を行末の改行まで掛ける (`:extend' が効くのは改行の face)。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (cl-letf (((symbol-function 'wamei/term--current)
-                 (lambda () (get-buffer "*term: alpha*"))))
-        (with-current-buffer (wamei/term--list-refresh)
-          (let ((face (get-text-property (line-end-position) 'face)))
-            (should (memq 'wamei/term-list-current-row
-                          (if (listp face) face (list face))))))))))
-
-(ert-deftest wamei/term-panel-list-row-extends-to-the-line-end ()
-  "行末まで選べるように、短い行も一覧の幅まで空白で埋めて、
-そこまで端末の紐づけとマウス強調を張る。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (with-current-buffer (get-buffer "*term: alpha*")
-        (setq-local ghostel-title "ls"))
-      (with-current-buffer (wamei/term--list-refresh)
-        (let ((row (wamei/term-panel-test--first-row (wamei/term--list-refresh))))
-          (should (= (string-width (substring-no-properties row))
-                     (max 8 (- wamei/term-list-width 2)))))
-        ;; 行末の 1 文字前 (= 埋めた空白) でも端末を選べる
-        (goto-char (point-min))
-        (let ((last (1- (line-end-position))))
-          (should (eq (get-text-property last 'wamei/term-buffer)
-                      (get-buffer "*term: alpha*")))
-          (should (eq (get-text-property last 'mouse-face) 'highlight)))))))
-
-(ert-deftest wamei/term-panel-list-indents-the-mark ()
-  "● は行頭に置かない。グリフが左に 1px はみ出す (lbearing -1) ので、
-window の左端に置くと欠ける。空白 1 つぶん右にずらす。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (with-current-buffer (wamei/term--list-refresh)
-        (should (= (wamei/term-panel-test--mark-position) (1+ (point-min))))))))
-
-(ert-deftest wamei/term-panel-list-mark-does-not-widen-the-row ()
-  "● のぶんはタイトルから引く。行は一覧の幅に収まる。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (with-current-buffer (get-buffer "*term: alpha*")
-        (setq-local ghostel-title (make-string 200 ?x)))
-      (should (= (string-width (substring-no-properties
-                                (wamei/term-panel-test--first-row
-                                 (wamei/term--list-refresh))))
-                 (max 8 (- wamei/term-list-width 2)))))))
-
-(ert-deftest wamei/term-panel-command-state-refreshes-list ()
-  "コマンドの開始・終了でも一覧を描き直す。
+(ert-deftest wamei/term-panel-command-state-redraws-tabs ()
+  "コマンドの開始・終了でもタブを描き直す。
 タイトルは変わらないので `wamei/term--on-title-change' では拾えない。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--list-buffer))
+      (wamei/term--create 1))
     (let ((calls 0))
-      (cl-letf (((symbol-function 'wamei/term--list-refresh)
+      (cl-letf (((symbol-function 'wamei/term--tabs-redraw)
                  (lambda () (setq calls (1+ calls)) nil)))
         (wamei/term--on-command-state (get-buffer "*term: alpha*"))
         (should (= calls 1))
@@ -547,129 +409,100 @@ window の左端に置くと欠ける。空白 1 つぶん右にずらす。"
           (wamei/term--on-command-state (current-buffer)))
         (should (= calls 2))))))
 
-(ert-deftest wamei/term-panel-command-state-survives-refresh-error ()
-  "一覧の再描画が signal しても外へ漏らさない (端末の出力処理の中で呼ばれる)。"
+(ert-deftest wamei/term-panel-command-state-survives-redraw-error ()
+  "タブの再描画が signal しても外へ漏らさない (端末の出力処理の中で呼ばれる)。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--list-buffer))
-    (cl-letf (((symbol-function 'wamei/term--list-refresh)
+      (wamei/term--create 1))
+    (cl-letf (((symbol-function 'wamei/term--tabs-redraw)
                (lambda () (error "boom"))))
       (should-not (wamei/term--on-command-state (get-buffer "*term: alpha*"))))))
 
 (ert-deftest wamei/term-panel-command-state-hooks-run-last ()
   "フックには後ろから足す。状態を記録する term-modeline.el のほうが先に
-走らないと、一覧に 1 つ前の ● が出る。"
+走らないと、タブに 1 つ前の ● が出る。"
   (should (eq (car (last ghostel-command-start-functions))
               #'wamei/term--on-command-state))
   (should (eq (car (last ghostel-command-finish-functions))
               #'wamei/term--on-command-state)))
 
-(ert-deftest wamei/term-panel-title-change-refreshes-list ()
-  "`ghostel-buffer-name-function' として呼ばれると一覧を描き直し、
+(ert-deftest wamei/term-panel-title-change-redraws-tabs ()
+  "`ghostel-buffer-name-function' として呼ばれるとタブを描き直し、
 現在のバッファ名を返す (`ghostel--rename-managed' が必ず no-op になる値)。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
-      (let ((list-buffer (wamei/term--list-buffer))
-            (refresh (symbol-function 'wamei/term--list-refresh))
-            (calls 0))
+      (let ((calls 0))
         (with-current-buffer (get-buffer "*term: alpha*")
-          (setq-local ghostel-title "make test")
-          (cl-letf (((symbol-function 'wamei/term--list-refresh)
-                     (lambda () (setq calls (1+ calls)) (funcall refresh))))
+          (cl-letf (((symbol-function 'wamei/term--tabs-redraw)
+                     (lambda () (setq calls (1+ calls)))))
             (should (equal (wamei/term--on-title-change "make test")
                            "*term: alpha*"))))
-        (should (>= calls 1))
-        (should (string-match-p "make test"
-                                (with-current-buffer list-buffer (buffer-string))))))))
+        (should (= calls 1))))))
 
 (ert-deftest wamei/term-panel-title-change-ignores-other-buffers ()
-  "端末以外のバッファでは一覧を描き直さない。
-
-`wamei/term--on-title-change' の返り値は実装が何をしても一定なので、
-返り値ではなく `wamei/term--list-refresh' の呼び出し回数で見る
-\(そうしないとプレフィックスのガードを消しても通ってしまう)。
-一覧バッファは先に作っておき、ガードのうちバッファ名の判定だけを残す。"
+  "端末以外のバッファではタブを描き直さない。
+返り値は実装が何をしても一定なので、呼び出し回数で見る。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--list-buffer))
+      (wamei/term--create 1))
     (let ((calls 0))
-      (cl-letf (((symbol-function 'wamei/term--list-refresh)
+      (cl-letf (((symbol-function 'wamei/term--tabs-redraw)
                  (lambda () (setq calls (1+ calls)) nil)))
         (wamei/term-panel-test--in alpha
           ;; 端末以外でも返り値は自分のバッファ名 (改名は起きない)
           (should (equal (wamei/term--on-title-change "x") (buffer-name))))
         (should (= calls 0))))))
 
-(ert-deftest wamei/term-panel-title-change-survives-refresh-error ()
-  "一覧の再描画が signal しても外へ漏らさない。
+(ert-deftest wamei/term-panel-title-change-survives-redraw-error ()
+  "タブの再描画が signal しても外へ漏らさない。
 
 `ghostel--set-title' / `ghostel--set-directory' はこの関数の呼び出しを
 `condition-case' で包まないので、漏らすと端末の出力処理 (プロセスフィルタ)
 の中でエラーになる。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--list-buffer))
-    (cl-letf (((symbol-function 'wamei/term--list-refresh)
+      (wamei/term--create 1))
+    (cl-letf (((symbol-function 'wamei/term--tabs-redraw)
                (lambda () (error "boom"))))
       (with-current-buffer (get-buffer "*term: alpha*")
         (should (equal (wamei/term--on-title-change "x") "*term: alpha*"))))))
 
-(ert-deftest wamei/term-panel-list-hides-cursor-when-not-selected ()
-  "一覧は選択していない window ではカーソルを出さない (sidebar と同じ)。"
-  (wamei/term-panel-test--with-projects (alpha)
-    (should-not (buffer-local-value 'cursor-in-non-selected-windows
-                                    (wamei/term-panel-test--in alpha (wamei/term--list-buffer))))))
-
 (ert-deftest wamei/term-panel-terminal-setup-hides-cursor-when-not-selected ()
-  "端末バッファも `wamei/term--setup-buffer' でカーソルを非選択時に隠す。"
+  "端末バッファは `wamei/term--setup-buffer' でカーソルを非選択時に隠す。"
   (with-temp-buffer
     (wamei/term--setup-buffer)
     (should-not cursor-in-non-selected-windows)))
 
 ;;; パネル (window)
 
-(ert-deftest wamei/term-panel-show-opens-list-for-two-terminals ()
+(defun wamei/term-panel-test--header-p (name)
+  "端末バッファ NAME に header-line (タブ) が出るか。"
+  (buffer-local-value 'header-line-format (get-buffer name)))
+
+(ert-deftest wamei/term-panel-show-adds-tabs-for-two-terminals ()
+  "端末が 2 つ以上になったら、同じプロジェクトの端末すべてにタブを出す。
+1 つのうちは出さない。一覧の window は作らない。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (wamei/term--show (wamei/term--create 1))
       (should (wamei/term--window))
-      (should-not (wamei/term--list-window))
+      (should-not (wamei/term-panel-test--header-p "*term: alpha*"))
       (wamei/term--show (wamei/term--create 2))
-      (should (wamei/term--list-window))
-      (should (equal (buffer-name (window-buffer (wamei/term--list-window)))
-                     "*terminals: alpha*")))))
+      (should (wamei/term-panel-test--header-p "*term: alpha*"))
+      (should (wamei/term-panel-test--header-p "*term: alpha 2*"))
+      (should (= (length (window-list nil 'no-mini)) 2)))))
 
-(ert-deftest wamei/term-panel-list-window-follows-displayed-project ()
-  "表示中の端末が別プロジェクトのものに替わったら、一覧もそのプロジェクトのものに替わる。"
+(ert-deftest wamei/term-panel-tabs-leave-other-projects-alone ()
   (wamei/term-panel-test--with-projects (alpha beta)
+    (wamei/term-panel-test--in beta (wamei/term--create 1))
     (wamei/term-panel-test--in alpha
       (wamei/term--create 1)
       (wamei/term--show (wamei/term--create 2)))
-    (wamei/term-panel-test--in beta
-      (wamei/term--create 1)
-      (wamei/term--show (wamei/term--create 2))
-      (should (equal (buffer-name (window-buffer (wamei/term--window))) "*term: beta 2*"))
-      (should (equal (buffer-name (window-buffer (wamei/term--list-window)))
-                     "*terminals: beta*"))
-      (should (equal (wamei/term-panel-test--list-entries (window-buffer (wamei/term--list-window)))
-                     '("*term: beta*" "*term: beta 2*"))))))
+    (should-not (wamei/term-panel-test--header-p "*term: beta*"))))
 
-(ert-deftest wamei/term-panel-list-update-from-unrelated-buffer-uses-panel-project ()
-  "kill 後のタイマなど無関係なバッファから呼ばれても、パネルの端末のプロジェクトで判断する。"
-  (wamei/term-panel-test--with-projects (alpha beta)
-    (wamei/term-panel-test--in alpha
-      (wamei/term--create 1)
-      (wamei/term--show (wamei/term--create 2)))
-    (wamei/term-panel-test--in beta
-      (wamei/term--list-update)
-      (should (equal (buffer-name (window-buffer (wamei/term--list-window)))
-                     "*terminals: alpha*")))))
-
-(ert-deftest wamei/term-panel-kill-hands-over-and-closes-list ()
+(ert-deftest wamei/term-panel-kill-hands-over-and-drops-tabs ()
+  "端末が 1 つに戻ったらタブを消す。パネルは残りの端末に引き継ぐ。"
   (wamei/term-panel-test--with-projects (alpha)
     (wamei/term-panel-test--in alpha
       (let ((first (wamei/term--create 1))
@@ -679,8 +512,27 @@ window の左端に置くと欠ける。空白 1 つぶん右にずらす。"
           (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
         (kill-buffer second)
         (should (eq (window-buffer (wamei/term--window)) first))
-        (wamei/term--list-update)
-        (should-not (wamei/term--list-window))))))
+        (should-not (wamei/term-panel-test--header-p "*term: alpha*"))))))
+
+(ert-deftest wamei/term-panel-kill-of-hidden-terminal-drops-tabs ()
+  "パネルに出ていない端末を消しても、残りが 1 つならタブを消す。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (let ((first (wamei/term--create 1))
+            (second (wamei/term--create 2)))
+        (wamei/term--show first)
+        (with-current-buffer second
+          (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
+        (kill-buffer second)
+        (should-not (wamei/term-panel-test--header-p "*term: alpha*"))))))
+
+(ert-deftest wamei/term-panel-new-terminal-gets-tabs ()
+  "`wamei/term-new' で増やした端末にもタブが付く。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (wamei/term-panel-test--in alpha
+      (wamei/term--show (wamei/term--create 1))
+      (wamei/term-new)
+      (should (wamei/term-panel-test--header-p "*term: alpha 2*")))))
 
 (ert-deftest wamei/term-panel-cycle-wraps ()
   (wamei/term-panel-test--with-projects (alpha)

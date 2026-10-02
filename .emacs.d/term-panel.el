@@ -1,16 +1,17 @@
-;;; term-panel.el --- フレーム下部の端末パネルと端末一覧 -*- lexical-binding: t; -*-
+;;; term-panel.el --- フレーム下部の端末パネルと端末タブ -*- lexical-binding: t; -*-
 ;;; Commentary:
 ;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
-;; 出す。端末が 2 つ以上あるときは右隣に一覧 (`wamei/term-list-mode') を出す。
-;; 一覧の各行は " ● ls -al" の形で、● はその端末の実行状態 (term-modeline.el)。
+;; 出す。端末が 2 つ以上あるときは端末 window の上端 (header-line) にタブを並べる。
+;; タブは window の幅を等分し、" ● ls -al" の形で、● はその端末の実行状態
+;; (term-modeline.el)。
 ;;
 ;; どのプロジェクトの端末かはタブに紐づいたプロジェクト (project-tabs.el) で
 ;; 決める。カレントバッファ基準ではないので、*scratch* や claude パネルに
 ;; いても、そのタブの端末が出る (詳細は `wamei/term--root')。
 ;;
-;; 端末バッファは "*term: <project>[ N]*"、一覧は "*terminals: <project>*" と
-;; プロジェクト名で分ける。一覧は表示中の端末と同じプロジェクトのものを出すので、
-;; タブ (プロジェクト) を切り替えても別プロジェクトの端末が並ばない。
+;; 端末バッファは "*term: <project>[ N]*" とプロジェクト名で分ける。端末タブは
+;; 表示中の端末と同じプロジェクトのものを出すので、タブ (プロジェクト) を
+;; 切り替えても別プロジェクトの端末が並ばない。
 ;;
 ;; 端末は作ったときのプロジェクト (`wamei/term--project-root') を覚えていて、
 ;; シェルがプロジェクトの外へ cd しても `default-directory' はルートに留める
@@ -24,8 +25,10 @@
 
 (require 'project)
 (require 'seq)
-;; 一覧の行頭に出す ● (実行状態) は term-modeline.el が持っている。
+;; 端末タブに出す ● (実行状態) は term-modeline.el が持っている。
 (require 'term-modeline)
+;; 端末タブは header-line に等分のタブを描く部品で描く。
+(require 'header-tabs)
 
 (defvar ghostel-shell)                  ; ghostel.el
 (defvar ghostel-title)                  ; ghostel.el (buffer-local)
@@ -47,29 +50,8 @@
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
 
 (defgroup wamei/term-panel nil
-  "フレーム下部の端末パネルと端末一覧。"
+  "フレーム下部の端末パネルと端末タブ。"
   :group 'tools)
-
-(defface wamei/term-list-current-row '((t :inherit hl-line :extend t))
-  "一覧で今パネルに出ている端末の行の背景。
-sidebar の現在行 (`wamei/project-sidebar-current-row') と同じ作りにしてある。
-ずっと出ている背景なので、マウスが乗っている間だけの `mouse-face'
-\(dired と同じ `highlight') とは別にする。`highlight' は背景がテーマの
-アクセント色 (doom-molokai ではオレンジ) で派手なうえ前景色 (base0) も持つ
-ため、常時これだと ● の色も失われる。`hl-line' は背景色しか持たない。"
-  :group 'wamei/term-panel)
-
-(defvar wamei/term-list-width 36
-  "端末一覧ウィンドウの幅 (文字数)。
-手動でリサイズすると更新され、次に開くときも同じ幅になる。")
-
-(defconst wamei/term-list-buffer-prefix "*terminals: "
-  "端末一覧のバッファ名の接頭辞。後ろにプロジェクト名が付く。
-display-buffer-alist で端末本体と別扱いにするため、`*term: ' で始まらない名前にする。")
-
-(defconst wamei/term-list-buffer-regexp
-  (concat "\\`" (regexp-quote wamei/term-list-buffer-prefix))
-  "端末一覧のバッファ名にマッチする正規表現。display-buffer-alist と desktop の復元で使う。")
 
 (defvar wamei/term--previous-window nil
   "パネルへ移動する直前に選択していた window。")
@@ -93,15 +75,6 @@ alist 登録時の値で固定されてしまい、リサイズを覚えられ�
     (unless (zerop delta)
       (ignore-errors (window-resize window delta nil t)))))
 
-(defun wamei/term--set-list-width (window)
-  "WINDOW を wamei/term-list-width の幅にする。
-display-buffer-alist の window-width は bottom の side window では
-数値を書いても効かず、変数シンボルは関数扱いで無視される。関数で明示的に
-リサイズする必要がある。preserve-size は縮小前の幅で固定してしまうため使わない。"
-  (let ((delta (- wamei/term-list-width (window-total-width window))))
-    (unless (zerop delta)
-      (ignore-errors (window-resize window delta t t)))))
-
 (defun wamei/term--remember-height ()
   "現在の高さの割合を wamei/term-height に覚える。"
   (when-let* ((window (get-buffer-window (current-buffer))))
@@ -110,26 +83,11 @@ display-buffer-alist の window-width は bottom の side window では
         (when (< 0.05 ratio 0.95)
           (setq wamei/term-height ratio))))))
 
-(defun wamei/term--remember-list-width ()
-  "現在の一覧の幅を wamei/term-list-width に覚える。
-一覧は端末が 1 つになると閉じ、2 つに戻ると display-buffer で作り直されるので、
-window に付いた幅は残らない。変数に覚えておき wamei/term--set-list-width が
-作り直すたびに当てる。幅が変わったら一覧の切り詰め幅も追従させる。"
-  (when-let* ((window (get-buffer-window (current-buffer))))
-    (when (window-parameter window 'window-side)
-      (let ((width (window-total-width window)))
-        (when (and (< 8 width (* 0.8 (frame-width)))
-                   (/= width wamei/term-list-width))
-          (setq wamei/term-list-width width)
-          (wamei/term--list-refresh))))))
-
 ;;; 端末バッファの管理
 
 (defun wamei/term--panel-buffer-p ()
-  "カレントバッファが端末パネルのバッファ (端末本体か一覧) か。"
-  (let ((name (buffer-name)))
-    (or (string-prefix-p "*term: " name)
-        (string-prefix-p wamei/term-list-buffer-prefix name))))
+  "カレントバッファが端末パネルの端末か。"
+  (string-prefix-p "*term: " (buffer-name)))
 
 (defvar-local wamei/term--project-root nil
   "端末バッファが属するプロジェクトのルート。パネルの端末以外では nil。
@@ -154,13 +112,13 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
 プロジェクトを起点にする。プロジェクト外の *scratch* や claude パネル、
 別プロジェクトのファイルにいても、そのタブの端末が出る。
 
-端末本体と一覧の中から呼ばれたときはそのバッファのプロジェクトを見る。
-一覧の再描画やタイトル変更 (プロセスフィルタ) はパネルに出ている端末を
-基準に動くので、ここでタブに引っぱられると別プロジェクトの一覧を描いて
+端末の中から呼ばれたときはそのバッファのプロジェクトを見る。
+端末タブの描画 (header-line) やタイトル変更 (プロセスフィルタ) は端末を
+基準に動くので、ここでタブに引っぱられると別プロジェクトのタブを描いて
 しまう。タブに紐づけが無ければ従来どおりバッファ基準。
 
 端末本体は作ったときのプロジェクト (`wamei/term--project-root') を優先する。
-シェルの cd で `default-directory' が動いても、名前と一覧が別プロジェクトに
+シェルの cd で `default-directory' が動いても、名前と端末タブが別プロジェクトに
 すり替わらないように。"
   (or (and (not (wamei/term--panel-buffer-p)) (wamei/term--tab-root))
       wamei/term--project-root
@@ -230,7 +188,7 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
               (name (wamei/term--name-project (buffer-name))))
     (setq wamei/term--project-root (wamei/term--locate-root default-directory name)))
   (add-hook 'window-configuration-change-hook #'wamei/term--remember-height nil t)
-  ;; シェル終了などでバッファが消えたらパネルと一覧を追従させる
+  ;; シェル終了などでバッファが消えたらパネルと端末タブを追従させる
   (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
 
 (defun wamei/term--create (index)
@@ -280,84 +238,29 @@ desktop で復元した端末は保存時の作業ディレクトリで起動す
     (when (fboundp 'ghostel--buffer-identification-update)
       (ghostel--buffer-identification-update))))
 
-;;; 一覧
+;;; タブ (header-line)
 
-(defvar wamei/term-list-mode-map
+;; 端末が 2 つ以上あるとき、端末 window の header-line に同じプロジェクトの
+;; 端末をタブで並べる。タブは window の幅を等分する。
+;;
+;; header-line は端末バッファごとの変数なので、同じプロジェクトの端末すべてに
+;; 同じ `:eval' を入れておく (`wamei/term--tabs-sync')。どの端末をパネルに
+;; 出しても、そのバッファのプロジェクトのタブが描かれる。中身は描くたびに
+;; 作り直すので、タイトルや ● が変わったときは redisplay を促すだけでよい
+;; (`wamei/term--tabs-redraw')。
+
+(defvar wamei/term-tab-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "RET") #'wamei/term-list-select)
-    (define-key map (kbd "d") #'wamei/term-list-kill)
-    (define-key map [mouse-1] #'wamei/term-list-select)
-    (define-key map (kbd "<C-tab>") #'wamei/term-next)
-    (define-key map (kbd "<C-S-tab>") #'wamei/term-previous)
+    (define-key map [header-line mouse-1] #'wamei/term-tab-select)
+    (define-key map [header-line mouse-2] #'wamei/term-tab-kill)
     map)
-  "端末一覧のキーマップ。")
+  "端末タブの上でのマウス操作。")
 
-(define-derived-mode wamei/term-list-mode special-mode "Terminals"
-  "端末一覧のメジャーモード。"
-  ;; パネルが非アクティブのときは中抜きカーソルを出さない (sidebar と同じ)
-  (setq-local cursor-in-non-selected-windows nil))
-
-(defun wamei/term--list-buffer-name ()
-  "現在のプロジェクトの端末一覧のバッファ名。"
-  (concat wamei/term-list-buffer-prefix (wamei/term--project-name) "*"))
-
-(defun wamei/term--list-buffer ()
-  "現在のプロジェクトの端末一覧のバッファ。無ければ作る。
-`default-directory' をプロジェクトルートにしておくので、一覧バッファの中で
-`wamei/term--buffers' を呼んでも同じプロジェクトの端末が返る。"
-  (let ((name (wamei/term--list-buffer-name))
-        (root (wamei/term--root)))
-    (or (get-buffer name)
-        (with-current-buffer (get-buffer-create name)
-          (wamei/term-list-mode)
-          (setq default-directory root)
-          (setq-local mode-line-format nil)
-          (add-hook 'window-configuration-change-hook
-                    #'wamei/term--remember-list-width nil t)
-          (current-buffer)))))
-
-(defun wamei/term--list-window ()
-  "端末一覧を表示している window。"
-  (seq-find (lambda (window)
-              (and (eq (window-parameter window 'window-side) 'bottom)
-                   (string-match-p wamei/term-list-buffer-regexp
-                                   (buffer-name (window-buffer window)))))
-            (window-list nil 'no-mini)))
-
-(defun wamei/term--on-title-change (_title)
-  "端末のタイトルが変わったら一覧を描き直す。バッファ名は変えない。
-
-`ghostel-buffer-name-function' に設定して使う。この変数の既定は nil
-\(= 改名機構そのものが off) なので、これは「改名を抑止する」設定ではなく
-「一覧の再描画という副作用のために改名機構を on にする」設定。
-現在のバッファ名をそのまま返すことで `ghostel--rename-managed' の
-\(not (equal new-name (buffer-name))) が偽になり、必ず no-op になる。
-nil を返すとタイトルがクリアされたときだけ `ghostel--set-title' の `or' が
-`ghostel--initial-name' に落ちて `ghostel--rename-managed' を呼ぶので、
-\(今は no-op でも) rename の経路を武装した状態になってしまう。
-
-呼ばれるのはタイトル変更 (OSC 0/2) のときだけではなく cd (OSC 7) のときも。
-ghostel の zsh 統合は precmd ごとに OSC 7 を出すので、1 コマンドにつき
-一覧の再描画が 2 回走る (旧 `vterm--set-title' advice は 1 回だった)。
-そのたびに `project-current' と `buffer-list' の走査、一覧バッファの
-作り直しが起きるので、ここに重い処理を足さないこと。
-
-`ghostel--set-title' と `ghostel--set-directory' はこの関数の呼び出しを
-`condition-case' で包まないため、ここで signal すると端末の出力処理
-\(プロセスフィルタ) の中でエラーになる。一覧の再描画は `project-current' を
-通り、消えたディレクトリや remote な `default-directory' で signal しうるので
-`with-demoted-errors' で押さえる。
-
-呼ばれた時点で `ghostel-title' は新しい値になっている。
-別タブで見えていない一覧も描き直しておく (戻ったときに古いままにしない)。"
-  (with-demoted-errors "端末一覧の再描画に失敗しました: %S"
-    (when (and (string-prefix-p "*term: " (buffer-name))
-               (get-buffer (wamei/term--list-buffer-name)))
-      (wamei/term--list-refresh)))
-  (buffer-name))
+(defconst wamei/term--tabs-header-line '(:eval (wamei/term--tabs-format))
+  "端末バッファに入れる `header-line-format'。")
 
 (defun wamei/term--label (buffer)
-  "一覧に出す BUFFER の表示名。最後に実行したコマンド、無ければシェル名。
+  "タブに出す BUFFER の表示名。最後に実行したコマンド、無ければシェル名。
 タイトルは .zshrc の preexec が OSC 0 で流し、ghostel が `ghostel-title' に入れる。
 `boundp' で守るのは、この file 冒頭の `(defvar ghostel-title)' (値なし) が
 symbol を special にするだけで束縛はしないため。ghostel 未ロードのまま
@@ -366,176 +269,122 @@ symbol を special にするだけで束縛はしないため。ghostel 未ロ�
   (or (and (boundp 'ghostel-title) (buffer-local-value 'ghostel-title buffer))
       (file-name-nondirectory (if (boundp 'ghostel-shell) ghostel-shell shell-file-name))))
 
-(defconst wamei/term--list-row-prefix " "
-  "一覧の各行の頭に置く詰め物。
-● のグリフは送り幅 8px に対して左へ 1px はみ出す (lbearing -1) ので、
-行頭に置くと window の左端で欠ける。1 桁ぶん右へずらして逃がす。")
+(defun wamei/term--tabs (buffers current)
+  "BUFFERS のタブ (`wamei/header-tabs-render' の形)。CURRENT は今出ている端末。
+各タブは \" ● ラベル\"。● はその端末の実行状態。"
+  (mapcar (lambda (buffer)
+            (list :head (concat (wamei/term-modeline-mark
+                                 (wamei/term-modeline-status buffer))
+                                " ")
+                  :label (wamei/term--label buffer)
+                  :current (eq buffer current)
+                  :properties (list 'wamei/term-buffer buffer
+                                    'local-map wamei/term-tab-map
+                                    'help-echo "mouse-1: 切り替え / mouse-2: 削除")))
+          buffers))
 
-(defun wamei/term--list-line-width ()
-  "一覧の 1 行に入る桁数。
-window が出ていればその本文の桁数 (フリンジを除いた幅)。ちょうどこの桁数の
-行は折り返さない。まだ出ていなければ、覚えている幅からフリンジのぶんを引いた
-見積もり (実測でフリンジは左右 1 桁ずつ、= `window-body-width' と一致する)。
+(defun wamei/term--tabs-string (buffers current width pixel-width &optional pixel-offset)
+  "BUFFERS のタブを header-line 1 行にする。CURRENT は今出ている端末。
+幅の扱いは `wamei/header-tabs-render' を参照。"
+  (wamei/header-tabs-render (wamei/term--tabs buffers current)
+                            width pixel-width pixel-offset))
 
-`window-max-chars-per-line' はフリンジの設定をカレントバッファから読むので、
-別のバッファから呼ぶと小さすぎる値を返す (実測: 本文 34 桁の window で 30)。"
-  (let ((window (wamei/term--list-window)))
-    (if (window-live-p window)
-        (window-body-width window)
-      (max 8 (- wamei/term-list-width 2)))))
+(defun wamei/term--tabs-format ()
+  "端末の header-line の中身。`wamei/term--tabs-header-line' から呼ぶ。
+header-line はそのバッファの中で評価されるので、並ぶのはその端末の
+プロジェクトの端末。"
+  (wamei/header-tabs-format (wamei/term--tabs (wamei/term--buffers) (current-buffer))))
 
-(defun wamei/term--list-refresh ()
-  "現在のプロジェクトの端末一覧を描き直し、そのバッファを返す。
-各行はコマンド名と、その直前の実行状態の ● (term-modeline.el) だけ。
-端末番号は出さない (並び順と名前で足りる)。"
-  (with-current-buffer (wamei/term--list-buffer)
-    (let* ((inhibit-read-only t)
-           (current (wamei/term--current))
-           (head-width (+ (string-width wamei/term--list-row-prefix)
-                          (string-width wamei/term-modeline-mark-string)
-                          1))
-           (line-width (wamei/term--list-line-width))
-           (width (max 8 (- line-width head-width))))
-      (erase-buffer)
-      (dolist (buffer (wamei/term--buffers))
-        (let* ((start (point))
-               (mark-start (+ start (length wamei/term--list-row-prefix)))
-               (label (format "%s%s %s"
-                              wamei/term--list-row-prefix
-                              (wamei/term-modeline-mark
-                               (wamei/term-modeline-status buffer))
-                              (truncate-string-to-width
-                               (wamei/term--label buffer) width nil nil t))))
-          ;; 行末まで選べるように、残りを空白で埋めてからプロパティを張る
-          ;; (プロパティの無いところはクリックしても何も起きず、マウス強調も
-          ;; 文字のぶんで途切れる)。
-          (insert label
-                  (make-string (max 0 (- line-width (string-width label))) ?\s)
-                  "\n")
-          (add-text-properties
-           start (1- (point))
-           (list 'wamei/term-buffer buffer
-                 'keymap wamei/term-list-mode-map
-                 'help-echo "mouse-1: 切り替え / d: 削除"))
-          ;; ● の位置を覚えておく (アニメーションで face だけ差し替えるため)。
-          (put-text-property mark-start (1+ mark-start) 'wamei/term-mark t)
-          ;; マウス強調は dired と同じ `highlight'。行の中は ● も含めて同じ値
-          ;; にし、改行では切る。`mouse-face' が光るのは「マウス位置から同じ値が
-          ;; 続く範囲」なので、行の中で値を変えると 1 行が分断され、改行にも
-          ;; 同じ値を張ると全行が一続きになって一度に光る。
-          (put-text-property start (1- (point)) 'mouse-face 'highlight)
-          ;; 今パネルに出ている端末の行。行末の改行まで掛けるのは、face の
-          ;; `:extend' が効くのが改行の face だから (掛けないと背景が文字の
-          ;; ぶんで途切れる)。後ろに足すのは、前景色を持つ face に差し替えた
-          ;; ときでも ● の色を残すため。
-          (when (eq buffer current)
-            (add-face-text-property start (point) 'wamei/term-list-current-row t)))))
-    (goto-char (point-min))
-    (current-buffer)))
+(defun wamei/term--tabs-sync (buffers)
+  "BUFFERS (同じプロジェクトの端末) の header-line を揃える。
+2 つ以上ならタブを出し、1 つなら消す。値が変わるときだけ書く
+\(`header-line-format' の有無で本文の高さが変わり、端末が作り直される)。"
+  (let ((format (and (cdr buffers) wamei/term--tabs-header-line)))
+    (dolist (buffer buffers)
+      (with-current-buffer buffer
+        (unless (equal header-line-format format)
+          (setq header-line-format format))))))
 
-(defun wamei/term--list-mark-face (old new)
-  "● に付いている OLD の 1 つ目を NEW に差し替えた face の値。
-現在行の背景 (`add-face-text-property' が後ろに足したもの) は残す。
-OLD が単独の色指定 (`(:foreground ...)') のときは、それ全体で 1 つの face
-なので丸ごと置き換える。"
-  (let ((rest (cond ((not (consp old)) nil)
-                    ((keywordp (car old)) nil)
-                    (t (cdr old)))))
-    (if rest (cons new rest) new)))
+(defun wamei/term--tabs-update ()
+  "パネルに出ている端末のプロジェクトのタブを揃える。
+どのプロジェクトかはカレントバッファではなく、パネルに表示中の端末で決める。"
+  (when-let* ((window (wamei/term--window)))
+    (with-current-buffer (window-buffer window)
+      (wamei/term--tabs-sync (wamei/term--buffers)))))
 
-(defun wamei/term--list-animate-marks ()
-  "一覧に出ている実行中の端末の ● を、今の色に差し替える。
-`wamei/term-modeline-tick-functions' から毎秒 10 回呼ばれるので、一覧を
-描き直さず (`project-current' や `buffer-list' の走査を通さず)、● 1 文字の
-face だけを書き換える。一覧が出ていなければ何もしない。"
-  (when-let* ((window (wamei/term--list-window))
-              (buffer (window-buffer window)))
-    (with-current-buffer buffer
-      (let ((inhibit-read-only t)
-            (modified (buffer-modified-p))
-            (color (wamei/term-modeline--running-color (float-time))))
-        (when color
-          (save-excursion
-            (goto-char (point-min))
-            (while (not (eobp))
-              (let ((term (get-text-property (point) 'wamei/term-buffer))
-                    (mark (text-property-any (point) (line-end-position)
-                                             'wamei/term-mark t)))
-                (when (and mark (buffer-live-p term)
-                           (eq (wamei/term-modeline-status term) 'running))
-                  (put-text-property
-                   mark (1+ mark) 'face
-                   (wamei/term--list-mark-face
-                    (get-text-property mark 'face)
-                    (list :foreground color)))))
-              (forward-line 1))))
-        ;; テキストプロパティの変更でもバッファは modified になる。一覧は
-        ;; ファイルではないので実害は無いが、印を付け替えない。
-        (set-buffer-modified-p modified)))))
+(defun wamei/term--tabs-redraw ()
+  "パネルのタブを描き直させる。中身は描くたびに作るので redisplay を促すだけ。"
+  (when-let* ((window (wamei/term--window)))
+    (with-current-buffer (window-buffer window)
+      (force-mode-line-update))))
+
+(defun wamei/term--tabs-tick ()
+  "実行中の ● の色を進める。`wamei/term-modeline-tick-functions' から毎秒 10 回
+呼ばれる (tick は何かが実行中のときだけ回っている)。タブが出ていなければ何もしない。"
+  (when-let* ((window (wamei/term--window)))
+    (when (buffer-local-value 'header-line-format (window-buffer window))
+      (wamei/term--tabs-redraw))))
+
+(defun wamei/term--on-title-change (_title)
+  "端末のタイトルが変わったらタブを描き直す。バッファ名は変えない。
+
+`ghostel-buffer-name-function' に設定して使う。この変数の既定は nil
+\(= 改名機構そのものが off) なので、これは「改名を抑止する」設定ではなく
+「タブの再描画という副作用のために改名機構を on にする」設定。
+現在のバッファ名をそのまま返すことで `ghostel--rename-managed' の
+\(not (equal new-name (buffer-name))) が偽になり、必ず no-op になる。
+nil を返すとタイトルがクリアされたときだけ `ghostel--set-title' の `or' が
+`ghostel--initial-name' に落ちて `ghostel--rename-managed' を呼ぶので、
+\(今は no-op でも) rename の経路を武装した状態になってしまう。
+
+呼ばれるのはタイトル変更 (OSC 0/2) のときだけではなく cd (OSC 7) のときも。
+ghostel の zsh 統合は precmd ごとに OSC 7 を出すので、1 コマンドにつき 2 回
+走る。ここに重い処理を足さないこと。
+
+`ghostel--set-title' と `ghostel--set-directory' はこの関数の呼び出しを
+`condition-case' で包まないため、ここで signal すると端末の出力処理
+\(プロセスフィルタ) の中でエラーになる。`with-demoted-errors' で押さえる。"
+  (with-demoted-errors "端末タブの再描画に失敗しました: %S"
+    (when (string-prefix-p "*term: " (buffer-name))
+      (wamei/term--tabs-redraw)))
+  (buffer-name))
 
 (defun wamei/term--on-command-state (buffer &rest _)
-  "BUFFER でコマンドが始まった・終わったら一覧の ● を描き直す。
+  "BUFFER でコマンドが始まった・終わったらタブの ● を描き直す。
 `ghostel-command-start-functions' と `-finish-functions' の両方から呼ぶ
 \(終了のフックは終了ステータスも渡すので捨てる)。
 
 タイトルは変わらないので `wamei/term--on-title-change' では拾えない。
 フックには後ろから足すこと — 状態を記録する term-modeline.el の
 `wamei/term-modeline--on-command-start' / `-finish' が先に走らないと、
-一覧に 1 つ前の ● が出る (`wamei/term-panel-setup' で append している)。
+タブに 1 つ前の ● が出る (`wamei/term-panel-setup' で append している)。
 
 `wamei/term--on-title-change' と同じく端末の出力処理 (プロセスフィルタ) の
 中で呼ばれるので、再描画の signal は外へ漏らさない。"
-  (with-demoted-errors "端末一覧の再描画に失敗しました: %S"
-    (when (buffer-live-p buffer)
-      (with-current-buffer buffer
-        (when (and (string-prefix-p "*term: " (buffer-name))
-                   (get-buffer (wamei/term--list-buffer-name)))
-          (wamei/term--list-refresh)))))
+  (with-demoted-errors "端末タブの再描画に失敗しました: %S"
+    (when (and (buffer-live-p buffer)
+               (string-prefix-p "*term: " (buffer-name buffer)))
+      (wamei/term--tabs-redraw)))
   nil)
 
-(defun wamei/term--list-update ()
-  "パネルの端末と同じプロジェクトの端末が 2 つ以上のときだけ一覧を表示する。
+(defun wamei/term--tab-buffer (event)
+  "EVENT がクリックしたタブの端末バッファ。"
+  (wamei/header-tabs-event-property event 'wamei/term-buffer))
 
-どのプロジェクトの一覧を出すかはカレントバッファではなく、パネルに表示中の
-端末で決める。kill-buffer 後のタイマや別プロジェクトのバッファから呼ばれても、
-タブ (window 構成) に出ている端末に一覧が追従する。"
-  (let ((term-window (wamei/term--window))
-        (list-window (wamei/term--list-window)))
-    (if (null term-window)
-        ;; パネル自体が閉じているなら一覧も出さない
-        (when (window-live-p list-window) (delete-window list-window))
-      (with-current-buffer (window-buffer term-window)
-        (if (< (length (wamei/term--buffers)) 2)
-            (when (window-live-p list-window) (delete-window list-window))
-          (let ((list-buffer (wamei/term--list-refresh)))
-            (cond
-             ((not (window-live-p list-window))
-              (display-buffer list-buffer))
-             ;; 別プロジェクトの一覧が出ていれば差し替える (dedicated なので一時的に外す)
-             ((not (eq (window-buffer list-window) list-buffer))
-              (set-window-dedicated-p list-window nil)
-              (set-window-buffer list-window list-buffer)
-              (set-window-dedicated-p list-window t)))))))))
-
-(defun wamei/term-list-select ()
-  "一覧で選んだ端末に切り替える。"
-  (interactive)
-  (when-let* ((buffer (get-text-property (point) 'wamei/term-buffer)))
+(defun wamei/term-tab-select (event)
+  "クリックしたタブの端末に切り替える。"
+  (interactive "e")
+  (when-let* ((buffer (wamei/term--tab-buffer event)))
     (wamei/term--show buffer)))
 
-(defun wamei/term-list-kill ()
-  "一覧で選んだ端末を削除する。"
-  (interactive)
-  (when-let* ((buffer (get-text-property (point) 'wamei/term-buffer)))
+(defun wamei/term-tab-kill (event)
+  "クリックしたタブの端末を削除する。"
+  (interactive "e")
+  (when-let* ((buffer (wamei/term--tab-buffer event)))
     ;; 端末はプロセスが生きているため、そのままだと
     ;; process-kill-buffer-query-function が確認を求めて止まる
     (let ((kill-buffer-query-functions nil))
-      (kill-buffer buffer))
-    ;; パネルの差し替え (または最後の端末なら window の削除) は
-    ;; kill-buffer 側で済んでいる。ここでは残った端末へフォーカスを移す。
-    (when-let* ((next (wamei/term--current)))
-      (wamei/term--show next))
-    (wamei/term--list-update)))
+      (kill-buffer buffer))))
 
 ;;; パネル操作
 
@@ -559,8 +408,8 @@ kill-buffer-hook から呼ぶ。パネルは dedicated な side window なので
 (defun wamei/term--on-kill ()
   "端末バッファが消えるときの後始末。シェル終了や kill-buffer から呼ばれる。"
   (wamei/term--hand-over)
-  ;; 一覧はバッファが実際に消えた後に描き直す
-  (run-at-time 0 nil #'wamei/term--list-update))
+  ;; 消えるバッファを除いた残りでタブを揃える (1 つに戻ればタブを消す)
+  (wamei/term--tabs-sync (remq (current-buffer) (wamei/term--buffers))))
 
 (defun wamei/term--show (buffer &optional no-select)
   "BUFFER をパネルに出す。NO-SELECT が非 nil ならフォーカスは移さない。
@@ -576,13 +425,11 @@ dedicated のままだと set-window-buffer が失敗する。"
       (setq window (display-buffer buffer)))
     (unless no-select
       (when (window-live-p window) (select-window window))))
-  (wamei/term--list-update)
+  (wamei/term--tabs-update)
   (get-buffer-window buffer))
 
 (defun wamei/term--close ()
-  "パネル (端末と一覧) を閉じる。"
-  (when-let* ((window (wamei/term--list-window)))
-    (delete-window window))
+  "パネルを閉じる。"
   (when-let* ((window (wamei/term--window)))
     (delete-window window)))
 
@@ -720,9 +567,9 @@ FN に渡す VSCROLL を `wamei/term-anchor-vscroll' で差し替える。
 ;;; 結線
 
 (defun wamei/term-panel-setup ()
-  "端末と一覧の display-buffer-alist を登録する。
+  "端末の display-buffer-alist と、端末タブを描き直すフックを登録する。
 
-端末は下部 side window の slot 0、一覧は同じ side の slot 1 (右隣) へ。
+端末は下部 side window の slot 0 へ。
 ghostel がロードされる前に登録しておく必要があるので、init.el の :init から呼ぶ。"
   (add-to-list 'display-buffer-alist
                '("\\`\\*term: "
@@ -738,24 +585,13 @@ ghostel がロードされる前に登録しておく必要があるので、ini
                  ;; claude-code-ide は同じパラメータをパッケージ側で付けている。
                  (window-parameters . ((no-other-window . t)
                                        (no-delete-other-windows . t)))))
-  ;; window-width は数値か関数のみ有効 (変数シンボルは関数扱いされ無視される)。
-  ;; bottom の side window では数値も効かないため関数でリサイズする。
-  (add-to-list 'display-buffer-alist
-               `(,wamei/term-list-buffer-regexp
-                 (display-buffer-in-side-window)
-                 (side . bottom)
-                 (slot . 1)
-                 (window-width . wamei/term--set-list-width)
-                 (dedicated . t)
-                 (window-parameters . ((no-other-window . t)
-                                       (no-delete-other-windows . t)))))
-  ;; コマンドの開始・終了で一覧の ● を描き直す。append で足すのは、状態を
+  ;; コマンドの開始・終了でタブの ● を描き直す。append で足すのは、状態を
   ;; 記録する term-modeline.el のフックより後に走らせるため
   ;; (`wamei/term--on-command-state')。
   (add-hook 'ghostel-command-start-functions #'wamei/term--on-command-state t)
   (add-hook 'ghostel-command-finish-functions #'wamei/term--on-command-state t)
   ;; 実行中の ● の呼吸は term-modeline.el のタイマーに相乗りする。
-  (add-hook 'wamei/term-modeline-tick-functions #'wamei/term--list-animate-marks))
+  (add-hook 'wamei/term-modeline-tick-functions #'wamei/term--tabs-tick))
 
 (provide 'term-panel)
 ;;; term-panel.el ends here

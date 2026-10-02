@@ -436,7 +436,7 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
   ;; 振り分ける (端末パネルには mode-line を出し、それ以外は隠す)。ここで
   ;; 無条件に掛けると、先に入れた mode-line-format を後から nil にしてしまう。
   :hook
-  ((dired-mode-hook ghostel-mode-hook wamei/term-list-mode-hook image-mode-hook)
+  ((dired-mode-hook ghostel-mode-hook image-mode-hook)
    . (lambda() (display-line-numbers-mode 0))))
 
 (leaf keybinds
@@ -534,8 +534,14 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
-  ;; 端末パネル (下部 side window) と端末一覧の管理は term-panel.el。
-  ;; 端末・一覧ともプロジェクト (タブ) ごとにバッファを分ける。
+  ;; header-line に等分のタブを描く部品。端末パネルとメモ (project-memo.el)
+  ;; のタブが使うので、両方より先に読む。
+  (load (expand-file-name "header-tabs"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+
+  ;; 端末パネル (下部 side window) と端末タブの管理は term-panel.el。
+  ;; 端末はプロジェクト (タブ) ごとにバッファを分ける。
   (load (expand-file-name "term-panel"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
@@ -1853,9 +1859,7 @@ desktop-side-windows が SPEC の :directory を default-directory に束縛し�
 (SPEC の :buffer) をそのまま出す。
 記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
 高さは display-buffer-alist の wamei/term--set-height が wamei/term-height
-(desktop に保存) から決める。一覧 (*terminals: <project>*) は端末が 2 つ以上のときだけ
-自動で出るので復元しない。幅は同様に wamei/term-list-width (desktop に保存) から
-wamei/term--set-list-width が決める。"
+(desktop に保存) から決める。端末タブ (header-line) は wamei/term--show が付ける。"
     (wamei/term--show (or (get-buffer (plist-get spec :buffer))
                           (wamei/term--current)
                           (wamei/term--create 1))
@@ -1900,14 +1904,12 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   (unless (display-graphic-p)
     (setq desktop-base-file-name ".emacs.desktop-nw"
           desktop-base-lock-name ".emacs.desktop-nw.lock"))
-  ;; 端末パネルの高さの割合と一覧の幅も次回に引き継ぐ
+  ;; 端末パネルの高さの割合も次回に引き継ぐ
   (add-to-list 'desktop-globals-to-save 'wamei/term-height)
-  (add-to-list 'desktop-globals-to-save 'wamei/term-list-width)
   ;; バッファ名で開き直し方を選ぶ。sidebar は " *sidebar: " で始まる。
   (setq wamei/desktop-side-restorers
-        `(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)
+        '(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)
           ("\\`\\*term: " . wamei/desktop--restore-term)
-          (,wamei/term-list-buffer-regexp . ignore)
           ("\\`\\*claude-code\\[" . wamei/desktop--restore-claude)))
   ;; sidebar は dired バッファなので desktop が普通の dired として保存してしまう。
   ;; 除外して restorer に任せる。
