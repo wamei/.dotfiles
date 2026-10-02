@@ -12,6 +12,7 @@
   (load (expand-file-name "project-tabs.el" dir) nil t)
   (load (expand-file-name "dired-tree.el" dir) nil t)
   (load (expand-file-name "project-sidebar.el" dir) nil t)
+  (load (expand-file-name "header-tabs.el" dir) nil t)
   (load (expand-file-name "project-memo.el" dir) nil t))
 
 (wamei/project-sidebar-setup)
@@ -1296,6 +1297,183 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
         (wamei/project-memo-autosave-setup)
         (funcall after-focus-change-function)
         (should (= save-all-calls 1))))))
+
+;;; タブ
+
+(defmacro wamei/project-memo-test--with-tabs (vars &rest body)
+  "VARS のそれぞれを一時ディレクトリの transient プロジェクトに束縛し、
+その順で tab-bar のタブに紐づけて BODY を評価する。最初のタブがカレント。
+
+`wamei/project-memo-directory' も一時ディレクトリに差し替える
+\(`wamei/project-memo-test--with-project' と同じ理由)。"
+  (declare (indent 1))
+  `(let* ((--base (file-name-as-directory (file-truename (make-temp-file "memo-tabs-" t))))
+          ,@(mapcar (lambda (var)
+                      `(,var (file-name-as-directory
+                              (expand-file-name ,(symbol-name var) --base))))
+                    vars)
+          (--roots (list ,@vars))
+          (wamei/project-memo-directory
+           (file-name-as-directory (file-truename (make-temp-file "memo-org-" t))))
+          (project-find-functions
+           (list (lambda (dir)
+                   (seq-some (lambda (root)
+                               (when (string-prefix-p root (file-truename (expand-file-name dir)))
+                                 (cons 'transient root)))
+                             --roots)))))
+     (unwind-protect
+         (progn
+           (dolist (root --roots) (make-directory root t))
+           (set-frame-parameter
+            nil 'tabs
+            (seq-map-indexed (lambda (root i)
+                               (list (if (zerop i) 'current-tab 'tab)
+                                     (cons 'name (format "tab%d" i))
+                                     (cons 'wamei-project root)))
+                             --roots))
+           ,@body)
+       (set-frame-parameter nil 'tabs nil)
+       (dolist (buf (buffer-list))
+         (when-let* ((file (buffer-file-name buf))
+                     ((string-prefix-p wamei/project-memo-directory file)))
+           (with-current-buffer buf (set-buffer-modified-p nil))
+           (kill-buffer buf)))
+       (delete-directory --base t)
+       (delete-directory wamei/project-memo-directory t))))
+
+(defun wamei/project-memo-test--tab-labels (tabs)
+  "TABS (`wamei/project-memo--tabs' の戻り値) のラベル。"
+  (mapcar (lambda (tab) (plist-get tab :label)) tabs))
+
+(defun wamei/project-memo-test--current-label (tabs)
+  "TABS のうち今のタブのラベル。"
+  (plist-get (seq-find (lambda (tab) (plist-get tab :current)) tabs) :label))
+
+(ert-deftest wamei/project-memo-tabs-list-open-projects-then-global ()
+  "タブには tab-bar で開いているプロジェクトのメモを tab-bar の順に並べ、
+最後に全体メモを置く。"
+  (wamei/project-memo-test--with-tabs (alpha beta)
+    (with-current-buffer (wamei/project-memo-buffer nil)
+      (let ((tabs (wamei/project-memo--tabs)))
+        (should (equal (wamei/project-memo-test--tab-labels tabs)
+                       '("alpha" "beta" "global")))
+        (should (equal (wamei/project-memo-test--current-label tabs) "global"))))))
+
+(ert-deftest wamei/project-memo-tabs-mark-the-shown-memo ()
+  (wamei/project-memo-test--with-tabs (alpha beta)
+    (with-current-buffer (wamei/project-memo-buffer (project-current nil beta))
+      (should (equal (wamei/project-memo-test--current-label (wamei/project-memo--tabs))
+                     "beta")))))
+
+(ert-deftest wamei/project-memo-tabs-skip-duplicate-and-unusable-roots ()
+  "同じプロジェクトのタブが 2 つあっても 1 つにまとめる。root の無いタブと、
+メモのディレクトリ自身を root にするタブは並べない。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (set-frame-parameter
+     nil 'tabs
+     (list (list 'current-tab (cons 'wamei-project alpha))
+           (list 'tab (cons 'name "scratch"))
+           (list 'tab (cons 'wamei-project alpha))
+           (list 'tab (cons 'wamei-project wamei/project-memo-directory))))
+    (with-current-buffer (wamei/project-memo-buffer nil)
+      (should (equal (wamei/project-memo-test--tab-labels (wamei/project-memo--tabs))
+                     '("alpha" "global"))))))
+
+(ert-deftest wamei/project-memo-tabs-include-the-shown-memo-of-a-closed-project ()
+  "タブを閉じたプロジェクトのメモが出ていても、今どこにいるか分かるよう並べる
+\(全体メモの手前)。"
+  (wamei/project-memo-test--with-tabs (alpha beta)
+    (set-frame-parameter nil 'tabs
+                         (list (list 'current-tab (cons 'wamei-project alpha))))
+    (with-current-buffer (wamei/project-memo-buffer (project-current nil beta))
+      (let ((tabs (wamei/project-memo--tabs)))
+        (should (equal (wamei/project-memo-test--tab-labels tabs)
+                       '("alpha" "beta" "global")))
+        (should (equal (wamei/project-memo-test--current-label tabs) "beta"))))))
+
+(ert-deftest wamei/project-memo-buffer-shows-the-tabs ()
+  "プロジェクトメモにも全体メモにも header-line にタブを出す。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (should (equal (buffer-local-value 'header-line-format
+                                       (wamei/project-memo-buffer (project-current nil alpha)))
+                   wamei/project-memo--tabs-header-line))
+    (should (equal (buffer-local-value 'header-line-format (wamei/project-memo-buffer nil))
+                   wamei/project-memo--tabs-header-line))))
+
+(ert-deftest wamei/project-memo-tabs-setup-covers-memos-opened-elsewhere ()
+  "desktop の復元など `wamei/project-memo-buffer' を通らずに開いたメモにもタブを出す。
+メモ以外のファイルには出さない。"
+  (wamei/project-memo-test--with-tabs (alpha)
+    (let ((find-file-hook nil))
+      (wamei/project-memo-tabs-setup)
+      (let ((memo (find-file-noselect (expand-file-name "other.org"
+                                                        wamei/project-memo-directory)))
+            (other (find-file-noselect (expand-file-name "x.org" alpha))))
+        (unwind-protect
+            (progn
+              (should (equal (buffer-local-value 'header-line-format memo)
+                             wamei/project-memo--tabs-header-line))
+              (should-not (buffer-local-value 'header-line-format other)))
+          (kill-buffer other))))))
+
+(defun wamei/project-memo-test--click (window tabs label)
+  "WINDOW の header-line で TABS の LABEL のタブをクリックしたイベント。"
+  (let* ((string (wamei/header-tabs-render tabs 80 800))
+         (pos (string-search label string)))
+    (list 'mouse-1 (list window 'header-line '(0 . 0) 0
+                         (cons string pos) nil '(0 . 0) nil nil nil))))
+
+(ert-deftest wamei/project-memo-tab-click-in-main-window-switches-the-memo ()
+  "本文 window のメモのタブをクリックすると、その window のメモだけ差し替える。"
+  (wamei/project-memo-test--with-tabs (alpha beta)
+    (let ((main (selected-window)))
+      (set-window-buffer main (wamei/project-memo-buffer (project-current nil alpha)))
+      (wamei/project-memo-tab-select
+       (wamei/project-memo-test--click
+        main (with-current-buffer (window-buffer main) (wamei/project-memo--tabs)) "beta"))
+      (should (equal (buffer-file-name (window-buffer main))
+                     (wamei/project-memo-file (project-current nil beta))))
+      ;; tab-bar のタブは動かさない
+      (should (equal (wamei/project-tabs-current-root) alpha)))))
+
+(ert-deftest wamei/project-memo-tab-click-to-global ()
+  (wamei/project-memo-test--with-tabs (alpha)
+    (let ((main (selected-window)))
+      (set-window-buffer main (wamei/project-memo-buffer (project-current nil alpha)))
+      (wamei/project-memo-tab-select
+       (wamei/project-memo-test--click
+        main (with-current-buffer (window-buffer main) (wamei/project-memo--tabs)) "global"))
+      (should (equal (buffer-file-name (window-buffer main))
+                     (wamei/project-memo-global-file))))))
+
+(ert-deftest wamei/project-memo-tab-click-in-posframe-shows-the-memo-there ()
+  "小窓のメモのタブをクリックすると、小窓にそのメモを出し直す。本文 window は触らない。"
+  (wamei/project-memo-test--with-tabs (alpha beta)
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let* ((main (selected-window))
+             (main-buffer (window-buffer main))
+             (alpha-memo (wamei/project-memo-buffer (project-current nil alpha))))
+        (unwind-protect
+            (progn
+              (wamei/project-memo-posframe-show alpha-memo)
+              (wamei/project-memo-tab-select
+               (wamei/project-memo-test--click
+                'memo-posframe-window
+                (with-current-buffer alpha-memo (wamei/project-memo--tabs)) "beta"))
+              (should (eq (car (car calls)) 'show))
+              (should (equal (buffer-file-name (cadr (car calls)))
+                             (wamei/project-memo-file (project-current nil beta))))
+              (should (eq (window-buffer main) main-buffer)))
+          (wamei/project-memo-posframe-hide))))))
+
+(ert-deftest wamei/project-memo-posframe-show-keeps-the-header-line ()
+  "posframe は `:respect-header-line' が nil だと header-line を消すので、
+タブを残すために渡す。"
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+      (should (plist-get (cddr (car calls)) :respect-header-line))
+      (wamei/project-memo-posframe-hide))))
 
 ;;; タブの初期画面
 

@@ -16,6 +16,9 @@
 ;; - 既定の表示先は画面中央の posframe (`wamei/project-memo-toggle')。
 ;;   `C-u' を付けると本文 window に出す。posframe が使えない環境
 ;;   (`posframe-workable-p' が nil) では `C-u' 無しでも本文 window に落とす
+;; - メモの上端 (header-line) には tab-bar で開いているプロジェクトのメモと
+;;   全体メモをタブで並べる (`wamei/project-memo--tabs')。タブをクリックすると
+;;   そのメモに差し替える。差し替えるのはメモだけで、tab-bar のタブは動かさない
 ;; - posframe はフォーカスが外れたときと、もう一度トグルしたときに閉じる。
 ;;   いずれも閉じる前に保存する。ESC / C-g では閉じない (どちらも org の
 ;;   編集中に使う)。`posframe-show' は child frame の root window を強い
@@ -57,6 +60,8 @@
 (require 'project-tabs)
 (require 'project-sidebar)
 (require 'posframe)
+;; メモの上端に、開いているプロジェクトのメモをタブで並べる。
+(require 'header-tabs)
 
 (defgroup wamei/project-memo nil
   "org のメモ (プロジェクト別 / 全体)。"
@@ -71,6 +76,9 @@
   "全体メモのファイル名。`wamei/project-memo-directory' からの相対。"
   :type 'string
   :group 'wamei/project-memo)
+
+(defconst wamei/project-memo--tabs-header-line '(:eval (wamei/project-memo--tabs-format))
+  "メモバッファに入れる `header-line-format'。中身は「タブ」の節。")
 
 ;;; パス解決
 
@@ -138,7 +146,9 @@ project-find-file などの起点もメモのディレクトリになってし�
 フォーカスがあるときに露呈する)。1 行で default-directory の利用者を
 まとめて正しくする。
 
-全体メモは (プロジェクトに属さないので) どちらも設定しない。"
+全体メモは (プロジェクトに属さないので) どちらも設定しない。
+
+header-line にはメモを切り替えるタブを出す (`wamei/project-memo--tabs')。"
   (let* ((file (if project
                    (wamei/project-memo-file project)
                  (wamei/project-memo-global-file)))
@@ -162,7 +172,8 @@ project-find-file などの起点もメモのディレクトリになってし�
           (let ((root (file-name-as-directory (expand-file-name (project-root project)))))
             (setq-local project-current-directory-override root)
             (setq-local default-directory root))
-        (kill-local-variable 'project-current-directory-override)))
+        (kill-local-variable 'project-current-directory-override))
+      (setq header-line-format wamei/project-memo--tabs-header-line))
     buffer))
 
 ;;; 表示
@@ -460,6 +471,8 @@ window を取る。posframe.el 自身が同じ window を `posframe--create-posf
            :accept-focus t
            :cursor 'box
            :respect-mode-line t
+           ;; 無いと posframe が header-line (メモのタブ) を消す
+           :respect-header-line t
            :window-point (with-current-buffer buffer (point))))
     (let ((window (frame-root-window wamei/project-memo--posframe-frame)))
       (set-window-dedicated-p window nil)
@@ -615,6 +628,95 @@ tty の実機診断では、この分岐と下の「フォーカスが外れた�
   (when (eq (wamei/project-memo--posframe-action) 'hide)
     (wamei/project-memo-posframe-hide))
   nil)
+
+;;; タブ
+
+;; メモの header-line に、tab-bar で開いているプロジェクトのメモと全体メモを
+;; window の幅を等分するタブで並べる (描画は header-tabs.el)。クリックすると
+;; その window (小窓か本文 window) のメモだけを差し替える。tab-bar のタブは
+;; 動かさない。
+
+(defvar wamei/project-memo-tab-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [header-line mouse-1] #'wamei/project-memo-tab-select)
+    map)
+  "メモのタブの上でのマウス操作。")
+
+(defun wamei/project-memo--tab-roots ()
+  "tab-bar のタブに紐づいたプロジェクトルート。タブの順で、重複は除く。
+メモの対象にならない root (`wamei/project-memo--usable-project') も除く。"
+  (let (roots)
+    (dolist (tab (frame-parameter (wamei/project-tabs-base-frame) 'tabs))
+      (when-let* ((root (wamei/project-tabs-root tab))
+                  (project (wamei/project-memo--usable-project (project-current nil root)))
+                  (root (file-name-as-directory (expand-file-name (project-root project))))
+                  ((not (member root roots))))
+        (push root roots)))
+    (nreverse roots)))
+
+(defun wamei/project-memo--tab (root file current)
+  "ROOT (全体メモなら nil) のメモ FILE のタブ。CURRENT は今出ているメモのファイル。"
+  (list :label (if root
+                   (project-name (project-current nil root))
+                 (file-name-base file))
+        :current (equal file current)
+        :properties (list 'wamei/project-memo-root root
+                          'wamei/project-memo-file file
+                          'local-map wamei/project-memo-tab-map
+                          'help-echo "mouse-1: このメモに切り替え")))
+
+(defun wamei/project-memo--tabs ()
+  "カレントバッファ (メモ) の header-line に並べるタブ。
+tab-bar で開いているプロジェクトのメモをタブの順に、最後に全体メモ。
+今出ているメモがどれにも当たらなければ (タブを閉じたプロジェクトのメモ
+など)、全体メモの手前に足す。どこにいるかを見失わないように。"
+  (let* ((current (and buffer-file-name (expand-file-name buffer-file-name)))
+         (global (wamei/project-memo-global-file))
+         (tabs (mapcar (lambda (root)
+                         (wamei/project-memo--tab
+                          root (wamei/project-memo-file (project-current nil root)) current))
+                       (wamei/project-memo--tab-roots))))
+    (when (and current
+               (not (equal current global))
+               (not (seq-find (lambda (tab) (plist-get tab :current)) tabs)))
+      (setq tabs (append tabs
+                         (list (wamei/project-memo--tab
+                                (and (local-variable-p 'project-current-directory-override)
+                                     project-current-directory-override)
+                                current current)))))
+    (append tabs (list (wamei/project-memo--tab nil global current)))))
+
+(defun wamei/project-memo--tabs-format ()
+  "メモの header-line の中身。`wamei/project-memo--tabs-header-line' から呼ぶ。"
+  (wamei/header-tabs-format (wamei/project-memo--tabs)))
+
+(defun wamei/project-memo-tab-select (event)
+  "クリックしたタブのメモを、クリックした window に出す。
+小窓のタブなら小窓に出し直し (`wamei/project-memo-posframe-show')、本文
+window のタブならその window のバッファだけを差し替える。"
+  (interactive "e")
+  (when-let* ((file (wamei/header-tabs-event-property event 'wamei/project-memo-file)))
+    (let* ((root (wamei/header-tabs-event-property event 'wamei/project-memo-root))
+           (buffer (cond (root (wamei/project-memo-buffer (project-current nil root)))
+                         ((equal file (wamei/project-memo-global-file))
+                          (wamei/project-memo-buffer nil))
+                         (t (find-file-noselect file))))
+           (window (posn-window (event-start event)))
+           (frame (wamei/project-memo-posframe-frame)))
+      (if (and frame (eq window (frame-root-window frame)))
+          (wamei/project-memo-posframe-show buffer)
+        (set-window-buffer window buffer)
+        (select-window window)))))
+
+(defun wamei/project-memo--enable-tabs ()
+  "メモのファイルならタブを出す。`find-file-hook' 用。"
+  (when (wamei/project-memo-buffer-p)
+    (setq header-line-format wamei/project-memo--tabs-header-line)))
+
+(defun wamei/project-memo-tabs-setup ()
+  "`wamei/project-memo-buffer' を通らずに開いたメモ (desktop の復元など) にも
+タブを出す。init.el から呼ぶ。"
+  (add-hook 'find-file-hook #'wamei/project-memo--enable-tabs))
 
 ;;; 自動保存
 
