@@ -420,8 +420,14 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
 (leaf doom-modeline
   :doc "モードライン"
   :ensure t
+  ;; `doom-modeline-mode' は有効化するたびに、mode-line を持つ既存の全バッファへ
+  ;; doom-modeline の形式を入れ直す (doom-modeline.el の "Apply to all existing
+  ;; buffers")。init.el を再評価すると端末パネル (term-modeline.el) や Claude の
+  ;; パネル (claude-usage.el) の mode-line まで上書きされるので、既に有効なら
+  ;; 何もしないことで再評価を冪等にする。
   :init
-  (doom-modeline-mode 1)
+  (unless (bound-and-true-p doom-modeline-mode)
+    (doom-modeline-mode 1))
   :custom
   (inhibit-compacting-font-caches . t)
   (doom-modeline-vcs-max-length . 30)
