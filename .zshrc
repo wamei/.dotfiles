@@ -98,38 +98,48 @@ precmd () {
     fi
 }
 show_env() {
-  show_env_mise
+  show_env_mise --changed
 }
 # mise が今のディレクトリで有効にしているツール (node / bun / python / ruby ...) を出す。
 # go:github.com/... のような backend 付き (go install / npm / cargo などで入れた単体ツール)
-# は言語のバージョンではなく単に入れたバイナリなので、プロンプトからは除く。
+# は言語のバージョンではなく単に入れたバイナリなので除く。
 # global 設定 (~/.config/mise/config.toml) 以外から解決されたものは赤で出す。
 # direnv の layout python で venv に入っているときは python に (venv 名) を付けて赤で出す。
+# --changed のときは global のままのもの (赤くないもの) を出さない。未インストールは global でも出す。
+# 出力はプロンプト用の %F{...} 付き。そのまま見るなら versions を使う。
 # `mise ls --current` の 1 行: "<tool>  <version>  [(missing)]  <source>  <requested>"
 show_env_mise() {
+  local changed_only=0
+  [[ $1 == --changed ]] && changed_only=1
   # config が symlink だと source は実体側のパスで出るので、realpath 同士で比べる
   local global=${${:-~/.config/mise/config.toml}:A}
-  local line tool ver src
+  local line tool ver src missing
   local -a f
   mise ls --current 2>/dev/null | while IFS= read -r line; do
     f=(${(z)line})
-    tool=$f[1] ver=$f[2] src=$f[3]
+    tool=$f[1] ver=$f[2] src=$f[3] missing=0
     # backend 付き (<backend>:<pkg>) は除外
     [[ $tool == *:* ]] && continue
     if [[ $src == '(missing)' ]]; then
       ver+='(missing)'
       src=$f[4]
+      missing=1
     fi
     if [[ $tool == python && -n $VIRTUAL_ENV && -n $DIRENV_DIR ]]; then
       echo -n " %F{009}$tool:$ver(${VIRTUAL_ENV:t})%f"
       continue
     fi
     if [[ ${${src/#\~/$HOME}:A} == $global ]]; then
+      (( changed_only && ! missing )) && continue
       echo -n " $tool:$ver"
     else
       echo -n " %F{009}$tool:$ver%f"
     fi
   done
+}
+# 今有効な mise のツールを global のものも含めて全部出す
+versions() {
+  print -P -- "${$(show_env_mise)# }"
 }
 
 # prompt表示設定
