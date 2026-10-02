@@ -1973,28 +1973,20 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
 (leaf window-divider
   :doc "ウィンドウ間の細い区切り線"
   :ensure nil
-  ;; ミニバッファとの境界にも引かれる。端末のモードラインを隠したことで
+  ;; 下端はミニバッファとの境界にも引かれる。端末のモードラインを隠したことで
   ;; 下端がミニバッファと地続きに見えるのを防ぐ。
-  ;; 色は doom-themes が window-divider :inherit vertical-border を
-  ;; 定義しているのでテーマに追随する。
+  ;; 右端にも引く。divider が無いときの縦線 (vertical-border) は header-line と
+  ;; mode-line の行には描かれず、タブや端末・claude の mode-line の左端だけ線が
+  ;; 途切れる。divider は window の全高に引かれる。
   :preface
-  (defvar wamei/window-divider-base-face 'mode-line-inactive
-    "divider の色をどの face の背景に合わせるか。
-
-mode-line と mode-line-inactive は背景色が異なるが、divider の色は
-フレーム単位でしか持てず window ごとのアクティブ状態を反映できない
-(face remapping はバッファローカル、divider はフレームの face で描画される)。
-アクティブな window は常に 1 つなので、divider の大半が接するのは
-非アクティブなモードラインになる。ズレる箇所が少ない方を既定にする。")
-
   (defun wamei/window-divider-sync-color (&rest _)
-    "divider の色を wamei/window-divider-base-face の背景色に合わせる。
+    "divider の色を vertical-border (divider が無いときの縦線) の色に合わせる。
 
-divider は face の foreground で描かれるため、対象 face の background を
-foreground として設定する。幅 1 のときに 3 つのうちどの face が使われるかは
-実装依存なので全てに同じ色を入れる。enable-theme-functions に載せて
-テーマ切替にも追随させる。"
-    (let ((color (face-attribute wamei/window-divider-base-face :background nil 'default)))
+divider は face の foreground で描かれる。幅 1 のときに 3 つのうちどの face が
+使われるかは実装依存なので全てに同じ色を入れる。divider の色はフレーム単位で
+しか持てず window ごとのアクティブ状態は反映できない。enable-theme-functions に
+載せてテーマ切替にも追随させる。"
+    (let ((color (face-attribute 'vertical-border :foreground nil 'default)))
       (when (and (stringp color) (not (string-prefix-p "unspecified" color)))
         (dolist (face '(window-divider
                         window-divider-first-pixel
@@ -2002,8 +1994,9 @@ foreground として設定する。幅 1 のときに 3 つのうちどの face 
           (set-face-foreground face color)
           (set-face-background face color)))))
   :custom
-  (window-divider-default-places . 'bottom-only)
+  (window-divider-default-places . t)
   (window-divider-default-bottom-width . 1)
+  (window-divider-default-right-width . 1)
   :config
   (wamei/window-divider-sync-color)
   (add-hook 'enable-theme-functions #'wamei/window-divider-sync-color)

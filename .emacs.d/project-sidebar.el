@@ -46,6 +46,37 @@
 
 (defvar wamei/project-sidebar-width 35 "side window の幅 (桁)。")
 
+(defvar-local wamei/project-sidebar--header-remaps nil
+  "header-line に入れた face remap のクッキー。")
+
+(defun wamei/project-sidebar--color (color)
+  "COLOR が実際の色なら返す。batch や tty の \"unspecified-bg\" なら nil。"
+  (and (stringp color) (not (string-prefix-p "unspecified" color)) color))
+
+(defun wamei/project-sidebar--blend-header (&optional background dim)
+  "プロジェクト名の header-line を window の地の色に溶け込ませる。
+BACKGROUND の既定は `default' の背景、DIM の既定は auto-dim-other-buffers の背景。
+`header-line' の既定の背景のままだと、周りのタブ列 (init.el で非選択の window の
+色にしてある) より明るい帯になって浮く。DIM は auto-dim-other-buffers が
+`default' に使うのと同じフィルタで当て、本文が暗転するのと同時に落とす
+\(claude-usage.el の mode-line と同じやり方)。何度呼んでも remap は積み上がらない。"
+  (mapc #'face-remap-remove-relative wamei/project-sidebar--header-remaps)
+  (setq wamei/project-sidebar--header-remaps nil)
+  (let* ((background (or (wamei/project-sidebar--color background)
+                         (wamei/project-sidebar--color (face-background 'default nil t))))
+         (dim (or (wamei/project-sidebar--color dim)
+                  (and (facep 'auto-dim-other-buffers)
+                       (wamei/project-sidebar--color
+                        (face-background 'auto-dim-other-buffers nil t)))))
+         ;; `face-remap-add-relative' は後に当てたものを優先するので DIM を後ろに置く
+         (specs (append (when background (list (list :background background)))
+                        (when dim (list (list :filtered '(:window adob--dim t)
+                                              (list :background dim)))))))
+    (dolist (face '(header-line header-line-active header-line-inactive))
+      (when (facep face)
+        (dolist (spec specs)
+          (push (face-remap-add-relative face spec) wamei/project-sidebar--header-remaps))))))
+
 ;;; バッファ
 
 (defun wamei/project-sidebar--root-for (dir)
@@ -357,6 +388,7 @@ down-mouse-1 は束縛しない (dired の D&D に任せる)。")
               (list (propertize (concat " " (file-name-nondirectory
                                              (directory-file-name default-directory)))
                                 'face 'wamei/project-sidebar-root)))
+        (wamei/project-sidebar--blend-header)
         (add-to-invisibility-spec 'wamei/project-sidebar-header)
         (add-hook 'dired-after-readin-hook #'wamei/project-sidebar--decorate 99 t)
         ;; 現在行: カーソル移動と revert 後に張り直す (follow は --reveal が直接呼ぶ)
@@ -369,6 +401,8 @@ down-mouse-1 は束縛しない (dired の D&D に任せる)。")
     (when (overlayp wamei/project-sidebar--row-overlay)
       (delete-overlay wamei/project-sidebar--row-overlay)
       (setq wamei/project-sidebar--row-overlay nil))
+    (mapc #'face-remap-remove-relative wamei/project-sidebar--header-remaps)
+    (setq wamei/project-sidebar--header-remaps nil)
     (remove-from-invisibility-spec 'wamei/project-sidebar-header)
     (remove-overlays (point-min) (point-max) 'wamei/project-sidebar-header t)
     (kill-local-variable 'header-line-format)))

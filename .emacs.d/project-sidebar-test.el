@@ -72,6 +72,21 @@ symlink 越しになるため、`wamei/project-sidebar--root-for' の正規化�
         (should (string-match-p (file-name-nondirectory (directory-file-name root))
                                 (car header-line-format)))))))
 
+(ert-deftest wamei/project-sidebar-header-line-blends-into-the-window ()
+  "プロジェクト名の header-line は地の色にし、非選択で本文が暗転したら一緒に落とす。
+`header-line' の既定の背景だと、周りのタブ列より明るい帯になって浮く。
+何度当てても remap は積み上がらない。"
+  (wamei/project-sidebar-test--with-project root
+    (with-current-buffer (wamei/project-sidebar-buffer root)
+      (wamei/project-sidebar--blend-header "#111111" "#000000")
+      (wamei/project-sidebar--blend-header "#111111" "#000000")
+      (dolist (face '(header-line header-line-active header-line-inactive))
+        (should (equal (butlast (cdr (assq face face-remapping-alist)))
+                       '((:filtered (:window adob--dim t) (:background "#000000"))
+                         (:background "#111111")))))
+      (wamei/project-sidebar-mode -1)
+      (should-not (assq 'header-line face-remapping-alist)))))
+
 (ert-deftest wamei/project-sidebar-invisibility-spec-added-once ()
   (wamei/project-sidebar-test--with-project root
     (let ((buf (wamei/project-sidebar-buffer root)))
