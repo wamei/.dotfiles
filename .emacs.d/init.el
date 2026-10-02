@@ -2298,8 +2298,24 @@ POSFRAME は posframe の child frame、残りの引数は `fit-frame-to-buffer'
                (not (eq only 'vertically))
                (> (frame-width posframe) min-width))
       (set-frame-width posframe min-width)))
+
+  (defun wamei/vertico-posframe--refit-new-frame (orig buffer &rest args)
+    "`vertico-posframe--show' (ORIG) の :around advice。frame を作った回はもう一度 show する。
+
+posframe は作ったばかりの child frame (幅 1 で非表示) のまま中身に合わせて
+寸法を決めるが、一度も表示していない frame では `window-text-pixel-size' が
+0 を返す。そのため最初の表示だけ長い候補があっても min-width / min-height に
+なり、次に描き直すまで広がらない。show の中で frame は表示済みになるので、
+続けてもう一度 show すれば再描画を待たずに正しく測れる (位置もその寸法で
+決め直される)。一度作った frame は隠しても測れるので、2 回目以降の
+ミニバッファでは 1 回だけ呼ぶ。BUFFER と ARGS は ORIG にそのまま渡す。"
+    (let ((created (not (frame-live-p (buffer-local-value 'posframe--frame buffer)))))
+      (apply orig buffer args)
+      (when created
+        (apply orig buffer args))))
   :config
   (advice-add 'posframe--fit-frame-to-buffer :before #'wamei/posframe--shrink-before-fit)
+  (advice-add 'vertico-posframe--show :around #'wamei/vertico-posframe--refit-new-frame)
   :custom
   ;; フレーム中央。モードラインやミニバッファの高さに依存しないので
   ;; 端末パネルの有無で位置がずれない。
