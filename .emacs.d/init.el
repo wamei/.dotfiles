@@ -2280,6 +2280,26 @@ child frame (corfu / eldoc-box / posframe) は自分でこの face を設定す�
   ;; Emacs 31 は tty でも child frame を作れる。posframe 側が `posframe-workable-p' で
   ;; 同じ判定をし、tty では枠を文字で描く (undecorated nil)。
   :if (or (display-graphic-p) (featurep 'tty-child-frames))
+  :preface
+  (defun wamei/posframe--shrink-before-fit (posframe _max-height _min-height _max-width min-width only)
+    "`posframe--fit-frame-to-buffer' の :before advice。幅を測る前に MIN-WIDTH まで縮める。
+
+vertico は候補行 (vertico-mouse) とグループ見出し (`vertico-group-format') の
+末尾に (space :align-to (- right 1)) を置き、行を右端まで伸ばす。posframe は
+内容に合わせて幅を決めるので、この詰め物が「今の幅 - 1」の内容として測られ、
+候補を描き直すたびに 1 桁ずつ縮んでいく (前回の候補が広くて MIN-WIDTH より
+広い状態から始まったときに目に見える)。先に MIN-WIDTH まで戻しておけば
+詰め物は MIN-WIDTH までしか伸びず、幅は MIN-WIDTH と実際の内容の広い方に
+決まる。縮めてから測るまでの間に再描画は入らないのでちらつかない。
+
+ONLY が `vertically' (幅は呼び出し側が決めている) のときは触らない。
+POSFRAME は posframe の child frame、残りの引数は `fit-frame-to-buffer' と同じ。"
+    (when (and min-width
+               (not (eq only 'vertically))
+               (> (frame-width posframe) min-width))
+      (set-frame-width posframe min-width)))
+  :config
+  (advice-add 'posframe--fit-frame-to-buffer :before #'wamei/posframe--shrink-before-fit)
   :custom
   ;; フレーム中央。モードラインやミニバッファの高さに依存しないので
   ;; 端末パネルの有無で位置がずれない。
