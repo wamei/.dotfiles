@@ -250,10 +250,12 @@ eval "$(direnv hook zsh)"
 source $HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 
-# bindkey              '^I' menu-select
-# bindkey "$terminfo[kcbt]" menu-select
-# bindkey -M menuselect              '^I'         menu-complete
-# bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
+# zsh-autocomplete の既定の Tab は一覧の先頭を挿入して終わるので、Tab / Shift-Tab で一覧に入り、
+# 一覧の中では Tab / Shift-Tab で選択を前後に動かす。
+bindkey              '^I' menu-select
+bindkey "$terminfo[kcbt]" menu-select
+bindkey -M menuselect              '^I'         menu-complete
+bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 # 端末タイトルに直前に実行したコマンドを流す。
 # Emacs (ghostel) の端末一覧がこのタイトルを拾って表示する。
