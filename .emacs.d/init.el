@@ -1068,6 +1068,25 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   ;; など) でも別プロジェクトでも、タブに紐づいたプロジェクトを起点にする
   ;; (詳細は project-tabs.el の Commentary)。
   (wamei/project-tabs-setup)
+  ;; minibuffer を抜けたときの window 構成の復元 (`read-minibuffer-restore-windows')
+  ;; を、入ったときと同じタブで抜けたときだけにする。C 側の復元は無条件なので、
+  ;; minibuffer を開いたまま別タブに移って抜けると、元のタブの構成で今のタブが
+  ;; 上書きされる。tab-bar にも対策 (元のタブへ戻ってから復元する) はあるが、
+  ;; 切り替えた瞬間に minibuffer が選択中のときしか効かない。vertico-posframe は
+  ;; 外をクリックすると選択が通常の window に移って隠れるので、その対策をすり抜ける。
+  ;; 別タブへ移ると元のタブの window は dead になり、戻ってくると生き返るので、
+  ;; 入ったときの selected-window が生きているかで同じタブかを見分ける。
+  ;; C の内部から呼ばれる minibuffer (read-string など) は advice を通らず従来どおり。
+  (defun wamei/minibuffer-restore-windows-same-tab (orig &rest args)
+    "`read-from-minibuffer' (ORIG) の :around advice。同じタブで抜けたときだけ window を戻す。"
+    (let ((window (selected-window))
+          (config (current-window-configuration)))
+      (unwind-protect
+          (let ((read-minibuffer-restore-windows nil))
+            (apply orig args))
+        (when (and read-minibuffer-restore-windows (window-live-p window))
+          (set-window-configuration config nil t)))))
+  (advice-add 'read-from-minibuffer :around #'wamei/minibuffer-restore-windows-same-tab)
   :global-minor-mode tab-bar-mode)
 
 (leaf transient
