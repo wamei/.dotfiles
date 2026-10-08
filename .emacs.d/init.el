@@ -356,8 +356,16 @@ ghostel ブロックの display table で同形の記号に置き換えている
   ;; 色にする。テーマの bg-alt (#222323) だと選択中のタブ (#1c1e1f) との差が小さく、
   ;; frame の透過越しでは見分けられない。:custom-face だと spec ごと置き換わって
   ;; テーマの前景色を失うので、背景だけを上書きする。
+  ;; tab-line の face は tab-line.el を読むまで存在せず、無いと
+  ;; "Invalid face" でこのブロックの残り (下の tab-bar の余白や alpha) が飛ぶ。
+  (require 'tab-line)
   (dolist (face '(tab-bar tab-bar-tab-inactive tab-line tab-line-tab-inactive))
     (set-face-attribute face nil :background "#121314"))
+  ;; tab-bar のタブに地と同じ色の枠を付けて余白にする。タイトルバーを消している
+  ;; (early-init.el) ので、余白が無いとタブがフレームの角丸に食い込む。
+  (dolist (face '(tab-bar tab-bar-tab tab-bar-tab-inactive))
+    (set-face-attribute face nil :box `(:line-width (10 . 6)
+                                        :color ,(face-background face nil t))))
   (set-frame-parameter nil 'alpha 90))
 
 (leaf tty-transparency
@@ -1038,9 +1046,19 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   (load (expand-file-name "project-tabs"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  (defun wamei/tab-bar-tab-name-format-leading-space (name _tab _i)
+    "タブ名 NAME の前に空白を 1 つ足す。`tab-bar-tab-name-format-functions' 用。"
+    (concat " " name))
   :custom
   (tab-bar-tab-name-function . #'wamei/tab-bar-tab-name-project)
   (tab-bar-tab-hints . t)            ; タブ番号を表示する
+  ;; タブ番号の前に空白を 1 つ入れる (hints の後・face の前に置いて色を揃える)。
+  (tab-bar-tab-name-format-functions
+   . '(tab-bar-tab-name-format-hints
+       wamei/tab-bar-tab-name-format-leading-space
+       tab-bar-tab-name-format-close-button
+       tab-bar-tab-name-format-face
+       tab-bar-tab-name-format-mouse-face))
   (tab-bar-close-button-show . nil)
   (tab-bar-new-button-show . nil)
   (tab-bar-new-tab-choice . "*scratch*")
@@ -1087,6 +1105,15 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
         (when (and read-minibuffer-restore-windows (window-live-p window))
           (set-window-configuration config nil t)))))
   (advice-add 'read-from-minibuffer :around #'wamei/minibuffer-restore-windows-same-tab)
+  ;; タイトルバーを消している (early-init.el) ので、tab-bar のタブが無いところを
+  ;; ドラッグしてフレームを動かす。タブの上では従来どおり選択・並べ替えになる。
+  (defun wamei/tab-bar-drag-frame (orig event)
+    "`tab-bar-mouse-down-1' (ORIG) の :around advice。空き領域ならフレームを動かす。"
+    (if (and (display-graphic-p)
+             (null (tab-bar--event-to-item (event-start event))))
+        (mouse-drag-frame-move event)
+      (funcall orig event)))
+  (advice-add 'tab-bar-mouse-down-1 :around #'wamei/tab-bar-drag-frame)
   :global-minor-mode tab-bar-mode)
 
 (leaf transient
@@ -1943,6 +1970,11 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
                                  magit-diff-mode
                                  magit-revision-mode))
   :config
+  ;; タイトルバーの有無 (undecorated-round) は保存も復元もしない。復元で既存の
+  ;; フレームに当てると tab-bar が隠れて中身がずれるので、常に early-init.el の
+  ;; 設定に従わせる。
+  (with-eval-after-load 'frameset
+    (add-to-list 'frameset-filter-alist '(undecorated-round . :never)))
   ;; ターミナル (emacs -nw) と Emacs.app ではウィンドウ構成やフォント周りが
   ;; 違い、同じ desktop を共有すると互いのセッションを上書きしてしまう。
   ;; GUI は既定の .emacs.desktop のまま、ターミナルだけ .emacs.desktop-nw に分ける。

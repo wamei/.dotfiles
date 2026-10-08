@@ -178,6 +178,13 @@ tty 起動でも確実に効くよう、リンカオプションとして明示�
 
 (wamei/native-comp-setup-driver-options)
 
+;; macOS のタイトルバーを消し、角丸と影だけを残す (emacs-plus のパッチが
+;; 足すパラメータ)。生成済みのフレームで切り替えると tab-bar が隠れて中身が
+;; ずれるので、初期フレームの生成前に入れておく。ns に限るのは tty フレームに
+;; 持ち込まないため。フレームの移動は init.el の tab-bar ブロックで空き領域の
+;; ドラッグに割り当てている。
+(push '(ns (undecorated-round . t)) window-system-default-frame-alist)
+
 ;; batch (テスト実行時など) では副作用を起こさない。
 (unless noninteractive
   (wamei/frame-geometry-restore)
