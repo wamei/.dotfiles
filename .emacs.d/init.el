@@ -510,7 +510,8 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
              . '("C-c" "C-x" "C-u" "C-h" "M-x" "M-:" "C-\\"
                  "C-g" "C-l" "M-o" "M-w"
                  "C-q" "C-z"
-                 "C-<tab>" "C-S-<tab>"))
+                 "C-<tab>" "C-S-<tab>"
+                 "M-<tab>" "M-S-<tab>" "M-<backtab>"))
             ;; ghostel-max-scrollback は行数ではなく「バイト数」(既定 5MB)。
             ;; 移行元の vterm-max-scrollback は行数 (10000 行) だったので、
             ;; docstring の「5MB ≒ 5,000 行」の比率から 10MB にして
@@ -1047,7 +1048,13 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
          ("C-q p" . tab-previous)
          ("C-q c" . tab-new)
          ("C-q k" . tab-close)
-         ("C-q r" . tab-rename))
+         ("C-q r" . tab-rename)
+         ;; Option+Tab でタブを切り替える (C-tab は端末の切り替え)。GUI の
+         ;; M-<tab> はローカルの C-M-i (completion-at-point など) より先に引かれる。
+         ;; Shift 付きは NS だと M-S-<tab>、端末によっては M-<backtab> で届く。
+         ("M-<tab>" . tab-next)
+         ("M-S-<tab>" . tab-previous)
+         ("M-<backtab>" . tab-previous))
   :preface
   ;; タブ名の決定と固定は project-tabs.el に分けている。
   ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
