@@ -366,6 +366,14 @@ ghostel ブロックの display table で同形の記号に置き換えている
   (dolist (face '(tab-bar tab-bar-tab tab-bar-tab-inactive))
     (set-face-attribute face nil :box `(:line-width (10 . 6)
                                         :color ,(face-background face nil t))))
+  ;; タブのホバーは dired などの mouse-face と同じ highlight にする。既定は灰色の
+  ;; 浮き出しボタン。枠 (余白) も同じ色にしないと文字の周りだけ色が付く。
+  (set-face-attribute 'tab-bar-tab-highlight nil
+                      :inherit 'highlight
+                      :foreground 'unspecified
+                      :background 'unspecified
+                      :box `(:line-width (10 . 6)
+                             :color ,(face-background 'highlight nil t)))
   (set-frame-parameter nil 'alpha 90))
 
 (leaf tty-transparency
@@ -1049,6 +1057,13 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   (defun wamei/tab-bar-tab-name-format-leading-space (name _tab _i)
     "タブ名 NAME の前に空白を 1 つ足す。`tab-bar-tab-name-format-functions' 用。"
     (concat " " name))
+  (defun wamei/tab-bar-format-buffer-name ()
+    "選択中の window のバッファ名を薄い文字で返す。`tab-bar-format' 用。
+タイトルバーを消したので、そこに出ていたバッファ名を tab-bar の右端に出す。"
+    `((buffer-name menu-item
+                   ,(propertize (buffer-name (window-buffer (selected-window)))
+                                'face 'shadow)
+                   ignore)))
   :custom
   (tab-bar-tab-name-function . #'wamei/tab-bar-tab-name-project)
   (tab-bar-tab-hints . t)            ; タブ番号を表示する
@@ -1059,6 +1074,12 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
        tab-bar-tab-name-format-close-button
        tab-bar-tab-name-format-face
        tab-bar-tab-name-format-mouse-face))
+  (tab-bar-format . '(tab-bar-format-history
+                      tab-bar-format-tabs
+                      tab-bar-separator
+                      tab-bar-format-add-tab
+                      tab-bar-format-align-right
+                      wamei/tab-bar-format-buffer-name))
   (tab-bar-close-button-show . nil)
   (tab-bar-new-button-show . nil)
   (tab-bar-new-tab-choice . "*scratch*")
@@ -1107,10 +1128,12 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   (advice-add 'read-from-minibuffer :around #'wamei/minibuffer-restore-windows-same-tab)
   ;; タイトルバーを消している (early-init.el) ので、tab-bar のタブが無いところを
   ;; ドラッグしてフレームを動かす。タブの上では従来どおり選択・並べ替えになる。
+  ;; 右端のバッファ名のように押しても何もしない (ignore) 項目も空き領域と同じ扱い。
   (defun wamei/tab-bar-drag-frame (orig event)
     "`tab-bar-mouse-down-1' (ORIG) の :around advice。空き領域ならフレームを動かす。"
     (if (and (display-graphic-p)
-             (null (tab-bar--event-to-item (event-start event))))
+             (let ((item (tab-bar--event-to-item (event-start event))))
+               (or (null item) (eq (nth 1 item) 'ignore))))
         (mouse-drag-frame-move event)
       (funcall orig event)))
   (advice-add 'tab-bar-mouse-down-1 :around #'wamei/tab-bar-drag-frame)
