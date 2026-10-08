@@ -447,6 +447,8 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
   :custom
   (inhibit-compacting-font-caches . t)
   (doom-modeline-vcs-max-length . 30)
+  ;; 左端の workspace 名は tab-bar のタブ名 (プロジェクト名) と同じなので出さない。
+  (doom-modeline-workspace-name . nil)
 
   ;;:global-minor-mode doom-modeline-mode
   :config
