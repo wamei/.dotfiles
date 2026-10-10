@@ -6,11 +6,12 @@
 ;; kill-ring やクリップボードとは結びつかない。ここでは次の 3 つを補う。
 ;;
 ;; - `wamei/term-input-copy'
-;;   M-w と Cmd+C。リージョンがあれば `kill-ring-save'、マークが一度も無いバッファでは
-;;   error にしない。Claude Code はマウス追跡を有効にしていてドラッグ選択を自分で
-;;   クリップボードへコピーする (ドラッグは ghostel が Claude へ転送する) ので、
-;;   その直後に習慣で M-w を押すと Emacs 側にはマークが無く、`kill-ring-save' が
-;;   "The mark is not set now" で error になり debug-on-error でデバッガが開く。
+;;   M-w と Cmd+C。アクティブなリージョンがあれば `kill-ring-save'、無ければ何もしない。
+;;   Claude Code はマウス追跡を有効にしていてドラッグ選択を自分でクリップボードへ
+;;   コピーする (ドラッグは ghostel が Claude へ転送する) ので、その直後に習慣で
+;;   M-w を押しても Emacs 側にリージョンは無い。素の `kill-ring-save' だと、マークが
+;;   無ければ error でデバッガが開き、古いマークが残っていれば画面の大半をコピーして
+;;   クリップボードを上書きする。
 ;;
 ;; - `wamei/term-input-kill-line'
 ;;   C-k を送る前に point から行末までを kill-ring に入れる。行の削除自体は
@@ -57,14 +58,17 @@
 ;;; コピー
 
 (defun wamei/term-input-copy ()
-  "リージョンがあれば `kill-ring-save'。マークが無ければ error にせずメッセージだけ出す。
-`kill-ring-save' はマークが一度も設定されていないバッファで error を signal する。
+  "アクティブなリージョンがあれば `kill-ring-save'。無ければメッセージだけ出す。
 Claude Code のパネルではドラッグが Claude へ転送され、Claude が選択を自分で
-クリップボードへコピーするため、Emacs 側にマークができない。その直後の M-w は
-余計な操作なので、コピー済みであることを伝えて終わる。マークがあるときは
-非アクティブでも `kill-ring-save' と同じ (mark-even-if-inactive) に振る舞う。"
+クリップボードへコピーするため、Emacs 側にリージョンができない。その直後の
+M-w / Cmd+C は余計な操作なので、コピー済みであることを伝えて終わる。
+
+`kill-ring-save' と違い、非アクティブなマークは使わない。端末バッファには
+以前の操作のマークが残っていることがあり、それを使うと選んでもいない画面の
+大半をコピーして、Claude がコピーした選択をクリップボードごと上書きする。
+マークが一度も無いバッファで error にならないのも同じ理由で済む。"
   (interactive)
-  (if (mark t)
+  (if (use-region-p)
       (call-interactively #'kill-ring-save)
     (message "No selection to copy (a drag inside Claude Code is copied by Claude itself)")))
 

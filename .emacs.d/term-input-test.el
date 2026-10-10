@@ -158,24 +158,27 @@ M-w には Emacs 側のリージョンもマークも無い。`kill-ring-save' �
       (search-forward "hello")
       (push-mark (match-beginning 0) t t)
       (goto-char (match-end 0))
-      (call-interactively #'wamei/term-input-copy)
+      ;; batch では transient-mark-mode が無効で、リージョンがアクティブにならない
+      (let ((transient-mark-mode t))
+        (call-interactively #'wamei/term-input-copy))
       (should (equal (car kill-ring) "hello")))))
 
-(ert-deftest wamei/term-input-copy-with-inactive-mark-copies-mark-to-point ()
-  "マークが非アクティブでも `kill-ring-save' と同じく mark と point の間をコピーする。
-copy mode で M-w した後は ghostel がマークを非アクティブにするので、その状態で
-もう一度 M-w を押しても従来と同じ結果になることを固定する。"
+(ert-deftest wamei/term-input-copy-ignores-inactive-mark ()
+  "リージョンが非アクティブなら、残っているマークから point までをコピーしない。
+Claude Code はマウス追跡を有効にしているので、ドラッグは Claude に渡り Emacs 側に
+リージョンはできない。そこで Cmd+C を押したとき、以前の操作で残ったマークを
+`kill-ring-save' と同じく使うと、画面の大半がコピーされてクリップボードを上書きする。"
   (wamei/term-input-test--with-ghostel
     (with-temp-buffer
-      (insert "$ echo hello world\n")
-      (goto-char (point-min))
-      (search-forward "world")
-      (push-mark (match-beginning 0) t nil)
-      (goto-char (match-end 0))
-      (deactivate-mark)
-      (let ((mark-even-if-inactive t))
+      (let ((transient-mark-mode t)
+            (mark-even-if-inactive t))
+        (insert "$ echo hello world\n")
+        (goto-char (point-min))
+        (push-mark (point) t t)
+        (goto-char (point-max))
+        (deactivate-mark)
         (call-interactively #'wamei/term-input-copy))
-      (should (equal (car kill-ring) "world")))))
+      (should-not kill-ring))))
 
 ;;; IME の変換中 overlay
 
