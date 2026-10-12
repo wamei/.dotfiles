@@ -10,7 +10,8 @@
 //   notes-bridge [--store <dir>] dump-attrs --id <id>  → {"paragraphs":[["TTEmphasis","TTStyle"],…]} (デバッグ用)
 // --store はどこに置いてもよい (サブコマンドの後ろでも効く)。知らないオプション・重複・空の値は終了コード 1。
 // 終了コード: 3 = selfcheck 失敗 (欠けた名前を stderr に並べる)、4 = DB を開けない、
-//   5 = write で添付の扱いを守れない (残すべき添付を消す・動かす、今のメモに無い添付を置く)、1 = その他。
+//   5 = write で添付の扱いを守れない (残すべき添付を消す・動かす、今のメモに無い添付を置く)、
+//   6 = write で書き換えた結果 (保存前のメモ上の Doc) が目標と違う。保存せずに止める、1 = その他。
 //
 // 実物で確かめた事実 (2026-10-13, macOS 26, DB のコピーに対して class_copyMethodList と
 // NSManagedObjectModel の entitiesByName で調べた):
@@ -358,7 +359,17 @@ static NSDictionary *canonicalParagraph(id p) {
       for (id m in marks) if (![knownMarks() containsObject:m]) badInput([NSString stringWithFormat:@"知らない mark %@", m]);
       id link = i[@"link"];
       if (link && ![link isKindOfClass:[NSString class]]) badInput(@"link が文字列でない");
-      NSMutableDictionary *t = [@{@"kind": @"text", @"text": i[@"text"], @"marks": marks} mutableCopy];
+      // read と同じ形に正規化する: marks は既定の順で重複なし、空の text は捨て、同じ marks / link の text はつなぐ
+      NSString *text = i[@"text"];
+      if (text.length == 0) continue;
+      NSMutableArray *ms = [NSMutableArray array];
+      for (NSString *m in knownMarks()) if ([marks containsObject:m]) [ms addObject:m];
+      NSMutableDictionary *prev = [out.lastObject isKindOfClass:[NSMutableDictionary class]] ? out.lastObject : nil;
+      if (prev && [prev[@"marks"] isEqual:ms] && ((prev[@"link"] == nil && link == nil) || [prev[@"link"] isEqual:link])) {
+        prev[@"text"] = [prev[@"text"] stringByAppendingString:text];
+        continue;
+      }
+      NSMutableDictionary *t = [@{@"kind": @"text", @"text": text, @"marks": ms} mutableCopy];
       if (link) t[@"link"] = link;
       [out addObject:t];
     } else badInput([NSString stringWithFormat:@"知らない inline %@", i[@"kind"]]);
@@ -431,10 +442,9 @@ static NSArray<NSArray<NSNumber *> *> *changedBlocks(NSArray *cur, NSArray *want
 
 // 塊 1 つの書き込み計画
 @interface ONSEdit : NSObject
-@property NSRange replace;          // 置き換える旧の範囲 (先頭と末尾の共通部分を除いたもの)
-@property NSString *with;           // 入れる文字列
-@property NSUInteger start;         // 塊の新しい文字列が始まる位置 (書き換え後も前の塊が無ければ同じ)
-@property NSArray *paras;           // {offset, hasNL, para, runs, style(ICTTParagraphStyle)}
+@property NSArray *repls;           // {range (書き換え前の絶対位置), with} を前から順に。後ろから当てる
+@property NSUInteger start;         // 塊の新しい文字列が始まる位置 (置き換えをすべて当てた後の位置)
+@property NSArray *paras;           // {offset, length, hasNL, runs, style(ICTTParagraphStyle)}
 @end
 @implementation ONSEdit
 @end
@@ -478,6 +488,31 @@ static id makeParagraphStyle(id base, NSDictionary *para, BOOL fresh) {
   return ps;
 }
 
+// 置き換え範囲の両端を合成文字列 (サロゲートペア・ZWJ 列・結合文字) の境界まで広げる。
+// 旧は s の [of, of+ol)、新は neu の [nf, nf+nl)。pre / suf (共通の先頭・末尾の長さ) を縮める
+static void snapToComposed(NSString *s, NSUInteger of, NSUInteger ol, NSString *neu, NSUInteger nf, NSUInteger nl,
+                           NSUInteger *pre, NSUInteger *suf) {
+  BOOL changed = YES;
+  while (changed) {
+    changed = NO;
+    NSUInteger p = *pre;
+    if (p > 0 && p < ol) p = MIN(p, MAX([s rangeOfComposedCharacterSequenceAtIndex:of + p].location, of) - of);
+    if (p > 0 && p < nl) p = MIN(p, MAX([neu rangeOfComposedCharacterSequenceAtIndex:nf + p].location, nf) - nf);
+    NSUInteger q = *suf;
+    if (q > 0 && q < ol) {
+      NSUInteger end = of + ol - q;
+      NSRange r = [s rangeOfComposedCharacterSequenceAtIndex:end];
+      if (r.location < end) q = MIN(q, of + ol - MIN(NSMaxRange(r), of + ol));
+    }
+    if (q > 0 && q < nl) {
+      NSUInteger end = nf + nl - q;
+      NSRange r = [neu rangeOfComposedCharacterSequenceAtIndex:end];
+      if (r.location < end) q = MIN(q, nf + nl - MIN(NSMaxRange(r), nf + nl));
+    }
+    if (p != *pre || q != *suf) { *pre = p; *suf = q; changed = YES; }
+  }
+}
+
 static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArray<NSValue *> *ranges, NSArray *want) {
   NSString *s = as.string ?: @"";
   NSUInteger len = s.length;
@@ -500,6 +535,8 @@ static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArr
       [wantAtts addObject:i[@"id"]];
     }
   BOOL trailingNL = len > 0 && [s characterAtIndex:len - 1] == '\n';
+  // 最後の段落が空なら、その \n が無いと読み戻したときに段落が消える
+  BOOL lastEmpty = want.count > 0 && wantText(want.lastObject).text.length == 0;
   id anyStyle = len ? [as attribute:@"TTStyle" atIndex:0 effectiveRange:NULL] : nil;
 
   NSMutableArray<ONSEdit *> *edits = [NSMutableArray array];
@@ -515,12 +552,12 @@ static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArr
     } else if (o0 < cur.count) {
       from = ranges[o0].rangeValue.location;
       to = len;
-      tailNL = trailingNL;
+      tailNL = trailingNL || lastEmpty;
     } else {
       // 末尾への追加。最後の段落が \n で終わっていなければ前に \n を足す
       from = to = len;
       leadNL = len > 0 && !trailingNL;
-      tailNL = trailingNL;
+      tailNL = trailingNL || lastEmpty;
     }
     NSMutableString *neu = [NSMutableString string];
     NSMutableArray<NSString *> *newAtts = [NSMutableArray array];  // neu の各文字の添付 id (無ければ "")
@@ -546,25 +583,69 @@ static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArr
       [paras addObject:@{@"offset": @(offset), @"length": @(wt.text.length), @"hasNL": @(hasNL), @"runs": wt.runs,
                          @"style": makeParagraphStyle(base, want[j], fresh)}];
     }
-    // 共通の先頭と末尾を除いた中間だけを置き換える
+    NSUInteger ol = to - from, nl = neu.length;
+    // 動かさない文字 (錨) を旧と新で対応させる。錨は置き換え範囲に入れない。
+    // 1. 残す添付: 塊の旧と新の両方に同じ順で現れなければならない (よそへ動かす・よそから持ってくるのは不可)
+    NSMutableDictionary<NSString *, NSNumber *> *oldKept = [NSMutableDictionary dictionary];
+    for (NSUInteger i = 0; i < ol; i++) {
+      NSString *a = attAt[@(from + i)];
+      if (a && [wantAtts containsObject:a]) oldKept[a] = @(i);
+    }
+    NSMutableArray<NSArray<NSNumber *> *> *anchors = [NSMutableArray array];  // [旧の位置, 新の位置]
+    for (NSUInteger i = 0; i < nl; i++) {
+      if (newAtts[i].length == 0) continue;
+      NSNumber *o = oldKept[newAtts[i]];
+      if (!o) attachmentFail([NSString stringWithFormat:@"残すべき添付を消す・動かす書き込みはできない: %@", newAtts[i]]);
+      if (anchors.count && anchors.lastObject[0].unsignedIntegerValue > o.unsignedIntegerValue)
+        attachmentFail([NSString stringWithFormat:@"添付の順番を入れ替える書き込みはできない: %@", newAtts[i]]);
+      [anchors addObject:@[o, @(i)]];
+      [oldKept removeObjectForKey:newAtts[i]];
+    }
+    if (oldKept.count) attachmentFail([NSString stringWithFormat:@"残すべき添付を消す・動かす書き込みはできない: %@", oldKept.allKeys.firstObject]);
+    // 2. 組になった段落の終わりの \n (添付の錨と順序が食い違うものは使わない)
+    NSArray *attAnchors = [anchors copy];
+    for (NSUInteger k = 0; k < MIN(o1 - o0, n1 - n0); k++) {
+      NSRange orng = ranges[o0 + k].rangeValue;
+      NSUInteger on = NSMaxRange(orng) - from, nn = [paras[k][@"offset"] unsignedIntegerValue] + [paras[k][@"length"] unsignedIntegerValue];
+      if (on >= ol || ![paras[k][@"hasNL"] boolValue]) continue;
+      BOOL ok = YES;
+      for (NSArray<NSNumber *> *a in attAnchors) {
+        NSUInteger ao = a[0].unsignedIntegerValue, an = a[1].unsignedIntegerValue;
+        if (!((ao < on && an < nn) || (ao > on && an > nn))) { ok = NO; break; }
+      }
+      if (ok) [anchors addObject:@[@(on), @(nn)]];
+    }
+    [anchors sortUsingComparator:^NSComparisonResult(NSArray *x, NSArray *y) { return [x[0] compare:y[0]]; }];
+    [anchors addObject:@[@(ol), @(nl)]];  // 番兵 (塊の終わり)
+    // 錨と錨の間ごとに、共通の先頭と末尾を除いた中間だけを置き換える
     Unit (^oldU)(NSUInteger) = ^Unit(NSUInteger i) { return (Unit){[s characterAtIndex:from + i], attAt[@(from + i)]}; };
     Unit (^newU)(NSUInteger) = ^Unit(NSUInteger i) {
       NSString *a = newAtts[i];
       return (Unit){[neu characterAtIndex:i], a.length ? a : nil};
     };
-    NSUInteger ol = to - from, nl = neu.length, pre = 0, suf = 0;
-    while (pre < ol && pre < nl && unitEq(oldU(pre), newU(pre))) pre++;
-    while (suf < ol - pre && suf < nl - pre && unitEq(oldU(ol - 1 - suf), newU(nl - 1 - suf))) suf++;
-    NSRange rep = NSMakeRange(from + pre, ol - pre - suf);
-    NSString *with = [neu substringWithRange:NSMakeRange(pre, nl - pre - suf)];
-    for (NSUInteger i = rep.location; i < NSMaxRange(rep); i++) {
-      NSString *a = attAt[@(i)];
-      if (a && [wantAtts containsObject:a]) attachmentFail([NSString stringWithFormat:@"残すべき添付を消す・動かす書き込みはできない: %@", a]);
+    NSMutableArray *repls = [NSMutableArray array];
+    NSUInteger os = 0, ns = 0;
+    for (NSArray<NSNumber *> *a in anchors) {
+      NSUInteger oe = a[0].unsignedIntegerValue, ne = a[1].unsignedIntegerValue;
+      NSUInteger sol = oe - os, snl = ne - ns, pre = 0, suf = 0;
+      while (pre < sol && pre < snl && unitEq(oldU(os + pre), newU(ns + pre))) pre++;
+      while (suf < sol - pre && suf < snl - pre && unitEq(oldU(oe - 1 - suf), newU(ne - 1 - suf))) suf++;
+      snapToComposed(s, from + os, sol, neu, ns, snl, &pre, &suf);
+      NSRange rep = NSMakeRange(from + os + pre, sol - pre - suf);
+      NSString *with = [neu substringWithRange:NSMakeRange(ns + pre, snl - pre - suf)];
+      if (rep.length || with.length) {
+        for (NSUInteger i = rep.location; i < NSMaxRange(rep); i++) {
+          NSString *att = attAt[@(i)];
+          if (att && [wantAtts containsObject:att]) attachmentFail([NSString stringWithFormat:@"残すべき添付を消す・動かす書き込みはできない: %@", att]);
+        }
+        if ([with rangeOfString:@"￼"].location != NSNotFound) attachmentFail(@"添付 (U+FFFC) を新しく作る書き込みはできない");
+        [repls addObject:@{@"range": [NSValue valueWithRange:rep], @"with": with}];
+      }
+      os = oe + 1;
+      ns = ne + 1;
     }
-    if ([with rangeOfString:@"\uFFFC"].location != NSNotFound) attachmentFail(@"添付 (U+FFFC) を新しく作る書き込みはできない");
     ONSEdit *e = [ONSEdit new];
-    e.replace = rep;
-    e.with = with;
+    e.repls = repls;
     e.start = from;
     e.paras = paras;
     [edits addObject:e];
@@ -572,30 +653,34 @@ static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArr
   return edits;
 }
 
-// 段落の文字に目標の属性を付ける。既存の属性辞書のうち controlledKeys 以外は残し、添付の文字には触れない
+// 段落の文字に目標の属性を付ける。既存の属性辞書のうち controlledKeys 以外は残す。
+// 添付の文字 (U+FFFC) には TTStyle だけを付ける (添付とその他の属性はそのまま)
 static void applyParagraphAttrs(id ms, NSUInteger start, NSDictionary *p) {
   NSAttributedString *as = [ms performSelector:SEL_("attributedString")];
   id style = p[@"style"];
-  NSMutableArray *pieces = [NSMutableArray array];  // {range, add}
+  NSMutableArray *pieces = [NSMutableArray array];  // {range, add} (add が nil なら TTStyle だけ)
   for (NSDictionary *run in p[@"runs"]) {
     NSDictionary *inl = run[@"inline"];
-    if ([inl[@"kind"] isEqual:@"attachment"]) continue;
     NSRange r = [run[@"range"] rangeValue];
-    [pieces addObject:@{@"range": [NSValue valueWithRange:NSMakeRange(start + r.location, r.length)], @"add": marksAttrs(inl)}];
+    NSValue *range = [NSValue valueWithRange:NSMakeRange(start + r.location, r.length)];
+    [pieces addObject:[inl[@"kind"] isEqual:@"attachment"] ? @{@"range": range} : @{@"range": range, @"add": marksAttrs(inl)}];
   }
   NSUInteger len = [p[@"length"] unsignedIntegerValue];
   // 空段落でも \n にスタイルを付ける
   if ([p[@"hasNL"] boolValue]) [pieces addObject:@{@"range": [NSValue valueWithRange:NSMakeRange(start + len, 1)], @"add": @{}}];
   for (NSDictionary *piece in pieces) {
     NSRange range = [piece[@"range"] rangeValue];
-    // 既存の属性の区切りごとに分けて付ける
+    NSDictionary *add = piece[@"add"];
+    // 既存の属性の区切りごとに分けて付ける。変わらない区切りには触れない
     NSMutableArray *parts = [NSMutableArray array];
     [as enumerateAttributesInRange:range options:0 usingBlock:^(NSDictionary *at, NSRange r, BOOL *stop) {
       NSMutableDictionary *d = [at mutableCopy];
-      [d removeObjectsForKeys:controlledKeys()];
-      [d addEntriesFromDictionary:piece[@"add"]];
+      if (add) {
+        [d removeObjectsForKeys:controlledKeys()];
+        [d addEntriesFromDictionary:add];
+      }
       d[@"TTStyle"] = style;
-      [parts addObject:@[[NSValue valueWithRange:r], d]];
+      if (![d isEqual:at]) [parts addObject:@[[NSValue valueWithRange:r], d]];
     }];
     for (NSArray *part in parts)
       ((void (*)(id, SEL, id, NSRange))objc_msgSend)(ms, SEL_("setAttributes:range:"), part[1], [part[0] rangeValue]);
@@ -655,10 +740,18 @@ static void cmdWrite(NSManagedObjectContext *moc, NSString *noteId, NSArray *wan
     // 後ろの塊から当てれば、前の塊の位置は変わらない
     for (ONSEdit *e in edits.reverseObjectEnumerator) {
       [ms performSelector:SEL_("beginEditing")];
-      if (e.replace.length > 0 || e.with.length > 0)
-        ((void (*)(id, SEL, NSRange, id))objc_msgSend)(ms, SEL_("replaceCharactersInRange:withString:"), e.replace, e.with);
+      for (NSDictionary *r in e.repls.reverseObjectEnumerator)
+        ((void (*)(id, SEL, NSRange, id))objc_msgSend)(ms, SEL_("replaceCharactersInRange:withString:"), [r[@"range"] rangeValue], r[@"with"]);
       for (NSDictionary *p in e.paras) applyParagraphAttrs(ms, e.start + [p[@"offset"] unsignedIntegerValue], p);
       [ms performSelector:SEL_("endEditing")];
+    }
+    // 保存の前に、書き換えた結果が目標どおりか確かめる。違えば保存せずに終了コード 6
+    NSArray *got = docFrom([ms performSelector:SEL_("attributedString")])[@"paragraphs"];
+    if (![got isEqual:want]) {
+      NSUInteger i = 0;
+      while (i < got.count && i < want.count && [got[i] isEqual:want[i]]) i++;
+      fail(6, [NSString stringWithFormat:@"書き換えた結果が目標と違うので保存しない: 段落 %lu (結果 %lu 段落、目標 %lu 段落)",
+                                         (unsigned long)i, (unsigned long)got.count, (unsigned long)want.count]);
     }
     if (!((BOOL (*)(id, SEL))objc_msgSend)(note, SEL_("saveNoteData"))) fail(1, @"saveNoteData に失敗した");
     [note performSelector:SEL_("updateChangeCountWithReason:") withObject:@"org-notes-sync"];
