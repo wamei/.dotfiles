@@ -1960,22 +1960,34 @@ CLI 側の pending は 2 つ目の CLI が走ったときにしか効かない)�
        :noquery t
        :sentinel #'wamei/org-notes-sync--sentinel))))
 
-  (defun wamei/org-notes-sync--after-save ()
-    "同期対象のメモなら保存後に org-notes-sync を蹴る。"
-    (when (wamei/org-notes-sync-buffer-p)
-      (org-notes-sync)))
+  (defvar-local wamei/org-notes-sync--viewing nil
+    "このバッファで自動 revert・inline 画像を有効にしたら non-nil。")
 
-  (defun wamei/org-notes-sync--setup-buffer ()
-    "同期対象のメモなら、保存で同期・自動 revert・inline 画像 (GUI) を有効にする。
+  (defun wamei/org-notes-sync--enable-view ()
+    "自動 revert と inline 画像 (GUI) を有効にする。2 回目以降は何もしない。
 Notes 側の変更が CLI でファイルに書き戻されるので auto-revert で追従する。"
-    (when (wamei/org-notes-sync-buffer-p)
-      (add-hook 'after-save-hook #'wamei/org-notes-sync--after-save nil t)
+    (unless wamei/org-notes-sync--viewing
+      (setq wamei/org-notes-sync--viewing t)
       (auto-revert-mode 1)
       (when (display-graphic-p)
         (setq-local org-image-actual-width '(480))
         (org-display-inline-images)
         (add-hook 'after-revert-hook #'org-display-inline-images nil t))))
 
+  (defun wamei/org-notes-sync--after-save ()
+    "同期対象のメモなら保存後に org-notes-sync を蹴る。
+after-save-hook に全体で 1 回だけ入れ、対象かどうかは保存のたびに見る
+(開いた後で `#+notes_sync: yes' を書いても開き直さずに効く)。"
+    (when (and (derived-mode-p 'org-mode) (wamei/org-notes-sync-buffer-p))
+      (wamei/org-notes-sync--enable-view)
+      (org-notes-sync)))
+
+  (defun wamei/org-notes-sync--setup-buffer ()
+    "同期対象のメモなら、開いたときに自動 revert・inline 画像 (GUI) を有効にする。"
+    (when (wamei/org-notes-sync-buffer-p)
+      (wamei/org-notes-sync--enable-view)))
+
+  (add-hook 'after-save-hook #'wamei/org-notes-sync--after-save)
   (add-hook 'org-mode-hook #'wamei/org-notes-sync--setup-buffer))
 
 (leaf dired-toggle-sudo
