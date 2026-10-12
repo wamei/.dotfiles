@@ -1896,7 +1896,7 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (defvar wamei/org-notes-sync-program (expand-file-name "~/.local/bin/org-notes-sync")
     "org-notes-sync CLI のパス。")
 
-  (defvar wamei/org-notes-sync--stderr-buffer " *org-notes-sync-stderr*"
+  (defvar wamei/org-notes-sync--stderr-buffer "*org-notes-sync-stderr*"
     "CLI の stderr だけを溜めるバッファ名。警告行はここから拾う。")
 
   (defvar wamei/org-notes-sync--rerun nil
@@ -1933,7 +1933,7 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
         ;; 警告行も無いのに失敗したときは、黙って壊れないよう必ず知らせる
         (when (and (not found) (/= status 0))
           (message "org-notes-sync: 異常終了しました (exit %d)。%s を確認してください"
-                   status (string-trim wamei/org-notes-sync--stderr-buffer)))
+                   status wamei/org-notes-sync--stderr-buffer))
         (when wamei/org-notes-sync--rerun
           (setq wamei/org-notes-sync--rerun nil)
           (org-notes-sync)))))
