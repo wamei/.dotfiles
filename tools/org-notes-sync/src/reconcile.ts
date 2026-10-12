@@ -68,6 +68,14 @@ function stem(file: string, ext: string): string {
   return file.endsWith(ext) ? file.slice(0, -ext.length) : file
 }
 
+// メモだけ変わったときの org の本文。org の触っていない行 (#+TITLE: などの表記) はそのまま残し、
+// 行マージが衝突したらメモの描画で置き換える
+function pulledText(format: LocalFormat, base: Doc, orgText: string, preserved: string[], notesDoc: Doc): string {
+  const theirs = format.render(notesDoc, preserved)
+  const m = merge3(format.render(base, preserved), orgText, theirs)
+  return m.conflict ? theirs : m.text
+}
+
 // org とメモの両方が base から変わったときの判断
 function decideBothChanged(
   format: LocalFormat, file: string, noteId: string, base: Doc,
@@ -95,7 +103,7 @@ function decidePair(format: LocalFormat, pair: Pair, org: OrgFile | undefined, n
   const notesChanged = !docEquals(note.doc, base)
   if (!orgChanged && !notesChanged) return { kind: "noop", file, noteId }
   if (orgChanged && !notesChanged) return { kind: "pushNotes", file, noteId, doc: rehydrate(parsed.doc, base, format) }
-  if (!orgChanged) return { kind: "pullOrg", file, noteId, text: format.render(note.doc, parsed.preserved), base: note.doc }
+  if (!orgChanged) return { kind: "pullOrg", file, noteId, text: pulledText(format, base, org.text, parsed.preserved, note.doc), base: note.doc }
   return decideBothChanged(format, file, noteId, base, org.text, parsed.doc, parsed.preserved, note.doc)
 }
 

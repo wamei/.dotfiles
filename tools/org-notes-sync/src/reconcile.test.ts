@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { canon, reconcile, rehydrate, type NoteSnap, type OrgFile, type Pair } from "./reconcile"
 import { orgFormat as f } from "./formats/org"
 import { EMPTY_DOC, para, text, type Doc } from "./doc"
+const text_ = text
 
 const doc = (title: string, ...lines: string[]): Doc => ({ paragraphs: [
   para({ kind: "title" }, [text(title)]), ...lines.map((l) => para({ kind: "body" }, l ? [text(l)] : [])),
@@ -25,6 +26,19 @@ describe("ペア済み", () => {
   test("メモだけ変更 → pullOrg (制御行を保つ)", () => {
     const p = run([pair], [org("t.org", base)], [note("N", doc("t", "a", "iphone"))])
     expect(p.ok && p.actions[0]).toMatchObject({ kind: "pullOrg", text: "#+title: t\n#+notes_sync: yes\na\niphone\n" })
+  })
+  test("メモだけ変更 → pullOrg は org の触っていない行を書き換えない", () => {
+    const text = "#+TITLE: t\n#+notes_sync: yes\n1) x\na\n"
+    const b = f.parse(text, "t").doc
+    const p = run([{ ...pair, base: b }], [{ file: "t.org", text, mtimeMs: 1 }], [note("N", { paragraphs: [...b.paragraphs, para({ kind: "body" }, [text_("iphone")])] })])
+    expect(p.ok && p.actions[0]).toMatchObject({ kind: "pullOrg", text: "#+TITLE: t\n#+notes_sync: yes\n1) x\na\niphone\n" })
+  })
+  test("メモだけ変更でも org との行マージが衝突したらメモの描画で置き換える", () => {
+    const text = "#+TITLE: t\n#+notes_sync: yes\n1) x\n"
+    const b = f.parse(text, "t").doc
+    const n: Doc = { paragraphs: [b.paragraphs[0]!, para({ kind: "list", list: "number" }, [text_("y")])] }
+    const p = run([{ ...pair, base: b }], [{ file: "t.org", text, mtimeMs: 1 }], [note("N", n)])
+    expect(p.ok && p.actions[0]).toMatchObject({ kind: "pullOrg", text: f.render(n, ["#+notes_sync: yes"]) })
   })
   test("両方の別々の行 → both", () => {
     const b3 = doc("t", "a", "b", "c")
