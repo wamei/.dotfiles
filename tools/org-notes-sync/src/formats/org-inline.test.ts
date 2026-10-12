@@ -23,6 +23,13 @@ describe("parseInline", () => {
   test("ラベルの無いリンク", () => {
     expect(parseInline("[[https://g.co]]")).toEqual([text("https://g.co", [], "https://g.co")])
   })
+  test("複数の装飾を含む行 (閉じの後ろが句読点でも全て認める)", () => {
+    expect(parseInline("*a*, *b*, *c*")).toEqual([
+      text("a", ["bold"]), text(", "), text("b", ["bold"]), text(", "), text("c", ["bold"]),
+    ])
+    expect(parseInline("*a* and *b*.")).toEqual([text("a", ["bold"]), text(" and "), text("b", ["bold"]), text(".")])
+    expect(parseInline("/a/ /b/.")).toEqual([text("a", ["italic"]), text(" "), text("b", ["italic"]), text(".")])
+  })
   test("添付", () => {
     expect(parseInline("[[file:.notes-media/AB-12.jpg]]")).toEqual([{ kind: "attachment", id: "AB-12", image: true }])
     expect(parseInline("[[notes-attachment:T1]]")).toEqual([{ kind: "attachment", id: "T1", image: false }])

@@ -26,6 +26,14 @@ function canFollow(c: string | undefined): boolean {
   return c === undefined || isSpace(c) || "-.,:;!?'\")}]".includes(c) || isNonAscii(c)
 }
 
+// 記号の直後 (位置 n) が識別子・パスの続きか。英数字、または後ろに更に続く ._~-
+// ("*b*." の文末の . は続きではない)
+function insideIdentifier(s: string, n: number): boolean {
+  const c = s[n] ?? ""
+  if (/[A-Za-z0-9]/.test(c)) return true
+  return /[._~-]/.test(c) && /[A-Za-z0-9._~-]/.test(s[n + 1] ?? "")
+}
+
 // 位置 i の記号が開きとして成立するとき、閉じの位置を返す
 function findClose(s: string, i: number): number | undefined {
   const m = s[i]!
@@ -35,11 +43,11 @@ function findClose(s: string, i: number): number | undefined {
   // 中身に自分の記号を含む範囲は装飾にしない (/etc/nginx/ のようなパスを守る)。最初の同じ記号だけが閉じ候補
   const j = s.indexOf(m, i + 2)
   if (j < 0 || isSpace(s[j - 1]!) || !canFollow(s[j + 1])) return undefined
-  // 行内に単語の途中の同じ記号 (~/.config/ の 1 つ目の / など) があれば、パスや式とみなして装飾にしない
+  // 行内に単語の途中の同じ記号 (~/.config/ の 1 つ目の / など。直後が英数字か ._~- のもの) があれば、パスや式とみなして装飾にしない
   for (let k = 0; k < s.length; k++) {
     if (k === i || k === j || s[k] !== m || k === 0) continue
     const p = s[k - 1]!
-    if (!isSpace(p) && p.charCodeAt(0) <= 127 && !"-({'\"".includes(p) && s[k + 1] !== undefined && !isSpace(s[k + 1]!)) return undefined
+    if (!isSpace(p) && p.charCodeAt(0) <= 127 && !"-({'\"".includes(p) && insideIdentifier(s, k + 1)) return undefined
   }
   return j
 }
