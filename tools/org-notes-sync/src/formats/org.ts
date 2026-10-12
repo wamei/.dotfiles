@@ -23,7 +23,7 @@ function canPrecede(c: string | undefined): boolean {
 }
 // 閉じ記号の直後に置いてよい文字 (undefined は行末)
 function canFollow(c: string | undefined): boolean {
-  return c === undefined || isSpace(c) || "-.,:;!?'\")}\\]".includes(c) || isNonAscii(c)
+  return c === undefined || isSpace(c) || "-.,:;!?'\")}]".includes(c) || isNonAscii(c)
 }
 
 // 位置 i の記号が開きとして成立するとき、閉じの位置を返す
@@ -32,10 +32,16 @@ function findClose(s: string, i: number): number | undefined {
   if (!canPrecede(s[i - 1])) return undefined
   const first = s[i + 1]
   if (first === undefined || isSpace(first)) return undefined
-  for (let j = i + 2; j < s.length; j++) {
-    if (s[j] === m && !isSpace(s[j - 1]!) && canFollow(s[j + 1])) return j
+  // 中身に自分の記号を含む範囲は装飾にしない (/etc/nginx/ のようなパスを守る)。最初の同じ記号だけが閉じ候補
+  const j = s.indexOf(m, i + 2)
+  if (j < 0 || isSpace(s[j - 1]!) || !canFollow(s[j + 1])) return undefined
+  // 行内に単語の途中の同じ記号 (~/.config/ の 1 つ目の / など) があれば、パスや式とみなして装飾にしない
+  for (let k = 0; k < s.length; k++) {
+    if (k === i || k === j || s[k] !== m || k === 0) continue
+    const p = s[k - 1]!
+    if (!isSpace(p) && p.charCodeAt(0) <= 127 && !"-({'\"".includes(p) && s[k + 1] !== undefined && !isSpace(s[k + 1]!)) return undefined
   }
-  return undefined
+  return j
 }
 
 export function parseInline(s: string): Inline[] {
@@ -86,7 +92,9 @@ export function parseInline(s: string): Inline[] {
 
 function renderPlain(i: Inline): string {
   if (i.kind === "attachment") return i.image ? `[[file:.notes-media/${i.id}.jpg]]` : `[[notes-attachment:${i.id}]]`
-  return i.link === undefined ? i.text : i.text === i.link ? i.link : `[[${i.link}][${i.text}]]`
+  if (i.link === undefined) return i.text
+  if (i.text !== i.link) return `[[${i.link}][${i.text}]]`
+  return /^https?:\/\//.test(i.link) ? i.link : `[[${i.link}]]`
 }
 
 export function renderInline(xs: Inline[]): string {
@@ -94,7 +102,8 @@ export function renderInline(xs: Inline[]): string {
   let out = ""
   items.forEach((i, k) => {
     let body = renderPlain(i)
-    if (i.kind === "text" && i.marks.length > 0) {
+    // 中身に自分の記号を含む marks は parse が装飾と読まないので付けない
+    if (i.kind === "text" && i.marks.length > 0 && !i.marks.some((m) => i.text.includes(MARK_CHARS.find(([n]) => n === m)![1]))) {
       const next = items[k + 1]
       // 直後の inline の最初の文字 (装飾が付く場合の記号までは見ない。ずれは canon が吸収する)
       const after = next ? renderPlain(next)[0] : undefined

@@ -34,6 +34,9 @@ describe("parseInline", () => {
     "2 * 3 * 4",
     "C++ と a/b/c",
     "* 行頭の星 *",
+    "see /etc/nginx/ for cfg",
+    "cd /usr/bin/ now",
+    "~/.config/ and /tmp/",
   ])("普通の文章は装飾にしない: %s", (s) => {
     expect(parseInline(s)).toEqual([text(s)])
   })
@@ -43,7 +46,7 @@ describe("renderInline", () => {
   test("往復", () => {
     for (const s of [
       "a *b* /c/ _d_ +e+", "これは*太字*です", "[[https://g.co][ぐーぐる]]", "https://a.b/c", "*/x/*",
-      "[[file:.notes-media/AB-12.jpg]]", "[[notes-attachment:T1]]",
+      "[[file:.notes-media/AB-12.jpg]]", "[[notes-attachment:T1]]", "[[./notes.org]]",
     ]) {
       expect(renderInline(parseInline(s))).toBe(s)
     }
@@ -51,6 +54,9 @@ describe("renderInline", () => {
   test("装飾として読めない位置では marks を落とす", () => {
     expect(renderInline([text("ab"), text("cd", ["bold"]), text("ef")])).toBe("abcdef")
     expect(renderInline([text(" x ", ["bold"])])).toBe(" x ")
+  })
+  test("中身に自分の記号を含む marks は落とす", () => {
+    expect(renderInline([text("a "), text("/etc/", ["italic"]), text(" b")])).toBe("a /etc/ b")
   })
   test("添付の直前では marks を落とす", () => {
     expect(renderInline([text("a", ["bold"]), { kind: "attachment", id: "X", image: true }])).toBe("a[[file:.notes-media/X.jpg]]")
