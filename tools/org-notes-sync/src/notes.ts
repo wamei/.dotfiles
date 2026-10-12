@@ -13,7 +13,7 @@ export class BridgeError extends Error {
   }
 }
 
-export interface NotesPort {
+export type NotesPort = {
   selfcheck(): Promise<void>
   list(): Promise<BridgeNote[] | null>
   // expect を渡すと、メモが expect のままのときだけ書く (違えば BridgeError code 7)
