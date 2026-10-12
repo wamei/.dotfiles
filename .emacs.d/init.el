@@ -1887,7 +1887,70 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
             (lambda (root)
               (when-let* ((project (project-current nil root)))
                 (ensure-list (get-file-buffer (wamei/project-memo-file project))))))
-  (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/project-memo-save-all))
+  (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/project-memo-save-all)
+
+  ;; Apple Notes との同期。本体は tools/org-notes-sync の CLI で、ここは
+  ;; 保存をきっかけに蹴るだけ。対象は org-directory 配下で先頭に
+  ;; `#+notes_sync: yes' を書いたメモ (opt-in)。
+  ;; tty での画像表示は後日 (GUI だけ inline 画像を出す)。
+  (defvar wamei/org-notes-sync-program (expand-file-name "~/.local/bin/org-notes-sync")
+    "org-notes-sync CLI のパス。")
+
+  (defun wamei/org-notes-sync-buffer-p (&optional buffer)
+    "BUFFER (省略時は現在) が同期対象の org メモなら non-nil。"
+    (with-current-buffer (or buffer (current-buffer))
+      (and buffer-file-name
+           (file-in-directory-p buffer-file-name org-directory)
+           (save-excursion
+             (save-restriction
+               (widen)
+               (goto-char (point-min))
+               (let ((case-fold-search t))
+                 (re-search-forward "^#\\+notes_sync:[ \t]*yes[ \t]*$"
+                                    (min (point-max) 4097) t)))))))
+
+  (defun org-notes-sync ()
+    "org-notes-sync を非同期に 1 回走らせる。実行中なら何もしない。
+実行中の取りこぼしは CLI 側の pending が拾うので、重ねて起こさない。"
+    (interactive)
+    (cond
+     ((not (file-executable-p wamei/org-notes-sync-program))
+      (message "org-notes-sync: %s が実行できない" wamei/org-notes-sync-program))
+     ((process-live-p (get-process "org-notes-sync")) nil)
+     (t
+      (with-current-buffer (get-buffer-create " *org-notes-sync*")
+        (erase-buffer))
+      (make-process
+       :name "org-notes-sync"
+       :buffer " *org-notes-sync*"
+       :command (list wamei/org-notes-sync-program)
+       :noquery t
+       :sentinel
+       (lambda (process _event)
+         (unless (process-live-p process)
+           (when (buffer-live-p (process-buffer process))
+             (with-current-buffer (process-buffer process)
+               (goto-char (point-min))
+               (while (re-search-forward "^org-notes-sync: .*$" nil t)
+                 (message "%s" (match-string 0)))))))))))
+
+  (defun wamei/org-notes-sync--after-save ()
+    "同期対象のメモなら保存後に org-notes-sync を蹴る。"
+    (when (wamei/org-notes-sync-buffer-p)
+      (org-notes-sync)))
+
+  (defun wamei/org-notes-sync--setup-buffer ()
+    "同期対象のメモなら、保存で同期・自動 revert・inline 画像 (GUI) を有効にする。
+Notes 側の変更が CLI でファイルに書き戻されるので auto-revert で追従する。"
+    (when (wamei/org-notes-sync-buffer-p)
+      (add-hook 'after-save-hook #'wamei/org-notes-sync--after-save nil t)
+      (auto-revert-mode 1)
+      (when (display-graphic-p)
+        (setq-local org-image-actual-width '(480))
+        (org-display-inline-images)
+        (add-hook 'after-revert-hook #'org-display-inline-images nil t))))
+
+  (add-hook 'org-mode-hook #'wamei/org-notes-sync--setup-buffer))
 
 (leaf dired-toggle-sudo
   :ensure t
