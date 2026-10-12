@@ -149,8 +149,9 @@ describe.skipIf(!IT)("notes-bridge (DB のコピー)", () => {
     expect(fs.readdirSync(out)).toEqual(["keep"])
     expect(fs.readdirSync(dir)).toEqual(["x.jpg"])
   })
-  const writeIn = (dir: string, id: string, doc: Doc) =>
-    $`${bridge} --store ${dir} write --id ${id} < ${new Response(JSON.stringify({ doc }))}`.nothrow().quiet()
+  const writeWith = (dir: string, id: string, input: { doc: Doc; expect?: Doc }) =>
+    $`${bridge} --store ${dir} write --id ${id} < ${new Response(JSON.stringify(input))}`.nothrow().quiet()
+  const writeIn = (dir: string, id: string, doc: Doc) => writeWith(dir, id, { doc })
   test("write: 段落の追加・変更・スタイル変更が読み戻せ、他の段落の属性を残す", async () => {
     const r: ListResult = await call("list", "--folder", folder)
     const n = docs(r)[0]
@@ -347,6 +348,32 @@ describe.skipIf(!IT)("notes-bridge (DB のコピー)", () => {
       expect(r.exitCode).toBe(6)
       expect(r.stderr.toString()).toContain(String(base.paragraphs.length))
       expect((await callIn(ws, "read", "--id", id)).doc).toEqual(before)
+    })
+    test("リンクの URL だけが正規化されて違うときは、終了コード 6 でそう書く", async () => {
+      await reset()
+      const want = structuredClone(base)
+      want.paragraphs.push({ style: { kind: "body" }, indent: 0, quote: false, inlines: [{ kind: "text", text: "日本語のリンク", marks: [], link: "https://example.com/日本" }] })
+      const r = await writeIn(ws, id, want)
+      expect(r.exitCode).toBe(6)
+      const err = r.stderr.toString()
+      expect(err).toContain(`段落 ${base.paragraphs.length}`)
+      expect(err).toContain("正規化")
+      expect(err).toContain("https://example.com/日本")
+    })
+    test("expect が今のメモと違えば終了コード 7 で何も変えない、同じなら書く", async () => {
+      await reset()
+      const want = structuredClone(base)
+      want.paragraphs.push({ style: { kind: "body" }, indent: 0, quote: false, inlines: [{ kind: "text", text: "追記", marks: [] }] })
+      const stale = structuredClone(base)
+      stale.paragraphs.push({ style: { kind: "body" }, indent: 0, quote: false, inlines: [{ kind: "text", text: "古い", marks: [] }] })
+      const before = (await callIn(ws, "read", "--id", id)).doc
+      const r = await writeWith(ws, id, { doc: want, expect: stale })
+      expect(r.exitCode).toBe(7)
+      expect(r.stderr.toString()).toContain("更新された")
+      expect((await callIn(ws, "read", "--id", id)).doc).toEqual(before)
+      const ok = await writeWith(ws, id, { doc: want, expect: base })
+      expect({ code: ok.exitCode, err: ok.stderr.toString() }).toEqual({ code: 0, err: "" })
+      expect((await callIn(ws, "read", "--id", id)).doc).toEqual(want)
     })
     test("変更の無い書き込みは DB を変えない", async () => {
       await reset()

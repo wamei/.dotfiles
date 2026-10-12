@@ -6,12 +6,15 @@
 //   notes-bridge [--store <dir>] read --id <id>                 → {"doc":Doc}
 //   notes-bridge [--store <dir>] identify --uri <x-coredata>    → {"id":"…"}
 //   notes-bridge [--store <dir>] export-media --attachment <id> --to <path.jpg> → {"written":true}
-//   notes-bridge [--store <dir>] write --id <id>  (stdin: {"doc":Doc})  → {"doc":Doc} (書いた後に読み戻したもの)
+//   notes-bridge [--store <dir>] write --id <id>  (stdin: {"doc":Doc, "expect"?:Doc})  → {"doc":Doc} (書いた後に読み戻したもの)
+//     expect を渡すと、今のメモ (正規化した Doc) が expect と同じときだけ書く (読んだ後に iPhone などで変わっていたら書かない)
 //   notes-bridge [--store <dir>] dump-attrs --id <id>  → {"paragraphs":[["TTEmphasis","TTStyle"],…]} (デバッグ用)
 // --store はどこに置いてもよい (サブコマンドの後ろでも効く)。知らないオプション・重複・空の値は終了コード 1。
 // 終了コード: 3 = selfcheck 失敗 (欠けた名前を stderr に並べる)、4 = DB を開けない、
 //   5 = write で添付の扱いを守れない (残すべき添付を消す・動かす、今のメモに無い添付を置く)、
-//   6 = write で書き換えた結果 (保存前のメモ上の Doc) が目標と違う。保存せずに止める、1 = その他。
+//   6 = write で書き換えた結果 (保存前のメモ上の Doc) が目標と違う。保存せずに止める
+//       (stderr に最初に違う段落を出す。リンクの URL だけが違うときは、メモが URL を正規化したと書く)、
+//   7 = write の expect が今のメモと違う (読んだ後に更新された)。何も書かない、1 = その他。
 //
 // 実物で確かめた事実 (2026-10-13, macOS 26, DB のコピーに対して class_copyMethodList と
 // NSManagedObjectModel の entitiesByName で調べた):
@@ -377,17 +380,23 @@ static NSDictionary *canonicalParagraph(id p) {
   return @{@"style": style, @"indent": @([indent unsignedIntegerValue]), @"quote": @([p[@"quote"] boolValue]), @"inlines": out};
 }
 
-// stdin の {"doc":Doc} を読む。DB を開く前に呼ぶ (壊れた入力では何も開かない)
-static NSArray<NSDictionary *> *readDocFromStdin(void) {
+// Doc の JSON を読み取りと同じ形の段落の列にする
+static NSArray<NSDictionary *> *canonicalDoc(id doc, NSString *key) {
+  NSArray *ps = [doc isKindOfClass:[NSDictionary class]] ? doc[@"paragraphs"] : nil;
+  if (![ps isKindOfClass:[NSArray class]]) badInput([NSString stringWithFormat:@"%@.paragraphs が配列でない", key]);
+  NSMutableArray *out = [NSMutableArray array];
+  for (id p in ps) [out addObject:canonicalParagraph(p)];
+  return out;
+}
+
+// stdin の {"doc":Doc, "expect"?:Doc} を読む。DB を開く前に呼ぶ (壊れた入力では何も開かない)
+static NSArray<NSDictionary *> *readDocFromStdin(NSArray<NSDictionary *> **expect) {
   NSData *data = [[NSFileHandle fileHandleWithStandardInput] readDataToEndOfFile];
   NSError *e = nil;
   NSDictionary *root = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&e] : nil;
   if (![root isKindOfClass:[NSDictionary class]]) badInput(e ? e.localizedDescription : @"JSON オブジェクトでない");
-  NSArray *ps = [root[@"doc"] isKindOfClass:[NSDictionary class]] ? root[@"doc"][@"paragraphs"] : nil;
-  if (![ps isKindOfClass:[NSArray class]]) badInput(@"doc.paragraphs が配列でない");
-  NSMutableArray *out = [NSMutableArray array];
-  for (id p in ps) [out addObject:canonicalParagraph(p)];
-  return out;
+  *expect = root[@"expect"] ? canonicalDoc(root[@"expect"], @"expect") : nil;
+  return canonicalDoc(root[@"doc"], @"doc");
 }
 
 // ---- 書き込み: 段落の差分を mergeableString に当てる ----
@@ -638,7 +647,7 @@ static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArr
           NSString *att = attAt[@(i)];
           if (att && [wantAtts containsObject:att]) attachmentFail([NSString stringWithFormat:@"残すべき添付を消す・動かす書き込みはできない: %@", att]);
         }
-        if ([with rangeOfString:@"￼"].location != NSNotFound) attachmentFail(@"添付 (U+FFFC) を新しく作る書き込みはできない");
+        if ([with rangeOfString:@"\uFFFC"].location != NSNotFound) attachmentFail(@"添付 (U+FFFC) を新しく作る書き込みはできない");
         [repls addObject:@{@"range": [NSValue valueWithRange:rep], @"with": with}];
       }
       os = oe + 1;
@@ -725,7 +734,50 @@ static id noteById(NSManagedObjectContext *moc, NSString *noteId) {
   return note;
 }
 
-static void cmdWrite(NSManagedObjectContext *moc, NSString *noteId, NSArray *want) {
+// 段落の文字 (添付は U+FFFC)。stderr に出す用に長いものは切る
+static NSString *paragraphText(NSDictionary *p) {
+  NSMutableString *t = [NSMutableString string];
+  for (NSDictionary *i in p[@"inlines"]) [t appendString:[i[@"kind"] isEqual:@"text"] ? i[@"text"] : @"\uFFFC"];
+  return t.length > 40 ? [[t substringToIndex:40] stringByAppendingString:@"…"] : t;
+}
+
+static NSArray<NSString *> *linksIn(NSDictionary *p) {
+  NSMutableArray *ls = [NSMutableArray array];
+  for (NSDictionary *i in p[@"inlines"]) if (i[@"link"]) [ls addObject:i[@"link"]];
+  return ls;
+}
+
+static NSDictionary *withoutLinks(NSDictionary *p) {
+  NSMutableArray *ins = [NSMutableArray array];
+  for (NSDictionary *i in p[@"inlines"]) {
+    NSMutableDictionary *m = [i mutableCopy];
+    [m removeObjectForKey:@"link"];
+    [ins addObject:m];
+  }
+  NSMutableDictionary *q = [p mutableCopy];
+  q[@"inlines"] = ins;
+  return q;
+}
+
+// 書き換えた結果 got と目標 want の最初に違う段落の説明
+static NSString *describeMismatch(NSArray *got, NSArray *want) {
+  NSUInteger i = 0;
+  while (i < got.count && i < want.count && [got[i] isEqual:want[i]]) i++;
+  NSString *head = [NSString stringWithFormat:@"書き換えた結果が目標と違うので保存しない: 段落 %lu (結果 %lu 段落、目標 %lu 段落)",
+                                              (unsigned long)i, (unsigned long)got.count, (unsigned long)want.count];
+  if (i >= got.count || i >= want.count) return head;
+  NSArray *gl = linksIn(got[i]), *wl = linksIn(want[i]);
+  if (got.count == want.count && [withoutLinks(got[i]) isEqual:withoutLinks(want[i])] && gl.count == wl.count) {
+    for (NSUInteger k = 0; k < gl.count; k++) {
+      if ([gl[k] isEqual:wl[k]]) continue;
+      return [NSString stringWithFormat:@"%@: リンクの URL がメモに正規化された (非 ASCII の文字はパーセントエンコードされる など): 目標 %@ → 結果 %@",
+                                        head, wl[k], gl[k]];
+    }
+  }
+  return [NSString stringWithFormat:@"%@: 結果「%@」/ 目標「%@」", head, paragraphText(got[i]), paragraphText(want[i])];
+}
+
+static void cmdWrite(NSManagedObjectContext *moc, NSString *noteId, NSArray *want, NSArray *expect) {
   id note = noteById(moc, noteId);
   id ms = [note performSelector:SEL_("mergeableString")];
   if (!ms) fail(1, [NSString stringWithFormat:@"メモの本文を開けない: %@", noteId]);
@@ -734,6 +786,13 @@ static void cmdWrite(NSManagedObjectContext *moc, NSString *noteId, NSArray *wan
   NSArray<NSValue *> *ranges = paragraphRanges(as.string);
   NSMutableArray *cur = [NSMutableArray array];
   for (NSValue *v in ranges) [cur addObject:paragraphJSON(as, v.rangeValue)];
+  // 読んだ後にメモが変わっていたら、何も書かずに終了コード 7
+  if (expect && ![cur isEqual:expect]) {
+    NSUInteger i = 0;
+    while (i < cur.count && i < expect.count && [cur[i] isEqual:expect[i]]) i++;
+    fail(7, [NSString stringWithFormat:@"メモが読んだ後に更新されたので書かない: 段落 %lu (今 %lu 段落、expect %lu 段落)",
+                                       (unsigned long)i, (unsigned long)cur.count, (unsigned long)expect.count]);
+  }
   // 添付を守れない塊が 1 つでもあれば、何も書かずに終了コード 5
   NSArray<ONSEdit *> *edits = planEdits(as, cur, ranges, want);
   if (edits.count > 0) {
@@ -747,12 +806,7 @@ static void cmdWrite(NSManagedObjectContext *moc, NSString *noteId, NSArray *wan
     }
     // 保存の前に、書き換えた結果が目標どおりか確かめる。違えば保存せずに終了コード 6
     NSArray *got = docFrom([ms performSelector:SEL_("attributedString")])[@"paragraphs"];
-    if (![got isEqual:want]) {
-      NSUInteger i = 0;
-      while (i < got.count && i < want.count && [got[i] isEqual:want[i]]) i++;
-      fail(6, [NSString stringWithFormat:@"書き換えた結果が目標と違うので保存しない: 段落 %lu (結果 %lu 段落、目標 %lu 段落)",
-                                         (unsigned long)i, (unsigned long)got.count, (unsigned long)want.count]);
-    }
+    if (![got isEqual:want]) fail(6, describeMismatch(got, want));
     if (!((BOOL (*)(id, SEL))objc_msgSend)(note, SEL_("saveNoteData"))) fail(1, @"saveNoteData に失敗した");
     [note performSelector:SEL_("updateChangeCountWithReason:") withObject:@"org-notes-sync"];
     NSError *err = nil;
@@ -901,7 +955,8 @@ int main(int argc, char **argv) {
     if ([cmd isEqual:@"selfcheck"]) { emit(@{@"ok": @YES}); return 0; }
 
     // write の入力は DB を開く前に読んで確かめる
-    NSArray *want = [cmd isEqual:@"write"] ? readDocFromStdin() : nil;
+    NSArray *expect = nil;
+    NSArray *want = [cmd isEqual:@"write"] ? readDocFromStdin(&expect) : nil;
     NSManagedObjectContext *moc = openContext(store);
     __block int code = 0;
     [moc performBlockAndWait:^{
@@ -909,7 +964,7 @@ int main(int argc, char **argv) {
         if ([cmd isEqual:@"list"]) cmdList(moc, option(opts, @"folder"));
         else if ([cmd isEqual:@"read"]) cmdRead(moc, option(opts, @"id"));
         else if ([cmd isEqual:@"identify"]) cmdIdentify(moc, option(opts, @"uri"));
-        else if ([cmd isEqual:@"write"]) cmdWrite(moc, option(opts, @"id"), want);
+        else if ([cmd isEqual:@"write"]) cmdWrite(moc, option(opts, @"id"), want, expect);
         else if ([cmd isEqual:@"dump-attrs"]) cmdDumpAttrs(moc, option(opts, @"id"));
         else cmdExportMedia(moc, store, option(opts, @"attachment"), option(opts, @"to"));
       } @catch (NSException *ex) {
