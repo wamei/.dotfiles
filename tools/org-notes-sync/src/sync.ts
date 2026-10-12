@@ -8,12 +8,16 @@ import { gcMedia, listOrgFiles, mediaPath, trashOrgFile, writeOrgFile } from "./
 import { reconcile, type Action, type NoteSnap, type OrgFile, type Pair } from "./reconcile"
 import { loadState, saveState, type State } from "./state"
 
-export type SyncDeps = { format: LocalFormat; notes: NotesPort; orgDir: string; stateDir: string; force: boolean; log: (msg: string) => void; warn: (msg: string) => void }
+export type SyncDeps = {
+  format: LocalFormat; notes: NotesPort; orgDir: string; stateDir: string; force: boolean
+  log: (msg: string) => void; warn: (msg: string) => void
+  now?: () => number // 既定は Date.now
+}
 export type SyncOutcome = { status: "ok" | "aborted"; reason?: string; wroteNotes: string[] }
 
 const MSG = {
   bridge: "メモ.app の内部 API が見つかりません (macOS の更新で変わった可能性)。同期を止めています",
-  db: "メモの DB を読めません。システム設定 > プライバシーとセキュリティ > フルディスクアクセス に ~/.local/bin/org-notes-sync を追加してください",
+  db: "メモの DB を読めません。システム設定 > プライバシーとセキュリティ > フルディスクアクセス に ~/.local/bin/org-notes-sync (launchd から動かすとき) と、同期を起動したアプリ (Emacs.app やターミナル) を追加してください",
   folder: "メモ.app の org フォルダが見つからない / 空です。誤削除を避けるため同期を止めています",
   massDelete: "一度に多くのメモを削除しようとしています。意図どおりなら --force を付けて実行してください",
   orgDir: (p: string) => `org ディレクトリを読めません: ${p}`,
@@ -23,7 +27,14 @@ const MSG = {
   conflict: (f: string) => `${f}: 衝突しました。Emacs で解消して保存してください`,
   attachment: (f: string) => `${f}: 添付を含む段落を書き換えられないので、メモへの反映を止めました`,
   unverified: (f: string) => `${f}: メモへの書き込みを検証できなかったので保存しませんでした`,
+  changed: (f: string) => `${f}: メモが同期中に更新されたので次回に回します`,
+  deferred: "メモ.app を使っている間は iCloud への送信を保留しています",
+  timeouts: "メモ.app から iCloud への送信が続けて終わりません",
 }
+
+// 送信が時間切れになった後 (オフラインなど)、メモ.app を起動し直すまでの間隔
+const FLUSH_BACKOFF_MS = 15 * 60_000
+const TIMEOUT_WARN_COUNT = 3
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -48,8 +59,9 @@ function removePair(r: Run, file: string, noteId: string): void {
   save(r)
 }
 
-async function writeNote(r: Run, noteId: string, doc: Doc): Promise<Doc> {
-  const base = await r.d.notes.write(noteId, doc)
+// expect: 一覧で読んだメモの中身。書く直前にメモがこれと違えば bridge が書かない (code 7)
+async function writeNote(r: Run, noteId: string, doc: Doc, expect?: Doc): Promise<Doc> {
+  const base = await r.d.notes.write(noteId, doc, expect)
   r.noteDocs.set(noteId, base)
   r.wrote.push(noteId)
   return base
@@ -64,12 +76,22 @@ function writeOrg(r: Run, file: string, text: string): boolean {
   return res === "written"
 }
 
+function isOptInNow(r: Run, file: string): boolean {
+  let text: string
+  try {
+    text = fs.readFileSync(path.join(r.d.orgDir, file), "utf8")
+  } catch {
+    return false
+  }
+  return r.d.format.parse(text, file).optIn
+}
+
 async function execute(r: Run, a: Action): Promise<void> {
   switch (a.kind) {
     case "noop":
       return
     case "pushNotes":
-      setPair(r, a.file, a.noteId, await writeNote(r, a.noteId, a.doc))
+      setPair(r, a.file, a.noteId, await writeNote(r, a.noteId, a.doc, r.noteDocs.get(a.noteId)))
       return
     case "pullOrg":
       if (writeOrg(r, a.file, a.text)) setPair(r, a.file, a.noteId, a.base)
@@ -81,7 +103,7 @@ async function execute(r: Run, a: Action): Promise<void> {
       return
     case "both":
       if (!writeOrg(r, a.file, a.text)) return
-      setPair(r, a.file, a.noteId, await writeNote(r, a.noteId, a.doc))
+      setPair(r, a.file, a.noteId, await writeNote(r, a.noteId, a.doc, r.noteDocs.get(a.noteId)))
       return
     case "blocked":
     case "skipped":
@@ -96,7 +118,16 @@ async function execute(r: Run, a: Action): Promise<void> {
       if (writeOrgFile(r.d.orgDir, a.file, a.text, null) === "written") setPair(r, a.file, a.noteId, a.base)
       else r.d.log(`${a.file}: 既にあるので作らない`)
       return
+    case "rename":
+      r.state.pairs = r.state.pairs.map((p) => (p.file === a.from && p.noteId === a.noteId ? { ...p, file: a.to } : p))
+      save(r)
+      return
     case "deleteNote":
+      // 一覧を読んだ後に org が opt-in で戻っていたら消さない (次の周で改めて判断する)
+      if (isOptInNow(r, a.file)) {
+        r.d.log(`${a.file}: 消す前に opt-in で戻っていたのでメモを消さない`)
+        return
+      }
       await r.d.notes.remove(a.uri)
       r.noteDocs.delete(a.noteId)
       removePair(r, a.file, a.noteId)
@@ -111,13 +142,18 @@ async function execute(r: Run, a: Action): Promise<void> {
   }
 }
 
+const actionFile = (a: Action) => (a.kind === "rename" ? a.to : a.file)
+
 function warnActionError(d: SyncDeps, a: Action, e: unknown): void {
-  if (e instanceof BridgeError && e.code === 5) d.warn(MSG.attachment(a.file))
-  else if (e instanceof BridgeError && e.code === 6) d.warn(MSG.unverified(a.file))
-  else d.warn(`${a.file}: ${errMessage(e)}`)
+  const file = actionFile(a)
+  if (e instanceof BridgeError && e.code === 5) d.warn(MSG.attachment(file))
+  else if (e instanceof BridgeError && e.code === 6) d.warn(MSG.unverified(file))
+  else if (e instanceof BridgeError && e.code === 7) d.warn(MSG.changed(file))
+  else d.warn(`${file}: ${errMessage(e)}`)
 }
 
-// ペア済みのメモに出てくる画像のうち手元に無いものを書き出し、opt-in な org から参照されない画像を消す
+// ペア済みのメモに出てくる画像のうち手元に無いものを書き出し、どの org からも参照されない画像を消す
+// (opt-in を外した org もまだ画像を参照しているので残す)
 async function syncMedia(r: Run): Promise<void> {
   const { d } = r
   const wanted = new Set(r.state.pairs.flatMap((p) => imageIds(r.noteDocs.get(p.noteId) ?? { paragraphs: [] })))
@@ -140,8 +176,7 @@ async function syncMedia(r: Run): Promise<void> {
   }
   const keep = new Set<string>()
   for (const o of orgFiles) {
-    const parsed = d.format.parse(o.text, o.file)
-    if (parsed.optIn) for (const id of imageIds(parsed.doc)) keep.add(id)
+    for (const id of imageIds(d.format.parse(o.text, o.file).doc)) keep.add(id)
   }
   for (const id of gcMedia(d.orgDir, keep)) d.log(`画像 ${id} を消しました`)
 }
@@ -207,7 +242,8 @@ export async function syncOnce(d: SyncDeps): Promise<SyncOutcome> {
     wrote: [],
   }
   for (const a of plan.actions) {
-    if (a.kind !== "noop") d.log(`${a.kind} ${a.file}`)
+    if (a.kind === "rename") d.log(`rename ${a.from} → ${a.to}`)
+    else if (a.kind !== "noop") d.log(`${a.kind} ${a.file}`)
     try {
       await execute(r, a)
     } catch (e) {
@@ -215,22 +251,43 @@ export async function syncOnce(d: SyncDeps): Promise<SyncOutcome> {
     }
   }
 
-  await syncMedia(r)
-
-  // 送信を保留していたら、書いたメモが無くてもペア済みのメモ全部を送り直す
-  if (r.wrote.length > 0 || state.flushPending) {
-    const ids = state.flushPending
-      ? [...new Set([...r.wrote, ...r.state.pairs.map((p) => p.noteId).filter((id) => !lockedIds.has(id))])]
-      : r.wrote
-    try {
-      const res = await d.notes.flush(ids)
-      d.log(`flush: ${res}`)
-      state.flushPending = res === "deferred" || res === "timeout"
-    } catch (e) {
-      d.warn(`iCloud への送信に失敗しました: ${errMessage(e)}`)
-      state.flushPending = true
-    }
+  // 画像の失敗で送信と state の保存を飛ばさない
+  try {
+    await syncMedia(r)
+  } catch (e) {
+    d.warn(`画像の同期に失敗しました: ${errMessage(e)}`)
   }
+
+  await flush(r, lockedIds)
   save(r)
   return { status: "ok", wroteNotes: r.wrote }
+}
+
+// iCloud への送信。保留していたら、書いたメモが無くてもペア済みのメモ全部を送り直す
+async function flush(r: Run, lockedIds: Set<string>): Promise<void> {
+  const { d, state } = r
+  if (r.wrote.length === 0 && !state.flushPending) return
+  const now = (d.now ?? Date.now)()
+  // 時間切れ (オフラインなど) の後は、15 分経つまでメモ.app を起動し直さない
+  if (state.flushPending && state.flushTimeouts > 0 && now - state.lastFlushAttempt < FLUSH_BACKOFF_MS) {
+    d.log("flush: 時間切れの後なので見送り")
+    state.flushPending = true
+    return
+  }
+  const ids = state.flushPending
+    ? [...new Set([...r.wrote, ...state.pairs.map((p) => p.noteId).filter((id) => !lockedIds.has(id))])]
+    : r.wrote
+  state.lastFlushAttempt = now
+  try {
+    const res = await d.notes.flush(ids)
+    d.log(`flush: ${res}`)
+    state.flushPending = res === "deferred" || res === "timeout"
+    state.flushTimeouts = res === "timeout" ? state.flushTimeouts + 1 : 0
+    if (res === "deferred") d.warn(MSG.deferred)
+    if (state.flushTimeouts >= TIMEOUT_WARN_COUNT) d.warn(MSG.timeouts)
+  } catch (e) {
+    d.warn(`iCloud への送信に失敗しました: ${errMessage(e)}`)
+    state.flushPending = true
+    state.flushTimeouts = 0
+  }
 }

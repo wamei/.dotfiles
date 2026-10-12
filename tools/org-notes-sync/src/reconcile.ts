@@ -25,6 +25,7 @@ export type Action =
   | { kind: "trashOrg"; file: string; noteId: string }
   | { kind: "drop"; file: string; noteId: string }
   | { kind: "skipped"; file: string; reason: "conflict-markers" }
+  | { kind: "rename"; from: string; to: string; noteId: string } // ペアの org ファイル名を付け替える (メモはそのまま)
 export type Plan = { ok: true; actions: Action[] } | { ok: false; reason: "folder-missing" | "notes-empty" | "mass-delete" }
 
 const OPT_IN_LINE = "#+notes_sync: yes"
@@ -107,19 +108,45 @@ function decidePair(format: LocalFormat, pair: Pair, org: OrgFile | undefined, n
   return decideBothChanged(format, file, noteId, base, org.text, parsed.doc, parsed.preserved, note.doc)
 }
 
+// ペアの org が消えたとき、リネーム先らしいペア無しの opt-in な org。
+// 内容が base と同じものを優先し、無ければタイトルが同じものが 1 つだけのとき
+function findRenamed(format: LocalFormat, pair: Pair, orgFiles: OrgFile[], pairedFiles: Set<string>): OrgFile | undefined {
+  const candidates = orgFiles.flatMap((o) => {
+    if (pairedFiles.has(o.file)) return []
+    const parsed = format.parse(o.text, stem(o.file, format.ext))
+    return parsed.optIn ? [{ org: o, doc: parsed.doc }] : []
+  })
+  const base = canon(format, pair.base)
+  const same = candidates.find((c) => docEquals(c.doc, base))
+  if (same) return same.org
+  const titled = candidates.filter((c) => docTitle(c.doc) === docTitle(pair.base))
+  return titled.length === 1 ? titled[0]!.org : undefined
+}
+
 export function reconcile(input: ReconcileInput): Plan {
   const { format, pairs, orgFiles, notes, force } = input
   const orgByFile = new Map(orgFiles.map((o) => [o.file, o]))
   const noteById = new Map((notes ?? []).map((n) => [n.id, n]))
   const actions: Action[] = []
 
+  const pairedFiles = new Set(pairs.map((p) => p.file))
+
   // ペア済み
   for (const pair of pairs) {
-    actions.push(decidePair(format, pair, orgByFile.get(pair.file), noteById.get(pair.noteId)))
+    const org = orgByFile.get(pair.file)
+    const note = noteById.get(pair.noteId)
+    // org が無くなった: 消す前に、リネームされた先 (ペア無しの opt-in な org) を探す
+    const to = !org && note ? findRenamed(format, pair, orgFiles, pairedFiles) : undefined
+    if (to) {
+      pairedFiles.add(to.file)
+      actions.push({ kind: "rename", from: pair.file, to: to.file, noteId: pair.noteId })
+      actions.push(decidePair(format, { ...pair, file: to.file }, to, note))
+    } else {
+      actions.push(decidePair(format, pair, org, note))
+    }
   }
 
   // ペア無しの org
-  const pairedFiles = new Set(pairs.map((p) => p.file))
   const usedNoteIds = new Set(pairs.map((p) => p.noteId))
   for (const org of orgFiles) {
     if (pairedFiles.has(org.file)) continue

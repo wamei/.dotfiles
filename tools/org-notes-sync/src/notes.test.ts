@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { BridgeError, createNotesPort, type Runner } from "./notes"
+import { BridgeError, createNotesPort, defaultSyncStatePath, type Runner } from "./notes"
 
 function fakeRunner(handlers: [RegExp, (cmd: string[], stdin?: string) => { code?: number; stdout?: string; stderr?: string }][]) {
   const calls: string[] = []
@@ -48,6 +48,20 @@ test("write は stdin に doc を渡し、読み戻しを返す", async () => {
   const doc = { paragraphs: [] }
   const { run } = fakeRunner([[/write --id N/, (_c, stdin) => ({ stdout: stdin ?? "" })]])
   expect(await createNotesPort(opts(run)).write("N", doc)).toEqual({ paragraphs: [] })
+})
+test("write は expect があれば stdin に一緒に渡す", async () => {
+  const doc = { paragraphs: [] }, expectDoc = { paragraphs: [{ style: { kind: "title" as const }, indent: 0, quote: false, inlines: [] }] }
+  const seen: unknown[] = []
+  const { run } = fakeRunner([[/write --id N/, (_c, stdin) => { seen.push(JSON.parse(stdin ?? "")); return { stdout: JSON.stringify({ doc }) } }]])
+  await createNotesPort(opts(run)).write("N", doc, expectDoc)
+  await createNotesPort(opts(run)).write("N", doc)
+  expect(seen).toEqual([{ doc, expect: expectDoc }, { doc }])
+})
+test("write の exit 7 (読んだ後に更新された) は BridgeError", async () => {
+  const { run } = fakeRunner([[/write/, () => ({ code: 7, stderr: "changed" })]])
+  const e = await createNotesPort(opts(run)).write("N", { paragraphs: [] }, { paragraphs: [] }).catch((x) => x)
+  expect(e).toBeInstanceOf(BridgeError)
+  expect(e.code).toBe(7)
 })
 test("write の exit 5 は BridgeError", async () => {
   const { run } = fakeRunner([[/write/, () => ({ code: 5, stderr: "attachments" })]])
@@ -98,7 +112,7 @@ test("flush: 起動中で手前に無ければ quit → 停止待ち → 起動 
     [/open -g -a Notes/, () => ({})],
   ])
   let polls = 0, opened = false
-  const r = await createNotesPort(opts(run, { syncState: () => { if (calls.some((c) => c.includes("open -g"))) opened = true; if (opened) polls++; return [{ local: 1, synced: 1 }] } })).flush(["N"])
+  const r = await createNotesPort(opts(run, { syncState: () => { if (calls.some((c) => c.includes("open -g"))) opened = true; if (opened) polls++; return [opened ? { local: 2, synced: 2 } : { local: 2, synced: 1 }] } })).flush(["N"])
   expect(r).toBe("done")
   expect(polls).toBeGreaterThan(0)
   const q = calls.findIndex((c) => c.includes("quit")), o = calls.findIndex((c) => c.includes("open -g -a Notes"))
@@ -143,7 +157,8 @@ test("flush: 終了直前に手前へ出ていたら quit せず保留 (未起�
     [/quit/, () => ({})],
   ])
   // 未起動の経路では front 確認は最終の 1 回だけ (1 回目で Notes を返す)
-  const r = await createNotesPort(opts(run, { syncState: () => [{ local: 1, synced: 1 }] })).flush(["N"])
+  let n = 0
+  const r = await createNotesPort(opts(run, { syncState: () => [n++ === 0 ? { local: 2, synced: 1 } : { local: 2, synced: 2 }] })).flush(["N"])
   expect(r).toBe("deferred")
   expect(calls.some((c) => c.includes("quit"))).toBe(false)
 })
@@ -155,13 +170,14 @@ test("flush: 再起動経路でも終了直前に手前なら保留", async () =
     [/quit/, () => { running = false; return {} }],
     [/open -g/, () => ({})],
   ])
-  const r = await createNotesPort(opts(run, { syncState: () => [{ local: 1, synced: 1 }] })).flush(["N"])
+  let n = 0
+  const r = await createNotesPort(opts(run, { syncState: () => [n++ === 0 ? { local: 2, synced: 1 } : { local: 2, synced: 2 }] })).flush(["N"])
   expect(r).toBe("deferred")
   expect(calls.filter((c) => c.includes("quit")).length).toBe(1)
 })
 test("flush: 手前の判定が空出力なら保留", async () => {
   const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "true" })], [/lsappinfo/, () => ({ stdout: "" })]])
-  expect(await createNotesPort(opts(run)).flush(["N"])).toBe("deferred")
+  expect(await createNotesPort(opts(run, { syncState: () => [] })).flush(["N"])).toBe("deferred")
 })
 test("flush: 10 秒で止まらなければ open せず timeout", async () => {
   let t = 0
@@ -176,7 +192,7 @@ test("flush: 10 秒で止まらなければ open せず timeout", async () => {
 test("flush: Runner が固まっても commandTimeoutMs で timeout を返す", async () => {
   const run: Runner = () => new Promise(() => {})
   const t0 = Date.now()
-  expect(await createNotesPort(opts(run, { commandTimeoutMs: 20 })).flush(["N"])).toBe("timeout")
+  expect(await createNotesPort(opts(run, { commandTimeoutMs: 20, syncState: () => [] })).flush(["N"])).toBe("timeout")
   expect(Date.now() - t0).toBeLessThan(1000)
 })
 test("Runner には commandTimeoutMs が渡る", async () => {
@@ -224,4 +240,39 @@ test("既定の syncState: DB が読めなければ BridgeError (code 4)", async
   const e = await flushWith("/nonexistent/x.sqlite", ["A"]).catch((x) => x)
   expect(e).toBeInstanceOf(BridgeError)
   expect(e.code).toBe(4)
+})
+
+test("flush: 送信済みの id は待たず、全部送信済みなら メモ.app に触らず done", async () => {
+  const { run, calls } = fakeRunner([])
+  const asked: string[][] = []
+  const port = createNotesPort(opts(run, { syncState: (ids: string[]) => { asked.push(ids); return ids.map(() => ({ local: 3, synced: 3 })) } }))
+  expect(await port.flush(["A", "B"])).toBe("done")
+  expect(calls).toEqual([])
+  expect(asked).toEqual([["A", "B"]])
+})
+test("flush: 未送信の id だけを待つ", async () => {
+  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/lsappinfo/, () => ({ stdout: TERM })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  const asked: string[][] = []
+  const port = createNotesPort(opts(run, { syncState: (ids: string[]) => {
+    asked.push(ids)
+    return ids.map((id) => (id === "B" && asked.length === 1 ? { local: 2, synced: 1 } : { local: 2, synced: 2 }))
+  } }))
+  expect(await port.flush(["A", "B"])).toBe("done")
+  expect(asked).toEqual([["A", "B"], ["B"]])
+})
+test("store 指定時は作成・削除をせず、flush は not-needed (本物のメモ.app に触らない)", async () => {
+  const { run, calls } = fakeRunner([])
+  const port = createNotesPort(opts(run, { store: "/s", syncState: () => { throw new Error("読まない") } }))
+  for (const p of [port.create("t"), port.remove("u")]) {
+    const e = (await (p as Promise<unknown>).catch((x) => x)) as BridgeError
+    expect(e).toBeInstanceOf(BridgeError)
+    expect([e.code, e.message]).toEqual([1, "--store では作成・削除しません"])
+  }
+  expect(await port.flush(["N"])).toBe("not-needed")
+  expect(calls).toEqual([])
+})
+test("既定の syncState が読む DB: notesDbPath > <store>/NoteStore.sqlite > 本物", () => {
+  expect(defaultSyncStatePath({ store: "/s" })).toBe("/s/NoteStore.sqlite")
+  expect(defaultSyncStatePath({ store: "/s", notesDbPath: "/d.sqlite" })).toBe("/d.sqlite")
+  expect(defaultSyncStatePath({})).toBe(`${process.env.HOME}/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`)
 })

@@ -16,7 +16,8 @@ export class BridgeError extends Error {
 export interface NotesPort {
   selfcheck(): Promise<void>
   list(): Promise<BridgeNote[] | null>
-  write(id: string, doc: Doc): Promise<Doc>
+  // expect を渡すと、メモが expect のままのときだけ書く (違えば BridgeError code 7)
+  write(id: string, doc: Doc, expect?: Doc): Promise<Doc>
   create(title: string): Promise<{ id: string; uri: string }>
   remove(uri: string): Promise<void>
   exportMedia(attachmentId: string, to: string): Promise<void>
@@ -26,11 +27,12 @@ export interface NotesPort {
 export type NotesPortOptions = {
   bridge: string
   folder: string
+  // メモの DB のコピー。指定時は作成・削除・iCloud への送信をしない (本物のメモ.app に触らない)
   store?: string
   run?: Runner
   sleep?: (ms: number) => Promise<void>
   now?: () => number
-  // 既定は NoteStore.sqlite を読む
+  // 既定は NoteStore.sqlite (store 指定時は <store>/NoteStore.sqlite) を読む
   syncState?: (ids: string[]) => { local: number; synced: number }[]
   notesDbPath?: string
   // 1 コマンドあたりの上限 (既定 30 秒、osascript の軽い呼び出しと lsappinfo は最大 15 秒)
@@ -54,6 +56,10 @@ export const defaultRun: Runner = async (cmd, stdin, timeoutMs = DEFAULT_COMMAND
   } finally {
     clearTimeout(timer)
   }
+}
+
+export function defaultSyncStatePath(o: { store?: string; notesDbPath?: string }): string {
+  return o.notesDbPath ?? (o.store ? `${o.store}/NoteStore.sqlite` : STORE_DB)
 }
 
 // 既定の送信状況: ZICCLOUDSTATE の手元の版と iCloud へ送信済みの版。行が無い id は未送信扱い
@@ -107,7 +113,10 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
   const now = o.now ?? Date.now
   const cmdMs = o.commandTimeoutMs ?? DEFAULT_COMMAND_MS
   const shortMs = Math.min(SHORT_COMMAND_MS, cmdMs)
-  const syncState = o.syncState ?? ((ids: string[]) => defaultSyncState(ids, o.notesDbPath))
+  const syncState = o.syncState ?? ((ids: string[]) => defaultSyncState(ids, defaultSyncStatePath(o)))
+  const noStore = () => {
+    if (o.store) throw new BridgeError("--store では作成・削除しません", 1)
+  }
 
   // Runner が固まっても返ってこられるよう、こちらでも上限を設ける
   const exec = async (cmd: string[], stdin?: string, ms = cmdMs) => {
@@ -149,14 +158,20 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
       await sleep(POLL_MS)
     }
   }
-  // id ごとの行が揃わない (DB に無い) ものは未送信
-  const synced = (ids: string[]) => {
+  // 未送信 (手元の版が送信済みの版より新しい) の id。行が無い id は未送信
+  const unsynced = (ids: string[]) => {
     const st = syncState(ids)
-    return st.length === ids.length && st.every((s) => s.local === s.synced)
+    return ids.filter((_, i) => {
+      const s = st[i]
+      return !s || s.local > s.synced
+    })
   }
 
-  const flush = async (ids: string[]): Promise<FlushResult> => {
-    if (ids.length === 0) return "not-needed"
+  const flush = async (all: string[]): Promise<FlushResult> => {
+    if (all.length === 0) return "not-needed"
+    // 送信済みのものは待たない。全部送信済みならメモ.app に触らない
+    const ids = unsynced(all)
+    if (ids.length === 0) return "done"
     if (await isRunning()) {
       if ((await frontState()) !== "back") return "deferred"
       // 一度終了させ、起動し直すことで未送信の変更を iCloud へ押し出す
@@ -165,7 +180,7 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
     }
     await exec(["open", "-g", "-a", "Notes"])
     // 時間切れのときは送信を続けられるよう起動したままにする
-    if (!(await waitUntil(() => synced(ids), WAIT_SYNC_MS))) return "timeout"
+    if (!(await waitUntil(() => unsynced(ids).length === 0, WAIT_SYNC_MS))) return "timeout"
     // 待つ間に手前へ出されていたら終了させない
     if ((await frontState()) !== "back") return "deferred"
     await osa(JXA_QUIT, shortMs)
@@ -183,21 +198,24 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
       )
       return r.folderMissing ? null : r.notes
     },
-    async write(id, doc) {
-      return (await bridge<{ doc: Doc }>(["write", "--id", id], (v) => isObj(v) && isObj(v.doc), JSON.stringify({ doc }))).doc
+    async write(id, doc, expect) {
+      return (await bridge<{ doc: Doc }>(["write", "--id", id], (v) => isObj(v) && isObj(v.doc), JSON.stringify({ doc, expect }))).doc
     },
     async create(title) {
+      noStore()
       const uri = (await osa(JXA_CREATE, cmdMs, o.folder, title)).trim()
       const { id } = await bridge<{ id: string }>(["identify", "--uri", uri], (v) => isObj(v) && typeof v.id === "string")
       return { id, uri }
     },
     async remove(uri) {
+      noStore()
       await osa(JXA_REMOVE, cmdMs, uri)
     },
     async exportMedia(attachmentId, to) {
       await bridge(["export-media", "--attachment", attachmentId, "--to", to], isObj)
     },
     async flush(ids) {
+      if (o.store) return "not-needed"
       try {
         return await flush(ids)
       } catch (e) {

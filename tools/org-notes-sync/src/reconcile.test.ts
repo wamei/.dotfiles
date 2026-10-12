@@ -145,3 +145,32 @@ describe("表現差でループしない (Review Focus 2, 3)", () => {
     expect(rehydrate(t, EMPTY_DOC, f)).toEqual(t)
   })
 })
+
+describe("org のリネーム", () => {
+  const base = doc("t", "a")
+  const pair: Pair = { file: "t.org", noteId: "N", base }
+  test("同じ内容のペア無し org があれば rename して、そのペアとして判断する", () => {
+    expect(run([pair], [org("u.org", base)], [note("N", base)])).toEqual({ ok: true, actions: [
+      { kind: "rename", from: "t.org", to: "u.org", noteId: "N" },
+      { kind: "noop", file: "u.org", noteId: "N" },
+    ] })
+  })
+  test("リネーム先でも iPhone の編集は pullOrg になる", () => {
+    const p = run([pair], [org("u.org", base)], [note("N", doc("t", "a", "iphone"))])
+    expect(p).toMatchObject({ ok: true, actions: [{ kind: "rename", to: "u.org" }, { kind: "pullOrg", file: "u.org", text: "#+title: t\n#+notes_sync: yes\na\niphone\n" }] })
+  })
+  test("内容が変わっていてもタイトルが同じ候補が 1 つだけなら rename (内容一致を優先)", () => {
+    expect(run([pair], [org("u.org", doc("t", "b"))], [note("N", base)])).toMatchObject({ ok: true, actions: [{ kind: "rename", to: "u.org" }, { kind: "pushNotes", file: "u.org" }] })
+    const p = run([pair], [org("u.org", doc("t", "b")), org("v.org", base), org("w.org", doc("t", "c"))], [note("N", base)])
+    expect(p).toMatchObject({ ok: true, actions: [{ kind: "rename", to: "v.org" }, { kind: "noop", file: "v.org" }, { kind: "createNote", file: "u.org" }, { kind: "createNote", file: "w.org" }] })
+  })
+  test("タイトルだけ同じ候補が複数 / opt-in でない / opt-in 解除なら rename しない", () => {
+    expect(run([pair], [org("u.org", doc("t", "b")), org("v.org", doc("t", "c"))], [note("N", base)]))
+      .toMatchObject({ ok: true, actions: [{ kind: "deleteNote" }, { kind: "createNote" }, { kind: "createNote" }] })
+    expect(run([pair], [{ file: "u.org", text: f.render(base, []), mtimeMs: 1 }], [note("N", base)]))
+      .toMatchObject({ ok: true, actions: [{ kind: "deleteNote" }] })
+    const optOut: OrgFile = { file: "t.org", text: f.render(base, []), mtimeMs: 1 }
+    expect(run([pair], [optOut, org("u.org", base)], [note("N", base)]))
+      .toMatchObject({ ok: true, actions: [{ kind: "deleteNote" }, { kind: "createNote", file: "u.org" }] })
+  })
+})
