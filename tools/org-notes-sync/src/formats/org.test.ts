@@ -60,3 +60,23 @@ test("衝突マーカー", () => {
   expect(orgFormat.hasConflictMarkers("a\n<<<<<<< org\nb\n=======\nc\n>>>>>>> notes\n")).toBe(true)
   expect(orgFormat.hasConflictMarkers("a <<<<<<< b\n")).toBe(false)
 })
+
+describe("org 段落: 修正", () => {
+  test("CRLF は LF と同じ doc になる", () => {
+    const a = orgFormat.parse("#+title: t\r\n* h\r\n本文\r\n", "f")
+    const b = orgFormat.parse("#+title: t\n* h\n本文\n", "f")
+    expect(docEquals(a.doc, b.doc)).toBe(true)
+  })
+  test("mono は生の文字列で描く", () => {
+    const d: Doc = { paragraphs: [para({ kind: "title" }, [text("t")]), para({ kind: "mono" }, [text("*a*", ["bold"])])] }
+    expect(orgFormat.render(d, [])).toBe("#+title: t\n#+begin_example\n*a*\n#+end_example\n")
+  })
+  test("タブと全角スペースの先頭はそのまま往復する", () => {
+    for (const s of ["#+title: t\n\tfoo\n", "#+title: t\n　段落\n"]) expect(roundTrip(s)).toBe(s)
+  })
+  test("1 行目は body でもタイトルとして描く、空の Doc でも #+title: を出す", () => {
+    const d: Doc = { paragraphs: [para({ kind: "body" }, [text("X")]), para({ kind: "body" }, [text("y")])] }
+    expect(orgFormat.render(d, ["#+a: b"])).toBe("#+title: X\n#+a: b\ny\n")
+    expect(orgFormat.render({ paragraphs: [] }, ["#+a: b"])).toBe("#+title: \n#+a: b\n")
+  })
+})

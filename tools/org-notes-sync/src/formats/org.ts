@@ -1,4 +1,4 @@
-import { para, text, normalizeDoc, type Inline, type Paragraph } from "../doc"
+import { para, plainText, text, normalizeDoc, type Inline, type Paragraph } from "../doc"
 import type { LocalFormat, Parsed } from "./format"
 
 // 行内の装飾は Task 3 で実装する。それまでは全体を 1 つの text として扱う仮実装
@@ -20,7 +20,7 @@ const HEADING = /^(\*+) (.*)$/
 const LIST = /^( *)(?:([-+])|(\d+)[.)])\s+(?:\[( |X|x)\]\s+)?(.*)$/
 
 function splitLines(s: string): string[] {
-  const lines = s.split("\n")
+  const lines = s.split(/\r?\n/)
   // 末尾の改行で終わる最後の空行は段落にしない
   if (lines[lines.length - 1] === "") lines.pop()
   return lines
@@ -83,8 +83,7 @@ function parse(src: string, fallbackTitle: string): Parsed {
       body.push(para(style, parseInline(l[5]!), { indent, quote }))
       continue
     }
-    const lead = line.length - line.trimStart().length
-    const indent = Math.floor(lead / 2)
+    const indent = Math.floor(/^ */.exec(line)![0].length / 2)
     body.push(para({ kind: "body" }, parseInline(line.slice(indent * 2)), { indent, quote }))
   }
 
@@ -107,14 +106,10 @@ function stripBold(inlines: Inline[]): Inline[] {
 function render(doc: { paragraphs: Paragraph[] }, preserved: string[]): string {
   const out: string[] = []
   let rest = doc.paragraphs
+  // 1 行目は書式に関わらずタイトル (メモ.app は 1 行目をタイトルとみなす)
   const first = rest[0]
-  if (first && first.style.kind === "title") {
-    const t = renderInline(first.inlines)
-    out.push(t === "" ? "#+title:" : `#+title: ${t}`, ...preserved)
-    rest = rest.slice(1)
-  } else {
-    out.push(...preserved)
-  }
+  out.push(`#+title: ${first ? renderInline(first.inlines) : ""}`, ...preserved)
+  rest = rest.slice(1)
 
   let inQuote = false
   let inExample = false
@@ -130,7 +125,7 @@ function render(doc: { paragraphs: Paragraph[] }, preserved: string[]): string {
     }
     if (p.style.kind === "mono") {
       if (!inExample) { out.push("#+begin_example"); inExample = true }
-      out.push(renderInline(p.inlines))
+      out.push(plainText(p)) // 生のまま。装飾は解釈しない
       counters = []
       continue
     }
