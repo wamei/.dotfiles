@@ -271,7 +271,6 @@ async function flush(r: Run, lockedIds: Set<string>): Promise<void> {
   // 時間切れ (オフラインなど) の後は、15 分経つまでメモ.app を起動し直さない
   if (state.flushPending && state.flushTimeouts > 0 && now - state.lastFlushAttempt < FLUSH_BACKOFF_MS) {
     d.log("flush: 時間切れの後なので見送り")
-    state.flushPending = true
     return
   }
   const ids = state.flushPending
