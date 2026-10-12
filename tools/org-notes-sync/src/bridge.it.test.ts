@@ -149,6 +149,119 @@ describe.skipIf(!IT)("notes-bridge (DB のコピー)", () => {
     expect(fs.readdirSync(out)).toEqual(["keep"])
     expect(fs.readdirSync(dir)).toEqual(["x.jpg"])
   })
+  const writeIn = (dir: string, id: string, doc: Doc) =>
+    $`${bridge} --store ${dir} write --id ${id} < ${new Response(JSON.stringify({ doc }))}`.nothrow().quiet()
+  test("write: 段落の追加・変更・スタイル変更が読み戻せ、他の段落の属性を残す", async () => {
+    const r: ListResult = await call("list", "--folder", folder)
+    const n = docs(r)[0]
+    if (!n) throw new Error(`テスト用フォルダ ${folder} にメモが要る`)
+    const want = structuredClone(n.doc)
+    want.paragraphs.push(
+      { style: { kind: "heading" }, indent: 0, quote: false, inlines: [{ kind: "text", text: "追記した見出し", marks: [] }] },
+      { style: { kind: "check", done: true }, indent: 1, quote: true, inlines: [{ kind: "text", text: "済み", marks: ["bold"], link: "https://example.com/" }] },
+    )
+    const got = (await $`${bridge} --store ${store} write --id ${n.id} < ${new Response(JSON.stringify({ doc: want }))}`.json()).doc
+    expect(got).toEqual(want)
+    expect((await call("read", "--id", n.id)).doc).toEqual(want)
+  })
+  test("write: 変えていない段落のハイライト (TTEmphasis) は残る", async () => {
+    const r: ListResult = await call("list", "--folder", folder)
+    let target: { id: string; doc: Doc; idx: number } | undefined
+    for (const n of docs(r)) {
+      const attrs: string[][] = (await call("dump-attrs", "--id", n.id)).paragraphs
+      const idx = attrs.findIndex((ks) => ks.includes("TTEmphasis"))
+      if (idx >= 0) { target = { id: n.id, doc: n.doc, idx }; break }
+    }
+    if (!target) throw new Error(`${folder} にハイライト付きの段落を持つメモが要る (iPhone で作る)`)
+    const want = structuredClone(target.doc)
+    want.paragraphs.push({ style: { kind: "body" }, indent: 0, quote: false, inlines: [{ kind: "text", text: "末尾だけ変更", marks: [] }] })
+    await $`${bridge} --store ${store} write --id ${target.id} < ${new Response(JSON.stringify({ doc: want }))}`.quiet()
+    const after: string[][] = (await call("dump-attrs", "--id", target.id)).paragraphs
+    expect(after[target.idx]).toContain("TTEmphasis")
+  })
+  test("dump-attrs: 段落ごとの属性名は重複なしの昇順", async () => {
+    const n = docs(await call("list", "--folder", folder))[0]!
+    const ps: string[][] = (await call("dump-attrs", "--id", n.id)).paragraphs
+    expect(ps.length).toBe((await call("read", "--id", n.id)).doc.paragraphs.length)
+    for (const ks of ps) expect(ks).toEqual([...new Set(ks)].sort())
+  })
+  // 添付・中間の書き換え・チェックの切り替えは、中身の分かっている 太文字タイトル を別のコピーで書き換えて確かめる
+  describe.skipIf(!usingFixture)("write: 太文字タイトル (別のコピー)", () => {
+    let ws = "", id = "", base: Doc = { paragraphs: [] }
+    beforeAll(async () => {
+      ws = await makeStoreCopy()
+      tmpDirs.push(ws)
+    })
+    const reset = async () => {
+      // 前のテストの書き込みを捨てて、もとのコピーから取り直す
+      fs.rmSync(ws, { recursive: true, force: true })
+      ws = await makeStoreCopy()
+      tmpDirs.push(ws)
+      const n = docs(await callIn(ws, "list", "--folder", folder)).find((x) => docTitle(x.doc) === FIXTURE)
+      if (!n) throw new Error(`${FIXTURE} が ${folder} に無い`)
+      id = n.id
+      base = n.doc
+    }
+    const attIdx = (d: Doc) => d.paragraphs.findIndex((p) => p.inlines.some((i) => i.kind === "attachment"))
+    test("中間の段落の文字とチェック状態を変え、他の段落はそのまま", async () => {
+      await reset()
+      const want = structuredClone(base)
+      const ci = want.paragraphs.findIndex((p) => plainText(p) === "チェックリスト")
+      want.paragraphs[ci]!.style = { kind: "check", done: true }
+      const bi = want.paragraphs.findIndex((p) => plainText(p) === "太文字")
+      want.paragraphs[bi]!.inlines = [{ kind: "text", text: "太", marks: ["bold"] }, { kind: "text", text: "い文字", marks: ["italic"] }]
+      want.paragraphs.splice(1, 0, { style: { kind: "list", list: "number" }, indent: 0, quote: false, inlines: [{ kind: "text", text: "差し込み", marks: [] }] })
+      const r = await writeIn(ws, id, want)
+      expect(r.exitCode).toBe(0)
+      expect(JSON.parse(r.stdout.toString()).doc).toEqual(want)
+      expect((await callIn(ws, "read", "--id", id)).doc).toEqual(want)
+    })
+    test("添付のある段落に文字を足しても添付は残る", async () => {
+      await reset()
+      const want = structuredClone(base)
+      want.paragraphs[attIdx(want)]!.inlines.push({ kind: "text", text: "後ろに足した", marks: [] })
+      const r = await writeIn(ws, id, want)
+      expect(r.exitCode).toBe(0)
+      expect((await callIn(ws, "read", "--id", id)).doc).toEqual(want)
+    })
+    test("目標から消えた添付は消してよい", async () => {
+      await reset()
+      const want = structuredClone(base)
+      const i = attIdx(want)
+      const gone = want.paragraphs[i]!.inlines.filter((x) => x.kind === "attachment").map((x) => (x as { id: string }).id)
+      want.paragraphs.splice(i, 1)
+      const r = await writeIn(ws, id, want)
+      expect(r.exitCode).toBe(0)
+      const got: Doc = (await callIn(ws, "read", "--id", id)).doc
+      expect(got).toEqual(want)
+      expect(got.paragraphs.flatMap((p) => p.inlines).filter((x) => x.kind === "attachment" && gone.includes(x.id))).toEqual([])
+    })
+    test("目標に残る添付を消す・動かす書き込みは終了コード 5 で何も変えない", async () => {
+      await reset()
+      const want = structuredClone(base)
+      const [moved] = want.paragraphs.splice(attIdx(want), 1)
+      want.paragraphs.push(moved!)
+      const r = await writeIn(ws, id, want)
+      expect(r.exitCode).toBe(5)
+      expect(r.stderr.toString()).toContain("添付")
+      expect((await callIn(ws, "read", "--id", id)).doc).toEqual(base)
+    })
+    test("今のメモに無い添付 id は終了コード 5", async () => {
+      await reset()
+      const want = structuredClone(base)
+      want.paragraphs.push({ style: { kind: "body" }, indent: 0, quote: false, inlines: [{ kind: "attachment", id: "00000000-0000-0000-0000-000000000000", image: true }] })
+      const r = await writeIn(ws, id, want)
+      expect(r.exitCode).toBe(5)
+      expect((await callIn(ws, "read", "--id", id)).doc).toEqual(base)
+    })
+  })
+  test("write: 無い id は終了コード 1、壊れた入力は終了コード 1", async () => {
+    const n = docs(await call("list", "--folder", folder))[0]!
+    expect((await writeIn(store, "00000000-0000-0000-0000-000000000000", { paragraphs: [] })).exitCode).toBe(1)
+    const bad = await $`${bridge} --store ${store} write --id ${n.id} < ${new Response("{\"doc\":{}}")}`.nothrow().quiet()
+    expect(bad.exitCode).toBe(1)
+    expect((await call("read", "--id", n.id)).doc).toEqual(docs(await call("list", "--folder", folder))[0]!.doc)
+  })
   test("本物の DB のスキーマを変えない", async () => {
     const schema = async (p: string) => $`sqlite3 ${"file:" + p + "?mode=ro"} ${"select sql from sqlite_master order by name"}`.text()
     expect(await schema(path.join(store, "NoteStore.sqlite"))).toBe(await schema(path.join(live, "NoteStore.sqlite")))

@@ -6,8 +6,11 @@
 //   notes-bridge [--store <dir>] read --id <id>                 → {"doc":Doc}
 //   notes-bridge [--store <dir>] identify --uri <x-coredata>    → {"id":"…"}
 //   notes-bridge [--store <dir>] export-media --attachment <id> --to <path.jpg> → {"written":true}
+//   notes-bridge [--store <dir>] write --id <id>  (stdin: {"doc":Doc})  → {"doc":Doc} (書いた後に読み戻したもの)
+//   notes-bridge [--store <dir>] dump-attrs --id <id>  → {"paragraphs":[["TTEmphasis","TTStyle"],…]} (デバッグ用)
 // --store はどこに置いてもよい (サブコマンドの後ろでも効く)。知らないオプション・重複・空の値は終了コード 1。
-// 終了コード: 3 = selfcheck 失敗 (欠けた名前を stderr に並べる)、4 = DB を開けない、1 = その他。
+// 終了コード: 3 = selfcheck 失敗 (欠けた名前を stderr に並べる)、4 = DB を開けない、
+//   5 = write で添付の扱いを守れない (残すべき添付を消す・動かす、今のメモに無い添付を置く)、1 = その他。
 //
 // 実物で確かめた事実 (2026-10-13, macOS 26, DB のコピーに対して class_copyMethodList と
 // NSManagedObjectModel の entitiesByName で調べた):
@@ -31,6 +34,13 @@
 //   -todo: ICTTTodo (-done: BOOL))、TTHints (1 bold, 2 italic)、TTUnderline、TTStrikethrough、
 //   TTEmphasis (ハイライト。Doc には持たない)、NSLink (NSString / NSURL)、
 //   NSAttachment = ICTTAttachment (-attachmentUTI / -attachmentIdentifier)、文字は U+FFFC。
+//   NSLink の実物は NSURL。TTTimestamp は CRDT が付けるので触らない。
+// - 書き込み (write): -[ICNote mergeableString] は ICTTMergeableAttributedString (attributedString は
+//   -[ICNote attributedString] と同じオブジェクト)。replaceCharactersInRange:withString: で入れた文字は
+//   直前の文字の TTStyle と新しい TTTimestamp を受け継ぐ。saveNoteData → updateChangeCountWithReason: →
+//   [moc save:] でメモ一覧のタイトル (ICNote.title) も 1 段落目から自動で作り直される (専用の呼び出しは要らない)。
+//   ICTTTodo: -initWithIdentifier:(NSUUID) done:(BOOL) と -todoWithDone: (同じ uuid で done だけ変えた複製)。
+//   1 つのチェック段落の文字はすべて同じ uuid の todo を持つ。
 #import <Foundation/Foundation.h>
 #import <CoreData/CoreData.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -71,12 +81,14 @@ static NSArray<NSArray<NSString *> *> *requiredNames(void) {
   return @[
     @[@"ICPaths", @"+setApplicationDocumentsURL:", @"+persistentStoreURL", @"+applicationDocumentsURL"],
     @[@"ICNoteContext", @"+startSharedContextWithOptions:", @"+sharedContext", @"-managedObjectContext"],
-    @[@"ICNote", @"-attributedString"],
+    @[@"ICNote", @"-attributedString", @"-mergeableString", @"-saveNoteData", @"-updateChangeCountWithReason:"],
     @[@"ICFolder", @"-isTrashFolder"],
     @[@"ICMedia", @"-mediaURL"],
-    @[@"ICTTMergeableAttributedString"],
-    @[@"ICTTParagraphStyle", @"-style", @"-indent", @"-blockQuoteLevel", @"-todo"],
-    @[@"ICTTTodo", @"-done"],
+    @[@"ICTTMergeableAttributedString", @"-beginEditing", @"-endEditing", @"-attributedString",
+      @"-replaceCharactersInRange:withString:", @"-setAttributes:range:"],
+    @[@"ICTTParagraphStyle", @"-style", @"-indent", @"-blockQuoteLevel", @"-todo",
+      @"-mutableCopy", @"-setStyle:", @"-setIndent:", @"-setBlockQuoteLevel:", @"-setTodo:", @"-setUuid:"],
+    @[@"ICTTTodo", @"-done", @"-initWithIdentifier:done:", @"-todoWithDone:"],
     @[@"ICTTAttachment", @"-attachmentUTI", @"-attachmentIdentifier"],
   ];
 }
@@ -248,32 +260,346 @@ static NSArray *inlinesIn(NSAttributedString *as, NSRange range) {
   return inlines;
 }
 
-static NSDictionary *docFrom(NSAttributedString *as) {
-  NSMutableArray *paragraphs = [NSMutableArray array];
-  NSString *s = as.string ?: @"";
+// 段落ごとの文字範囲 (\n を含まない)。\n で分割し、末尾の \n の後の空要素は作らない
+static NSArray<NSValue *> *paragraphRanges(NSString *s) {
+  NSMutableArray *ranges = [NSMutableArray array];
   NSUInteger len = s.length, start = 0;
-  // \n で分割する。末尾の \n の後の空要素は作らない
   while (start < len) {
     NSRange nl = [s rangeOfString:@"\n" options:NSLiteralSearch range:NSMakeRange(start, len - start)];
     NSUInteger end = nl.location == NSNotFound ? len : nl.location;
-    // 段落スタイルは段落の最初の文字 (空段落ならその \n) から取る
-    id ps = [as attribute:@"TTStyle" atIndex:start effectiveRange:NULL];
-    NSUInteger indent = ps ? [[ps valueForKey:@"indent"] unsignedIntegerValue] : 0;
-    BOOL quote = ps ? [[ps valueForKey:@"blockQuoteLevel"] unsignedIntegerValue] > 0 : NO;
-    [paragraphs addObject:@{
-      @"style": paraStyleJSON(ps),
-      @"indent": @(indent),
-      @"quote": @(quote),
-      @"inlines": inlinesIn(as, NSMakeRange(start, end - start)),
-    }];
+    [ranges addObject:[NSValue valueWithRange:NSMakeRange(start, end - start)]];
     start = end + 1;
   }
+  return ranges;
+}
+
+static NSDictionary *paragraphJSON(NSAttributedString *as, NSRange r) {
+  // 段落スタイルは段落の最初の文字 (空段落ならその \n) から取る
+  id ps = [as attribute:@"TTStyle" atIndex:r.location effectiveRange:NULL];
+  NSUInteger indent = ps ? [[ps valueForKey:@"indent"] unsignedIntegerValue] : 0;
+  BOOL quote = ps ? [[ps valueForKey:@"blockQuoteLevel"] unsignedIntegerValue] > 0 : NO;
+  return @{
+    @"style": paraStyleJSON(ps),
+    @"indent": @(indent),
+    @"quote": @(quote),
+    @"inlines": inlinesIn(as, r),
+  };
+}
+
+static NSDictionary *docFrom(NSAttributedString *as) {
+  NSMutableArray *paragraphs = [NSMutableArray array];
+  for (NSValue *v in paragraphRanges(as.string ?: @"")) [paragraphs addObject:paragraphJSON(as, v.rangeValue)];
   return @{@"paragraphs": paragraphs};
 }
 
 static NSDictionary *docOfNote(id note) {
   NSAttributedString *as = [note performSelector:SEL_("attributedString")];
   return docFrom(as ?: [[NSAttributedString alloc] init]);
+}
+
+// ---- 入力の Doc ----
+
+static void badInput(NSString *what) {
+  fail(1, [NSString stringWithFormat:@"入力の Doc が壊れている: %@", what]);
+}
+
+static BOOL isBool(id v) {
+  return [v isKindOfClass:[NSNumber class]] && CFGetTypeID((__bridge CFTypeRef)v) == CFBooleanGetTypeID();
+}
+
+// 段落スタイルの JSON → ICTTParagraphStyle の style 値 (paraStyleJSON の逆)
+static unsigned styleCode(NSDictionary *st) {
+  NSString *k = st[@"kind"];
+  if ([k isEqual:@"title"]) return 0;
+  if ([k isEqual:@"heading"]) return 1;
+  if ([k isEqual:@"subheading"]) return 2;
+  if ([k isEqual:@"body"]) return 3;
+  if ([k isEqual:@"mono"]) return 4;
+  if ([k isEqual:@"check"]) return 103;
+  if ([k isEqual:@"list"]) {
+    NSString *l = st[@"list"];
+    if ([l isEqual:@"bullet"]) return 100;
+    if ([l isEqual:@"dash"]) return 101;
+    if ([l isEqual:@"number"]) return 102;
+  }
+  badInput([NSString stringWithFormat:@"知らない段落スタイル %@", st]);
+  return 3;
+}
+
+static NSArray<NSString *> *knownMarks(void) { return @[@"bold", @"italic", @"underline", @"strike"]; }
+
+// 入力の段落を docFrom と同じ形 (キーと値の型) に作り直す。比較は isEqual: で行う
+static NSDictionary *canonicalParagraph(id p) {
+  if (![p isKindOfClass:[NSDictionary class]]) badInput(@"段落がオブジェクトでない");
+  NSDictionary *st = p[@"style"];
+  if (![st isKindOfClass:[NSDictionary class]]) badInput(@"style が無い");
+  unsigned code = styleCode(st);
+  NSDictionary *style;
+  if (code == 103) {
+    if (!isBool(st[@"done"])) badInput(@"check に done が無い");
+    style = @{@"kind": @"check", @"done": @([st[@"done"] boolValue])};
+  } else if (code >= 100) style = @{@"kind": @"list", @"list": st[@"list"]};
+  else style = @{@"kind": st[@"kind"]};
+  id indent = p[@"indent"];
+  if (![indent isKindOfClass:[NSNumber class]] || isBool(indent) || [indent doubleValue] < 0 ||
+      [indent doubleValue] != (double)[indent unsignedIntegerValue]) badInput(@"indent が 0 以上の整数でない");
+  if (!isBool(p[@"quote"])) badInput(@"quote が真偽値でない");
+  NSArray *inlines = p[@"inlines"];
+  if (![inlines isKindOfClass:[NSArray class]]) badInput(@"inlines が配列でない");
+  NSMutableArray *out = [NSMutableArray array];
+  for (NSDictionary *i in inlines) {
+    if (![i isKindOfClass:[NSDictionary class]]) badInput(@"inline がオブジェクトでない");
+    if ([i[@"kind"] isEqual:@"attachment"]) {
+      if (![i[@"id"] isKindOfClass:[NSString class]] || !isBool(i[@"image"])) badInput(@"attachment に id / image が無い");
+      [out addObject:@{@"kind": @"attachment", @"id": i[@"id"], @"image": @([i[@"image"] boolValue])}];
+    } else if ([i[@"kind"] isEqual:@"text"]) {
+      NSArray *marks = i[@"marks"];
+      if (![i[@"text"] isKindOfClass:[NSString class]] || ![marks isKindOfClass:[NSArray class]]) badInput(@"text に text / marks が無い");
+      for (id m in marks) if (![knownMarks() containsObject:m]) badInput([NSString stringWithFormat:@"知らない mark %@", m]);
+      id link = i[@"link"];
+      if (link && ![link isKindOfClass:[NSString class]]) badInput(@"link が文字列でない");
+      NSMutableDictionary *t = [@{@"kind": @"text", @"text": i[@"text"], @"marks": marks} mutableCopy];
+      if (link) t[@"link"] = link;
+      [out addObject:t];
+    } else badInput([NSString stringWithFormat:@"知らない inline %@", i[@"kind"]]);
+  }
+  return @{@"style": style, @"indent": @([indent unsignedIntegerValue]), @"quote": @([p[@"quote"] boolValue]), @"inlines": out};
+}
+
+// stdin の {"doc":Doc} を読む。DB を開く前に呼ぶ (壊れた入力では何も開かない)
+static NSArray<NSDictionary *> *readDocFromStdin(void) {
+  NSData *data = [[NSFileHandle fileHandleWithStandardInput] readDataToEndOfFile];
+  NSError *e = nil;
+  NSDictionary *root = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&e] : nil;
+  if (![root isKindOfClass:[NSDictionary class]]) badInput(e ? e.localizedDescription : @"JSON オブジェクトでない");
+  NSArray *ps = [root[@"doc"] isKindOfClass:[NSDictionary class]] ? root[@"doc"][@"paragraphs"] : nil;
+  if (![ps isKindOfClass:[NSArray class]]) badInput(@"doc.paragraphs が配列でない");
+  NSMutableArray *out = [NSMutableArray array];
+  for (id p in ps) [out addObject:canonicalParagraph(p)];
+  return out;
+}
+
+// ---- 書き込み: 段落の差分を mergeableString に当てる ----
+
+// 文字の単位。添付 (U+FFFC) は添付 id まで比べる
+typedef struct { unichar ch; __unsafe_unretained NSString *att; } Unit;
+
+static BOOL unitEq(Unit a, Unit b) {
+  return a.ch == b.ch && (a.att == b.att || [a.att isEqual:b.att]);
+}
+
+// 目標の 1 段落: 文字列と、その中の inline ごとの範囲
+typedef struct {
+  NSString *text;
+  NSArray<NSDictionary *> *runs;  // {range, inline}
+} WantText;
+
+static WantText wantText(NSDictionary *para) {
+  NSMutableString *s = [NSMutableString string];
+  NSMutableArray *runs = [NSMutableArray array];
+  for (NSDictionary *i in para[@"inlines"]) {
+    NSString *t = [i[@"kind"] isEqual:@"attachment"] ? @"\uFFFC" : i[@"text"];
+    if (t.length == 0) continue;
+    [runs addObject:@{@"range": [NSValue valueWithRange:NSMakeRange(s.length, t.length)], @"inline": i}];
+    [s appendString:t];
+  }
+  return (WantText){s, runs};
+}
+
+// 段落の等しさで LCS を取り、変わる塊 (旧 [o0,o1) → 新 [n0,n1)) を前から順に返す
+static NSArray<NSArray<NSNumber *> *> *changedBlocks(NSArray *cur, NSArray *want) {
+  NSUInteger n = cur.count, m = want.count;
+  NSMutableData *buf = [NSMutableData dataWithLength:(n + 1) * (m + 1) * sizeof(NSUInteger)];
+  NSUInteger *L = buf.mutableBytes;
+#define AT(i, j) L[(i) * (m + 1) + (j)]
+  for (NSInteger i = n - 1; i >= 0; i--)
+    for (NSInteger j = m - 1; j >= 0; j--)
+      AT(i, j) = [cur[i] isEqual:want[j]] ? AT(i + 1, j + 1) + 1 : MAX(AT(i + 1, j), AT(i, j + 1));
+  NSMutableArray *blocks = [NSMutableArray array];
+  NSUInteger i = 0, j = 0, bi = 0, bj = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && [cur[i] isEqual:want[j]]) {
+      if (bi < i || bj < j) [blocks addObject:@[@(bi), @(i), @(bj), @(j)]];
+      i++; j++; bi = i; bj = j;
+    } else if (j < m && (i == n || AT(i, j + 1) >= AT(i + 1, j))) j++;
+    else i++;
+  }
+  if (bi < n || bj < m) [blocks addObject:@[@(bi), @(n), @(bj), @(m)]];
+#undef AT
+  return blocks;
+}
+
+// 塊 1 つの書き込み計画
+@interface ONSEdit : NSObject
+@property NSRange replace;          // 置き換える旧の範囲 (先頭と末尾の共通部分を除いたもの)
+@property NSString *with;           // 入れる文字列
+@property NSUInteger start;         // 塊の新しい文字列が始まる位置 (書き換え後も前の塊が無ければ同じ)
+@property NSArray *paras;           // {offset, hasNL, para, runs, style(ICTTParagraphStyle)}
+@end
+@implementation ONSEdit
+@end
+
+static void attachmentFail(NSString *msg) { fail(5, msg); }
+
+static NSDictionary *marksAttrs(NSDictionary *inl) {
+  NSMutableDictionary *d = [NSMutableDictionary dictionary];
+  NSArray *marks = inl[@"marks"];
+  NSInteger hints = ([marks containsObject:@"bold"] ? 1 : 0) | ([marks containsObject:@"italic"] ? 2 : 0);
+  if (hints) d[@"TTHints"] = @(hints);
+  if ([marks containsObject:@"underline"]) d[@"TTUnderline"] = @1;
+  if ([marks containsObject:@"strike"]) d[@"TTStrikethrough"] = @1;
+  NSString *link = inl[@"link"];
+  if (link) d[@"NSLink"] = [NSURL URLWithString:link] ?: link;
+  return d;
+}
+
+// 段落ごとに上書きするキー。これ以外 (TTEmphasis / TTTimestamp など) は残す
+static NSArray<NSString *> *controlledKeys(void) {
+  return @[@"TTStyle", @"TTHints", @"TTUnderline", @"TTStrikethrough", @"NSLink"];
+}
+
+// base を元に、目標の段落スタイルを持つ ICTTParagraphStyle を作る
+static id makeParagraphStyle(id base, NSDictionary *para, BOOL fresh) {
+  id ps = base ? [base mutableCopy] : [[NSClassFromString(@"ICTTParagraphStyle") alloc] init];
+  unsigned code = styleCode(para[@"style"]);
+  ((void (*)(id, SEL, unsigned))objc_msgSend)(ps, SEL_("setStyle:"), code);
+  ((void (*)(id, SEL, NSUInteger))objc_msgSend)(ps, SEL_("setIndent:"), [para[@"indent"] unsignedIntegerValue]);
+  NSUInteger level = base ? [[base valueForKey:@"blockQuoteLevel"] unsignedIntegerValue] : 0;
+  ((void (*)(id, SEL, NSUInteger))objc_msgSend)(ps, SEL_("setBlockQuoteLevel:"), [para[@"quote"] boolValue] ? MAX(level, (NSUInteger)1) : 0);
+  if (fresh || !base) [ps performSelector:SEL_("setUuid:") withObject:[NSUUID UUID]];
+  id todo = nil;
+  if (code == 103) {
+    BOOL done = [para[@"style"][@"done"] boolValue];
+    id old = fresh || !base ? nil : [base valueForKey:@"todo"];
+    todo = old ? ((id (*)(id, SEL, BOOL))objc_msgSend)(old, SEL_("todoWithDone:"), done)
+               : ((id (*)(id, SEL, id, BOOL))objc_msgSend)([NSClassFromString(@"ICTTTodo") alloc], SEL_("initWithIdentifier:done:"), [NSUUID UUID], done);
+  }
+  [ps performSelector:SEL_("setTodo:") withObject:todo];
+  return ps;
+}
+
+static NSArray<ONSEdit *> *planEdits(NSAttributedString *as, NSArray *cur, NSArray<NSValue *> *ranges, NSArray *want) {
+  NSString *s = as.string ?: @"";
+  NSUInteger len = s.length;
+  // 今のメモの添付 (U+FFFC の位置 → id)
+  NSMutableDictionary<NSNumber *, NSString *> *attAt = [NSMutableDictionary dictionary];
+  Class attClass = NSClassFromString(@"ICTTAttachment");
+  [as enumerateAttribute:@"NSAttachment" inRange:NSMakeRange(0, len) options:0 usingBlock:^(id att, NSRange r, BOOL *stop) {
+    if (![att isKindOfClass:attClass]) return;
+    for (NSUInteger i = r.location; i < NSMaxRange(r); i++)
+      if ([s characterAtIndex:i] == 0xFFFC) attAt[@(i)] = [att valueForKey:@"attachmentIdentifier"] ?: @"";
+  }];
+  NSSet *curAtts = [NSSet setWithArray:attAt.allValues];
+  // 目標の添付は今のメモにあるものだけ、それぞれ 1 回まで (bridge は添付を作らない)
+  NSMutableSet *wantAtts = [NSMutableSet set];
+  for (NSDictionary *p in want)
+    for (NSDictionary *i in p[@"inlines"]) {
+      if (![i[@"kind"] isEqual:@"attachment"]) continue;
+      if (![curAtts containsObject:i[@"id"]]) attachmentFail([NSString stringWithFormat:@"今のメモに無い添付は置けない: %@", i[@"id"]]);
+      if ([wantAtts containsObject:i[@"id"]]) attachmentFail([NSString stringWithFormat:@"同じ添付を 2 回置けない: %@", i[@"id"]]);
+      [wantAtts addObject:i[@"id"]];
+    }
+  BOOL trailingNL = len > 0 && [s characterAtIndex:len - 1] == '\n';
+  id anyStyle = len ? [as attribute:@"TTStyle" atIndex:0 effectiveRange:NULL] : nil;
+
+  NSMutableArray<ONSEdit *> *edits = [NSMutableArray array];
+  for (NSArray<NSNumber *> *b in changedBlocks(cur, want)) {
+    NSUInteger o0 = b[0].unsignedIntegerValue, o1 = b[1].unsignedIntegerValue;
+    NSUInteger n0 = b[2].unsignedIntegerValue, n1 = b[3].unsignedIntegerValue;
+    // 旧の範囲は各段落とその後ろの \n。新しい文字列も段落ごとに \n を付ける
+    NSUInteger from, to;
+    BOOL leadNL = NO, tailNL = YES;
+    if (o1 < cur.count) {
+      from = ranges[o0].rangeValue.location;
+      to = ranges[o1].rangeValue.location;
+    } else if (o0 < cur.count) {
+      from = ranges[o0].rangeValue.location;
+      to = len;
+      tailNL = trailingNL;
+    } else {
+      // 末尾への追加。最後の段落が \n で終わっていなければ前に \n を足す
+      from = to = len;
+      leadNL = len > 0 && !trailingNL;
+      tailNL = trailingNL;
+    }
+    NSMutableString *neu = [NSMutableString string];
+    NSMutableArray<NSString *> *newAtts = [NSMutableArray array];  // neu の各文字の添付 id (無ければ "")
+    if (leadNL) { [neu appendString:@"\n"]; [newAtts addObject:@""]; }
+    NSMutableArray *paras = [NSMutableArray array];
+    for (NSUInteger j = n0; j < n1; j++) {
+      WantText wt = wantText(want[j]);
+      NSUInteger offset = neu.length;
+      [neu appendString:wt.text];
+      for (NSUInteger k = 0; k < wt.text.length; k++) [newAtts addObject:@""];
+      for (NSDictionary *run in wt.runs)
+        if ([run[@"inline"][@"kind"] isEqual:@"attachment"]) newAtts[offset + [run[@"range"] rangeValue].location] = run[@"inline"][@"id"];
+      BOOL hasNL = j + 1 < n1 || tailNL;
+      if (hasNL) { [neu appendString:@"\n"]; [newAtts addObject:@""]; }
+      // 旧の段落と順に組にする。組の無い段落は新しい段落 (uuid を新しくする)
+      NSUInteger oi = o0 + (j - n0);
+      BOOL fresh = oi >= o1;
+      id base = fresh ? nil : [as attribute:@"TTStyle" atIndex:ranges[oi].rangeValue.location effectiveRange:NULL];
+      if (!base) {
+        fresh = YES;
+        base = from > 0 ? [as attribute:@"TTStyle" atIndex:from - 1 effectiveRange:NULL] : anyStyle;
+      }
+      [paras addObject:@{@"offset": @(offset), @"length": @(wt.text.length), @"hasNL": @(hasNL), @"runs": wt.runs,
+                         @"style": makeParagraphStyle(base, want[j], fresh)}];
+    }
+    // 共通の先頭と末尾を除いた中間だけを置き換える
+    Unit (^oldU)(NSUInteger) = ^Unit(NSUInteger i) { return (Unit){[s characterAtIndex:from + i], attAt[@(from + i)]}; };
+    Unit (^newU)(NSUInteger) = ^Unit(NSUInteger i) {
+      NSString *a = newAtts[i];
+      return (Unit){[neu characterAtIndex:i], a.length ? a : nil};
+    };
+    NSUInteger ol = to - from, nl = neu.length, pre = 0, suf = 0;
+    while (pre < ol && pre < nl && unitEq(oldU(pre), newU(pre))) pre++;
+    while (suf < ol - pre && suf < nl - pre && unitEq(oldU(ol - 1 - suf), newU(nl - 1 - suf))) suf++;
+    NSRange rep = NSMakeRange(from + pre, ol - pre - suf);
+    NSString *with = [neu substringWithRange:NSMakeRange(pre, nl - pre - suf)];
+    for (NSUInteger i = rep.location; i < NSMaxRange(rep); i++) {
+      NSString *a = attAt[@(i)];
+      if (a && [wantAtts containsObject:a]) attachmentFail([NSString stringWithFormat:@"残すべき添付を消す・動かす書き込みはできない: %@", a]);
+    }
+    if ([with rangeOfString:@"\uFFFC"].location != NSNotFound) attachmentFail(@"添付 (U+FFFC) を新しく作る書き込みはできない");
+    ONSEdit *e = [ONSEdit new];
+    e.replace = rep;
+    e.with = with;
+    e.start = from;
+    e.paras = paras;
+    [edits addObject:e];
+  }
+  return edits;
+}
+
+// 段落の文字に目標の属性を付ける。既存の属性辞書のうち controlledKeys 以外は残し、添付の文字には触れない
+static void applyParagraphAttrs(id ms, NSUInteger start, NSDictionary *p) {
+  NSAttributedString *as = [ms performSelector:SEL_("attributedString")];
+  id style = p[@"style"];
+  NSMutableArray *pieces = [NSMutableArray array];  // {range, add}
+  for (NSDictionary *run in p[@"runs"]) {
+    NSDictionary *inl = run[@"inline"];
+    if ([inl[@"kind"] isEqual:@"attachment"]) continue;
+    NSRange r = [run[@"range"] rangeValue];
+    [pieces addObject:@{@"range": [NSValue valueWithRange:NSMakeRange(start + r.location, r.length)], @"add": marksAttrs(inl)}];
+  }
+  NSUInteger len = [p[@"length"] unsignedIntegerValue];
+  // 空段落でも \n にスタイルを付ける
+  if ([p[@"hasNL"] boolValue]) [pieces addObject:@{@"range": [NSValue valueWithRange:NSMakeRange(start + len, 1)], @"add": @{}}];
+  for (NSDictionary *piece in pieces) {
+    NSRange range = [piece[@"range"] rangeValue];
+    // 既存の属性の区切りごとに分けて付ける
+    NSMutableArray *parts = [NSMutableArray array];
+    [as enumerateAttributesInRange:range options:0 usingBlock:^(NSDictionary *at, NSRange r, BOOL *stop) {
+      NSMutableDictionary *d = [at mutableCopy];
+      [d removeObjectsForKeys:controlledKeys()];
+      [d addEntriesFromDictionary:piece[@"add"]];
+      d[@"TTStyle"] = style;
+      [parts addObject:@[[NSValue valueWithRange:r], d]];
+    }];
+    for (NSArray *part in parts)
+      ((void (*)(id, SEL, id, NSRange))objc_msgSend)(ms, SEL_("setAttributes:range:"), part[1], [part[0] rangeValue]);
+  }
 }
 
 // ---- サブコマンド ----
@@ -305,13 +631,61 @@ static void cmdList(NSManagedObjectContext *moc, NSString *folderName) {
   emit(@{@"folderMissing": @NO, @"notes": notes});
 }
 
-static void cmdRead(NSManagedObjectContext *moc, NSString *noteId) {
+static id noteById(NSManagedObjectContext *moc, NSString *noteId) {
   NSPredicate *p = [NSCompoundPredicate andPredicateWithSubpredicates:@[
     notDeleted(), [NSPredicate predicateWithFormat:@"identifier == %@", noteId]]];
   id note = fetch(moc, @"ICNote", p, nil).firstObject;
   if (!note) fail(1, [NSString stringWithFormat:@"メモが無い: %@", noteId]);
-  if (isLocked(note)) fail(1, [NSString stringWithFormat:@"ロックされたメモは読まない: %@", noteId]);
+  if (isLocked(note)) fail(1, [NSString stringWithFormat:@"ロックされたメモは読み書きしない: %@", noteId]);
+  return note;
+}
+
+static void cmdWrite(NSManagedObjectContext *moc, NSString *noteId, NSArray *want) {
+  id note = noteById(moc, noteId);
+  id ms = [note performSelector:SEL_("mergeableString")];
+  if (!ms) fail(1, [NSString stringWithFormat:@"メモの本文を開けない: %@", noteId]);
+  // attributedString は書き換えると変わるので、計画は複製に対して立てる
+  NSAttributedString *as = [[ms performSelector:SEL_("attributedString")] copy] ?: [[NSAttributedString alloc] init];
+  NSArray<NSValue *> *ranges = paragraphRanges(as.string);
+  NSMutableArray *cur = [NSMutableArray array];
+  for (NSValue *v in ranges) [cur addObject:paragraphJSON(as, v.rangeValue)];
+  // 添付を守れない塊が 1 つでもあれば、何も書かずに終了コード 5
+  NSArray<ONSEdit *> *edits = planEdits(as, cur, ranges, want);
+  if (edits.count > 0) {
+    // 後ろの塊から当てれば、前の塊の位置は変わらない
+    for (ONSEdit *e in edits.reverseObjectEnumerator) {
+      [ms performSelector:SEL_("beginEditing")];
+      if (e.replace.length > 0 || e.with.length > 0)
+        ((void (*)(id, SEL, NSRange, id))objc_msgSend)(ms, SEL_("replaceCharactersInRange:withString:"), e.replace, e.with);
+      for (NSDictionary *p in e.paras) applyParagraphAttrs(ms, e.start + [p[@"offset"] unsignedIntegerValue], p);
+      [ms performSelector:SEL_("endEditing")];
+    }
+    if (!((BOOL (*)(id, SEL))objc_msgSend)(note, SEL_("saveNoteData"))) fail(1, @"saveNoteData に失敗した");
+    [note performSelector:SEL_("updateChangeCountWithReason:") withObject:@"org-notes-sync"];
+    NSError *err = nil;
+    if (![moc save:&err]) fail(1, [NSString stringWithFormat:@"保存できない: %@", err.localizedDescription]);
+  }
   emit(@{@"doc": docOfNote(note)});
+}
+
+static void cmdDumpAttrs(NSManagedObjectContext *moc, NSString *noteId) {
+  NSAttributedString *as = [noteById(moc, noteId) performSelector:SEL_("attributedString")] ?: [[NSAttributedString alloc] init];
+  NSMutableArray *out = [NSMutableArray array];
+  for (NSValue *v in paragraphRanges(as.string)) {
+    NSRange r = v.rangeValue;
+    // 空段落はその \n の属性を見る
+    if (r.length == 0) r.length = 1;
+    NSMutableSet *keys = [NSMutableSet set];
+    [as enumerateAttributesInRange:r options:0 usingBlock:^(NSDictionary *at, NSRange rr, BOOL *stop) {
+      [keys addObjectsFromArray:at.allKeys];
+    }];
+    [out addObject:[keys.allObjects sortedArrayUsingSelector:@selector(compare:)]];
+  }
+  emit(@{@"paragraphs": out});
+}
+
+static void cmdRead(NSManagedObjectContext *moc, NSString *noteId) {
+  emit(@{@"doc": docOfNote(noteById(moc, noteId))});
 }
 
 static void cmdIdentify(NSManagedObjectContext *moc, NSString *uri) {
@@ -378,7 +752,7 @@ static void cmdExportMedia(NSManagedObjectContext *moc, NSString *store, NSStrin
 
 static void usage(void) {
   fail(1, @"使い方: notes-bridge [--store <dir>] (selfcheck | list --folder <name> | read --id <id> | "
-          @"identify --uri <uri> | export-media --attachment <id> --to <path>)");
+          @"identify --uri <uri> | export-media --attachment <id> --to <path> | write --id <id> | dump-attrs --id <id>)");
 }
 
 // サブコマンドごとに受け付けるオプション (--store はどこでも受け付ける)
@@ -389,6 +763,8 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *commandOptions(void) {
     @"read": @[@"id"],
     @"identify": @[@"uri"],
     @"export-media": @[@"attachment", @"to"],
+    @"write": @[@"id"],
+    @"dump-attrs": @[@"id"],
   };
 }
 
@@ -431,6 +807,8 @@ int main(int argc, char **argv) {
     requireNames();
     if ([cmd isEqual:@"selfcheck"]) { emit(@{@"ok": @YES}); return 0; }
 
+    // write の入力は DB を開く前に読んで確かめる
+    NSArray *want = [cmd isEqual:@"write"] ? readDocFromStdin() : nil;
     NSManagedObjectContext *moc = openContext(store);
     __block int code = 0;
     [moc performBlockAndWait:^{
@@ -438,6 +816,8 @@ int main(int argc, char **argv) {
         if ([cmd isEqual:@"list"]) cmdList(moc, option(opts, @"folder"));
         else if ([cmd isEqual:@"read"]) cmdRead(moc, option(opts, @"id"));
         else if ([cmd isEqual:@"identify"]) cmdIdentify(moc, option(opts, @"uri"));
+        else if ([cmd isEqual:@"write"]) cmdWrite(moc, option(opts, @"id"), want);
+        else if ([cmd isEqual:@"dump-attrs"]) cmdDumpAttrs(moc, option(opts, @"id"));
         else cmdExportMedia(moc, store, option(opts, @"attachment"), option(opts, @"to"));
       } @catch (NSException *ex) {
         fprintf(stderr, "notes-bridge: %s: %s\n", ex.name.UTF8String, ex.reason.UTF8String);
