@@ -48,6 +48,30 @@ test("writeOrgFile: 期待 mtime があるのにファイルが無ければ stal
   expect(fs.existsSync(path.join(d, "gone.org"))).toBe(false)
 })
 
+test("writeOrgFile: stale のとき tmp を残さない (null 期待で既存あり / mtime 不一致)", () => {
+  const d = tmp()
+  fs.writeFileSync(path.join(d, "a.org"), "old")
+  expect(writeOrgFile(d, "a.org", "new", null)).toBe("stale")
+  expect(writeOrgFile(d, "a.org", "new", 1)).toBe("stale")
+  expect(fs.readdirSync(d)).toEqual(["a.org"])
+  expect(fs.readFileSync(path.join(d, "a.org"), "utf8")).toBe("old")
+})
+
+test("writeOrgFile: 書き込みに成功しても tmp は残らない", () => {
+  const d = tmp()
+  expect(writeOrgFile(d, "n.org", "x", null)).toBe("written")
+  expect(fs.readdirSync(d)).toEqual(["n.org"])
+  expect(fs.readFileSync(path.join(d, "n.org"), "utf8")).toBe("x")
+})
+
+test("writeOrgFile: 失敗しても tmp を残さない (対象がディレクトリ)", () => {
+  const d = tmp()
+  fs.mkdirSync(path.join(d, "a.org"))
+  const m = fs.statSync(path.join(d, "a.org")).mtimeMs
+  expect(() => writeOrgFile(d, "a.org", "x", m)).toThrow()
+  expect(fs.readdirSync(d)).toEqual(["a.org"])
+})
+
 test("trashOrgFile と gcMedia", () => {
   const d = tmp()
   fs.writeFileSync(path.join(d, "a.org"), "1")

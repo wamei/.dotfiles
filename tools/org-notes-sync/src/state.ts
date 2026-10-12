@@ -39,6 +39,10 @@ export function saveState(dir: string, s: State): void {
   fs.mkdirSync(dir, { recursive: true })
   const p = path.join(dir, FILE)
   const tmp = `${p}.tmp-${process.pid}`
-  fs.writeFileSync(tmp, JSON.stringify(s, null, 2))
-  fs.renameSync(tmp, p)
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(s, null, 2))
+    fs.renameSync(tmp, p)
+  } finally {
+    fs.rmSync(tmp, { force: true }) // 失敗時の残骸 (成功時は rename 済みで無い)
+  }
 }

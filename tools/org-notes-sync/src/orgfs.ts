@@ -10,26 +10,52 @@ export function listOrgFiles(dir: string, ext: string): OrgFile[] {
   const out: OrgFile[] = []
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (!e.isFile() || !e.name.endsWith(ext)) continue
-    const p = path.join(dir, e.name)
-    out.push({ file: e.name, text: fs.readFileSync(p, "utf8"), mtimeMs: fs.statSync(p).mtimeMs })
+    // 同じ fd で fstat してから読む。stat が本文より先なので、間に Emacs が保存しても
+    // 「新しい mtime + 古い本文」にはならず、古い mtime が後の stale 判定で弾かれる
+    const fd = fs.openSync(path.join(dir, e.name), "r")
+    try {
+      const mtimeMs = fs.fstatSync(fd).mtimeMs
+      out.push({ file: e.name, text: fs.readFileSync(fd, "utf8"), mtimeMs })
+    } finally {
+      fs.closeSync(fd)
+    }
   }
   return out
+}
+
+const currentMtime = (p: string): number | null => {
+  try {
+    return fs.statSync(p).mtimeMs
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw e
+  }
 }
 
 // expectedMtimeMs が null なら「無いはず」、数値なら現在の mtime と一致するはず。違えば書かない
 export function writeOrgFile(dir: string, file: string, text: string, expectedMtimeMs: number | null): "written" | "stale" {
   const p = path.join(dir, file)
-  let current: number | null = null
-  try {
-    current = fs.statSync(p).mtimeMs
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
-  }
-  if (current !== expectedMtimeMs) return "stale"
+  if (currentMtime(p) !== expectedMtimeMs) return "stale"
   const tmp = path.join(dir, `.${file}.tmp-${process.pid}`)
-  fs.writeFileSync(tmp, text)
-  fs.renameSync(tmp, p)
-  return "written"
+  try {
+    fs.writeFileSync(tmp, text)
+    // 公開の直前にもう一度確かめる (tmp を書いている間に Emacs が保存したかもしれない)
+    if (currentMtime(p) !== expectedMtimeMs) return "stale"
+    if (expectedMtimeMs === null) {
+      // 既存ファイルがあれば EEXIST で失敗する (rename と違い上書きしない)
+      try {
+        fs.linkSync(tmp, p)
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "EEXIST") return "stale"
+        throw e
+      }
+    } else {
+      fs.renameSync(tmp, p)
+    }
+    return "written"
+  } finally {
+    fs.rmSync(tmp, { force: true })
+  }
 }
 
 const stamp = (d: Date): string => {
