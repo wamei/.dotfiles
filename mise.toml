@@ -252,5 +252,11 @@ run = [
 ]
 
 [tasks."org-notes-sync:install"]
-description = "org-notes-sync をビルドして ~/.local/bin と launchd に入れる"
+description = "org-notes-sync をビルドして ~/.local/bin に入れ、plist を置く (launchd には読み込まない)"
+dir = "{{config_root}}"
 run = ["sh tools/org-notes-sync/install.sh"]
+
+[tasks."org-notes-sync:enable"]
+description = "org-notes-sync を入れた上で launchd に読み込む"
+dir = "{{config_root}}"
+run = ["sh tools/org-notes-sync/install.sh --load"]

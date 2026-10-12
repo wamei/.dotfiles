@@ -6,23 +6,30 @@ org のメモファイルと Apple メモを双方向に同期する CLI。launc
 ## インストール
 
 ```sh
-mise run org-notes-sync:install
+mise run org-notes-sync:install   # ビルドして置くだけ。launchd には読み込まない
+mise run org-notes-sync:enable    # 確認が済んだら launchd に読み込む (install.sh --load)
 ```
 
-次を行う。
+前提: git は Xcode Command Line Tools のもの (bridge のビルドに要る clang も同じ)。
 
+`install` は次を行う。
+
+- 読み込み済みのエージェントがあれば止める (古いバイナリを動かし続けないため)
 - `bridge/build.sh` で `~/.local/bin/notes-bridge` を作る
 - `bun build --compile` で `~/.local/bin/org-notes-sync` を作る
-- `~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist` を置き、`launchctl bootout` → `launchctl bootstrap gui/$(id -u)` で登録する
+- `~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist` を置く
 
-### フルディスクアクセス
+`enable` は同じことをした上で `launchctl bootstrap gui/$(id -u)` で読み込む。
 
-メモの DB を読むため、フルディスクアクセスが要る。
+### 権限 (2 つ)
 
-1. システム設定 → プライバシーとセキュリティ → フルディスクアクセス
-2. `+` で `~/.local/bin/org-notes-sync` (と `~/.local/bin/notes-bridge`) を追加してオンにする
+効かせる対象は `~/.local/bin/org-notes-sync` (bridge はその子プロセスとして走る)。どちらもバイナリを作り直すと署名が変わるので与え直す。
 
-バイナリを作り直すと署名が変わるので、インストールのたびに与え直す。
+1. フルディスクアクセス (メモの DB を読むため)
+   システム設定 → プライバシーとセキュリティ → フルディスクアクセス → `+` で `~/.local/bin/org-notes-sync` を追加してオンにする。
+2. オートメーション (Apple Events。メモ.app を操作するため)
+   初回の実行時に「org-notes-sync が "メモ" を制御しようとしています」と聞かれる (osascript の JXA と `open` 経由)。許可する。
+   後から変えるには システム設定 → プライバシーとセキュリティ → オートメーション。
 
 ## 使い方
 
@@ -82,8 +89,8 @@ ORG_NOTES_SYNC_IT=1 ORG_NOTES_SYNC_IT_FOLDER=<folder> bun test
 ## アンインストール
 
 ```sh
-launchctl bootout "gui/$(id -u)/jp.wamei.org-notes-sync"
-rm ~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist
+launchctl bootout "gui/$(id -u)/jp.wamei.org-notes-sync" || true
+rm -f ~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist
 rm ~/.local/bin/org-notes-sync ~/.local/bin/notes-bridge
 ```
 
@@ -91,12 +98,12 @@ rm ~/.local/bin/org-notes-sync ~/.local/bin/notes-bridge
 
 ## 実機確認の手順
 
-本物のメモと iPhone を使う確認。launchd を有効にする前に行う。
+本物のメモと iPhone を使う確認。順序は install → 権限 → 手で確認 → enable。
 
-1. ビルドして入れる (`mise run org-notes-sync:install`)。
-2. フルディスクアクセスを与える (上記)。
-3. 手で試す間は競合しないよう、エージェントを止める: `launchctl bootout "gui/$(id -u)/jp.wamei.org-notes-sync"`。
-4. 一時の org ディレクトリとテスト用のメモのフォルダを作り、手で走らせる。
+1. ビルドして入れる (`mise run org-notes-sync:install`)。launchd には読み込まれない。
+2. フルディスクアクセスを `~/.local/bin/org-notes-sync` に与える。
+3. 念のためエージェントが止まっていることを確かめる: `launchctl bootout "gui/$(id -u)/jp.wamei.org-notes-sync" || true`。
+4. 一時の org ディレクトリとテスト用のメモのフォルダを作り、手で走らせる。最初の実行でオートメーション (メモ) の許可を求められるので許可する。
    `~/.local/bin/org-notes-sync --org-dir /tmp/org-test --state-dir /tmp/org-test-state --folder org-test`
 5. 次の 6 点を確かめる。
    1. `#+notes_sync: yes` を付けた org がメモに現れ、iPhone で見える。
@@ -105,5 +112,5 @@ rm ~/.local/bin/org-notes-sync ~/.local/bin/notes-bridge
    4. 両側で同じ行を編集するとマーカーが入る。解消して保存すると iPhone に反映される。
    5. iPhone でメモを消すと、org ファイルが `.notes-trash/` に移る。
    6. メモ.app が最前面のときは反映が延期され、離れると届く。
-6. 問題なければ launchd を有効にする: `launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist`。
+6. 問題なければ launchd を有効にする: `mise run org-notes-sync:enable`。
 7. 実際のメモ 1 つに `#+notes_sync: yes` を付けて様子を見る。
