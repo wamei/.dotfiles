@@ -17,7 +17,7 @@ const { values } = parseArgs({
     "state-dir": { type: "string", default: path.join(home, ".local/state/org-notes-sync") },
     folder: { type: "string", default: "org" },
     bridge: { type: "string" },
-    // 手動確認用: メモの DB のコピーに対して bridge を動かす
+    // 手動確認用: メモの DB のコピーに対して読み書きする (メモの作成・削除と iCloud への送信はしない)
     store: { type: "string" },
   },
   strict: true,
