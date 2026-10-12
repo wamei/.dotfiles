@@ -1896,43 +1896,69 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   (defvar wamei/org-notes-sync-program (expand-file-name "~/.local/bin/org-notes-sync")
     "org-notes-sync CLI のパス。")
 
+  (defvar wamei/org-notes-sync--stderr-buffer " *org-notes-sync-stderr*"
+    "CLI の stderr だけを溜めるバッファ名。警告行はここから拾う。")
+
+  (defvar wamei/org-notes-sync--rerun nil
+    "実行中に保存が来たら non-nil。終了時にもう 1 回だけ走らせる。")
+
   (defun wamei/org-notes-sync-buffer-p (&optional buffer)
-    "BUFFER (省略時は現在) が同期対象の org メモなら non-nil。"
+    "BUFFER (省略時は現在) が同期対象の org メモなら non-nil。
+リモートのファイルと org-directory 未設定は対象外。"
     (with-current-buffer (or buffer (current-buffer))
       (and buffer-file-name
+           org-directory
+           (not (file-remote-p buffer-file-name))
            (file-in-directory-p buffer-file-name org-directory)
            (save-excursion
              (save-restriction
                (widen)
                (goto-char (point-min))
                (let ((case-fold-search t))
-                 (re-search-forward "^#\\+notes_sync:[ \t]*yes[ \t]*$"
+                 ;; CRLF のファイルでも合うよう行末の \r を許す
+                 (re-search-forward "^#\\+notes_sync:[ \t]*yes[ \t\r]*$"
                                     (min (point-max) 4097) t)))))))
 
+  (defun wamei/org-notes-sync--sentinel (process _event)
+    "PROCESS の終了時に、stderr の警告行を出し、保存が重なっていたら再実行する。"
+    (unless (process-live-p process)
+      (let ((found nil)
+            (status (process-exit-status process)))
+        (when (buffer-live-p (get-buffer wamei/org-notes-sync--stderr-buffer))
+          (with-current-buffer wamei/org-notes-sync--stderr-buffer
+            (goto-char (point-min))
+            (while (re-search-forward "^org-notes-sync: .*$" nil t)
+              (setq found t)
+              (message "%s" (match-string 0)))))
+        ;; 警告行も無いのに失敗したときは、黙って壊れないよう必ず知らせる
+        (when (and (not found) (/= status 0))
+          (message "org-notes-sync: 異常終了しました (exit %d)。%s を確認してください"
+                   status (string-trim wamei/org-notes-sync--stderr-buffer)))
+        (when wamei/org-notes-sync--rerun
+          (setq wamei/org-notes-sync--rerun nil)
+          (org-notes-sync)))))
+
   (defun org-notes-sync ()
-    "org-notes-sync を非同期に 1 回走らせる。実行中なら何もしない。
-実行中の取りこぼしは CLI 側の pending が拾うので、重ねて起こさない。"
+    "org-notes-sync を非同期に 1 回走らせる。
+実行中なら起こさず、終了時にもう 1 回だけ走らせる (実行中の保存を取りこぼさない。
+CLI 側の pending は 2 つ目の CLI が走ったときにしか効かない)。"
     (interactive)
     (cond
      ((not (file-executable-p wamei/org-notes-sync-program))
       (message "org-notes-sync: %s が実行できない" wamei/org-notes-sync-program))
-     ((process-live-p (get-process "org-notes-sync")) nil)
+     ((process-live-p (get-process "org-notes-sync"))
+      (setq wamei/org-notes-sync--rerun t))
      (t
-      (with-current-buffer (get-buffer-create " *org-notes-sync*")
-        (erase-buffer))
+      (dolist (name (list " *org-notes-sync*" wamei/org-notes-sync--stderr-buffer))
+        (with-current-buffer (get-buffer-create name)
+          (erase-buffer)))
       (make-process
        :name "org-notes-sync"
        :buffer " *org-notes-sync*"
+       :stderr wamei/org-notes-sync--stderr-buffer
        :command (list wamei/org-notes-sync-program)
        :noquery t
-       :sentinel
-       (lambda (process _event)
-         (unless (process-live-p process)
-           (when (buffer-live-p (process-buffer process))
-             (with-current-buffer (process-buffer process)
-               (goto-char (point-min))
-               (while (re-search-forward "^org-notes-sync: .*$" nil t)
-                 (message "%s" (match-string 0)))))))))))
+       :sentinel #'wamei/org-notes-sync--sentinel))))
 
   (defun wamei/org-notes-sync--after-save ()
     "同期対象のメモなら保存後に org-notes-sync を蹴る。"
