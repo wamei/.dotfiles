@@ -2,10 +2,11 @@
 //
 // 使い方 (出力は stdout に JSON 1 つ。失敗時は stderr にメッセージ):
 //   notes-bridge [--store <dir>] selfcheck                      → {"ok":true}
-//   notes-bridge [--store <dir>] list --folder <name>           → {"folderMissing":false,"notes":[{"id","uri","doc"}]}
+//   notes-bridge [--store <dir>] list --folder <name>           → {"folderMissing":false,"notes":[{"id","uri","doc"} | {"id","uri","locked":true}]}
 //   notes-bridge [--store <dir>] read --id <id>                 → {"doc":Doc}
 //   notes-bridge [--store <dir>] identify --uri <x-coredata>    → {"id":"…"}
 //   notes-bridge [--store <dir>] export-media --attachment <id> --to <path.jpg> → {"written":true}
+// --store はどこに置いてもよい (サブコマンドの後ろでも効く)。知らないオプション・重複・空の値は終了コード 1。
 // 終了コード: 3 = selfcheck 失敗 (欠けた名前を stderr に並べる)、4 = DB を開けない、1 = その他。
 //
 // 実物で確かめた事実 (2026-10-13, macOS 26, DB のコピーに対して class_copyMethodList と
@@ -14,7 +15,8 @@
 //   name == "iCloud"。-isPrimaryiCloudAccount はコピーでは NO を返すので使わない。
 // - ICFolder: 属性 title / markedForDeletion / folderType、関係 account / parent。
 //   「最近削除した項目」も ICFolder (title "Recently Deleted"、-isTrashFolder == YES)。
-// - ICNote: 属性 identifier (UUID 文字列) / title / markedForDeletion、関係 folder / account / attachments。
+// - ICNote: 属性 identifier (UUID 文字列) / title / markedForDeletion / isPasswordProtected
+//   (ロックされたメモ。中身は暗号化されているので読まない)、関係 folder / account / attachments。
 //   -attributedString が段落と装飾を返す。objectID.URIRepresentation が x-coredata://…/ICNote/p<N>。
 // - ICAttachment: 属性 identifier / typeUTI、関係 media (ICMedia、表 com.apple.notes.table は nil)。
 //   ICMedia: 属性 filename、-mediaURL が実体ファイルの file URL
@@ -36,6 +38,10 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <unistd.h>
 
 #define SEL_(x) NSSelectorFromString(@x)
 
@@ -101,7 +107,23 @@ static void requireNames(void) {
 // --store で差し替える前の書類の場所 (本物のグループコンテナ)
 static NSString *liveDocumentsPath;
 
-static NSManagedObjectContext *openContext(NSString *store) {
+// シンボリックリンクを解いた絶対パス (/tmp → /private/tmp)。無ければ nil
+static NSString *realPath(NSString *p) {
+  char buf[PATH_MAX];
+  if (!realpath(p.fileSystemRepresentation, buf)) return nil;
+  return [[NSFileManager defaultManager] stringWithFileSystemRepresentation:buf length:strlen(buf)];
+}
+
+// --store のとき、開いた DB がすべて store の中にあることを確かめる (本物を開いていたら止める)
+static void requireStoreUnder(NSManagedObjectContext *moc, NSString *store) {
+  NSString *prefix = [store stringByAppendingString:@"/"];
+  for (NSPersistentStore *ps in moc.persistentStoreCoordinator.persistentStores) {
+    NSString *p = realPath(ps.URL.path);
+    if (!p || ![p hasPrefix:prefix]) fail(4, [NSString stringWithFormat:@"--store の外の DB を開いた: %@", ps.URL.path]);
+  }
+}
+
+static NSManagedObjectContext *openContextUnsafe(NSString *store) {
   Class paths = NSClassFromString(@"ICPaths");
   liveDocumentsPath = [[paths performSelector:SEL_("applicationDocumentsURL")] path];
   if (store) {
@@ -119,7 +141,18 @@ static NSManagedObjectContext *openContext(NSString *store) {
   id ctx = [ctxClass performSelector:SEL_("sharedContext")];
   NSManagedObjectContext *moc = [ctx performSelector:SEL_("managedObjectContext")];
   if (!moc || moc.persistentStoreCoordinator.persistentStores.count == 0) fail(4, @"DB を開けない");
+  if (store) requireStoreUnder(moc, store);
   return moc;
+}
+
+// store は realPath 済みのもの
+static NSManagedObjectContext *openContext(NSString *store) {
+  @try {
+    return openContextUnsafe(store);
+  } @catch (NSException *ex) {
+    fail(4, [NSString stringWithFormat:@"DB を開けない: %@: %@", ex.name, ex.reason]);
+    return nil;
+  }
 }
 
 static NSArray *fetch(NSManagedObjectContext *moc, NSString *entity, NSPredicate *pred, NSArray *sort) {
@@ -249,6 +282,10 @@ static NSPredicate *notDeleted(void) {
   return [NSPredicate predicateWithFormat:@"markedForDeletion == NO"];
 }
 
+static BOOL isLocked(id note) {
+  return [[note valueForKey:@"isPasswordProtected"] boolValue];
+}
+
 static void cmdList(NSManagedObjectContext *moc, NSString *folderName) {
   NSPredicate *fp = [NSPredicate predicateWithFormat:@"title == %@ AND markedForDeletion == NO AND account.accountType == %ld",
                      folderName, (long)kICloudAccountType];
@@ -260,11 +297,10 @@ static void cmdList(NSManagedObjectContext *moc, NSString *folderName) {
     notDeleted(), [NSPredicate predicateWithFormat:@"folder IN %@", folders]]];
   NSMutableArray *notes = [NSMutableArray array];
   for (id n in fetch(moc, @"ICNote", np, @[[NSSortDescriptor sortDescriptorWithKey:@"identifier" ascending:YES]])) {
-    [notes addObject:@{
-      @"id": [n valueForKey:@"identifier"],
-      @"uri": [[n objectID] URIRepresentation].absoluteString,
-      @"doc": docOfNote(n),
-    }];
+    NSString *nid = [n valueForKey:@"identifier"];
+    NSString *uri = [[n objectID] URIRepresentation].absoluteString;
+    [notes addObject:isLocked(n) ? @{@"id": nid, @"uri": uri, @"locked": @YES}
+                                 : @{@"id": nid, @"uri": uri, @"doc": docOfNote(n)}];
   }
   emit(@{@"folderMissing": @NO, @"notes": notes});
 }
@@ -274,6 +310,7 @@ static void cmdRead(NSManagedObjectContext *moc, NSString *noteId) {
     notDeleted(), [NSPredicate predicateWithFormat:@"identifier == %@", noteId]]];
   id note = fetch(moc, @"ICNote", p, nil).firstObject;
   if (!note) fail(1, [NSString stringWithFormat:@"メモが無い: %@", noteId]);
+  if (isLocked(note)) fail(1, [NSString stringWithFormat:@"ロックされたメモは読まない: %@", noteId]);
   emit(@{@"doc": docOfNote(note)});
 }
 
@@ -282,7 +319,7 @@ static void cmdIdentify(NSManagedObjectContext *moc, NSString *uri) {
   NSManagedObjectID *oid = url ? [moc.persistentStoreCoordinator managedObjectIDForURIRepresentation:url] : nil;
   NSError *e = nil;
   NSManagedObject *obj = oid ? [moc existingObjectWithID:oid error:&e] : nil;
-  if (!obj || ![obj.entity.name isEqual:@"ICNote"]) fail(1, [NSString stringWithFormat:@"メモが無い: %@", uri]);
+  if (!obj || ![obj.entity.name isEqual:@"ICNote"] || [[obj valueForKey:@"markedForDeletion"] boolValue]) fail(1, [NSString stringWithFormat:@"メモが無い: %@", uri]);
   emit(@{@"id": [obj valueForKey:@"identifier"]});
 }
 
@@ -306,23 +343,34 @@ static void cmdExportMedia(NSManagedObjectContext *moc, NSString *store, NSStrin
   NSString *src = mediaPathIn(store, url);
   NSFileManager *fm = [NSFileManager defaultManager];
   if (![fm fileExistsAtPath:src]) fail(1, [NSString stringWithFormat:@"添付の実体ファイルが無い: %@", src]);
-  [fm removeItemAtPath:to error:nil];
+  BOOL isDir = NO;
+  if ([fm fileExistsAtPath:to isDirectory:&isDir] && isDir) fail(1, [NSString stringWithFormat:@"書き出し先がディレクトリ: %@", to]);
+  // 隣の一時ファイルに書き、成功したときだけ rename で置き換える (失敗しても既存のファイルは残る)
+  NSString *tmp = [[to stringByDeletingLastPathComponent] stringByAppendingPathComponent:
+                   [NSString stringWithFormat:@".%@.%d.tmp.jpg", to.lastPathComponent, getpid()]];
+  [fm removeItemAtPath:tmp error:nil];
+  NSString *err = nil;
   NSString *uti = [att valueForKey:@"typeUTI"];
   if ([uti isEqual:@"public.jpeg"]) {
     NSError *e = nil;
-    if (![fm copyItemAtPath:src toPath:to error:&e]) fail(1, [NSString stringWithFormat:@"コピーできない: %@", e.localizedDescription]);
+    if (![fm copyItemAtPath:src toPath:tmp error:&e]) err = [NSString stringWithFormat:@"コピーできない: %@", e.localizedDescription];
   } else {
     NSTask *t = [[NSTask alloc] init];
     t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/sips"];
-    t.arguments = @[@"-s", @"format", @"jpeg", src, @"--out", to];
+    t.arguments = @[@"-s", @"format", @"jpeg", src, @"--out", tmp];
     t.standardOutput = [NSFileHandle fileHandleWithNullDevice];
     t.standardError = [NSFileHandle fileHandleWithNullDevice];
     NSError *e = nil;
-    if (![t launchAndReturnError:&e]) fail(1, [NSString stringWithFormat:@"sips を起動できない: %@", e.localizedDescription]);
-    [t waitUntilExit];
-    if (t.terminationStatus != 0 || ![fm fileExistsAtPath:to])
-      fail(1, [NSString stringWithFormat:@"sips が JPEG にできない (%d): %@", t.terminationStatus, src]);
+    if (![t launchAndReturnError:&e]) err = [NSString stringWithFormat:@"sips を起動できない: %@", e.localizedDescription];
+    else {
+      [t waitUntilExit];
+      if (t.terminationStatus != 0 || ![fm fileExistsAtPath:tmp])
+        err = [NSString stringWithFormat:@"sips が JPEG にできない (%d): %@", t.terminationStatus, src];
+    }
   }
+  if (!err && rename(tmp.fileSystemRepresentation, to.fileSystemRepresentation) != 0)
+    err = [NSString stringWithFormat:@"置き換えられない: %s", strerror(errno)];
+  if (err) { [fm removeItemAtPath:tmp error:nil]; fail(1, err); }
   emit(@{@"written": @YES});
 }
 
@@ -333,6 +381,17 @@ static void usage(void) {
           @"identify --uri <uri> | export-media --attachment <id> --to <path>)");
 }
 
+// サブコマンドごとに受け付けるオプション (--store はどこでも受け付ける)
+static NSDictionary<NSString *, NSArray<NSString *> *> *commandOptions(void) {
+  return @{
+    @"selfcheck": @[],
+    @"list": @[@"folder"],
+    @"read": @[@"id"],
+    @"identify": @[@"uri"],
+    @"export-media": @[@"attachment", @"to"],
+  };
+}
+
 static NSString *option(NSDictionary *opts, NSString *key) {
   NSString *v = opts[key];
   if (!v) fail(1, [NSString stringWithFormat:@"--%@ が要る", key]);
@@ -341,27 +400,37 @@ static NSString *option(NSDictionary *opts, NSString *key) {
 
 int main(int argc, char **argv) {
   @autoreleasepool {
-    NSMutableArray<NSString *> *args = [NSMutableArray array];
-    for (int i = 1; i < argc; i++) [args addObject:@(argv[i])];
-    NSString *store = nil;
-    if (args.count >= 2 && [args[0] isEqual:@"--store"]) {
-      store = [args[1] stringByStandardizingPath];
-      [args removeObjectsInRange:NSMakeRange(0, 2)];
+    NSString *cmd = nil;
+    NSMutableDictionary<NSString *, NSString *> *opts = [NSMutableDictionary dictionary];
+    for (int i = 1; i < argc; i++) {
+      NSString *a = @(argv[i]);
+      if (![a hasPrefix:@"--"]) {
+        if (cmd) fail(1, [NSString stringWithFormat:@"余分な引数: %@", a]);
+        cmd = a;
+        continue;
+      }
+      NSString *key = [a substringFromIndex:2];
+      if (i + 1 >= argc) fail(1, [NSString stringWithFormat:@"%@ に値が無い", a]);
+      if (opts[key]) fail(1, [NSString stringWithFormat:@"%@ が重複している", a]);
+      opts[key] = @(argv[++i]);
     }
-    if (args.count == 0) usage();
-    NSString *cmd = args[0];
-    NSMutableDictionary *opts = [NSMutableDictionary dictionary];
-    for (NSUInteger i = 1; i < args.count; i += 2) {
-      if (![args[i] hasPrefix:@"--"] || i + 1 >= args.count) usage();
-      opts[[args[i] substringFromIndex:2]] = args[i + 1];
+    if (!cmd) usage();
+    NSArray *allowed = commandOptions()[cmd];
+    if (!allowed) usage();
+    for (NSString *key in opts)
+      if (![key isEqual:@"store"] && ![allowed containsObject:key])
+        fail(1, [NSString stringWithFormat:@"%@ は --%@ を受け付けない", cmd, key]);
+    NSString *store = nil;
+    if (opts[@"store"]) {
+      if (opts[@"store"].length == 0) fail(1, @"--store が空");
+      store = realPath(opts[@"store"]);
+      if (!store) fail(4, [NSString stringWithFormat:@"--store が無い: %@", opts[@"store"]]);
     }
 
     if (!dlopen(kFramework, RTLD_NOW)) fail(3, [NSString stringWithFormat:@"NotesShared を読み込めない: %s", dlerror()]);
     requireNames();
     if ([cmd isEqual:@"selfcheck"]) { emit(@{@"ok": @YES}); return 0; }
 
-    NSArray *known = @[@"list", @"read", @"identify", @"export-media"];
-    if (![known containsObject:cmd]) usage();
     NSManagedObjectContext *moc = openContext(store);
     __block int code = 0;
     [moc performBlockAndWait:^{
