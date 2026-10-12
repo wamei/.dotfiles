@@ -1,22 +1,29 @@
-import { diff3Merge } from "node-diff3"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 export type MergeResult = { conflict: boolean; text: string }
 
-// 末尾の改行を 1 つ外して行配列にする (空文字は空配列)
-const toLines = (text: string): string[] => (text === "" ? [] : text.replace(/\n$/, "").split("\n"))
-
-// ours = org、theirs = メモ。行単位の 3-way マージで、衝突は git 形式のマーカーにする
+// ours = org、theirs = メモ。git merge-file で行単位の 3-way マージをし、衝突は git 形式のマーカーにする
+// (node-diff3 は重複行があると非衝突のマージで行を落とすため使わない)
 export function merge3(base: string, ours: string, theirs: string): MergeResult {
-  const regions = diff3Merge(toLines(ours), toLines(base), toLines(theirs), { excludeFalseConflicts: true })
-  const lines: string[] = []
-  let conflict = false
-  for (const region of regions) {
-    if (region.ok) {
-      lines.push(...region.ok)
-    } else if (region.conflict) {
-      conflict = true
-      lines.push("<<<<<<< org", ...region.conflict.a, "=======", ...region.conflict.b, ">>>>>>> notes")
+  const dir = mkdtempSync(join(tmpdir(), "org-notes-merge-"))
+  try {
+    const paths = { ours: join(dir, "ours"), base: join(dir, "base"), theirs: join(dir, "theirs") }
+    writeFileSync(paths.ours, ours)
+    writeFileSync(paths.base, base)
+    writeFileSync(paths.theirs, theirs)
+    const proc = Bun.spawnSync(
+      ["git", "-c", "merge.conflictStyle=merge", "merge-file", "-p", "-L", "org", "-L", "base", "-L", "notes", paths.ours, paths.base, paths.theirs],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    // 0 = 衝突なし、正の値 = 衝突数、負の値 (signal 終了含む) は失敗
+    const code = proc.exitCode
+    if (code === null || code < 0 || code > 127) {
+      throw new Error(`git merge-file failed (exit ${code}): ${proc.stderr.toString()}`)
     }
+    return { conflict: code > 0, text: proc.stdout.toString() }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
-  return { conflict, text: lines.length === 0 ? "" : `${lines.join("\n")}\n` }
 }

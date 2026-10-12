@@ -4,9 +4,6 @@
   "workspaces": {
     "": {
       "name": "org-notes-sync",
-      "dependencies": {
-        "node-diff3": "^3.1.2",
-      },
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.9.0",
@@ -19,8 +16,6 @@
     "@types/node": ["@types/node@26.6.5", "https://npm.flatt.tech/@types/node/-/node-26.6.5.tgz", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
 
     "bun-types": ["bun-types@1.4.3", "https://npm.flatt.tech/bun-types/-/bun-types-1.4.3.tgz", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg=="],
-
-    "node-diff3": ["node-diff3@3.2.1", "https://npm.flatt.tech/node-diff3/-/node-diff3-3.2.1.tgz", {}, "sha512-eKZcJ8RtMQ3cIaA15EgmtwG927fYnRlhtdA4Q9HAcCpAZPQhhU2XptnTH9GeAkMiX2bAXxlJSAFa9shFbztPgw=="],
 
     "typescript": ["typescript@5.9.3", "https://npm.flatt.tech/typescript/-/typescript-5.9.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
