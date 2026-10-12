@@ -2,7 +2,7 @@
 import { docEquals, docTitle, EMPTY_DOC, paragraphEquals, type Doc, type Paragraph } from "./doc"
 import type { LocalFormat } from "./formats/format"
 import { merge3 } from "./merge"
-import { noteFileName } from "./filename"
+import { fileNameKey, noteFileName } from "./filename"
 
 export type OrgFile = { file: string; text: string; mtimeMs: number } // file は org ディレクトリからの相対 (例 "foo.org")
 export type NoteSnap = { id: string; uri: string; doc: Doc }
@@ -24,6 +24,7 @@ export type Action =
   | { kind: "deleteNote"; file: string; noteId: string; uri: string }
   | { kind: "trashOrg"; file: string; noteId: string }
   | { kind: "drop"; file: string; noteId: string }
+  | { kind: "skipped"; file: string; reason: "conflict-markers" }
 export type Plan = { ok: true; actions: Action[] } | { ok: false; reason: "folder-missing" | "notes-empty" | "mass-delete" }
 
 const OPT_IN_LINE = "#+notes_sync: yes"
@@ -116,6 +117,11 @@ export function reconcile(input: ReconcileInput): Plan {
     if (pairedFiles.has(org.file)) continue
     const parsed = format.parse(org.text, stem(org.file, format.ext))
     if (!parsed.optIn) continue
+    // 衝突マーカー入りの本文をメモへ送らない (作成も採用もしない)
+    if (format.hasConflictMarkers(org.text)) {
+      actions.push({ kind: "skipped", file: org.file, reason: "conflict-markers" })
+      continue
+    }
     // 同じタイトルのペア無しメモがあれば、base を空として採用する (state を失ったときの重複防止)
     const title = docTitle(parsed.doc)
     const match = (notes ?? []).find((n) => !usedNoteIds.has(n.id) && docTitle(n.doc) === title)
@@ -128,11 +134,11 @@ export function reconcile(input: ReconcileInput): Plan {
   }
 
   // ペア無しのメモ
-  const taken = new Set(orgFiles.map((o) => o.file))
+  const taken = new Set(orgFiles.map((o) => fileNameKey(o.file)))
   for (const note of notes ?? []) {
     if (usedNoteIds.has(note.id)) continue
     const file = noteFileName(docTitle(note.doc), taken, format.ext)
-    taken.add(file)
+    taken.add(fileNameKey(file))
     actions.push({ kind: "createOrg", file, noteId: note.id, text: format.render(note.doc, [OPT_IN_LINE]), base: note.doc })
   }
 

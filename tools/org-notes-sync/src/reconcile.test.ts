@@ -36,6 +36,17 @@ describe("ペア済み", () => {
     const p = run([pair], [org("t.org", doc("t", "O"))], [note("N", n)])
     expect(p.ok && p.actions[0]).toMatchObject({ kind: "conflict", base: n })
   })
+  test("同じ行の conflict は衝突マーカー入りの本文", () => {
+    const p = run([pair], [org("t.org", doc("t", "O"))], [note("N", doc("t", "N"))])
+    if (!p.ok || p.actions[0]?.kind !== "conflict") throw new Error("expected conflict")
+    expect(p.actions[0].text).toContain("<<<<<<< org")
+  })
+  test("両方変わっても org がメモの org 表現と同じなら pullOrg (org の本文のまま)", () => {
+    const n: Doc = { paragraphs: [para({ kind: "title" }, [text("t")]), para({ kind: "body" }, [text("*b*")])] }
+    const o = org("t.org", n)
+    const p = run([pair], [o], [note("N", n)])
+    expect(p.ok && p.actions[0]).toEqual({ kind: "pullOrg", file: "t.org", noteId: "N", text: o.text, base: n })
+  })
   test("衝突マーカーが残っている → blocked", () => {
     const p = run([pair], [org("t.org", base, "<<<<<<< org\nx\n=======\ny\n>>>>>>> notes\n")], [note("N", doc("t", "z"))])
     expect(p.ok && p.actions[0]?.kind).toBe("blocked")
@@ -64,6 +75,16 @@ describe("ペア無し", () => {
   test("同じタイトルなら採用 (同じ内容は pullOrg、違えばマージ)", () => {
     expect(run([], [org("a.org", doc("a", "x"))], [note("N", doc("a", "x"))])).toMatchObject({ ok: true, actions: [{ kind: "pullOrg", noteId: "N" }] })
     expect(run([], [org("a.org", doc("a", "x"))], [note("N", doc("a", "y"))])).toMatchObject({ ok: true, actions: [{ kind: "conflict", noteId: "N" }] })
+  })
+})
+
+describe("ペア無しの org に衝突マーカー", () => {
+  test("skipped にして、同じタイトルのメモも採用しない", () => {
+    const o = org("a.org", doc("a", "x"), "<<<<<<< org\nx\n=======\ny\n>>>>>>> notes\n")
+    expect(run([], [o], [note("N", doc("a", "y"))])).toMatchObject({ ok: true, actions: [
+      { kind: "skipped", file: "a.org", reason: "conflict-markers" },
+      { kind: "createOrg", file: "a-2.org", noteId: "N" },
+    ] })
   })
 })
 

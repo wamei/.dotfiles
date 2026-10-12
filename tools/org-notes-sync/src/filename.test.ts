@@ -7,3 +7,10 @@ test("ファイル名", () => {
   expect(noteFileName("  ", new Set(), ".org")).toBe("untitled.org")
   expect(noteFileName("x", new Set(["x.org", "x-2.org"]), ".org")).toBe("x-3.org")
 })
+test("taken との比較は大文字小文字を区別しない (APFS)", () => {
+  expect(noteFileName("Todo", new Set(["todo.org"]), ".org")).toBe("Todo-2.org")
+})
+test("taken との比較は Unicode 正規化する (NFD と NFC)", () => {
+  const nfd = "が".normalize("NFD")
+  expect(noteFileName("が".normalize("NFC"), new Set([`${nfd}.org`]), ".org")).toBe("が-2.org".normalize("NFC"))
+})
