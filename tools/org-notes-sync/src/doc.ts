@@ -43,7 +43,7 @@ function normalizeStyle(s: ParaStyle): ParaStyle {
   }
 }
 
-function normalizeInlines(inlines: Inline[]): Inline[] {
+export function normalizeInlines(inlines: Inline[]): Inline[] {
   const out: Inline[] = []
   for (const i of inlines) {
     if (i.kind === "attachment") {
