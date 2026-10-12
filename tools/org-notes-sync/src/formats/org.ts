@@ -282,9 +282,19 @@ function render(doc: { paragraphs: Paragraph[] }, preserved: string[]): string {
   return out.join("\n") + "\n"
 }
 
+// git の衝突マーカー: 行頭の <<<<<<< → ======= → >>>>>>> がこの順に揃ったときだけ (区切り線だけの行は普通の文章)
+function hasConflictMarkers(s: string): boolean {
+  const marks = [/^<{7}( |$)/, /^={7}( |$)/, /^>{7}( |$)/]
+  let next = 0
+  for (const line of s.split(/\r?\n/)) {
+    if (marks[next]!.test(line) && ++next === marks.length) return true
+  }
+  return false
+}
+
 export const orgFormat: LocalFormat = {
   ext: ".org",
   parse,
   render,
-  hasConflictMarkers: (s) => /^(<{7}|={7}|>{7})( |$)/m.test(s),
+  hasConflictMarkers,
 }

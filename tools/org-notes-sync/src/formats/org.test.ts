@@ -59,6 +59,11 @@ describe("org 段落: parse の結果", () => {
 test("衝突マーカー", () => {
   expect(orgFormat.hasConflictMarkers("a\n<<<<<<< org\nb\n=======\nc\n>>>>>>> notes\n")).toBe(true)
   expect(orgFormat.hasConflictMarkers("a <<<<<<< b\n")).toBe(false)
+  // 区切り線だけ・順番が違う・欠けているものはマーカーではない
+  expect(orgFormat.hasConflictMarkers("見出し\n=======\n本文\n")).toBe(false)
+  expect(orgFormat.hasConflictMarkers(">>>>>>> notes\n=======\n<<<<<<< org\n")).toBe(false)
+  expect(orgFormat.hasConflictMarkers("<<<<<<< org\nb\n=======\nc\n")).toBe(false)
+  expect(orgFormat.hasConflictMarkers("<<<<<<< org\r\nb\r\n=======\r\nc\r\n>>>>>>> notes\r\n")).toBe(true)
 })
 
 describe("org 段落: 修正", () => {
