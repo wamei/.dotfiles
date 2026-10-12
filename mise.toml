@@ -250,3 +250,7 @@ run = [
   "cd tools/project-move && bun test",
   "cd tools/org-notes-sync && bun test",
 ]
+
+[tasks."org-notes-sync:install"]
+description = "org-notes-sync をビルドして ~/.local/bin と launchd に入れる"
+run = ["sh tools/org-notes-sync/install.sh"]
