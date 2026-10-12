@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", "module": "ESNext", "moduleResolution": "bundler",
+    "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true,
+    "types": ["bun"], "skipLibCheck": true
+  },
+  "include": ["src", "cli"]
+}

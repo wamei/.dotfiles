@@ -72,7 +72,7 @@ tools/org-notes-sync/
 type Mark = "bold" | "italic" | "underline" | "strike"
 type Inline =
   | { kind: "text"; text: string; marks: Mark[]; link?: string }
-  | { kind: "attachment"; id: string; type: string }   // U+FFFC 1 文字に対応
+  | { kind: "attachment"; id: string; image: boolean }   // U+FFFC 1 文字に対応。種類 (UTI) は bridge が image かどうかに落とす
 type ParaStyle =
   | { kind: "title" } | { kind: "heading" } | { kind: "subheading" } | { kind: "body" }
   | { kind: "mono" }
