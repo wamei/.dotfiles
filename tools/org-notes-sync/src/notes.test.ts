@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test"
+import { Database } from "bun:sqlite"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { BridgeError, createNotesPort, type Runner } from "./notes"
 
 function fakeRunner(handlers: [RegExp, (cmd: string[], stdin?: string) => { code?: number; stdout?: string; stderr?: string }][]) {
@@ -10,6 +14,7 @@ function fakeRunner(handlers: [RegExp, (cmd: string[], stdin?: string) => { code
   }
   return { run, calls }
 }
+const TERM = '"bundleid"="com.apple.Terminal"'
 const opts = (run: Runner, extra = {}) => ({ bridge: "/b", folder: "org", run, sleep: async () => {}, ...extra })
 
 test("selfcheck の失敗は BridgeError (code 3)", async () => {
@@ -74,6 +79,7 @@ test("exportMedia", async () => {
 test("flush: 未起動なら起動して送信を待ち、終了させる", async () => {
   const { run, calls } = fakeRunner([
     [/running\(\)/, () => ({ stdout: "false" })],
+    [/lsappinfo/, () => ({ stdout: TERM })],
     [/open -g -a Notes/, () => ({})],
     [/quit/, () => ({})],
   ])
@@ -87,12 +93,14 @@ test("flush: 起動中で手前に無ければ quit → 停止待ち → 起動 
   let running = true
   const { run, calls } = fakeRunner([
     [/running\(\)/, () => ({ stdout: String(running) })],
-    [/lsappinfo/, () => ({ stdout: '"CFBundleIdentifier"="com.apple.Terminal"' })],
+    [/lsappinfo/, () => ({ stdout: TERM })],
     [/quit/, () => { running = false; return {} }],
     [/open -g -a Notes/, () => ({})],
   ])
-  const r = await createNotesPort(opts(run, { syncState: () => [{ local: 1, synced: 1 }] })).flush(["N"])
+  let polls = 0, opened = false
+  const r = await createNotesPort(opts(run, { syncState: () => { if (calls.some((c) => c.includes("open -g"))) opened = true; if (opened) polls++; return [{ local: 1, synced: 1 }] } })).flush(["N"])
   expect(r).toBe("done")
+  expect(polls).toBeGreaterThan(0)
   const q = calls.findIndex((c) => c.includes("quit")), o = calls.findIndex((c) => c.includes("open -g -a Notes"))
   expect(q).toBeGreaterThan(-1)
   expect(o).toBeGreaterThan(q)
@@ -108,7 +116,112 @@ test("flush: 手前で使っているなら保留", async () => {
 })
 test("flush: 60 秒で揃わなければ timeout", async () => {
   let t = 0
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  const { run, calls } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g/, () => ({})], [/quit/, () => ({})]])
   const r = await createNotesPort(opts(run, { now: () => (t += 3000), syncState: () => [{ local: 2, synced: 1 }] })).flush(["N"])
   expect(r).toBe("timeout")
+  expect(calls.slice(calls.findIndex((c) => c.includes("open -g"))).some((c) => c.includes("quit"))).toBe(false)
+})
+
+test("create の JXA は Notes.make で note を作る", async () => {
+  const { run, calls } = fakeRunner([[/osascript/, () => ({ stdout: "u" })], [/identify/, () => ({ stdout: '{"id":"I"}' })]])
+  await createNotesPort(opts(run)).create("t")
+  expect(calls[0]).toContain("Notes.make(")
+  expect(calls[0]).toContain('new: "note"')
+  expect(calls[0]).toContain('accounts.byName("iCloud")')
+})
+test("flush: syncState に行が無い id は未送信で timeout", async () => {
+  let t = 0
+  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  expect(await createNotesPort(opts(run, { now: () => (t += 3000), syncState: () => [] })).flush(["N"])).toBe("timeout")
+})
+test("flush: 終了直前に手前へ出ていたら quit せず保留 (未起動から起動した経路)", async () => {
+  let front = 0
+  const { run, calls } = fakeRunner([
+    [/running\(\)/, () => ({ stdout: "false" })],
+    [/lsappinfo/, () => ({ stdout: front++ === 0 ? '"bundleid"="com.apple.Notes"' : TERM })],
+    [/open -g/, () => ({})],
+    [/quit/, () => ({})],
+  ])
+  // 未起動の経路では front 確認は最終の 1 回だけ (1 回目で Notes を返す)
+  const r = await createNotesPort(opts(run, { syncState: () => [{ local: 1, synced: 1 }] })).flush(["N"])
+  expect(r).toBe("deferred")
+  expect(calls.some((c) => c.includes("quit"))).toBe(false)
+})
+test("flush: 再起動経路でも終了直前に手前なら保留", async () => {
+  let running = true, front = 0
+  const { run, calls } = fakeRunner([
+    [/running\(\)/, () => ({ stdout: String(running) })],
+    [/lsappinfo/, () => ({ stdout: front++ === 0 ? TERM : '"bundleid"="com.apple.Notes"' })],
+    [/quit/, () => { running = false; return {} }],
+    [/open -g/, () => ({})],
+  ])
+  const r = await createNotesPort(opts(run, { syncState: () => [{ local: 1, synced: 1 }] })).flush(["N"])
+  expect(r).toBe("deferred")
+  expect(calls.filter((c) => c.includes("quit")).length).toBe(1)
+})
+test("flush: 手前の判定が空出力なら保留", async () => {
+  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "true" })], [/lsappinfo/, () => ({ stdout: "" })]])
+  expect(await createNotesPort(opts(run)).flush(["N"])).toBe("deferred")
+})
+test("flush: 10 秒で止まらなければ open せず timeout", async () => {
+  let t = 0
+  const { run, calls } = fakeRunner([
+    [/running\(\)/, () => ({ stdout: "true" })],
+    [/lsappinfo/, () => ({ stdout: TERM })],
+    [/quit/, () => ({})],
+  ])
+  expect(await createNotesPort(opts(run, { now: () => (t += 3000), syncState: () => [] })).flush(["N"])).toBe("timeout")
+  expect(calls.some((c) => c.includes("open -g"))).toBe(false)
+})
+test("flush: Runner が固まっても commandTimeoutMs で timeout を返す", async () => {
+  const run: Runner = () => new Promise(() => {})
+  const t0 = Date.now()
+  expect(await createNotesPort(opts(run, { commandTimeoutMs: 20 })).flush(["N"])).toBe("timeout")
+  expect(Date.now() - t0).toBeLessThan(1000)
+})
+test("Runner には commandTimeoutMs が渡る", async () => {
+  const seen: (number | undefined)[] = []
+  const run: Runner = async (_c, _s, ms) => { seen.push(ms); return { code: 0, stdout: '{"ok":true}', stderr: "" } }
+  await createNotesPort(opts(run, { commandTimeoutMs: 1234 })).selfcheck()
+  expect(seen).toEqual([1234])
+})
+test("bridge の JSON の形が違えば BridgeError (code 1)", async () => {
+  for (const [re, call] of [
+    [/list/, (p: ReturnType<typeof createNotesPort>) => p.list()],
+    [/write/, (p: ReturnType<typeof createNotesPort>) => p.write("N", { paragraphs: [] })],
+  ] as const) {
+    const { run } = fakeRunner([[re, () => ({ stdout: "{}" })]])
+    const e = await call(createNotesPort(opts(run))).catch((x: unknown) => x)
+    expect(e).toBeInstanceOf(BridgeError)
+    expect((e as BridgeError).code).toBe(1)
+  }
+  const { run } = fakeRunner([[/osascript/, () => ({ stdout: "u" })], [/identify/, () => ({ stdout: '{"id":3}' })]])
+  expect(((await createNotesPort(opts(run)).create("t").catch((x) => x)) as BridgeError).code).toBe(1)
+})
+
+function makeDb() {
+  const path = join(mkdtempSync(join(tmpdir(), "ns-")), "NoteStore.sqlite")
+  const db = new Database(path)
+  db.run("create table ZICCLOUDSTATE (Z_PK integer primary key, ZCURRENTLOCALVERSION integer, ZLATESTVERSIONSYNCEDTOCLOUD integer)")
+  db.run("create table ZICCLOUDSYNCINGOBJECT (Z_PK integer primary key, ZIDENTIFIER text, ZCLOUDSTATE integer)")
+  db.run("insert into ZICCLOUDSTATE values (1, 3, 3), (2, 3, 2)")
+  db.run("insert into ZICCLOUDSYNCINGOBJECT values (1, 'SYNCED', 1), (2, 'PENDING', 2)")
+  db.close()
+  return path
+}
+const flushWith = (path: string, ids: string[]) => {
+  let t = 0
+  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/lsappinfo/, () => ({ stdout: TERM })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  return createNotesPort(opts(run, { notesDbPath: path, now: () => (t += 3000) })).flush(ids)
+}
+test("既定の syncState: sqlite の版を比べる", async () => {
+  const path = makeDb()
+  expect(await flushWith(path, ["SYNCED"])).toBe("done")
+  expect(await flushWith(path, ["PENDING"])).toBe("timeout")
+  expect(await flushWith(path, ["MISSING"])).toBe("timeout")
+})
+test("既定の syncState: DB が読めなければ BridgeError (code 4)", async () => {
+  const e = await flushWith("/nonexistent/x.sqlite", ["A"]).catch((x) => x)
+  expect(e).toBeInstanceOf(BridgeError)
+  expect(e.code).toBe(4)
 })
