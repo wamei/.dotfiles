@@ -1,7 +1,7 @@
 #!/bin/sh
 # org-notes-sync を ~/.local/bin に入れ、plist を置く。
 # 既定では launchd に読み込まない (--load を付けたときだけ bootstrap する)。
-# フルディスクアクセスとオートメーションは手で与える (README 参照)。作り直すと署名が変わるので与え直す。
+# フルディスクアクセスとオートメーションは手で与える (README 参照)。証明書が無いと、作り直すたびに与え直しになる。
 set -eu
 load=0
 case "${1:-}" in
@@ -26,6 +26,17 @@ done
 
 sh "$here/bridge/build.sh" "$bin/notes-bridge"
 (cd "$here" && bun install --frozen-lockfile && bun build --compile cli/org-notes-sync.ts --outfile "$bin/org-notes-sync")
+# 証明書で署名し直す。ad-hoc 署名のままだと、作り直すたびにフルディスクアクセスとオートメーションの許可が外れる
+# (許可が cdhash に結び付くため)。証明書があれば許可は identifier と証明書に結び付き、作り直しても残る
+identity="${ORG_NOTES_SYNC_SIGN_IDENTITY:-}"
+if [ -z "$identity" ] && security find-identity -v -p codesigning 2>/dev/null | grep -q '"Apple Development'; then
+  identity="Apple Development"
+fi
+if [ -n "$identity" ]; then
+  codesign -f -s "$identity" --identifier "$label" "$bin/org-notes-sync"
+else
+  echo "警告: コード署名の証明書が無いので ad-hoc 署名のままです。作り直すたびにフルディスクアクセスを与え直してください" >&2
+fi
 sed "s|@HOME@|$HOME|g" "$here/launchd/$label.plist.in" > "$agents/$label.plist"
 
 if [ "$load" -eq 1 ]; then

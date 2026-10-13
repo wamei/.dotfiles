@@ -23,7 +23,7 @@ mise run org-notes-sync:enable    # 確認が済んだら launchd に読み込�
 
 ### 権限 (2 つ)
 
-効かせる対象は `~/.local/bin/org-notes-sync` (bridge はその子プロセスとして走る)。どちらもバイナリを作り直すと署名が変わるので与え直す。
+効かせる対象は `~/.local/bin/org-notes-sync` (bridge はその子プロセスとして走る)。install はキーチェーンの「Apple Development」証明書 (環境変数 `ORG_NOTES_SYNC_SIGN_IDENTITY` で別の証明書を指定できる) でバイナリに署名し直すので、作り直しても許可は残る。証明書が無いと ad-hoc 署名のままになり、作り直すたびに与え直しになる。
 
 1. フルディスクアクセス (メモの DB を読むため)
    システム設定 → プライバシーとセキュリティ → フルディスクアクセス → `+` で `~/.local/bin/org-notes-sync` を追加してオンにする。
