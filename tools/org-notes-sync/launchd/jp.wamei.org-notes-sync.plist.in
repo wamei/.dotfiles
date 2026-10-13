@@ -5,7 +5,7 @@
   <key>Label</key><string>jp.wamei.org-notes-sync</string>
   <key>ProgramArguments</key>
   <array><string>@HOME@/.local/bin/org-notes-sync</string></array>
-  <key>StartInterval</key><integer>300</integer>
+  <key>StartInterval</key><integer>1800</integer>
   <!-- メモ.app が iCloud から受け取った変更を DB に書いたら走らせる。書くものが無い同期は DB に触れないので自分で回り続けない -->
   <key>WatchPaths</key>
   <array>

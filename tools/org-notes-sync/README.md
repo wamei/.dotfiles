@@ -1,6 +1,6 @@
 # org-notes-sync
 
-org のメモファイルと Apple メモを双方向に同期する CLI。launchd が 5 分ごとと、メモの DB が書き換わったとき (iPhone の編集がメモ.app に届いたときなど。間隔は最低 15 秒) に走らせる。
+org のメモファイルと Apple メモを双方向に同期する CLI。launchd が 30 分ごとと、メモの DB が書き換わったとき (iPhone の編集がメモ.app に届いたときなど。間隔は最低 15 秒) に走らせる。
 設計は [docs/superpowers/specs/2026-10-13-org-notes-sync-design.md](../../docs/superpowers/specs/2026-10-13-org-notes-sync-design.md) を参照。
 
 ## インストール
@@ -33,7 +33,7 @@ mise run org-notes-sync:enable    # 確認が済んだら launchd に読み込�
 
 Emacs で同期対象のメモを保存したときの同期 (保存フック) は Emacs の子プロセスとして走るので、**Emacs.app の権限** で動く。
 保存フックからも同期させるなら、Emacs.app にもフルディスクアクセスとオートメーション (メモ) を与える。
-与えたくなければ保存フックからの同期は失敗するに任せ、launchd の 5 分ごとの同期に頼る。
+与えたくなければ保存フックからの同期は失敗するに任せ、launchd の同期 (DB の書き換え時と 30 分ごと) に頼る。
 ターミナルから手で走らせるときも同じで、権限はそのターミナルのものになる。
 
 ## 使い方
