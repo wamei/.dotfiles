@@ -197,7 +197,7 @@ markdown に乗り換えるときは `formats/markdown.ts` を足し、設定の
 
 ### launchd
 
-`~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist` (`StartInterval` 1800、`WatchPaths` に `NoteStore.sqlite` と `-wal`、`ThrottleInterval` 15)。書くものが無い同期は DB に触れないので、自分の書き込みで回り続けない (2026-10-13 実機で確認)。
+`~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist` (`StartInterval` 1800、`WatchPaths` に `NoteStore.sqlite` と `NotesIndexerState-Modern` (`-wal` は開いたまま追記されるので FSEvents が launchd に届かない。索引の状態ファイルは受信のたびに置き換えられる)、`ThrottleInterval` 15)。書くものが無い同期は DB に触れないので、自分の書き込みで回り続けない (2026-10-13 実機で確認)。
 mise の bootstrap で配置する。実行ファイルは `bun build --compile` で作る
 `~/.local/bin/org-notes-sync` と、`~/.local/bin/notes-bridge`。フルディスクアクセスは
 `org-notes-sync` に 1 回与える (作り直したら与え直す)。

@@ -6,11 +6,12 @@
   <key>ProgramArguments</key>
   <array><string>@HOME@/.local/bin/org-notes-sync</string></array>
   <key>StartInterval</key><integer>1800</integer>
-  <!-- メモ.app が iCloud から受け取った変更を DB に書いたら走らせる。書くものが無い同期は DB に触れないので自分で回り続けない -->
+  <!-- メモ.app が iCloud から受け取った変更を DB に書いたら走らせる。書くものが無い同期は DB に触れないので自分で回り続けない。
+       -wal は開いたまま追記されるので FSEvents が launchd に届かない。変更のたびに置き換えられる索引の状態ファイルで拾う -->
   <key>WatchPaths</key>
   <array>
     <string>@HOME@/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite</string>
-    <string>@HOME@/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite-wal</string>
+    <string>@HOME@/Library/Group Containers/group.com.apple.notes/NotesIndexerState-Modern</string>
   </array>
   <!-- 編集中は書き換えが続くので、起動の間隔を最低 15 秒あける -->
   <key>ThrottleInterval</key><integer>15</integer>
