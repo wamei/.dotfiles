@@ -187,13 +187,6 @@ export async function syncOnce(d: SyncDeps): Promise<SyncOutcome> {
     return { status: "aborted", reason, wroteNotes: [] }
   }
 
-  try {
-    await d.notes.selfcheck()
-  } catch (e) {
-    d.log(`selfcheck: ${errMessage(e)}`)
-    return abort("bridge", MSG.bridge)
-  }
-
   // 失敗しても DB にある分で同期を続ける
   try {
     const w = await d.notes.wake()
@@ -214,6 +207,11 @@ export async function syncOnce(d: SyncDeps): Promise<SyncOutcome> {
   try {
     listed = await d.notes.list()
   } catch (e) {
+    // bridge はどのコマンドでも先に内部 API を確かめる (selfcheck を別に呼ばない)
+    if (e instanceof BridgeError && e.code === 3) {
+      d.log(`list: ${e.message}`)
+      return abort("bridge", MSG.bridge)
+    }
     if (e instanceof BridgeError && e.code === 4) {
       d.log(`list: ${e.message}`)
       return abort("db", MSG.db)

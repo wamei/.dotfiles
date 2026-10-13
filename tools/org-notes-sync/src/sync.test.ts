@@ -184,8 +184,12 @@ test("Emacs が保存し直していたら org を上書きしない", async () 
 })
 
 test("全体停止: bridge / DB / org ディレクトリ / state.json / 大量削除", async () => {
-  fake.selfcheck = async () => { throw new BridgeError("no class", 3) }
+  // selfcheck は別に呼ばない。bridge はどのコマンドでも先に API を確かめ、欠けていれば code 3
+  let selfchecked = false
+  fake.selfcheck = async () => { selfchecked = true }
+  fake.list = async () => { throw new BridgeError("no class", 3) }
   expect(await sync()).toEqual({ status: "aborted", reason: "bridge", wroteNotes: [] })
+  expect(selfchecked).toBe(false)
   expect(warns.at(-1)).toBe("メモ.app の内部 API が見つかりません (macOS の更新で変わった可能性)。同期を止めています")
 
   fake = new FakeNotes()

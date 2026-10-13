@@ -92,7 +92,7 @@ test("exportMedia", async () => {
 })
 test("flush: 未起動なら起動して送信を待ち、起動したままにする", async () => {
   const { run, calls } = fakeRunner([
-    [/running\(\)/, () => ({ stdout: "false" })],
+    [/pgrep/, () => ({ code: 1 })],
     [/lsappinfo/, () => ({ stdout: TERM })],
     [/open -g -a Notes/, () => ({})],
     [/quit/, () => ({})],
@@ -106,7 +106,7 @@ test("flush: 未起動なら起動して送信を待ち、起動したままに�
 test("flush: 起動中で手前に無ければ quit → 停止待ち → 起動 → 送信待ち", async () => {
   let running = true
   const { run, calls } = fakeRunner([
-    [/running\(\)/, () => ({ stdout: String(running) })],
+    [/pgrep/, () => ({ code: running ? 0 : 1 })],
     [/lsappinfo/, () => ({ stdout: TERM })],
     [/quit/, () => { running = false; return {} }],
     [/open -g -a Notes/, () => ({})],
@@ -123,7 +123,7 @@ test("flush: 起動中で手前に無ければ quit → 停止待ち → 起動 
 })
 test("flush: 手前で使っているなら保留", async () => {
   const { run, calls } = fakeRunner([
-    [/running\(\)/, () => ({ stdout: "true" })],
+    [/pgrep/, () => ({ code: 0 })],
     [/lsappinfo/, () => ({ stdout: '"CFBundleIdentifier"="com.apple.Notes"' })],
   ])
   expect(await createNotesPort(opts(run, { syncState: () => [] })).flush(["N"])).toBe("deferred")
@@ -131,7 +131,7 @@ test("flush: 手前で使っているなら保留", async () => {
 })
 test("flush: 60 秒で揃わなければ timeout", async () => {
   let t = 0
-  const { run, calls } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  const { run, calls } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/open -g/, () => ({})], [/quit/, () => ({})]])
   const r = await createNotesPort(opts(run, { now: () => (t += 3000), syncState: () => [{ local: 2, synced: 1 }] })).flush(["N"])
   expect(r).toBe("timeout")
   expect(calls.slice(calls.findIndex((c) => c.includes("open -g"))).some((c) => c.includes("quit"))).toBe(false)
@@ -146,17 +146,17 @@ test("create の JXA は Notes.make で note を作る", async () => {
 })
 test("flush: syncState に行が無い id は未送信で timeout", async () => {
   let t = 0
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/open -g/, () => ({})], [/quit/, () => ({})]])
   expect(await createNotesPort(opts(run, { now: () => (t += 3000), syncState: () => [] })).flush(["N"])).toBe("timeout")
 })
 test("flush: 手前の判定が空出力なら保留", async () => {
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "true" })], [/lsappinfo/, () => ({ stdout: "" })]])
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 0 })], [/lsappinfo/, () => ({ stdout: "" })]])
   expect(await createNotesPort(opts(run, { syncState: () => [] })).flush(["N"])).toBe("deferred")
 })
 test("flush: 10 秒で止まらなければ open せず timeout", async () => {
   let t = 0
   const { run, calls } = fakeRunner([
-    [/running\(\)/, () => ({ stdout: "true" })],
+    [/pgrep/, () => ({ code: 0 })],
     [/lsappinfo/, () => ({ stdout: TERM })],
     [/quit/, () => ({})],
   ])
@@ -201,7 +201,7 @@ function makeDb() {
 }
 const flushWith = (path: string, ids: string[]) => {
   let t = 0
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/lsappinfo/, () => ({ stdout: TERM })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/lsappinfo/, () => ({ stdout: TERM })], [/open -g/, () => ({})], [/quit/, () => ({})]])
   return createNotesPort(opts(run, { notesDbPath: path, now: () => (t += 3000) })).flush(ids)
 }
 test("既定の syncState: sqlite の版を比べる", async () => {
@@ -225,7 +225,7 @@ test("flush: 送信済みの id は待たず、全部送信済みなら メモ.a
   expect(asked).toEqual([["A", "B"]])
 })
 test("flush: 未送信の id だけを待つ", async () => {
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/lsappinfo/, () => ({ stdout: TERM })], [/open -g/, () => ({})], [/quit/, () => ({})]])
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/lsappinfo/, () => ({ stdout: TERM })], [/open -g/, () => ({})], [/quit/, () => ({})]])
   const asked: string[][] = []
   const port = createNotesPort(opts(run, { syncState: (ids: string[]) => {
     asked.push(ids)
@@ -262,13 +262,13 @@ test("wake: store 指定時は何もしない", async () => {
   expect(calls).toEqual([])
 })
 test("wake: 起動中なら何もしない", async () => {
-  const { run, calls } = fakeRunner([[/running\(\)/, () => ({ stdout: "true" })]])
+  const { run, calls } = fakeRunner([[/pgrep/, () => ({ code: 0 })]])
   expect(await createNotesPort(opts(run)).wake()).toBe("running")
   expect(calls.some((c) => c.includes("open -g"))).toBe(false)
 })
 test("wake: 未起動なら裏で起動し、DB の更新が落ち着くまで待つ", async () => {
   const c = clockOpts()
-  const { run, calls } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g -a Notes/, () => ({})]])
+  const { run, calls } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/open -g -a Notes/, () => ({})]])
   // 起動から 10 秒間 DB が書き換わり続け、その後は止まる
   const r = await createNotesPort(opts(run, { ...c, dbStamp: () => Math.min(c.at(), 10_000) })).wake()
   expect(r).toBe("launched")
@@ -279,14 +279,24 @@ test("wake: 未起動なら裏で起動し、DB の更新が落ち着くまで�
 })
 test("wake: DB が書き換わらなくても最低 6 秒は待つ", async () => {
   const c = clockOpts()
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g -a Notes/, () => ({})]])
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/open -g -a Notes/, () => ({})]])
   expect(await createNotesPort(opts(run, { ...c, dbStamp: () => 1 })).wake()).toBe("launched")
   expect(c.at()).toBeGreaterThanOrEqual(6_000)
 })
 test("wake: 30 秒たっても落ち着かなければ timeout", async () => {
   const c = clockOpts()
-  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g -a Notes/, () => ({})]])
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 1 })], [/open -g -a Notes/, () => ({})]])
   expect(await createNotesPort(opts(run, { ...c, dbStamp: () => c.at() })).wake()).toBe("timeout")
   expect(c.at()).toBeGreaterThanOrEqual(30_000)
   expect(c.at()).toBeLessThan(33_000)
+})
+
+test("メモ.app の起動確認は pgrep で行い、osascript を起動しない", async () => {
+  const { run, calls } = fakeRunner([[/pgrep/, () => ({ code: 0 })]])
+  expect(await createNotesPort(opts(run)).wake()).toBe("running")
+  expect(calls).toEqual(["pgrep -qf ^/System/Applications/Notes.app/Contents/MacOS/Notes$"])
+})
+test("pgrep が 0/1 以外で終われば BridgeError", async () => {
+  const { run } = fakeRunner([[/pgrep/, () => ({ code: 3, stderr: "boom" })]])
+  expect(await createNotesPort(opts(run)).wake().catch((e) => e)).toBeInstanceOf(BridgeError)
 })

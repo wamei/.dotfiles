@@ -105,8 +105,9 @@ export function defaultDbStamp(dbPath: string = STORE_DB): number {
   return max
 }
 
+const NOTES_PROCESS = "^/System/Applications/Notes.app/Contents/MacOS/Notes$"
+
 // JXA。利用者のデータは必ず argv で受け取る (スクリプトへ文字列連結しない)
-const JXA_RUNNING = `Application("Notes").running()`
 const JXA_QUIT = `Application("Notes").quit()`
 const JXA_CREATE = `function run(argv) {
   var folderName = argv[0], title = argv[1];
@@ -167,7 +168,16 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
   const isObj = (v: any) => typeof v === "object" && v !== null
   const osa = (script: string, ms = cmdMs, ...args: string[]) => exec(["osascript", "-l", "JavaScript", "-e", script, "--", ...args], undefined, ms)
 
-  const isRunning = async () => (await osa(JXA_RUNNING, shortMs)).trim() === "true"
+  // osascript (JavaScript の実行環境を読み込む) より軽い pgrep で見る。0 起動中 / 1 停止中
+  const isRunning = async () => {
+    try {
+      await exec(["pgrep", "-qf", NOTES_PROCESS], undefined, shortMs)
+      return true
+    } catch (e) {
+      if (e instanceof BridgeError && e.code === 1) return false
+      throw e
+    }
+  }
   const frontState = async (): Promise<Front> => {
     const out = await exec(["sh", "-c", "lsappinfo info -only bundleid $(lsappinfo front)"], undefined, shortMs)
     if (out.includes("com.apple.Notes")) return "front"

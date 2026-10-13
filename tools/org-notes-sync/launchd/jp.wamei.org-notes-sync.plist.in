@@ -15,6 +15,10 @@
   </array>
   <!-- 編集中は書き換えが続くので、起動の間隔を最低 15 秒あける -->
   <key>ThrottleInterval</key><integer>15</integer>
+  <!-- 裏方の処理として低い優先度で動かす (省電力側のコア、I/O も後回し) -->
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>Nice</key><integer>10</integer>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>@HOME@/.local/state/org-notes-sync/launchd.out</string>
   <key>StandardErrorPath</key><string>@HOME@/.local/state/org-notes-sync/launchd.err</string>
