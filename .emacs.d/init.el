@@ -1971,8 +1971,15 @@ Notes 側の変更が CLI でファイルに書き戻されるので auto-revert
       (auto-revert-mode 1)
       (when (display-graphic-p)
         (setq-local org-image-actual-width '(480))
-        (org-display-inline-images)
-        (add-hook 'after-revert-hook #'org-display-inline-images nil t))))
+        (wamei/org-notes-sync--display-images)
+        (add-hook 'after-revert-hook #'wamei/org-notes-sync--display-images nil t))))
+
+  (defun wamei/org-notes-sync--display-images ()
+    "inline 画像を表示する。画像リンクはファイルからの相対パスなので、
+ファイルの場所を基準に解決する (プロジェクトのメモとして開くと
+default-directory はプロジェクトの root を向いている)。"
+    (let ((default-directory (file-name-directory buffer-file-name)))
+      (org-display-inline-images)))
 
   (defun wamei/org-notes-sync--after-save ()
     "同期対象のメモなら保存後に org-notes-sync を蹴る。
