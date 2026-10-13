@@ -3,15 +3,18 @@ import fs from "node:fs"; import os from "node:os"; import path from "node:path"
 import { syncOnce } from "./sync"
 import { orgFormat } from "./formats/org"
 import { docEquals, para, text, type Doc } from "./doc"
-import { BridgeError, type FlushResult, type NotesPort } from "./notes"
+import { BridgeError, type FlushResult, type NotesPort, type WakeResult } from "./notes"
 import type { BridgeNote } from "./bridge-types"
 
 class FakeNotes implements NotesPort {
   notes = new Map<string, Doc>(); locked = new Set<string>(); folder = true; flushed: string[][] = []; seq = 0; exported: string[] = []
   removed: string[] = []
   writeError: BridgeError | null = null
+  wakeError: Error | null = null; calls: string[] = []
   async selfcheck() {}
+  async wake(): Promise<WakeResult> { this.calls.push("wake"); if (this.wakeError) throw this.wakeError; return "running" }
   async list(): Promise<BridgeNote[] | null> {
+    this.calls.push("list")
     if (!this.folder) return null
     return [...this.notes].map(([id, doc]): BridgeNote => (this.locked.has(id) ? { id, uri: `uri:${id}`, locked: true } : { id, uri: `uri:${id}`, doc }))
   }
@@ -319,4 +322,16 @@ test("保留 (deferred) は警告し、次の周ですぐ再挑戦する", async
   clock = 1 * MIN; await sync()
   expect(fake.flushed.length).toBe(2)
   expect(stateJson()).toMatchObject({ flushPending: true, flushTimeouts: 0 })
+})
+
+test("一覧を読む前にメモ.app を起こす (止まっていると iPhone の編集が DB に届かない)", async () => {
+  await sync()
+  expect(fake.calls.slice(0, 2)).toEqual(["wake", "list"])
+})
+test("メモ.app を起こせなくても同期は続ける", async () => {
+  write("a.org", "#+title: a\n#+notes_sync: yes\nx\n")
+  fake.wakeError = new BridgeError("boom", 124)
+  const r = await sync()
+  expect(r.status).not.toBe("aborted")
+  expect(fake.notes.size).toBe(1)
 })

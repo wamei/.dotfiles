@@ -194,6 +194,14 @@ export async function syncOnce(d: SyncDeps): Promise<SyncOutcome> {
     return abort("bridge", MSG.bridge)
   }
 
+  // 失敗しても DB にある分で同期を続ける
+  try {
+    const w = await d.notes.wake()
+    if (w === "launched" || w === "timeout") d.log(`wake: ${w}`)
+  } catch (e) {
+    d.log(`wake: ${errMessage(e)}`)
+  }
+
   let state: State
   try {
     state = loadState(d.stateDir)

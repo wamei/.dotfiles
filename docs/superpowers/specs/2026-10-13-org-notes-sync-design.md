@@ -146,10 +146,14 @@ markdown に乗り換えるときは `formats/markdown.ts` を足し、設定の
 - 作成は AppleScript (`make new note at folder "org"`、本文はタイトル 1 行) → bridge `write`。
 - 削除は AppleScript (`delete note id …`)。メモ.app の「最近削除した項目」に入る。
 - `org` フォルダが無ければ AppleScript で作る。
+- **wake (受信)**: 毎周、一覧を読む前に 1 回。Mac の DB はメモ.app が動いている間しか iCloud の変更を
+  受け取らない (2026-10-13 実機で確認: 停止中は 2 分以上届かず、`open -g` から約 4 秒で届いた)。
+  - 未起動 → `open -g -a Notes`、最低 6 秒、DB (`NoteStore.sqlite` と `-wal`) の mtime が 4 秒止まるまで待つ (上限 30 秒)
+  - 起動したままにする。失敗しても DB にある分で同期を続ける
 - **flush (送信)**: 1 周で 1 件でも書いたら最後に 1 回。
   - メモ.app が未起動 → `open -g -a Notes`、書いたメモの版番号が揃う
-    (`ZCURRENTLOCALVERSION == ZLATESTVERSIONSYNCEDTOCLOUD`) のを待ってから終了させる
-  - 起動中で手前に無い → 終了して `open -g -a Notes`
+    (`ZCURRENTLOCALVERSION == ZLATESTVERSIONSYNCEDTOCLOUD`) のを待つ。起動したままにする
+  - 起動中で手前に無い → 終了して `open -g -a Notes`、版番号が揃うのを待つ
   - 手前にある → 保留 (state に `flushPending`)。次の周で再挑戦
   - 60 秒で揃わなければ `flushPending` を残して警告
 

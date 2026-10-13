@@ -5,6 +5,8 @@ import type { Doc } from "./doc"
 // timeoutMs を超えたら子プロセスを殺し、非 0 の code (124) で返す
 export type Runner = (cmd: string[], stdin?: string, timeoutMs?: number) => Promise<{ code: number; stdout: string; stderr: string }>
 export type FlushResult = "done" | "deferred" | "timeout" | "not-needed"
+// running: 元から起動中 / launched: 起動して DB の更新が落ち着いた / timeout: 起動したが落ち着かなかった
+export type WakeResult = "running" | "launched" | "timeout" | "not-needed"
 
 export class BridgeError extends Error {
   constructor(message: string, readonly code: number) {
@@ -15,6 +17,8 @@ export class BridgeError extends Error {
 
 export type NotesPort = {
   selfcheck(): Promise<void>
+  // メモ.app が止まっていると iCloud の変更が DB に届かないので、裏で起動して届くのを待つ (起動したままにする)
+  wake(): Promise<WakeResult>
   list(): Promise<BridgeNote[] | null>
   // expect を渡すと、メモが expect のままのときだけ書く (違えば BridgeError code 7)
   write(id: string, doc: Doc, expect?: Doc): Promise<Doc>
@@ -35,6 +39,8 @@ export type NotesPortOptions = {
   // 既定は NoteStore.sqlite (store 指定時は <store>/NoteStore.sqlite) を読む
   syncState?: (ids: string[]) => { local: number; synced: number }[]
   notesDbPath?: string
+  // DB の最終更新の目印 (既定は NoteStore.sqlite と -wal の mtime の大きいほう)
+  dbStamp?: () => number
   // 1 コマンドあたりの上限 (既定 30 秒、osascript の軽い呼び出しと lsappinfo は最大 15 秒)
   commandTimeoutMs?: number
 }
@@ -45,6 +51,10 @@ const STORE_DB = `${process.env.HOME}/Library/Group Containers/group.com.apple.n
 const WAIT_SYNC_MS = 60_000
 const POLL_MS = 2_000
 const WAIT_QUIT_MS = 10_000
+// 起動後、最低 WAKE_MIN_MS 待ち、DB の更新が WAKE_QUIET_MS 止まったら届いたとみなす (上限 WAKE_MAX_MS)
+const WAKE_MIN_MS = 6_000
+const WAKE_QUIET_MS = 4_000
+const WAKE_MAX_MS = 30_000
 
 export const defaultRun: Runner = async (cmd, stdin, timeoutMs = DEFAULT_COMMAND_MS) => {
   const p = Bun.spawn(cmd, { stdin: stdin === undefined ? "ignore" : new Blob([stdin]), stdout: "pipe", stderr: "pipe" })
@@ -83,6 +93,18 @@ export function defaultSyncState(ids: string[], dbPath: string = STORE_DB): { lo
   }
 }
 
+// DB の最終更新の目印。ファイルが無ければ 0
+export function defaultDbStamp(dbPath: string = STORE_DB): number {
+  const fs = require("node:fs") as typeof import("node:fs")
+  let max = 0
+  for (const f of [dbPath, `${dbPath}-wal`]) {
+    try {
+      max = Math.max(max, fs.statSync(f).mtimeMs)
+    } catch {}
+  }
+  return max
+}
+
 // JXA。利用者のデータは必ず argv で受け取る (スクリプトへ文字列連結しない)
 const JXA_RUNNING = `Application("Notes").running()`
 const JXA_QUIT = `Application("Notes").quit()`
@@ -114,6 +136,7 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
   const cmdMs = o.commandTimeoutMs ?? DEFAULT_COMMAND_MS
   const shortMs = Math.min(SHORT_COMMAND_MS, cmdMs)
   const syncState = o.syncState ?? ((ids: string[]) => defaultSyncState(ids, defaultSyncStatePath(o)))
+  const dbStamp = o.dbStamp ?? (() => defaultDbStamp(defaultSyncStatePath(o)))
   const noStore = () => {
     if (o.store) throw new BridgeError("--store では作成・削除しません", 1)
   }
@@ -179,17 +202,35 @@ export function createNotesPort(o: NotesPortOptions): NotesPort {
       if (!(await waitUntil(async () => !(await isRunning()), WAIT_QUIT_MS))) return "timeout"
     }
     await exec(["open", "-g", "-a", "Notes"])
-    // 時間切れのときは送信を続けられるよう起動したままにする
+    // 起動したままにする (止まっていると iPhone の編集が届かない)
     if (!(await waitUntil(() => unsynced(ids).length === 0, WAIT_SYNC_MS))) return "timeout"
-    // 待つ間に手前へ出されていたら終了させない
-    if ((await frontState()) !== "back") return "deferred"
-    await osa(JXA_QUIT, shortMs)
     return "done"
+  }
+
+  const wake = async (): Promise<WakeResult> => {
+    if (await isRunning()) return "running"
+    await exec(["open", "-g", "-a", "Notes"])
+    const start = now()
+    let last = dbStamp(), quietSince = start
+    for (;;) {
+      await sleep(POLL_MS)
+      const t = now(), cur = dbStamp()
+      if (cur !== last) {
+        last = cur
+        quietSince = t
+      }
+      if (t - start >= WAKE_MIN_MS && t - quietSince >= WAKE_QUIET_MS) return "launched"
+      if (t - start >= WAKE_MAX_MS) return "timeout"
+    }
   }
 
   return {
     async selfcheck() {
       await bridge(["selfcheck"], isObj)
+    },
+    async wake() {
+      if (o.store) return "not-needed"
+      return wake()
     },
     async list() {
       const r = await bridge<{ folderMissing: boolean; notes: BridgeNote[] }>(

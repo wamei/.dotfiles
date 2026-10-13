@@ -90,7 +90,7 @@ test("exportMedia", async () => {
   await createNotesPort(opts(run)).exportMedia("A", "/t.jpg")
   expect(calls[0]).toBe("/b export-media --attachment A --to /t.jpg")
 })
-test("flush: 未起動なら起動して送信を待ち、終了させる", async () => {
+test("flush: 未起動なら起動して送信を待ち、起動したままにする", async () => {
   const { run, calls } = fakeRunner([
     [/running\(\)/, () => ({ stdout: "false" })],
     [/lsappinfo/, () => ({ stdout: TERM })],
@@ -101,7 +101,7 @@ test("flush: 未起動なら起動して送信を待ち、終了させる", asyn
   const r = await createNotesPort(opts(run, { syncState: () => [n++ < 2 ? { local: 2, synced: 1 } : { local: 2, synced: 2 }] })).flush(["N"])
   expect(r).toBe("done")
   expect(calls.some((c) => c.includes("open -g -a Notes"))).toBe(true)
-  expect(calls.at(-1)).toContain("quit")
+  expect(calls.some((c) => c.includes("quit"))).toBe(false)
 })
 test("flush: 起動中で手前に無ければ quit → 停止待ち → 起動 → 送信待ち", async () => {
   let running = true
@@ -118,7 +118,8 @@ test("flush: 起動中で手前に無ければ quit → 停止待ち → 起動 
   const q = calls.findIndex((c) => c.includes("quit")), o = calls.findIndex((c) => c.includes("open -g -a Notes"))
   expect(q).toBeGreaterThan(-1)
   expect(o).toBeGreaterThan(q)
-  expect(calls.at(-1)).toContain("quit")
+  expect(calls.filter((c) => c.includes("quit")).length).toBe(1)
+  expect(calls.at(-1)).not.toContain("quit")
 })
 test("flush: 手前で使っているなら保留", async () => {
   const { run, calls } = fakeRunner([
@@ -147,33 +148,6 @@ test("flush: syncState に行が無い id は未送信で timeout", async () => 
   let t = 0
   const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g/, () => ({})], [/quit/, () => ({})]])
   expect(await createNotesPort(opts(run, { now: () => (t += 3000), syncState: () => [] })).flush(["N"])).toBe("timeout")
-})
-test("flush: 終了直前に手前へ出ていたら quit せず保留 (未起動から起動した経路)", async () => {
-  let front = 0
-  const { run, calls } = fakeRunner([
-    [/running\(\)/, () => ({ stdout: "false" })],
-    [/lsappinfo/, () => ({ stdout: front++ === 0 ? '"bundleid"="com.apple.Notes"' : TERM })],
-    [/open -g/, () => ({})],
-    [/quit/, () => ({})],
-  ])
-  // 未起動の経路では front 確認は最終の 1 回だけ (1 回目で Notes を返す)
-  let n = 0
-  const r = await createNotesPort(opts(run, { syncState: () => [n++ === 0 ? { local: 2, synced: 1 } : { local: 2, synced: 2 }] })).flush(["N"])
-  expect(r).toBe("deferred")
-  expect(calls.some((c) => c.includes("quit"))).toBe(false)
-})
-test("flush: 再起動経路でも終了直前に手前なら保留", async () => {
-  let running = true, front = 0
-  const { run, calls } = fakeRunner([
-    [/running\(\)/, () => ({ stdout: String(running) })],
-    [/lsappinfo/, () => ({ stdout: front++ === 0 ? TERM : '"bundleid"="com.apple.Notes"' })],
-    [/quit/, () => { running = false; return {} }],
-    [/open -g/, () => ({})],
-  ])
-  let n = 0
-  const r = await createNotesPort(opts(run, { syncState: () => [n++ === 0 ? { local: 2, synced: 1 } : { local: 2, synced: 2 }] })).flush(["N"])
-  expect(r).toBe("deferred")
-  expect(calls.filter((c) => c.includes("quit")).length).toBe(1)
 })
 test("flush: 手前の判定が空出力なら保留", async () => {
   const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "true" })], [/lsappinfo/, () => ({ stdout: "" })]])
@@ -275,4 +249,44 @@ test("既定の syncState が読む DB: notesDbPath > <store>/NoteStore.sqlite >
   expect(defaultSyncStatePath({ store: "/s" })).toBe("/s/NoteStore.sqlite")
   expect(defaultSyncStatePath({ store: "/s", notesDbPath: "/d.sqlite" })).toBe("/d.sqlite")
   expect(defaultSyncStatePath({})).toBe(`${process.env.HOME}/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`)
+})
+
+// wake: メモ.app が止まっていると iCloud の変更が DB に届かないので、起動して届くのを待つ
+const clockOpts = () => {
+  let t = 0
+  return { now: () => t, sleep: async (ms: number) => { t += ms }, at: () => t }
+}
+test("wake: store 指定時は何もしない", async () => {
+  const { run, calls } = fakeRunner([])
+  expect(await createNotesPort(opts(run, { store: "/s" })).wake()).toBe("not-needed")
+  expect(calls).toEqual([])
+})
+test("wake: 起動中なら何もしない", async () => {
+  const { run, calls } = fakeRunner([[/running\(\)/, () => ({ stdout: "true" })]])
+  expect(await createNotesPort(opts(run)).wake()).toBe("running")
+  expect(calls.some((c) => c.includes("open -g"))).toBe(false)
+})
+test("wake: 未起動なら裏で起動し、DB の更新が落ち着くまで待つ", async () => {
+  const c = clockOpts()
+  const { run, calls } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g -a Notes/, () => ({})]])
+  // 起動から 10 秒間 DB が書き換わり続け、その後は止まる
+  const r = await createNotesPort(opts(run, { ...c, dbStamp: () => Math.min(c.at(), 10_000) })).wake()
+  expect(r).toBe("launched")
+  expect(calls.some((x) => x.includes("open -g -a Notes"))).toBe(true)
+  expect(calls.some((x) => x.includes("quit"))).toBe(false)
+  expect(c.at()).toBeGreaterThanOrEqual(14_000)
+  expect(c.at()).toBeLessThan(30_000)
+})
+test("wake: DB が書き換わらなくても最低 6 秒は待つ", async () => {
+  const c = clockOpts()
+  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g -a Notes/, () => ({})]])
+  expect(await createNotesPort(opts(run, { ...c, dbStamp: () => 1 })).wake()).toBe("launched")
+  expect(c.at()).toBeGreaterThanOrEqual(6_000)
+})
+test("wake: 30 秒たっても落ち着かなければ timeout", async () => {
+  const c = clockOpts()
+  const { run } = fakeRunner([[/running\(\)/, () => ({ stdout: "false" })], [/open -g -a Notes/, () => ({})]])
+  expect(await createNotesPort(opts(run, { ...c, dbStamp: () => c.at() })).wake()).toBe("timeout")
+  expect(c.at()).toBeGreaterThanOrEqual(30_000)
+  expect(c.at()).toBeLessThan(33_000)
 })
