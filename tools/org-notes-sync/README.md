@@ -1,6 +1,6 @@
 # org-notes-sync
 
-org のメモファイルと Apple メモを双方向に同期する CLI。launchd が 5 分ごとに 1 回ずつ走らせる。
+org のメモファイルと Apple メモを双方向に同期する CLI。launchd が 5 分ごとと、メモの DB が書き換わったとき (iPhone の編集がメモ.app に届いたときなど。間隔は最低 15 秒) に走らせる。
 設計は [docs/superpowers/specs/2026-10-13-org-notes-sync-design.md](../../docs/superpowers/specs/2026-10-13-org-notes-sync-design.md) を参照。
 
 ## インストール

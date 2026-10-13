@@ -17,7 +17,7 @@
 | 方向 | 双方向。Mac と iPhone のどちらで書いても揃う |
 | 対象 | opt-in。org ファイルに `#+notes_sync: yes` があるものだけ |
 | iPhone で作ったメモ | メモ.app の `org` フォルダ (iCloud アカウント) に置いたものだけ取り込む。org 側に無ければ `~/org/<タイトル>.org` を作る |
-| 実行タイミング | launchd で 5 分おき + `M-x org-notes-sync` + Emacs でメモを保存したとき非同期で |
+| 実行タイミング | launchd で 5 分おきと DB の書き換え時 (`WatchPaths`、最短 15 秒間隔) + `M-x org-notes-sync` + Emacs でメモを保存したとき非同期で |
 | 衝突 | 3-way マージ。衝突箇所は org に衝突マーカーを入れ、メモ.app には書かない |
 | 削除 | 伝える。メモ側の削除 / フォルダ外への移動 → org を `~/org/.notes-trash/` へ。org 側の削除 / opt-in 解除 → メモを削除 (メモ.app の「最近削除した項目」へ) |
 | 書式 | メモ.app で表現できるものはできる限り中間表現に取り込む。将来 markdown に乗り換えられるよう、ローカル書式は差し替え可能にする |
@@ -197,7 +197,7 @@ markdown に乗り換えるときは `formats/markdown.ts` を足し、設定の
 
 ### launchd
 
-`~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist` (`StartInterval` 300)。
+`~/Library/LaunchAgents/jp.wamei.org-notes-sync.plist` (`StartInterval` 300、`WatchPaths` に `NoteStore.sqlite` と `-wal`、`ThrottleInterval` 15)。書くものが無い同期は DB に触れないので、自分の書き込みで回り続けない (2026-10-13 実機で確認)。
 mise の bootstrap で配置する。実行ファイルは `bun build --compile` で作る
 `~/.local/bin/org-notes-sync` と、`~/.local/bin/notes-bridge`。フルディスクアクセスは
 `org-notes-sync` に 1 回与える (作り直したら与え直す)。
