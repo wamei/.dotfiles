@@ -178,7 +178,7 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
       (push (split-window (car windows) nil side) windows))
     (nreverse windows)))
 
-(defun wamei/claude-grid--build (buffers)
+(defun wamei/claude-grid--build (buffers &optional setup-function)
   "選択フレームを BUFFERS のグリッドにする。左上から行方向に詰める。
 並べた window を同じ順で返す。高さが足りなければ並べられた分だけ返す。"
   (wamei/claude-grid--delete-side-windows)
@@ -197,7 +197,8 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
       (setq windows (nreverse windows))
       (balance-windows)
       (dolist (window windows)
-        (wamei/claude-panel--setup (window-buffer window)))
+        (funcall (or setup-function #'wamei/claude-panel--setup)
+                 (window-buffer window)))
       (when windows
         (select-window (car windows)))
       windows)))

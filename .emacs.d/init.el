@@ -716,6 +716,17 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   (load (expand-file-name "claude-grid"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  (load (expand-file-name "ai-shortcuts"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (load (expand-file-name "ai-panel"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (load (expand-file-name "ai-session"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (wamei/ai-panel-enable)
+  (wamei/ai-session-enable)
 
   (defun wamei/claude-code-ide--no-other-window (window)
     "claude のウィンドウを C-x o (other-window) の巡回対象から外す。
@@ -833,11 +844,11 @@ Claude Code は会話を <設定ディレクトリ>/projects/<作業ディレク
           (select-window window))))))
 
   :bind (("C-c c" . claude-code-ide-menu)
-         ("C-x C-a" . wamei/claude-toggle)
-         ("C-q a c" . claude-code-ide)
-         ("C-q a n" . wamei/claude-panel-next)
-         ("C-q a p" . wamei/claude-panel-previous)
-         ("C-q a g" . wamei/claude-grid-tab))
+         ("C-x C-a" . wamei/ai-toggle)
+         ("C-q a c" . wamei/ai-start)
+         ("C-q a n" . wamei/ai-next)
+         ("C-q a p" . wamei/ai-previous)
+         ("C-q a g" . wamei/ai-grid-tab))
   :custom
   ;; 端末バックエンドは既定の vterm から ghostel へ明示的に上書きする。
   ;; claude-code-ide-terminal-backend の docstring が ghostel を推奨バックエンドと
@@ -861,6 +872,37 @@ Claude Code は会話を <設定ディレクトリ>/projects/<作業ディレク
   (wamei/claude-usage-enable)
   ;; xref や flymake などの Emacs 側の機能を Claude から使えるようにする
   (claude-code-ide-emacs-tools-setup))
+
+(leaf codex
+  :doc "Codex CLI の専用パネル (Claude のキーはそのまま)"
+  ;; 導入: M-x package-vc-install RET https://github.com/benthamite/codex RET
+  ;; 更新: M-x package-vc-upgrade RET codex RET
+  ;; inheritenv / transient 等は package-vc-install が依存として導入する。
+  :ensure nil
+  :commands (codex codex-transient codex-new-instance codex-resume)
+  :preface
+  (load (expand-file-name "codex-panel"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  :bind (("C-c x" . codex-transient))
+  :custom
+  (codex-terminal-backend . 'ghostel)
+  (codex-program-switches . '("--approve-for-me"))
+  ;; --disable による CLI 設定上書きは共有サーバーを使えなくする。
+  (codex-disable-terminal-resize-reflow . nil)
+  :config
+  (load (expand-file-name "codex-ghostel"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (load (expand-file-name "codex-usage"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (load (expand-file-name "codex-grid"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (wamei/codex-panel-enable)
+  (wamei/codex-grid-enable)
+  (wamei/codex-usage-enable))
 
 (leaf project
   :doc "プロジェクト操作"
@@ -2130,15 +2172,18 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   (setq wamei/desktop-side-restorers
         '(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)
           ("\\`\\*term: " . wamei/desktop--restore-term)
-          ("\\`\\*claude-code\\[" . wamei/desktop--restore-claude)))
+          ("\\`\\*claude-code\\[" . wamei/ai-panel-restore)
+          ("\\`\\*codex:" . wamei/ai-panel-restore)))
   ;; sidebar は dired バッファなので desktop が普通の dired として保存してしまう。
-  ;; 除外して restorer に任せる。
+  ;; Codex の exec バッファも直接復元せず、両方ともパネルの restorer に任せる。
   (setq desktop-buffers-not-to-save
         (if desktop-buffers-not-to-save
-            (concat "\\` \\*sidebar: \\|" desktop-buffers-not-to-save)
-          "\\` \\*sidebar: "))
+            (concat "\\`\\*codex:\\|\\` \\*sidebar: \\|" desktop-buffers-not-to-save)
+          "\\`\\*codex:\\|\\` \\*sidebar: "))
   (wamei/desktop-side-setup)
   (wamei/term-restore-setup)
+  ;; 各会話を ID 指定で起動してから、表示していたパネルを開き直す。
+  (add-hook 'desktop-after-read-hook #'wamei/ai-session-restore-all)
   ;; タブを閉じて端末を消すときは履歴を退避し、同じプロジェクトのタブが
   ;; 開き直されたら作り直す (term-restore.el の「閉じたタブの端末」)。
   (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/term-restore-stash)
