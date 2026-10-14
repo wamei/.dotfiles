@@ -60,6 +60,7 @@ adopt = true
 "brew-cask:google-japanese-ime" = "latest"
 "brew-cask:claude" = "latest"
 "brew-cask:codex" = "latest"
+"brew-cask:chatgpt" = "latest"
 "brew-cask:google-chrome" = "latest"
 "brew-cask:google-chrome@canary" = "latest"
 "brew-cask:slack" = "latest"
