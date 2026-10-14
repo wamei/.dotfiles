@@ -89,7 +89,8 @@
   (display-buffer-in-side-window
    buffer `((side . right) (slot . ,wamei/codex-panel-slot)
             (window-width . ,wamei/codex-panel-width)
-            (window-parameters . ((no-other-window . t))))))
+            (window-parameters . ((no-other-window . t)
+                                  (no-delete-other-windows . t))))))
 
 (defun wamei/codex-panel-tab-select (event)
   "EVENT のタブを選ぶ。"

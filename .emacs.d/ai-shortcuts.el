@@ -51,10 +51,32 @@
 
 (defconst wamei/ai--commands
   '((toggle (claude . wamei/claude-toggle) (codex . wamei/codex-toggle))
-    (start (claude . claude-code-ide) (codex . codex))
+    (start (claude . wamei/ai--start-claude) (codex . wamei/ai--start-codex))
     (next (claude . wamei/claude-panel-next) (codex . wamei/codex-panel-next))
     (previous (claude . wamei/claude-panel-previous) (codex . wamei/codex-panel-previous))
     (grid (claude . wamei/claude-grid-tab) (codex . wamei/codex-grid-tab))))
+
+(defun wamei/ai--start-claude ()
+  "名前の入力を省き、空入力と同じ自動採番で Claude を新規作成する。"
+  (interactive)
+  (require 'claude-code-ide)
+  (cl-letf (((symbol-function 'claude-code-ide--read-instance-name)
+             #'claude-code-ide--auto-instance-name))
+    (claude-code-ide)))
+
+(defun wamei/ai--start-codex (&optional arg)
+  "既存の会話を再利用せず、空いている既定名で Codex を新規作成する。"
+  (interactive "P")
+  (require 'codex)
+  (let* ((directory (if (equal arg '(16))
+                        (read-directory-name "Project directory: ")
+                      (codex--directory)))
+         (instance "default")
+         (number 2))
+    (while (get-buffer (codex--buffer-name-for-directory directory instance))
+      (setq instance (format "default-%d" number)
+            number (1+ number)))
+    (codex-start-session :directory directory :instance-name instance)))
 
 (defun wamei/ai--call (action arg)
   "ACTION を選択した AI で実行する。ARG はプレフィックス引数。"
@@ -76,7 +98,7 @@
   "起動中の AI パネルに出入りする。未起動なら Claude。"
   (interactive "P") (wamei/ai--call 'toggle arg))
 (defun wamei/ai-start (&optional arg)
-  "現在の AI の起動コマンドを実行する。未起動なら Claude。"
+  "現在の AI の会話を名前入力なしで新規作成する。未起動なら Claude。"
   (interactive "P") (wamei/ai--call 'start arg))
 (defun wamei/ai-next (&optional arg)
   "現在の AI の次のセッションを表示する。"

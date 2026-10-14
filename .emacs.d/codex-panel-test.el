@@ -6,6 +6,34 @@
 (require 'codex-ghostel)
 (require 'desktop-side-windows)
 
+(ert-deftest wamei/codex-panel-survives-magit-fullframe-and-quit ()
+  (require 'magit)
+  (require 'magit-main-window)
+  (save-window-excursion
+    (delete-other-windows)
+    (let ((editor (generate-new-buffer " codex-magit-editor"))
+          (panel (generate-new-buffer "*codex:/tmp/:magit-test*"))
+          (status (generate-new-buffer " codex-magit-status"))
+          (magit-display-buffer-function #'magit-display-buffer-fullframe-status-v1)
+          (magit-pre-display-buffer-hook '(wamei/magit-save-main-window)))
+      (unwind-protect
+          (progn
+            (switch-to-buffer editor)
+            (let* ((window (wamei/codex-panel-show panel))
+                   (width (window-total-width window)))
+              (with-current-buffer status
+                (magit-status-mode)
+                (magit-display-buffer status))
+              (should (window-live-p window))
+              (should (eq (window-buffer window) panel))
+              (should (= (window-total-width window) width))
+              (with-current-buffer status (wamei/magit-restore-main-window))
+              (should (window-live-p window))
+              (should (eq (window-buffer window) panel))
+              (should (= (window-total-width window) width))
+              (should (get-buffer-window editor))))
+        (mapc #'kill-buffer (list editor panel status))))))
+
 (ert-deftest wamei/codex-panel-restores-saved-project-and-width ()
   (save-window-excursion
     (delete-other-windows)

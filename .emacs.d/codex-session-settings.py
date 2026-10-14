@@ -48,17 +48,49 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=Path, default=Path.home() / ".codex/config.toml")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--approve-for-me", action="store_true")
     args = parser.parse_args()
     source = args.path.read_text()
     updated, items = configure(source)
+    if args.approve_for_me:
+        updated = configure_approvals(updated)
     if not args.dry_run and updated != source:
-        backup = args.path.with_suffix(".toml.before-emacs-session-id")
+        suffix = "approvals" if args.approve_for_me else "session-id"
+        backup = args.path.with_suffix(".toml.before-emacs-" + suffix)
         if not backup.exists():
             shutil.copy2(args.path, backup)
         if args.path.read_text() != source:
             raise RuntimeError("Configuration changed while preparing the update")
         args.path.write_text(updated)
     print("Codex status line:", ", ".join(items))
+    if args.approve_for_me:
+        print("Codex approval defaults: on-request, auto_review, workspace-write")
+
+
+def configure_approvals(text: str) -> str:
+    """Persist --approve-for-me defaults without command-line overrides."""
+    config = tomllib.loads(text)
+    defaults = {
+        "approval_policy": "on-request",
+        "approvals_reviewer": "auto_review",
+        "sandbox_mode": "workspace-write",
+    }
+    section = re.search(r"(?m)^\[", text)
+    end = section.start() if section else len(text)
+    root, tables = text[:end], text[end:]
+    for key, value in defaults.items():
+        pattern = rf'(?m)^{key}[ \t]*=[ \t]*[^\n]*$'
+        setting = key + " = " + json.dumps(value)
+        if re.search(pattern, root):
+            root = re.sub(pattern, setting, root)
+        elif key in config:
+            raise ValueError("Cannot safely replace " + key)
+        else:
+            root += setting + "\n"
+    result = root + tables
+    if tomllib.loads(result) != dict(config, **defaults):
+        raise ValueError("Unexpected approval configuration changes")
+    return result
 
 
 if __name__ == "__main__":

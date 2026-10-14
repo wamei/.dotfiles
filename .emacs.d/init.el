@@ -887,7 +887,8 @@ Claude Code は会話を <設定ディレクトリ>/projects/<作業ディレク
   :bind (("C-c x" . codex-transient))
   :custom
   (codex-terminal-backend . 'ghostel)
-  (codex-program-switches . '("--approve-for-me"))
+  ;; Approval defaults live in ~/.codex/config.toml so shared-server mode works.
+  (codex-program-switches . nil)
   ;; --disable による CLI 設定上書きは共有サーバーを使えなくする。
   (codex-disable-terminal-resize-reflow . nil)
   :config
