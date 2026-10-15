@@ -190,13 +190,27 @@
       (error (wamei/codex-usage--failed)))))
 
 (defun wamei/codex-usage--tick ()
+  ;; 応答は tick の少し後に届くので、interval ちょうどで比べると次の tick で
+  ;; 毎回「新しい」になり 1 回おきにしか取らない。Claude と同じ幅だけ削る。
   (if (wamei/codex-usage--visible-p)
       (unless (and wamei/codex-usage--updated-at
                    (not wamei/codex-usage--error)
                    (< (- (float-time) wamei/codex-usage--updated-at)
-                      wamei/codex-usage-interval))
+                      (- wamei/codex-usage-interval wamei/claude-usage--fresh-margin)))
         (wamei/codex-usage-refresh))
     (wamei/codex-usage--stop)))
+
+(defvar wamei/codex-usage--was-visible nil
+  "前回の window 変化のときにパネルが見えていたか。")
+
+(defun wamei/codex-usage--on-window-change (_frame)
+  "`window-state-change-functions' 用。パネルが見えた瞬間に tick する。
+Claude と共有のサイドパネルで切り替えると `wamei/codex-panel-show' を通らず、
+次のタイマーまで古い値が出たままになる。見えたままの変化では取り直さない。"
+  (let ((visible (and (wamei/codex-usage--visible-p) t)))
+    (when (and visible (not wamei/codex-usage--was-visible))
+      (wamei/codex-usage--tick))
+    (setq wamei/codex-usage--was-visible visible)))
 
 (defun wamei/codex-usage--after-display (buffer)
   (wamei/codex-usage--setup buffer)
@@ -213,6 +227,7 @@
   (advice-add 'wamei/codex-panel-show :after #'wamei/codex-usage--after-display)
   (add-hook 'kill-emacs-hook #'wamei/codex-usage--stop)
   (add-hook 'enable-theme-functions #'wamei/codex-usage--invalidate)
+  (add-hook 'window-state-change-functions #'wamei/codex-usage--on-window-change)
   (wamei/codex-usage--invalidate)
   (unless (timerp wamei/codex-usage--timer)
     (setq wamei/codex-usage--timer

@@ -77,4 +77,39 @@
           (should-not wamei/codex-usage--process))
       (when (process-live-p process) (delete-process process)))))
 
+(ert-deftest wamei/codex-usage-tick-refreshes-one-interval-after-update ()
+  "前回の取得から 1 周期後の tick では取り直す。
+応答は tick の少し後に届くので、次の tick では interval にわずかに届かない。
+それを新しいとみなすと 1 回おきにしか取らなくなる。"
+  (let ((wamei/codex-usage--updated-at (- (float-time) (- wamei/codex-usage-interval 0.6)))
+        (wamei/codex-usage--error nil)
+        (refreshes 0))
+    (cl-letf (((symbol-function 'wamei/codex-usage--visible-p) (lambda () t))
+              ((symbol-function 'wamei/codex-usage-refresh)
+               (lambda () (cl-incf refreshes))))
+      (wamei/codex-usage--tick)
+      (should (equal refreshes 1)))))
+
+(ert-deftest wamei/codex-usage-window-change-ticks-when-panel-appears ()
+  "パネルが隠れていた状態から見えたら、次のタイマーを待たずに tick する。
+Claude と共有のサイドパネルで切り替えると `wamei/codex-panel-show' を通らない。"
+  (let ((wamei/codex-usage--was-visible nil)
+        (visible nil)
+        (ticks 0))
+    (cl-letf (((symbol-function 'wamei/codex-usage--visible-p) (lambda () visible))
+              ((symbol-function 'wamei/codex-usage--tick)
+               (lambda () (cl-incf ticks))))
+      (wamei/codex-usage--on-window-change nil)
+      (should (equal ticks 0))
+      (setq visible t)
+      (wamei/codex-usage--on-window-change nil)
+      (should (equal ticks 1))
+      (wamei/codex-usage--on-window-change nil)
+      (should (equal ticks 1))
+      (setq visible nil)
+      (wamei/codex-usage--on-window-change nil)
+      (setq visible t)
+      (wamei/codex-usage--on-window-change nil)
+      (should (equal ticks 2)))))
+
 (provide 'codex-usage-test)
