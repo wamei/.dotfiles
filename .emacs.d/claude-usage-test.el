@@ -573,6 +573,44 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
         (should (equal fetches 1))
         (should wamei/claude-usage--state)))))
 
+(ert-deftest wamei/claude-usage-test-tick-fetches-one-interval-after-own-fetch ()
+  "自分の取得から 1 周期後の tick では投げ直す。
+取得は tick の少し後に終わるので、次の tick では interval にわずかに
+届かない。それを fresh とみなすと 1 回おきにしか取らなくなる。"
+  (wamei/claude-usage-test--with-cache-file
+    (let ((fetches 0))
+      (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () t))
+                ((symbol-function 'wamei/claude-usage--fetch)
+                 (lambda () (cl-incf fetches))))
+        (setq wamei/claude-usage--state (wamei/claude-usage-test--state)
+              wamei/claude-usage--state-time
+              (time-subtract (current-time) (- wamei/claude-usage-interval 0.6)))
+        (wamei/claude-usage--tick)
+        (should (equal fetches 1))))))
+
+(ert-deftest wamei/claude-usage-test-window-change-ticks-when-panel-appears ()
+  "パネルが隠れていた状態から見えたら、次のタイマーを待たずに tick する。"
+  (let ((wamei/claude-usage--was-visible nil)
+        (visible nil)
+        (ticks 0))
+    (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () visible))
+              ((symbol-function 'wamei/claude-usage--tick)
+               (lambda () (cl-incf ticks))))
+      (wamei/claude-usage--on-window-change nil)
+      (should (equal ticks 0))
+      (setq visible t)
+      (wamei/claude-usage--on-window-change nil)
+      (should (equal ticks 1))
+      ;; 見えたままの変化 (別 window の切り替えなど) では投げ直さない。
+      ;; 429 のあとに window 操作のたびに叩くと枠をさらに食う。
+      (wamei/claude-usage--on-window-change nil)
+      (should (equal ticks 1))
+      (setq visible nil)
+      (wamei/claude-usage--on-window-change nil)
+      (setq visible t)
+      (wamei/claude-usage--on-window-change nil)
+      (should (equal ticks 2)))))
+
 (ert-deftest wamei/claude-usage-test-tick-does-nothing-while-hidden ()
   "パネルが見えていなければ拾いにも取りにも行かない。"
   (wamei/claude-usage-test--with-cache-file

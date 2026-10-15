@@ -372,11 +372,20 @@ NOW は当日かどうかの判定に使う (リセット時刻の出し方が�
     (force-mode-line-update t)
     t))
 
+(defconst wamei/claude-usage--fresh-margin 10
+  "fresh とみなす幅を `wamei/claude-usage-interval' から削る秒数。
+取得は tick の少し後 (通常 1 秒弱) に終わるので、自分が取った値は次の tick で
+interval にわずかに届かない。interval ちょうどで判定すると毎回 fresh 扱いに
+なって 1 回おきにしか取らず、実際の周期が 2 倍になる。")
+
 (defun wamei/claude-usage--fresh-p ()
-  "持っている値が `wamei/claude-usage-interval' 内のものなら非 nil。"
+  "持っている値が投げ直すまでもなく新しければ非 nil。
+`wamei/claude-usage-interval' から `wamei/claude-usage--fresh-margin' を
+引いた秒数以内に取れた値を新しいとみなす。"
   (and wamei/claude-usage--state-time
        (time-less-p (time-since wamei/claude-usage--state-time)
-                    wamei/claude-usage-interval)))
+                    (max 0 (- wamei/claude-usage-interval
+                              wamei/claude-usage--fresh-margin)))))
 
 ;;; 取得
 
@@ -616,6 +625,21 @@ Claude のパネルは端末が alt-screen を全面に描いているので、m
     (unless (wamei/claude-usage--fresh-p)
       (wamei/claude-usage--fetch))))
 
+(defvar wamei/claude-usage--was-visible nil
+  "前回の window 変化のときにパネルが見えていたか。")
+
+(defun wamei/claude-usage--on-window-change (_frame)
+  "`window-state-change-functions' 用。パネルが見えた瞬間に tick する。
+tick は見えている間しか動かないので、隠れている間は止まっている。開いたあと
+次のタイマーまで (最大 `wamei/claude-usage-interval') 古い値が出たままになる
+のを避ける。見えたままの変化では投げ直さない (429 のあとに window 操作の
+たびに叩くと枠をさらに食う)。buffer の差し替えだけでなく
+`set-window-configuration' での復元でも走るよう、この hook に付ける。"
+  (let ((visible (and (wamei/claude-usage--visible-p) t)))
+    (when (and visible (not wamei/claude-usage--was-visible))
+      (wamei/claude-usage--tick))
+    (setq wamei/claude-usage--was-visible visible)))
+
 ;;; 有効化
 
 (defun wamei/claude-usage-enable ()
@@ -623,6 +647,7 @@ Claude のパネルは端末が alt-screen を全面に描いているので、m
   (advice-add 'claude-code-ide--display-buffer-in-side-window
               :after #'wamei/claude-usage--after-display)
   (add-hook 'enable-theme-functions #'wamei/claude-usage--invalidate)
+  (add-hook 'window-state-change-functions #'wamei/claude-usage--on-window-change)
   ;; 起動直後はまだ取れていないので、他のインスタンスが置いた値を出す
   (wamei/claude-usage--adopt-cache)
   (mapc #'wamei/claude-usage--setup (wamei/claude-usage--buffers))
