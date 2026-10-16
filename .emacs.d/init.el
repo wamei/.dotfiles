@@ -79,7 +79,9 @@
             (ring-bell-function . 'ignore)
             (text-quoting-style . 'straight)
             (truncate-lines . t)
-            (truncate-partial-width-windows . t)
+            ;; t だと分割した window では truncate-lines を無視して常に切り詰め、
+            ;; toggle-truncate-lines が効かない。既定の切り詰めは上の truncate-lines に任せる
+            (truncate-partial-width-windows . nil)
             (use-dialog-box . nil)
             (use-file-dialog . nil)
             (menu-bar-mode . nil)
