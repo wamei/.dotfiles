@@ -61,9 +61,48 @@
   ;; サイズ同期は Ghostel が担当する。
   nil)
 
+(defmacro wamei/codex-ghostel--define-arrow (name key)
+  "KEY (\"up\" など) を端末へ送るコマンド NAME を定義する。"
+  `(defun ,name ()
+     ,(format "Codex に %s キーを送る。" key)
+     (interactive)
+     (ghostel-send-key ,key)))
+
+(wamei/codex-ghostel--define-arrow wamei/codex-ghostel-up "up")
+(wamei/codex-ghostel--define-arrow wamei/codex-ghostel-down "down")
+(wamei/codex-ghostel--define-arrow wamei/codex-ghostel-right "right")
+(wamei/codex-ghostel--define-arrow wamei/codex-ghostel-left "left")
+
+(defun wamei/codex-ghostel--when-input (command)
+  "入力モードのときだけ COMMAND を返す `menu-item' の :filter。
+copy mode では nil を返して、下のキーマップ (Emacs の行移動) に譲る。"
+  (and (ghostel--terminal-input-mode-p) command))
+
+(defvar wamei/codex-ghostel-arrow-keys-mode-map
+  (let ((map (make-sparse-keymap)))
+    (pcase-dolist (`(,key . ,command)
+                   '(("C-p" . wamei/codex-ghostel-up)
+                     ("C-n" . wamei/codex-ghostel-down)
+                     ("C-f" . wamei/codex-ghostel-right)
+                     ("C-b" . wamei/codex-ghostel-left)))
+      (define-key map (kbd key)
+                  `(menu-item "" ,command :filter wamei/codex-ghostel--when-input)))
+    map)
+  "Codex の端末で Emacs の移動キーを矢印キーに置き換えるキーマップ。")
+
+(define-minor-mode wamei/codex-ghostel-arrow-keys-mode
+  "Codex の端末で C-p/C-n/C-f/C-b を矢印キーとして送る。
+Codex の選択式の質問 (request_user_input) は選択肢の移動が矢印キーだけで、
+Ctrl+P/N は前後の質問の切り替えに固定されている ([tui.keymap] でも変えられない)。
+入力欄では矢印キーと Ctrl+P/N/F/B は同じ動きなので置き換えても困らない。
+入力モードの出入りで ghostel が `use-local-map' を差し替えるので、
+ローカルマップではなく minor mode のキーマップで持つ。"
+  :keymap wamei/codex-ghostel-arrow-keys-mode-map)
+
 (cl-defmethod codex--term-post-start ((_backend (eql ghostel)))
   ;; copy mode から戻っても Codex の改行・送信キーを維持する。
-  (setq-local ghostel-semi-char-mode-map (current-local-map)))
+  (setq-local ghostel-semi-char-mode-map (current-local-map))
+  (wamei/codex-ghostel-arrow-keys-mode 1))
 
 (provide 'codex-ghostel)
 ;;; codex-ghostel.el ends here

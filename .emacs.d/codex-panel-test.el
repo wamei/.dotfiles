@@ -137,6 +137,30 @@
       (should (equal paste "日本語\n複数行"))
       (should (equal scheduled paste)))))
 
+(ert-deftest wamei/codex-ghostel-emacs-motion-keys-send-arrows ()
+  "入力中は C-p/C-n/C-f/C-b を矢印キーとして送る。copy mode では Emacs の移動に戻す。
+Codex の選択式の質問は選択肢の移動が矢印キーだけで、Ctrl+P/N は質問の切り替えに
+固定されている。"
+  (let (events)
+    (cl-letf (((symbol-function 'ghostel-send-key)
+               (lambda (key &optional mods) (push (list key mods) events))))
+      (with-temp-buffer
+        (ghostel-mode)
+        (codex--term-configure 'ghostel)
+        (codex--term-setup-keymap 'ghostel)
+        (codex--term-post-start 'ghostel)
+        (dolist (key '("C-p" "C-n" "C-f" "C-b"))
+          (call-interactively (key-binding (kbd key))))
+        (should (equal (reverse events)
+                       '(("up" nil) ("down" nil) ("right" nil) ("left" nil))))
+        (codex--term-read-only-mode 'ghostel)
+        (setq events nil)
+        (should-not (memq (key-binding (kbd "C-n"))
+                          '(ghostel--send-event wamei/codex-ghostel-down)))
+        (codex--term-interactive-mode 'ghostel)
+        (call-interactively (key-binding (kbd "C-n")))
+        (should (equal events '(("down" nil))))))))
+
 (ert-deftest wamei/codex-directory-respects-tab-and-session ()
   (cl-letf (((symbol-function 'wamei/project-tabs-current-root) (lambda () "/tmp/tab/")))
     (with-temp-buffer
