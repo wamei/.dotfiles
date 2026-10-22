@@ -587,6 +587,12 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
                           (file-name-directory (file-truename user-init-file)))
         nil t)
 
+  ;; 本文に出た `init.el' のような / を含まないファイル名もリンクにする
+  ;; (ghostel は / を含むパスしか拾わない)。実体は term-links.el。
+  (load (expand-file-name "term-links"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+
   (defconst wamei/term-glyph-substitutions
     '((?⏺ . ?●)    ; claude の応答・ツール呼び出しの行頭 (点滅する)
       (?⏵ . ?►)    ; claude の "⏵⏵ auto mode on" (▶ は絵文字になる)
@@ -692,6 +698,9 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; パネルの端末がプロジェクトの外へ cd しても default-directory をルートに
   ;; 留め、プロジェクトバッファと端末一覧から消えないようにする (term-panel.el)。
   (advice-add 'ghostel--update-directory :around #'wamei/term--keep-in-project)
+
+  ;; Claude の本文の `init.el' / `ai-panel.el:24' もリンクにする (term-links.el)。
+  (wamei/term-links-mode 1)
 
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
