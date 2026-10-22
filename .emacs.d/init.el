@@ -131,11 +131,18 @@
 (leaf server
   :doc "サーバー"
   :ensure nil
-  :after with-editor
+  ;; with-editor (magit のコミットメッセージ等) は emacsclient を使わず自前の
+  ;; 経路で開く。サーバーとは独立した設定。
   :custom (with-editor-emacsclient-executable . nil)
-  :config
-  (unless (server-running-p)
-    (server-start)))
+  ;; 以前は :after with-editor だったので、magit を開くまでサーバーが立たず
+  ;; emacsclient が繋がらなかった。起動の最後に立てる。
+  :hook (emacs-startup-hook . wamei/server-start)
+  :preface
+  (defun wamei/server-start ()
+    "他の Emacs がサーバーを持っていなければ立てる。"
+    (require 'server)
+    (unless (server-running-p)
+      (server-start))))
 
 (leaf mac-settings
   :doc "OS別の設定"
