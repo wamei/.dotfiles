@@ -15,12 +15,17 @@
 # .zshrc の show_env_mise がそのパスを基準に「global 由来か」を判定している
 # ため、[tools] をこちらへ移すとプロンプトの表示が壊れる。
 
+# verify タスクの `mise config explain` と、dry-run が [tasks.bootstrap] を実行せず
+# 表示だけに留める挙動が、この版を前提にしている。
+min_version = "2026.10.14"
+
 # ---------------------------------------------------------------------------
 # system packages (旧 README の brew install 手順)
 #
 # 注: mise の brew backend は brew CLI を呼ばず Homebrew API から直接メタデータを
-# 取り bottle を展開する。cask は artifact 種別のカバー範囲が狭く、扱えないものは
-# 下の [tasks.bootstrap] で brew install に退避してある。
+# 取り bottle を展開する。brew にフォールバックすることはない。cask は artifact
+# 種別のカバー範囲が狭く、扱えないものは下の [tasks.bootstrap] で brew install に
+# 退避してある。
 #
 # adopt = true は必須。mise が cask を入れ直すと /Applications/*.app が置き換わり、
 # macOS の TCC 権限 (アクセシビリティ・画面収録・フルディスクアクセス) がリセット
@@ -47,7 +52,7 @@ adopt = true
 "brew:libpq" = "latest"
 # Emacs の minibuffer で IME を off にする。tap のソースビルド
 "brew:laishulu/homebrew/macism" = "latest"
-# 以下 4 本は aqua registry にエントリが無い
+# 以下は aqua registry にエントリが無い
 "brew:timg" = "latest"      # ghostel に kitty graphics で画像を出す
 
 # --- cask ---
@@ -113,25 +118,19 @@ adopt = true
 # ---------------------------------------------------------------------------
 # macOS のシステム設定
 #
-# 注: mise 2026.9.1 はスカラー値 (bool / int / float / string) しか受け付けない。
-# ドキュメントにある配列・テーブル値はこの版では黙って落ちるので、Dock の
-# persistent-apps のような構造値はここでは表現できない。
+# Dock のアプリ並びは [bootstrap.macos.dock] で宣言できるが、意図して手で管理している
+# (Chrome の PWA など、マシンごとに入っているものが違うため)。
 #
 # 反映には killall が要る。mise 自身はアプリを落とさないので hook で行う。
 # ---------------------------------------------------------------------------
 [bootstrap.macos.defaults]
 # ApplePressAndHold を切るのは、長押しでアクセント候補を出さずキーリピートさせるため
 # (Emacs で必須)。fnState は F1-F12 をファンクションキーとして扱う。
-# KeyRepeat/InitialKeyRepeat と tilesize は実機で plist 型が float (System Settings の
-# スライダー経由で書かれたため) だが、mise は -int で書く。数値は同一で下の
-# AppleShowAllFiles と同じ型だけの実害無い差分。ただしスライダーを再度動かすと float に
-# 戻り、以降の bootstrap/status/-n が毎回差分として報告する。この版の dry-run/status は
-# 最初の conflict で打ち切るため、この見かけ上の差分が後続の本当の差分を隠しうる点に注意。
+# mise は TOML の型どおりに書き、plist の型が違えば `2 (real; expected integer)` のように
+# 差分として報告する。KeyRepeat/InitialKeyRepeat と tilesize は System Settings の
+# スライダーを動かすと float で書き戻されるので、そのときは整数で書き直される。
 "NSGlobalDomain" = { KeyRepeat = 2, InitialKeyRepeat = 30, ApplePressAndHoldEnabled = false, NSAutomaticCapitalizationEnabled = false, "com.apple.keyboard.fnState" = true }
 "com.apple.dock" = { autohide = true, tilesize = 64 }
-# AppleShowAllFiles は旧 README が `defaults write ... True` と文字列で書いていた
-# ため実機には文字列 "True" が入っている。mise は bool を書くので初回だけ差分として
-# 報告される。Finder はどちらも受け付けるので実害はない。
 "com.apple.finder" = { AppleShowAllFiles = true, FXPreferredViewStyle = "Nlsv" }
 
 [bootstrap.hooks]
@@ -150,10 +149,13 @@ login_shell = "/bin/zsh"
 [tasks.bootstrap]
 description = "mise の brew backend で扱えないパッケージを brew から入れる"
 run = [
-  # emacs-plus-app: d12frosted/emacs-plus tap の cask。mise の brew backend は
-  # formulae.brew.sh の API しか参照せず、tap 側が api/cask/<token>.json を
-  # 公開していないため 404 で解決できない (dry-run で実測)。tap 自体は上の
-  # [bootstrap.brew.taps] が先に済ませるので、ここは token 指定で足りる。
+  # emacs-plus-app: d12frosted/emacs-plus tap の cask。mise の brew backend では
+  # 入れられない (2026.10.14 で実測)。
+  #   "brew-cask:emacs-plus-app"   formulae.brew.sh の API を引いて 404
+  #   "brew-cask:d12frosted/emacs-plus/emacs-plus-app"
+  #                                tap の Ruby 定義を mise 自身が評価するが、
+  #                                `version.sub` が未実装で NoMethodError
+  # tap 自体は上の [bootstrap.brew.taps] が先に済ませるので、ここは token 指定で足りる。
   #
   # brew list --cask で先に存在を見てから install する。`brew install --cask` は
   # 「導入済みなら何もしない」ではなく、導入済みでも版が古ければその場で
@@ -169,12 +171,28 @@ run = [
 # 設定の妥当性検証 (非破壊)
 #   mise run verify
 #
-# [dotfiles] のエントリ内の未知キーは警告なしに無視されるため、目視レビューでは
-# 誤りを検出できない。dry-run が唯一の検証手段になる。
+# [dotfiles] のエントリ内の未知キーは bootstrap も dry-run も警告なしに無視する
+# (mode の綴りミスは既定値へ黙ってフォールバックする)。目視レビューでは誤りを
+# 検出できないので、mise config explain で機械的に検出する。
 # ---------------------------------------------------------------------------
 [tasks.verify]
 description = "設定の妥当性を検証する (非破壊)"
 run = [
+  # mise が読まないキーを列挙し、1 つでもあれば非ゼロで終了する。
+  # config explain はテキスト出力だと未知キーがあっても exit 0 なので、JSON の
+  # known を jq で判定する。
+  '''
+status=0
+for f in mise.toml .config/mise/config.toml; do
+  unknown=$(mise config explain --file "$f" --json | jq -r '.[] | select(.known == false) | "\(.line): \(.key)"')
+  if [ -n "$unknown" ]; then
+    echo "$f: mise が読まないキーがある" >&2
+    echo "$unknown" | sed "s|^|  $f:|" >&2
+    status=1
+  fi
+done
+exit $status
+''',
   # bootstrap 全体の dry-run。パッケージトークンの解決、[dotfiles] の source 存在、
   # defaults の妥当性、login shell、tools の解決までを一括で検証する。
   # 不正な設定があれば非ゼロで終了する。
@@ -184,16 +202,11 @@ run = [
   # 存在しがちで、素の環境では必ず衝突として報告される。ここで検証したいのは設定の
   # 妥当性であって実行環境の状態ではない。dry-run なので何も書き換わらない。
   #
-  # --skip task は必須。mise bootstrap -n は [bootstrap.hooks] の post-defaults の
-  # ような hook は本当に print-only で止まるが、[tasks.bootstrap] は違う。あれは
-  # 宣言ではなく shell を実行する escape hatch なので、-n の対象にできず素通りで
-  # 実行される (実測: emacs-plus-app が導入済みかを見る行が dry-run 中でも実際に
-  # 走っていた)。このマシンでは cask 導入済みで no-op に見えるが、cask が無い
-  # マシン (新規セットアップや CI、つまり verify が本来対象とする環境) では
-  # brew install --cask emacs-plus-app が実行され、486MB の cask を実際に
-  # インストールしてしまう。それは「非破壊」という verify の前提を裏切るので、
-  # --skip task でタスク実行そのものを外す。
-  "mise bootstrap -n --force-dotfiles --skip task",
+  # [tasks.bootstrap] と [bootstrap.hooks] は -n では表示されるだけで実行されない
+  # (2026.10.14 で、touch するだけのタスクと hook を隔離環境で走らせて確認)。
+  # dry-run は段ごとに最初のエラーで止まるので、後ろの段の誤りは前の段を直すまで
+  # 見えないことがある。
+  "mise bootstrap -n --force-dotfiles",
 ]
 
 # ---------------------------------------------------------------------------

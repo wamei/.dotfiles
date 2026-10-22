@@ -60,11 +60,13 @@ ghq get <url>
 
 ## 注記
 
-- mise は 2026.9.1 を前提にしている。公開ドキュメントはこれより新しい版を記述
-  しており、`[dotfiles]` の `mode = "track"` や `[bootstrap.macos.defaults]` の
-  配列値はこの版では動かない
+- mise は 2026.10.14 以上を前提にしている (`mise.toml` の `min_version`)。
+  bootstrap は変化の速い機能で、公開ドキュメントは手元の版より新しいことがある。
+  書き方は `mise bootstrap --help` と dry-run で確かめること
 - `[dotfiles]` のエントリ内の未知キーは警告なしに無視される。編集したら必ず
-  `mise run verify` で確認すること
+  `mise run verify` で確認すること (`mise config explain` で未知キーを検出する)
+- `emacs-plus-app` は tap の cask で mise の brew backend では入れられないため、
+  `[tasks.bootstrap]` から brew で入れている
 - cask は `[bootstrap.brew] adopt = true` で扱っている。入れ直すと
   `/Applications/*.app` が置き換わり macOS の TCC 権限がリセットされるため、
   画面収録やアクセシビリティなどの許可をアプリごとに UI から再承認する必要が
