@@ -112,6 +112,9 @@ adopt = true
 # 書き戻されており、移動と同じタイミングでは触れないため。
 "~/bin/project-move" = { source = "tools/project-move/cli/project-move.ts", mode = "symlink" }
 "~/bin/claude-state-move" = { source = "tools/project-move/cli/claude-state-move.ts", mode = "symlink" }
+# gh のアカウントを cwd で切り替えるラッパー。~/bin ではなく専用ディレクトリに置き、
+# .config/mise/config.toml の [env] _.path で mise のツールより前に出す。
+"~/.local/libexec/gh-account/gh" = { source = "tools/gh-account/gh", mode = "symlink" }
 "~/.config/karabiner/assets/complex_modifications/ja.json" = { source = ".config/karabiner/assets/complex_modifications/ja.json", mode = "symlink" }
 "~/.gitconfig" = { source = ".gitconfig", mode = "symlink" }
 "~/.gitignore" = { source = ".gitignore_global", mode = "symlink" }
@@ -275,6 +278,7 @@ description = "tools/ のユニットテストを走らせる"
 run = [
   "cd tools/project-move && bun test",
   "cd tools/org-notes-sync && bun test",
+  "cd tools/gh-account && bun test",
 ]
 
 [tasks."org-notes-sync:install"]

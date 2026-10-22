@@ -1,0 +1,42 @@
+#!/bin/zsh -f
+# gh のアカウントを cwd で切り替えるラッパー。
+#
+# 対応表は ~/.config/gh/users-by-dir (リポジトリに載せない)。1 行に
+# 「ディレクトリ アカウント」を書き、cwd を含むもののうち最も深いものを使う:
+#   ~/projects/github.com.work  work-user
+#   ~/projects                  me
+# gh auth switch (hosts.yml の書き換え) ではなく、keyring のトークンを GH_TOKEN で
+# その 1 回にだけ渡す。明示的に GH_TOKEN を渡したときと gh auth 自体
+# (GH_TOKEN があると status / switch が狂う) は素通し。
+#
+# 以前は .zshrc の関数だったが、Claude Code (シェルスナップショットが連想配列を
+# 運ばない) や Codex (zsh -lc で .zshrc を読まない) から効かなかった。実行ファイルに
+# して、.config/mise/config.toml の [env] _.path で mise のツールより前に置いている。
+
+# 自分のディレクトリを PATH から外して、以降の gh が本物を指すようにする。
+# PATH に載るのは symlink のディレクトリなので、実体側と両方外す。
+path=(${path:#${0:h}})
+path=(${path:#${0:A:h}})
+if ! whence -p gh >/dev/null; then
+  print -u2 "gh: PATH に本物の gh が見つからない (ラッパー: $0)"
+  exit 127
+fi
+
+map=$HOME/.config/gh/users-by-dir
+if [[ -z $GH_TOKEN && $1 != auth && -r $map ]]; then
+  best= user=
+  while read -r dir u _; do
+    [[ -z $dir || $dir == \#* ]] && continue
+    dir=${dir/#\~/$HOME}
+    dir=${dir%/}
+    if [[ $PWD/ == $dir/* && ${#dir} -gt ${#best} ]]; then
+      best=$dir user=$u
+    fi
+  done < $map
+  if [[ -n $user ]]; then
+    token=$(gh auth token --user $user 2>/dev/null)
+    [[ -n $token ]] && export GH_TOKEN=$token
+  fi
+fi
+
+exec gh "$@"

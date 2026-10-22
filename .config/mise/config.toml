@@ -90,6 +90,12 @@ java = "17"
 # repo ごとの apm.yml) が前提にしている。
 "github:microsoft/apm" = "latest"
 
+[env]
+# gh のアカウントを cwd で切り替えるラッパー (tools/gh-account/gh) を本物の gh より
+# 前に置く。_.path は mise のツールの bin より前に並ぶので、mise の PATH を継ぐ
+# 対話シェル・Claude Code・Codex のどれから呼んでもラッパーが先に見つかる。
+_.path = ["~/.local/libexec/gh-account"]
+
 [settings]
 # nodenv / rbenv / pyenv と同じく .node-version / .nvmrc / .ruby-version / .python-version を読む
 # (mise は既定では無視する)
