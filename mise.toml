@@ -42,6 +42,13 @@ adopt = true
 [bootstrap.packages]
 # --- formula: mise に移せなかったもの ---
 # mise 本体 (自己参照なので mise では入れられない)
+#
+# ここに並ぶ brew: の formula は brew で上げる (`mise run update`)。
+# `mise bootstrap packages upgrade` や `mise bootstrap --upgrade` で上げてはいけない。
+# mise の brew backend は bin/share などは張り替えるが etc/ をリンクしない
+# (2026.10.17 の pour.rs の LINK_DIRS)。mise を上げると etc/bash_completion.d/mise
+# だけが旧 keg を指したまま残り、次の brew upgrade がその etc/ の衝突で link 全体を
+# 巻き戻して /opt/homebrew/bin/mise が消える (2026-10-22 に実際に起きた)。
 "brew:mise" = "latest"
 # zsh プラグイン。バイナリでなく .zshrc が $HOMEBREW_PREFIX/share/ を source する
 "brew:zsh-autosuggestions" = "latest"
@@ -248,6 +255,10 @@ if command -v brew >/dev/null 2>&1; then
   # 非ゼロで終わる。ここで止めると後続の mise upgrade まで巻き添えになるので、案内
   # だけ出して先へ進める。
   brew upgrade || echo "brew upgrade: 一部失敗。起動中のアプリを終了してから brew upgrade を流し直すこと。"
+  # mise の link が失敗すると bin/mise が消え、後続の mise upgrade と
+  # mise run bootstrap が全部落ちる (brew:mise のコメント参照)。衝突するのは mise
+  # 自身の旧 keg へのリンクだけなので、--overwrite で張り直してよい。
+  [ -e "$(brew --prefix)/bin/mise" ] || brew link --overwrite mise
 else
   echo "brew not found; skipping system packages"
 fi
