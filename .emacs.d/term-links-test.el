@@ -240,5 +240,56 @@ Claude Code が長い行を自分で改行して字下げを揃えるのと同�
                            '("src/ma" "in.el"))))
         (wamei/term-links-mode -1)))))
 
+;;; マウスオーバーで断片をまとめて光らせる
+
+(defun wamei/term-links-test--highlighted ()
+  "ホバー用 overlay が掛かっている文字列のリスト。"
+  (mapcar (lambda (ov) (buffer-substring-no-properties (overlay-start ov) (overlay-end ov)))
+          (sort (copy-sequence wamei/term-links--hover-overlays)
+                (lambda (a b) (< (overlay-start a) (overlay-start b))))))
+
+(defmacro wamei/term-links-test--with-wrapped-link (&rest body)
+  "2 行に分かれたリンク src/ma + in.el と、1 行のリンク init.el を置いて BODY を評価する。"
+  (declare (indent 0))
+  `(wamei/term-links-test--with-project '("src/main.el" "init.el")
+     (with-temp-buffer
+       (setq default-directory root)
+       (insert "xyz src/ma\n  in.el と init.el\n\n")
+       (setq-local ghostel--cursor-char-pos (point-max))
+       (setq-local ghostel--term-cols 10)
+       (wamei/term-links--detect-bare-names (point-min) (point-max))
+       (wamei/term-links--detect-hard-wrapped (point-min) (point-max))
+       (unwind-protect (progn ,@body)
+         (wamei/term-links--hover-clear)))))
+
+(ert-deftest wamei/term-links-test-hover-highlights-all-fragments ()
+  "どちらの断片に乗っても、同じリンクの断片をすべて光らせる。"
+  (wamei/term-links-test--with-wrapped-link
+    (wamei/term-links--hover-highlight (current-buffer) 6)   ; src/ma の上
+    (should (equal (wamei/term-links-test--highlighted) '("src/ma" "in.el")))
+    (wamei/term-links--hover-highlight (current-buffer) 14)  ; in.el の上
+    (should (equal (wamei/term-links-test--highlighted) '("src/ma" "in.el")))))
+
+(ert-deftest wamei/term-links-test-hover-ignores-single-fragment-links ()
+  "1 つの断片だけのリンクは mouse-face で足りるので何もしない。リンクの外でも消える。"
+  (wamei/term-links-test--with-wrapped-link
+    (wamei/term-links--hover-highlight (current-buffer) 6)
+    (wamei/term-links--hover-highlight (current-buffer) (- (point-max) 4)) ; init.el の上
+    (should-not (wamei/term-links-test--highlighted))
+    (wamei/term-links--hover-highlight (current-buffer) 6)
+    (wamei/term-links--hover-highlight (current-buffer) 1)                 ; リンクの外
+    (should-not (wamei/term-links-test--highlighted))))
+
+(ert-deftest wamei/term-links-test-hover-follows-show-help ()
+  "ヘルプの表示 (マウスが乗った) で光らせ、nil (離れた) で消す。"
+  (wamei/term-links-test--with-wrapped-link
+    (let ((buffer (current-buffer)))
+      (cl-letf (((symbol-function 'wamei/term-links--mouse-buffer-pos)
+                 (lambda () (cons buffer 6))))
+        (wamei/term-links--on-show-help "fileref:x")
+        (should (equal (wamei/term-links-test--highlighted) '("src/ma" "in.el")))
+        (wamei/term-links--on-show-help nil)
+        (should-not (wamei/term-links-test--highlighted))))))
+
 (provide 'term-links-test)
 ;;; term-links-test.el ends here

@@ -270,6 +270,74 @@ ghostel の `ghostel--detect-urls' と同じく、折り返しを繋いだ論理
                     (goto-char pos)
                     (if (zerop (forward-line 1)) (point) end)))))))
 
+;;;; マウスオーバーで断片をまとめて光らせる
+;;
+;; リンクの mouse-face は、マウスの下と同じ値が切れ目なく続く範囲しか
+;; 光らないので、2 行に分かれたリンク (上の改行されたパスや、ghostel が
+;; 折り返しを繋いで付けたリンク) は乗った側の行だけが光る。断片は同じ
+;; `ghostel-link-id' を持っているので、マウスが乗ったら同じ id の断片を
+;; overlay でまとめて光らせ、離れたら消す。
+;;
+;; マウスの出入りは `show-help-function' (`tooltip-show-help') で知る。
+;; Emacs は help-echo のある文字に乗ったときその文字列で、離れたとき nil で
+;; 呼ぶ。リンクの help-echo は ghostel が URI の格納に使っている文字列なので、
+;; help-echo を関数にして乗ったことを知る手は使えない。
+
+(defvar wamei/term-links--hover-overlays nil
+  "マウスの乗ったリンクを光らせている overlay。")
+
+(defconst wamei/term-links--hover-search-chars 4000
+  "同じリンクの断片を探す、マウスの位置から前後の文字数。")
+
+(defun wamei/term-links--hover-clear ()
+  "ホバーの overlay を消す。"
+  (mapc #'delete-overlay wamei/term-links--hover-overlays)
+  (setq wamei/term-links--hover-overlays nil))
+
+(defun wamei/term-links--link-fragments (pos)
+  "POS のリンクと同じ `ghostel-link-id' を持つ範囲のリスト。"
+  (when-let* ((id (get-text-property pos 'ghostel-link-id)))
+    (let ((pos (max (point-min) (- pos wamei/term-links--hover-search-chars)))
+          (end (min (point-max) (+ pos wamei/term-links--hover-search-chars)))
+          (fragments nil))
+      (while (setq pos (text-property-not-all pos end 'ghostel-link-id nil))
+        (let ((stop (next-single-property-change pos 'ghostel-link-id nil end)))
+          (when (equal (get-text-property pos 'ghostel-link-id) id)
+            (push (cons pos stop) fragments))
+          (setq pos stop)))
+      (nreverse fragments))))
+
+(defun wamei/term-links--hover-highlight (buffer pos)
+  "BUFFER の POS にマウスが乗った。複数の断片からなるリンクなら全部を光らせる。"
+  (wamei/term-links--hover-clear)
+  (with-current-buffer buffer
+    (let ((fragments (wamei/term-links--link-fragments pos)))
+      (when (cdr fragments)
+        (pcase-dolist (`(,beg . ,end) fragments)
+          (let ((ov (make-overlay beg end)))
+            (overlay-put ov 'face 'highlight)
+            (overlay-put ov 'priority 100)
+            (push ov wamei/term-links--hover-overlays)))))))
+
+(defun wamei/term-links--mouse-buffer-pos ()
+  "マウスの下の (バッファ . 位置)。文字の上でなければ nil。"
+  (pcase (mouse-pixel-position)
+    (`(,(and frame (pred framep)) ,(and x (pred integerp)) . ,(and y (pred integerp)))
+     (let* ((posn (posn-at-x-y x y frame))
+            (window (posn-window posn))
+            (point (posn-point posn)))
+       (when (and (windowp window) (integerp point))
+         (cons (window-buffer window) point))))))
+
+(defun wamei/term-links--on-show-help (msg)
+  "`tooltip-show-help' の advice。マウスがリンクに乗ったら断片をまとめて光らせる。"
+  (let ((at (and (stringp msg) (wamei/term-links--mouse-buffer-pos))))
+    (if (and at (buffer-live-p (car at))
+             (with-current-buffer (car at)
+               (get-text-property (cdr at) 'ghostel-link-id)))
+        (wamei/term-links--hover-highlight (car at) (cdr at))
+      (wamei/term-links--hover-clear))))
+
 (defun wamei/term-links--after-detect (orig &rest args)
   "`ghostel--detect-urls' の advice。ghostel の走査の範囲でファイル名も拾う。"
   (let ((bounds (apply orig args)))
@@ -284,8 +352,15 @@ ghostel の `ghostel--detect-urls' と同じく、折り返しを繋いだ論理
   :global t
   :group 'ghostel
   (if wamei/term-links-mode
-      (advice-add 'ghostel--detect-urls :around #'wamei/term-links--after-detect)
-    (advice-remove 'ghostel--detect-urls #'wamei/term-links--after-detect)))
+      (progn
+        (advice-add 'ghostel--detect-urls :around #'wamei/term-links--after-detect)
+        ;; tooltip-mode の有無で show-help-function がどちらかになる
+        (advice-add 'tooltip-show-help :before #'wamei/term-links--on-show-help)
+        (advice-add 'tooltip-show-help-non-mode :before #'wamei/term-links--on-show-help))
+    (advice-remove 'ghostel--detect-urls #'wamei/term-links--after-detect)
+    (advice-remove 'tooltip-show-help #'wamei/term-links--on-show-help)
+    (advice-remove 'tooltip-show-help-non-mode #'wamei/term-links--on-show-help)
+    (wamei/term-links--hover-clear)))
 
 (provide 'term-links)
 ;;; term-links.el ends here
