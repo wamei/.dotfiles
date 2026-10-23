@@ -38,6 +38,7 @@
 (defvar ghostel--inhibit-active-line-skip)    ; ghostel-links.el
 (defvar ghostel--cursor-char-pos)             ; ghostel.el (buffer-local)
 (defvar ghostel--term-cols)                   ; ghostel.el (buffer-local)
+(defvar ghostel-link-map)                     ; ghostel-links.el
 (declare-function ghostel--soft-wrap-line-beginning "ghostel-links" (pos limit))
 (declare-function ghostel--soft-wrap-line-end "ghostel-links" (pos limit))
 (declare-function ghostel--wrap-joined-region "ghostel-links" (begin end limit))
@@ -338,6 +339,41 @@ ghostel の `ghostel--detect-urls' と同じく、折り返しを繋いだ論理
         (wamei/term-links--hover-highlight (car at) (cdr at))
       (wamei/term-links--hover-clear))))
 
+;;;; 右クリックメニューでリンクのアドレスをコピーする
+;;
+;; ghostel のリンク (OSC 8 / 検出した URL / fileref:) は help-echo に URI を
+;; 持ち、keymap に `ghostel-link-map' が付いている。`context-menu-mode' の
+;; メニューに、そのアドレスをコピーする項目を足す。fileref: は ghostel の
+;; 内部の形なので外し、パス (と :LINE[:COL]) をコピーする。
+
+(defun wamei/term-links--link-address-at (pos)
+  "POS のリンクの (メニューのラベル . コピーする文字列)。リンクでなければ nil。"
+  (let ((uri (get-text-property pos 'help-echo)))
+    (when (and (stringp uri)
+               (eq (get-text-property pos 'keymap) ghostel-link-map))
+      (if (string-prefix-p "fileref:" uri)
+          (cons "Copy File Path" (substring uri (length "fileref:")))
+        (cons "Copy Link Address" uri)))))
+
+(defun wamei/term-links-context-menu (menu click)
+  "`context-menu-functions' 用。CLICK がリンクの上ならアドレスのコピーを足す。"
+  (let* ((posn (event-start click))
+         (window (posn-window posn))
+         (pos (posn-point posn))
+         (link (and (windowp window) (integerp pos)
+                    (with-current-buffer (window-buffer window)
+                      (wamei/term-links--link-address-at pos)))))
+    (when link
+      (let ((address (cdr link)))
+        (define-key-after menu [wamei-term-links-copy-link]
+          `(menu-item ,(car link)
+                      ,(lambda ()
+                         (interactive)
+                         (kill-new address)
+                         (message "Copied: %s" address))
+                      :help ,address)))))
+  menu)
+
 (defun wamei/term-links--after-detect (orig &rest args)
   "`ghostel--detect-urls' の advice。ghostel の走査の範囲でファイル名も拾う。"
   (let ((bounds (apply orig args)))
@@ -356,10 +392,13 @@ ghostel の `ghostel--detect-urls' と同じく、折り返しを繋いだ論理
         (advice-add 'ghostel--detect-urls :around #'wamei/term-links--after-detect)
         ;; tooltip-mode の有無で show-help-function がどちらかになる
         (advice-add 'tooltip-show-help :before #'wamei/term-links--on-show-help)
-        (advice-add 'tooltip-show-help-non-mode :before #'wamei/term-links--on-show-help))
+        (advice-add 'tooltip-show-help-non-mode :before #'wamei/term-links--on-show-help)
+        ;; 既定の項目 (Paste など) の後ろに足す
+        (add-hook 'context-menu-functions #'wamei/term-links-context-menu 90))
     (advice-remove 'ghostel--detect-urls #'wamei/term-links--after-detect)
     (advice-remove 'tooltip-show-help #'wamei/term-links--on-show-help)
     (advice-remove 'tooltip-show-help-non-mode #'wamei/term-links--on-show-help)
+    (remove-hook 'context-menu-functions #'wamei/term-links-context-menu)
     (wamei/term-links--hover-clear)))
 
 (provide 'term-links)

@@ -291,5 +291,50 @@ Claude Code が長い行を自分で改行して字下げを揃えるのと同�
         (wamei/term-links--on-show-help nil)
         (should-not (wamei/term-links-test--highlighted))))))
 
+;;; 右クリックメニューでリンクのアドレスをコピーする
+
+(defun wamei/term-links-test--context-menu-at (pos)
+  "カレントバッファの POS で右クリックしたときのメニュー。"
+  (set-window-buffer (selected-window) (current-buffer))
+  ;; batch では `posn-at-point' が nil を返すので、位置情報を組み立てる
+  ;; (posn の形は (WINDOW POS-OR-AREA (X . Y) TIMESTAMP ...))
+  (let ((click (list 'down-mouse-3 (list (selected-window) pos '(0 . 0) 0))))
+    (wamei/term-links-context-menu (make-sparse-keymap) click)))
+
+(defun wamei/term-links-test--menu-copy (menu)
+  "MENU のコピーの項目を (ラベル . 実行後の kill-ring の先頭) で返す。無ければ nil。"
+  ;; `lookup-key' は menu-item の中のコマンドしか返さないので項目ごと取る
+  (when-let* ((item (cdr (assq 'wamei-term-links-copy-link (cdr menu)))))
+    (let ((kill-ring nil))
+      (funcall (nth 2 item))
+      (cons (nth 1 item) (car kill-ring)))))
+
+(ert-deftest wamei/term-links-test-context-menu-copies-url ()
+  "Web のリンクでは URL をそのままコピーする。"
+  (with-temp-buffer
+    (insert "see https://example.com/a?b=1 now")
+    (add-text-properties 5 30 `(help-echo "https://example.com/a?b=1" keymap ,ghostel-link-map))
+    (should (equal (wamei/term-links-test--menu-copy
+                    (wamei/term-links-test--context-menu-at 10))
+                   '("Copy Link Address" . "https://example.com/a?b=1")))))
+
+(ert-deftest wamei/term-links-test-context-menu-copies-file-path ()
+  "ファイルのリンク (fileref:) は fileref: を外したパスと行番号をコピーする。"
+  (with-temp-buffer
+    (insert "src/main.el:2")
+    (add-text-properties 1 14 `(help-echo "fileref:/tmp/p/src/main.el:2" keymap ,ghostel-link-map))
+    (should (equal (wamei/term-links-test--menu-copy
+                    (wamei/term-links-test--context-menu-at 3))
+                   '("Copy File Path" . "/tmp/p/src/main.el:2")))))
+
+(ert-deftest wamei/term-links-test-context-menu-only-on-links ()
+  "リンクの外ではメニューに何も足さない。"
+  (with-temp-buffer
+    (insert "plain text")
+    ;; ツールチップの help-echo はリンクではない
+    (put-text-property 1 6 'help-echo "mouse-1: visit")
+    (should-not (wamei/term-links-test--menu-copy
+                 (wamei/term-links-test--context-menu-at 3)))))
+
 (provide 'term-links-test)
 ;;; term-links-test.el ends here
