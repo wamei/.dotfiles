@@ -344,34 +344,51 @@ ghostel の `ghostel--detect-urls' と同じく、折り返しを繋いだ論理
 ;; ghostel のリンク (OSC 8 / 検出した URL / fileref:) は help-echo に URI を
 ;; 持ち、keymap に `ghostel-link-map' が付いている。`context-menu-mode' の
 ;; メニューに、そのアドレスをコピーする項目を足す。fileref: は ghostel の
-;; 内部の形なので外し、パス (と :LINE[:COL]) をコピーする。
+;; 内部の形なので外し、ファイルのパスは次の 3 つの形で出す (どれも
+;; :LINE[:COL] を残す)。
+;;
+;;   Copy Absolute Path       /Users/me/proj/src/main.el:2
+;;   Copy Relative Path       src/main.el:2   (プロジェクトのルートから。VS Code と同じ)
+;;   Copy Home-Relative Path  ~/proj/src/main.el:2
 
-(defun wamei/term-links--link-address-at (pos)
-  "POS のリンクの (メニューのラベル . コピーする文字列)。リンクでなければ nil。"
+(defun wamei/term-links--file-addresses (file loc)
+  "FILE (絶対パス) と LOC (:LINE[:COL] か \"\") からコピーの候補を作る。
+相対パスの基準はカレントバッファのプロジェクトのルート、無ければ `default-directory'。"
+  (let ((base (if-let* ((project (project-current nil default-directory)))
+                  (project-root project)
+                default-directory)))
+    (list (list 'wamei-term-links-copy-absolute "Copy Absolute Path"
+                (concat file loc))
+          (list 'wamei-term-links-copy-relative "Copy Relative Path"
+                (concat (file-relative-name file base) loc))
+          (list 'wamei-term-links-copy-home-relative "Copy Home-Relative Path"
+                (concat (abbreviate-file-name file) loc)))))
+
+(defun wamei/term-links--link-addresses-at (pos)
+  "POS のリンクのコピーの候補 ((キー ラベル 文字列) ...)。リンクでなければ nil。"
   (let ((uri (get-text-property pos 'help-echo)))
     (when (and (stringp uri)
                (eq (get-text-property pos 'keymap) ghostel-link-map))
-      (if (string-prefix-p "fileref:" uri)
-          (cons "Copy File Path" (substring uri (length "fileref:")))
-        (cons "Copy Link Address" uri)))))
+      (if (string-match "\\`fileref:\\(.*?\\)\\(\\(?::[0-9]+\\(?::[0-9]+\\)?\\)?\\)\\'" uri)
+          (wamei/term-links--file-addresses (match-string 1 uri) (match-string 2 uri))
+        (list (list 'wamei-term-links-copy-link "Copy Link Address" uri))))))
 
 (defun wamei/term-links-context-menu (menu click)
   "`context-menu-functions' 用。CLICK がリンクの上ならアドレスのコピーを足す。"
   (let* ((posn (event-start click))
          (window (posn-window posn))
          (pos (posn-point posn))
-         (link (and (windowp window) (integerp pos)
-                    (with-current-buffer (window-buffer window)
-                      (wamei/term-links--link-address-at pos)))))
-    (when link
-      (let ((address (cdr link)))
-        (define-key-after menu [wamei-term-links-copy-link]
-          `(menu-item ,(car link)
-                      ,(lambda ()
-                         (interactive)
-                         (kill-new address)
-                         (message "Copied: %s" address))
-                      :help ,address)))))
+         (addresses (and (windowp window) (integerp pos)
+                         (with-current-buffer (window-buffer window)
+                           (wamei/term-links--link-addresses-at pos)))))
+    (pcase-dolist (`(,key ,label ,address) addresses)
+      (define-key-after menu (vector key)
+        `(menu-item ,label
+                    ,(lambda ()
+                       (interactive)
+                       (kill-new address)
+                       (message "Copied: %s" address))
+                    :help ,address))))
   menu)
 
 (defun wamei/term-links--after-detect (orig &rest args)

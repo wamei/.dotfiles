@@ -302,12 +302,16 @@ Claude Code が長い行を自分で改行して字下げを揃えるのと同�
     (wamei/term-links-context-menu (make-sparse-keymap) click)))
 
 (defun wamei/term-links-test--menu-copy (menu)
-  "MENU のコピーの項目を (ラベル . 実行後の kill-ring の先頭) で返す。無ければ nil。"
+  "MENU のコピーの項目を (ラベル . 実行後の kill-ring の先頭) のリストで返す。"
   ;; `lookup-key' は menu-item の中のコマンドしか返さないので項目ごと取る
-  (when-let* ((item (cdr (assq 'wamei-term-links-copy-link (cdr menu)))))
-    (let ((kill-ring nil))
-      (funcall (nth 2 item))
-      (cons (nth 1 item) (car kill-ring)))))
+  (let (items)
+    (dolist (entry (cdr menu))
+      (when (and (consp entry)
+                 (string-prefix-p "wamei-term-links-copy-" (symbol-name (car entry))))
+        (let ((kill-ring nil))
+          (funcall (nth 3 entry))
+          (push (cons (nth 2 entry) (car kill-ring)) items))))
+    (nreverse items)))
 
 (ert-deftest wamei/term-links-test-context-menu-copies-url ()
   "Web のリンクでは URL をそのままコピーする。"
@@ -316,16 +320,42 @@ Claude Code が長い行を自分で改行して字下げを揃えるのと同�
     (add-text-properties 5 30 `(help-echo "https://example.com/a?b=1" keymap ,ghostel-link-map))
     (should (equal (wamei/term-links-test--menu-copy
                     (wamei/term-links-test--context-menu-at 10))
-                   '("Copy Link Address" . "https://example.com/a?b=1")))))
+                   '(("Copy Link Address" . "https://example.com/a?b=1"))))))
 
-(ert-deftest wamei/term-links-test-context-menu-copies-file-path ()
-  "ファイルのリンク (fileref:) は fileref: を外したパスと行番号をコピーする。"
-  (with-temp-buffer
-    (insert "src/main.el:2")
-    (add-text-properties 1 14 `(help-echo "fileref:/tmp/p/src/main.el:2" keymap ,ghostel-link-map))
-    (should (equal (wamei/term-links-test--menu-copy
-                    (wamei/term-links-test--context-menu-at 3))
-                   '("Copy File Path" . "/tmp/p/src/main.el:2")))))
+(ert-deftest wamei/term-links-test-context-menu-copies-file-paths ()
+  "ファイルのリンク (fileref:) は絶対・プロジェクトからの相対・~ 始まりの 3 つを出す。
+どれも fileref: を外し、行番号を残す。"
+  (wamei/term-links-test--with-project '("src/main.el")
+    ;; ROOT をホームディレクトリとみなす
+    (let ((abbreviated-home-dir
+           (concat "\\`" (regexp-quote (directory-file-name root)) "\\(/\\|\\'\\)"))
+          (file (expand-file-name "src/main.el" root)))
+      (with-temp-buffer
+        (setq default-directory (expand-file-name "src/" root))
+        (insert "src/main.el:2")
+        (add-text-properties 1 14 `(help-echo ,(concat "fileref:" file ":2")
+                                              keymap ,ghostel-link-map))
+        (should (equal (wamei/term-links-test--menu-copy
+                        (wamei/term-links-test--context-menu-at 3))
+                       `(("Copy Absolute Path" . ,(concat file ":2"))
+                         ("Copy Relative Path" . "src/main.el:2")
+                         ("Copy Home-Relative Path" . "~/src/main.el:2"))))))))
+
+(ert-deftest wamei/term-links-test-context-menu-relative-without-project ()
+  "プロジェクトの外では default-directory からの相対にする。"
+  (let* ((dir (file-name-as-directory (make-temp-file "term-links" t)))
+         (project-find-functions nil))
+    (unwind-protect
+        (with-temp-buffer
+          (setq default-directory dir)
+          (insert "a.el")
+          (add-text-properties 1 5 `(help-echo ,(concat "fileref:" dir "a.el")
+                                               keymap ,ghostel-link-map))
+          (should (equal (cdr (assoc "Copy Relative Path"
+                                     (wamei/term-links-test--menu-copy
+                                      (wamei/term-links-test--context-menu-at 2))))
+                         "a.el")))
+      (delete-directory dir t))))
 
 (ert-deftest wamei/term-links-test-context-menu-only-on-links ()
   "リンクの外ではメニューに何も足さない。"
