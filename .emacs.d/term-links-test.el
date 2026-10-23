@@ -20,7 +20,11 @@
   (declare (indent 1))
   `(let* ((root (file-name-as-directory (make-temp-file "term-links" t)))
           (project-find-functions (list (lambda (_dir) (cons 'transient root))))
-          (wamei/term-links--index-cache (make-hash-table :test 'equal)))
+          (wamei/term-links--index-cache (make-hash-table :test 'equal))
+          (wamei/term-links--refresh-pending (make-hash-table :test 'equal))
+          ;; 索引の作り直しはアイドル時に予約されるので、テストでは即座に行う
+          (wamei/term-links--schedule-function
+           (lambda (_secs _repeat fn &rest args) (apply fn args))))
      (unwind-protect
          (progn
            (dolist (file ,files)
@@ -63,6 +67,20 @@
       (write-region "" nil (expand-file-name "a/bar.el" root) nil 'silent)
       (should (equal (wamei/term-links--resolve "bar.el" root)
                      (expand-file-name "a/bar.el" root))))))
+
+(ert-deftest wamei/term-links-test-resolve-defers-index-build ()
+  "索引の作り直しは予約するだけで、その場では作らない (描画中に止まらない)。"
+  (wamei/term-links-test--with-project '("a/foo.el")
+    (let* ((scheduled nil)
+           (wamei/term-links--schedule-function
+            (lambda (_secs _repeat fn &rest args) (push (cons fn args) scheduled))))
+      (should-not (wamei/term-links--resolve "foo.el" root))
+      (should-not (wamei/term-links--resolve "foo.el" root))
+      ;; 予約は 1 回だけ
+      (should (= (length scheduled) 1))
+      (apply (caar scheduled) (cdar scheduled))
+      (should (equal (wamei/term-links--resolve "foo.el" root)
+                     (expand-file-name "a/foo.el" root))))))
 
 ;;; リンク付け
 
@@ -134,6 +152,92 @@
             (ghostel--detect-urls)
             (should (equal (mapcar #'car (wamei/term-links-test--links))
                            '("init.el" "src/main.el:1"))))
+        (wamei/term-links-mode -1)))))
+
+;;; 端末幅で改行されたパス
+
+(defun wamei/term-links-test--split (text cols indent)
+  "TEXT を COLS 桁で切り、2 行目以降の頭に INDENT 桁の空白を入れた文字列。
+Claude Code が長い行を自分で改行して字下げを揃えるのと同じ形にする。"
+  (let ((lines nil)
+        (rest text)
+        (first t))
+    (while (> (string-width rest) 0)
+      (let* ((head (if first "" (make-string indent ?\s)))
+             (room (- cols (string-width head)))
+             (piece (truncate-string-to-width rest room)))
+        (push (concat head piece) lines)
+        (setq rest (substring rest (length piece))
+              first nil)))
+    (string-join (nreverse lines) "\n")))
+
+(ert-deftest wamei/term-links-test-detect-hard-wrapped-path ()
+  "端末幅ちょうどで切られ、次の行が字下げして続くパスを繋いでリンクにする。"
+  (wamei/term-links-test--with-project '("scratchpad/cow-database-phase0-ledger.md")
+    (let* ((path (expand-file-name "scratchpad/cow-database-phase0-ledger.md" root))
+           (cols (+ 2 (string-width "記録は、") (/ (length path) 2)))
+           (text (wamei/term-links-test--split
+                  (concat "  記録は、" path " に残しています。") cols 2)))
+      (wamei/term-links-test--in-terminal text
+        (setq-local ghostel--term-cols cols)
+        (should (string-search "\n" (buffer-substring (point-min) (- (point-max) 2))))
+        (wamei/term-links--detect-hard-wrapped (point-min) (point-max))
+        (let ((links (wamei/term-links-test--links)))
+          (should (= (length links) 2))
+          (should (equal (apply #'concat (mapcar #'car links))
+                         (concat path)))
+          (should (equal (delete-dups (mapcar #'cdr links))
+                         (list (concat "fileref:" path))))
+          ;; 2 つの断片は 1 つのリンクとして扱う
+          (let ((ids (let ((pos (point-min)) ids)
+                       (while (setq pos (text-property-not-all pos (point-max) 'help-echo nil))
+                         (push (get-text-property pos 'ghostel-link-id) ids)
+                         (setq pos (next-single-property-change pos 'help-echo nil (point-max))))
+                       ids)))
+            (should (equal (car ids) (cadr ids)))))))))
+
+(ert-deftest wamei/term-links-test-detect-hard-wrapped-with-line ()
+  "続きの行に :LINE が付いていれば行番号付きのリンクにする。"
+  (wamei/term-links-test--with-project '("src/main.el")
+    (with-temp-buffer
+      (setq default-directory root)
+      (insert "xyz src/ma\n  in.el:2 です\n\n")
+      (setq-local ghostel--cursor-char-pos (point-max))
+      (setq-local ghostel--term-cols 10)
+      (wamei/term-links--detect-hard-wrapped (point-min) (point-max))
+      (should (equal (wamei/term-links-test--links)
+                     `(("src/ma" . ,(concat "fileref:" root "src/main.el:2"))
+                       ("in.el:2" . ,(concat "fileref:" root "src/main.el:2"))))))))
+
+(ert-deftest wamei/term-links-test-hard-wrap-needs-full-row-and-existing-file ()
+  "行が端末幅に届いていない、続きが別の語、繋いでも実在しなければ繋がない。"
+  (wamei/term-links-test--with-project '("src/main.el")
+    (dolist (text '("xy src/ma\n  in.el"       ; 9 桁 (端末幅 10 に届かない)
+                    "xyz src/ma\n  (in.el"     ; 続きの頭が括弧
+                    "xyz src/ma\n  ix.el"))    ; src/maix.el は無い
+      (with-temp-buffer
+        (setq default-directory root)
+        (insert text "\n\n")
+        (setq-local ghostel--cursor-char-pos (point-max))
+        (setq-local ghostel--term-cols 10)
+        (wamei/term-links--detect-hard-wrapped (point-min) (point-max))
+        (should-not (wamei/term-links-test--links))))))
+
+(ert-deftest wamei/term-links-test-hard-wrap-survives-ghostel-scan ()
+  "ghostel の走査を通しても、繋いだパスのリンクが残る。"
+  (wamei/term-links-test--with-project '("src/main.el")
+    (with-temp-buffer
+      (setq default-directory root)
+      (insert "xyz src/ma\n  in.el\n\n")
+      (setq-local ghostel--cursor-char-pos (point-max))
+      (setq-local ghostel--term-cols 10)
+      (wamei/term-links-mode 1)
+      (unwind-protect
+          (progn
+            (ghostel--detect-urls)
+            (ghostel--detect-urls)
+            (should (equal (mapcar #'car (wamei/term-links-test--links))
+                           '("src/ma" "in.el"))))
         (wamei/term-links-mode -1)))))
 
 (provide 'term-links-test)
