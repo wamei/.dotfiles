@@ -228,6 +228,18 @@ eval "$(direnv hook zsh)"
 # load local settings
 [[ -f ${HOME}/.zshrc.local ]] && source ${HOME}/.zshrc.local
 
+# codex の補完。mise (aqua) は brew の cask と違って補完を入れないので自前で生成する。
+# 展開されたバイナリの mtime はビルド時刻で -nt が使えないため、生成元のパスを
+# 横に記録し、版が変わってパスが変わったら作り直す。compinit (zsh-autocomplete) より前に置く。
+() {
+  (( $+commands[codex] )) || return
+  local dir=${XDG_CACHE_HOME:-$HOME/.cache}/zsh/completions bin=${commands[codex]:A}
+  if [[ ! -s $dir/_codex || ! -f $dir/_codex.src || "$(<$dir/_codex.src)" != $bin ]]; then
+    mkdir -p $dir && codex completion zsh >| $dir/_codex && print -r -- $bin >| $dir/_codex.src
+  fi
+  fpath=($dir $fpath)
+}
+
 # HOMEBREW_PREFIX は上の brew shellenv が export する (brew を 2 回起動しないため $(brew --prefix) は使わない)
 source $HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh

@@ -86,6 +86,15 @@ uv = "latest"
 "npm:yarn" = "1"
 java = "17"
 "ubi:sst/opencode" = "latest"
+# Codex CLI。brew-cask で入れていたが、mise が注いだ cask は brew の記録
+# (Caskroom/<token>/.metadata) を持たず brew upgrade に見えないうえ、mise upgrade も
+# [bootstrap.packages] を上げないので、mise run update で更新されなかった。
+# zsh の補完は cask と違って入らないので .zshrc で生成している。
+"aqua:openai/codex" = "latest"
+# Emacs の minibuffer で IME を英字に切り替える (init.el の minibuffer-ime)。brew の
+# tap (laishulu/homebrew) は formula の更新が止まりがち (4.0.0 公開時点で 3.1.1) なので、
+# GitHub リリースの arm64 バイナリを直接入れる。
+"github:laishulu/macism" = "latest"
 # APM (Agent Package Manager)。~/.claude/CLAUDE.md の skill 運用 (global の meta skill、
 # repo ごとの apm.yml) が前提にしている。
 "github:microsoft/apm" = "latest"
@@ -106,3 +115,6 @@ npm.package_manager = "bun"
 # パッケージ (@prisma/language-server は 25MB) で fetch_remote_versions_timeout に
 # 間に合わず "latest" が解決できない。取得だけ npm、インストールは上の bun。
 npm.shell_out = true
+# バージョン一覧を mise-versions.jdx.dev ではなく各配布元 (GitHub など) から直接取る。
+# 一覧サーバは更新が遅れ、codex 0.164.0 は公開 4 日後も載っていなかった。
+use_versions_host = false

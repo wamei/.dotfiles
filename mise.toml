@@ -36,7 +36,6 @@ min_version = "2026.10.14"
 adopt = true
 
 [bootstrap.brew.taps]
-"laishulu/homebrew" = "https://github.com/laishulu/homebrew-homebrew"
 "d12frosted/emacs-plus" = "https://github.com/d12frosted/homebrew-emacs-plus"
 
 [bootstrap.packages]
@@ -57,9 +56,7 @@ adopt = true
 # ライブラリ + psql。aqua registry に無い。.zshrc が PATH に入れ、Emacs の
 # sql-mode が psql を引く
 "brew:libpq" = "latest"
-# Emacs の minibuffer で IME を off にする。tap のソースビルド
-"brew:laishulu/homebrew/macism" = "latest"
-# 以下は aqua registry にエントリが無い
+# aqua registry にエントリが無く、GitHub のリリースも Linux 向け AppImage だけ
 "brew:timg" = "latest"      # ghostel に kitty graphics で画像を出す
 
 # --- cask ---
@@ -71,7 +68,6 @@ adopt = true
 "brew-cask:karabiner-elements" = "latest"
 "brew-cask:google-japanese-ime" = "latest"
 "brew-cask:claude" = "latest"
-"brew-cask:codex" = "latest"
 "brew-cask:chatgpt" = "latest"
 "brew-cask:google-chrome" = "latest"
 "brew-cask:google-chrome@canary" = "latest"
@@ -267,6 +263,11 @@ else
 fi
 ''',
   "mise upgrade",
+  # mise が注いだ cask は brew の記録 (Caskroom/<token>/.metadata) を持たず、上の
+  # brew upgrade には見えない。auto_updates でない background-music だけ個別に上げる
+  # (chatgpt も mise 製だが自己更新する)。-m brew-cask で一括にしないのは、brew 製の
+  # cask まで入れ直して /Applications の .app を差し替えるおそれがあるため。
+  "mise bootstrap packages upgrade -y brew-cask:background-music",
   "mise run bootstrap",
 ]
 

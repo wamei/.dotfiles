@@ -158,7 +158,7 @@
 (leaf minibuffer-ime
   :doc "minibuffer に入ったら OS の IME を英字 (ABC) に切り替える"
   ;; NS ビルドには emacs-mac の `mac-select-input-source' がないので、macism
-  ;; (brew install laishulu/homebrew/macism) を非同期に呼んで入力ソースを変える。
+  ;; (mise の github:laishulu/macism) を非同期に呼んで入力ソースを変える。
   ;; 未導入なら何もしない。minibuffer を抜けても元の IME には戻さない。
   :if (eq system-type 'darwin)
   :preface
