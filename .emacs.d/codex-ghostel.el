@@ -99,6 +99,51 @@ Ctrl+P/N は前後の質問の切り替えに固定されている ([tui.keymap]
 ローカルマップではなく minor mode のキーマップで持つ。"
   :keymap wamei/codex-ghostel-arrow-keys-mode-map)
 
+(defvar-local wamei/codex-ghostel--copy-notice nil
+  "コピー直後に mode-line の右端に表示する文字列。")
+
+(defvar-local wamei/codex-ghostel--copy-notice-timer nil
+  "コピー通知を消すタイマー。")
+
+(defun wamei/codex-ghostel--show-copy-notice (count)
+  "COUNT 文字のコピー通知を2秒間表示する。"
+  (when (timerp wamei/codex-ghostel--copy-notice-timer)
+    (cancel-timer wamei/codex-ghostel--copy-notice-timer))
+  (setq wamei/codex-ghostel--copy-notice
+        (format "copied %d chars to clipboard" count)
+        wamei/codex-ghostel--copy-notice-timer
+        (run-at-time
+         2 nil
+         (lambda (buffer)
+           (when (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (setq wamei/codex-ghostel--copy-notice nil
+                     wamei/codex-ghostel--copy-notice-timer nil)
+               (force-mode-line-update))))
+         (current-buffer)))
+  (force-mode-line-update))
+
+(defun wamei/codex-ghostel--mouse-copy-and-resume (original &rest args)
+  "Codex のマウス選択をコピーし、端末の入力モードへ戻す。"
+  (if (not (and (bound-and-true-p wamei/codex-ghostel-arrow-keys-mode)
+                (eq ghostel--input-mode 'semi-char)))
+      (apply original args)
+    (let ((inhibit-message t))
+      (prog1 (apply original args)
+        (when (use-region-p)
+          (kill-new (buffer-substring-no-properties
+                     (region-beginning) (region-end)))
+          (wamei/codex-ghostel--show-copy-notice
+           (- (region-end) (region-beginning)))
+          (deactivate-mark))
+        (when (memq ghostel--input-mode '(copy emacs))
+          (ghostel-semi-char-mode))))))
+
+;; リリース時にコピーする。press はドラッグの追跡も担当するので触らない。
+(dolist (command '(ghostel-mouse-release-or-set-point
+                   ghostel-mouse-drag-or-set-region))
+  (advice-add command :around #'wamei/codex-ghostel--mouse-copy-and-resume))
+
 (cl-defmethod codex--term-post-start ((_backend (eql ghostel)))
   ;; copy mode から戻っても Codex の改行・送信キーを維持する。
   (setq-local ghostel-semi-char-mode-map (current-local-map))

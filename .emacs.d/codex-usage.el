@@ -78,7 +78,14 @@
 (defconst wamei/codex-usage--mode-line-format
   '((:eval (wamei/term-modeline-pad-spacer wamei/claude-usage-mode-line-height))
     " " (:eval (wamei/codex-usage-mode-line))
-    (:eval (wamei/term-modeline-align (wamei/term-modeline-process-width)))
+    (:eval (wamei/term-modeline-align
+            (+ (wamei/term-modeline-process-width)
+               (if (bound-and-true-p wamei/codex-ghostel--copy-notice)
+                   (1+ (string-width wamei/codex-ghostel--copy-notice))
+                 0))))
+    (:eval (when (bound-and-true-p wamei/codex-ghostel--copy-notice)
+             (concat (propertize wamei/codex-ghostel--copy-notice 'face 'success)
+                     " ")))
     mode-line-process))
 
 (defun wamei/codex-usage--setup (buffer)

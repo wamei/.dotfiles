@@ -13,6 +13,8 @@
 (defvar claude-code-ide-focus-on-open)
 (defvar wamei/codex-panel-width)
 (defvar wamei/codex-panel-slot)
+(defvar wamei/ai-panel-width 0.4
+  "共通 AI パネルの初期幅 (フレーム幅の割合)。")
 (defvar wamei/ai-panel--order nil)
 (defvar wamei/ai-panel--previous-window nil)
 (defvar wamei/ai-panel--previous-buffer nil)
@@ -100,12 +102,19 @@
          (claude-code-ide-window-side 'right)
          (claude-code-ide-use-side-window t)
          (claude-code-ide-window-width
-          (if window (window-body-width window) claude-code-ide-window-width)))
+          (if window (window-body-width window)
+            (round (* (frame-width) wamei/ai-panel-width)))))
     (when-let* ((session (claude-code-ide--buffer-session buffer)))
       (setf (claude-code-ide-mcp-session-window-slot session)
             (if window (window-parameter window 'window-slot) 100)))
     (let ((shown (funcall orig buffer)))
-      (when shown (set-window-parameter shown 'wamei/ai-panel t))
+      (when shown
+        (unless window
+          ;; Claude の指定は本文幅なので、枠を含む幅を Codex と揃える。
+          (let ((delta (- (round (* (frame-width) wamei/ai-panel-width))
+                          (window-total-width shown))))
+            (unless (zerop delta) (window-resize shown delta t))))
+        (set-window-parameter shown 'wamei/ai-panel t))
       (wamei/ai-panel--setup buffer)
       (wamei/ai-panel--schedule-grid)
       shown)))
@@ -113,7 +122,7 @@
 (defun wamei/ai-panel--display-codex (orig buffer)
   (let* ((window (wamei/ai-panel--window t))
          (wamei/codex-panel-slot (if window (window-parameter window 'window-slot) 100))
-         (wamei/codex-panel-width (if window (window-total-width window) wamei/codex-panel-width))
+         (wamei/codex-panel-width (if window (window-total-width window) wamei/ai-panel-width))
          (shown (funcall orig buffer)))
     (when shown (set-window-parameter shown 'wamei/ai-panel t))
     (wamei/ai-panel--setup buffer)

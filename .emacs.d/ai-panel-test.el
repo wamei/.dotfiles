@@ -180,3 +180,16 @@
         (should (equal name "AI"))))))
 
 (provide 'ai-panel-test)
+
+(ert-deftest wamei/ai-panel-initial-width-is-forty-percent-for-both-backends ()
+  (dolist (backend '(claude codex))
+    (wamei/ai-panel-test--with-env
+      (let* ((wamei/ai-panel-width 0.4)
+             (buffer (if (eq backend 'claude)
+                         (wamei/ai-panel-test--claude "/tmp/")
+                       (wamei/ai-panel-test--codex "/tmp/"))))
+        ;; 本文の余白があっても、パネル全体の幅は同じ。
+        (with-current-buffer buffer (setq-local left-margin-width 2))
+        (let ((window (wamei/ai-panel-show buffer)))
+          (should (= (window-total-width window)
+                     (round (* (frame-width) 0.4)))))))))
