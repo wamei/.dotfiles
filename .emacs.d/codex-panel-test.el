@@ -6,6 +6,22 @@
 (require 'codex-ghostel)
 (require 'desktop-side-windows)
 
+(ert-deftest wamei/codex-panel-start-display-selects-panel ()
+  (save-window-excursion
+    (delete-other-windows)
+    (let ((buffer (generate-new-buffer "*codex:/tmp/:focus*"))
+          (codex-display-window-fn codex-display-window-fn)
+          (wamei/codex-panel--order nil))
+      (unwind-protect
+          (progn
+            (wamei/codex-panel-enable)
+            (codex--display-existing-session-buffer buffer nil)
+            (should (eq (window-buffer (selected-window)) buffer))
+            (should (eq (window-parameter (selected-window) 'window-side) 'right)))
+        (advice-remove 'ghostel--set-title #'wamei/codex-panel--title-updated)
+        (advice-remove 'codex--directory #'wamei/codex--directory)
+        (kill-buffer buffer)))))
+
 (ert-deftest wamei/codex-panel-survives-magit-fullframe-and-quit ()
   (require 'magit)
   (require 'magit-main-window)

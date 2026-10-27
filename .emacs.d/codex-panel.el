@@ -179,9 +179,15 @@ Claude と同じくプロジェクトの直近の会話を復元する。"
             (wamei/desktop-side-resize window (plist-get spec :size))
             window))))))
 
+(defun wamei/codex-panel-display (buffer)
+  "起動・再表示した BUFFER のパネルへフォーカスを移す。"
+  (let ((window (wamei/codex-panel-show buffer)))
+    (select-window window)
+    window))
+
 (defun wamei/codex-panel-enable ()
   "Codex の表示と起点を設定する。繰り返し呼んでもよい。"
-  (setq codex-display-window-fn #'wamei/codex-panel-show)
+  (setq codex-display-window-fn #'wamei/codex-panel-display)
   (advice-add 'ghostel--set-title :after #'wamei/codex-panel--title-updated)
   (advice-add 'codex--directory :around #'wamei/codex--directory))
 
