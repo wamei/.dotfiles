@@ -699,8 +699,10 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   ;; 留め、プロジェクトバッファと端末一覧から消えないようにする (term-panel.el)。
   (advice-add 'ghostel--update-directory :around #'wamei/term--keep-in-project)
 
-  ;; Claude の本文の `init.el' / `ai-panel.el:24' もリンクにする (term-links.el)。
-  (wamei/term-links-mode 1)
+  ;; ファイル名だけのリンク拡張は無効にする。索引更新の project-files が
+  ;; .gitmodules の同期読み込みで 11 秒以上待ち、端末操作やタブ切り替えが
+  ;; 固まることを計測で確認した。ghostel 標準のリンク検出は引き続き使う。
+  (wamei/term-links-mode -1)
 
   (add-hook 'ghostel-mode-hook #'wamei/term--substitute-tall-glyphs)
   (add-hook 'ghostel-mode-hook #'wamei/term--plain-nobreak-chars)
