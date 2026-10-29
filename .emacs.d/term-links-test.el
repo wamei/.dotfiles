@@ -24,7 +24,12 @@
           (wamei/term-links--refresh-pending (make-hash-table :test 'equal))
           ;; 索引の作り直しはアイドル時に予約されるので、テストでは即座に行う
           (wamei/term-links--schedule-function
-           (lambda (_secs _repeat fn &rest args) (apply fn args))))
+           (lambda (_secs _repeat fn &rest args)
+             (apply fn args)
+             (let ((deadline (+ (float-time) 8)))
+               (while (and (> (hash-table-count wamei/term-links--refresh-pending) 0)
+                           (< (float-time) deadline))
+                 (accept-process-output nil 0.02))))))
      (unwind-protect
          (progn
            (dolist (file ,files)
@@ -79,10 +84,32 @@
       ;; 予約は 1 回だけ
       (should (= (length scheduled) 1))
       (apply (caar scheduled) (cdar scheduled))
+      (let ((deadline (+ (float-time) 8)))
+        (while (and (> (hash-table-count wamei/term-links--refresh-pending) 0)
+                    (< (float-time) deadline))
+          (accept-process-output nil 0.02)))
       (should (equal (wamei/term-links--resolve "foo.el" root)
                      (expand-file-name "a/foo.el" root))))))
 
 ;;; リンク付け
+
+(ert-deftest wamei/term-links-test-index-does-not-read-project-in-ui ()
+  (wamei/term-links-test--with-project '("src/example.el")
+    (let ((project (cons 'transient root)))
+      (unwind-protect
+          (cl-letf (((symbol-function 'project-files)
+                     (lambda (&rest _) (ert-fail "UI scanned project synchronously"))))
+            (puthash root t wamei/term-links--refresh-pending)
+            (wamei/term-links--refresh-index project)
+            (should-not (gethash root wamei/term-links--index-cache))
+            (let ((deadline (+ (float-time) 8)))
+              (while (and (gethash root wamei/term-links--refresh-pending)
+                          (< (float-time) deadline))
+                (accept-process-output nil 0.02)))
+            (should (equal (gethash "example.el" (cdr (gethash root wamei/term-links--index-cache)))
+                           (list (expand-file-name "src/example.el" root)))))
+        (when (fboundp 'wamei/background-cancel)
+          (wamei/background-cancel (cons 'term-links root)))))))
 
 (defun wamei/term-links-test--links ()
   "現在のバッファのリンク (文字列 . help-echo) を先頭から並べる。"

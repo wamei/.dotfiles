@@ -7,6 +7,7 @@
 ;;; Code:
 
 (require 'ert)
+(package-initialize)
 ;; claude-usage.el は mode-line の共通部品を term-modeline.el から取るので先に読む
 ;; (init.el も ghostel ブロックで先に読んでいる)。
 (let ((dir (file-name-directory (or load-file-name buffer-file-name))))
@@ -54,6 +55,22 @@
          (delete-file wamei/claude-usage-cache-file)))))
 
 ;;; パース
+
+(ert-deftest wamei/claude-usage-test-update-does-not-read-files-in-ui ()
+  (wamei/claude-usage-test--with-cache-file
+    (wamei/claude-usage--write-cache (wamei/claude-usage-test--state) (current-time))
+    (unwind-protect
+        (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () t))
+                  ((symbol-function 'wamei/claude-usage--read-cache)
+                   (lambda () (ert-fail "UI read cache synchronously"))))
+          (wamei/claude-usage--tick)
+          (should-not wamei/claude-usage--state)
+          (let ((deadline (+ (float-time) 10)))
+            (while (and (not wamei/claude-usage--state) (< (float-time) deadline))
+              (accept-process-output nil 0.05)))
+          (should (equal wamei/claude-usage--state (wamei/claude-usage-test--state))))
+      (when (fboundp 'wamei/background-cancel)
+        (wamei/background-cancel 'claude-usage)))))
 
 (ert-deftest wamei/claude-usage-test-parse-picks-three-limits ()
   "session / weekly_all / Fable の weekly_scoped を拾う。"
@@ -555,7 +572,7 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
                  (lambda () (cl-incf fetches))))
         (wamei/claude-usage--write-cache (wamei/claude-usage-test--state)
                                          (current-time))
-        (wamei/claude-usage--tick)
+        (wamei/claude-usage--tick-sync)
         (should (equal fetches 0))
         (should wamei/claude-usage--state)))))
 
@@ -569,7 +586,7 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
         (wamei/claude-usage--write-cache
          (wamei/claude-usage-test--state)
          (time-subtract (current-time) (1+ wamei/claude-usage-interval)))
-        (wamei/claude-usage--tick)
+        (wamei/claude-usage--tick-sync)
         (should (equal fetches 1))
         (should wamei/claude-usage--state)))))
 
@@ -585,7 +602,7 @@ Emacs 29 以降はアクティブな mode line が `mode-line-active' なので�
         (setq wamei/claude-usage--state (wamei/claude-usage-test--state)
               wamei/claude-usage--state-time
               (time-subtract (current-time) (- wamei/claude-usage-interval 0.6)))
-        (wamei/claude-usage--tick)
+        (wamei/claude-usage--tick-sync)
         (should (equal fetches 1))))))
 
 (ert-deftest wamei/claude-usage-test-window-change-ticks-when-panel-appears ()

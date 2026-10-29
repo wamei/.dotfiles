@@ -40,6 +40,11 @@
 
 ;; mode-line の右寄せと %-エスケープは端末パネルと共通 (init.el が先に読む)。
 (require 'term-modeline)
+(require 'wamei-background
+         (expand-file-name "background-job" (file-name-directory (or load-file-name buffer-file-name))))
+
+(defconst wamei/claude-usage--source-directory
+  (file-name-directory (or load-file-name buffer-file-name)))
 
 (declare-function claude-code-ide--buffer-session "claude-code-ide")
 (declare-function claude-code-ide-mcp--active-sessions "claude-code-ide-mcp")
@@ -614,7 +619,7 @@ Claude のパネルは端末が alt-screen を全面に描いているので、m
                                   (window-list frame 'no-mini))))
                  (frame-list))))
 
-(defun wamei/claude-usage--tick ()
+(defun wamei/claude-usage--tick-sync ()
   "パネルが見えているときだけ動く。
 まず共有ファイルから他のインスタンスが取った値を拾い、それが
 `wamei/claude-usage-interval' 内なら自分では投げない。エンドポイントの枠は
@@ -624,6 +629,43 @@ Claude のパネルは端末が alt-screen を全面に描いているので、m
     (wamei/claude-usage--adopt-cache)
     (unless (wamei/claude-usage--fresh-p)
       (wamei/claude-usage--fetch))))
+
+(defun wamei/claude-usage--start-update ()
+  "Read shared state, Keychain and HTTP responses in a child Emacs.
+Only parsed usage state is returned; credentials never leave the child."
+  (wamei/background-start
+   'claude-usage
+   `(progn
+      (package-initialize)
+      (load ,(expand-file-name "term-modeline.el" wamei/claude-usage--source-directory) nil t)
+      (load ,(expand-file-name "claude-usage.el" wamei/claude-usage--source-directory) nil t)
+      (setq wamei/claude-usage-cache-file ,wamei/claude-usage-cache-file
+            wamei/claude-usage-credentials-file ,wamei/claude-usage-credentials-file
+            wamei/claude-usage-keychain-service ,wamei/claude-usage-keychain-service
+            wamei/claude-usage-endpoint ,wamei/claude-usage-endpoint
+            wamei/claude-usage-interval ,wamei/claude-usage-interval)
+      (cl-letf (((symbol-function 'wamei/claude-usage--visible-p) (lambda () t)))
+        (wamei/claude-usage--tick-sync))
+      (let ((deadline (+ (float-time) 25)))
+        (while (and wamei/claude-usage--request (< (float-time) deadline))
+          (accept-process-output nil 0.1)))
+      (list :state wamei/claude-usage--state :time wamei/claude-usage--state-time))
+   (lambda (result)
+     (when (eq (car result) :ok)
+       (let* ((value (cadr result)) (time (plist-get value :time)))
+         (when (and (plist-get value :state) time
+                    (or (null wamei/claude-usage--state-time)
+                        (time-less-p wamei/claude-usage--state-time time)))
+           (setq wamei/claude-usage--state (plist-get value :state)
+                 wamei/claude-usage--state-time time)
+           (cl-incf wamei/claude-usage--generation)
+           (force-mode-line-update t)))))))
+
+(defun wamei/claude-usage--tick ()
+  "Schedule usage I/O without blocking redisplay or window hooks."
+  (when (and (wamei/claude-usage--visible-p)
+             (not (wamei/claude-usage--fresh-p)))
+    (wamei/claude-usage--start-update)))
 
 (defvar wamei/claude-usage--was-visible nil
   "前回の window 変化のときにパネルが見えていたか。")
@@ -649,7 +691,7 @@ tick は見えている間しか動かないので、隠れている間は止ま
   (add-hook 'enable-theme-functions #'wamei/claude-usage--invalidate)
   (add-hook 'window-state-change-functions #'wamei/claude-usage--on-window-change)
   ;; 起動直後はまだ取れていないので、他のインスタンスが置いた値を出す
-  (wamei/claude-usage--adopt-cache)
+  (wamei/claude-usage--start-update)
   (mapc #'wamei/claude-usage--setup (wamei/claude-usage--buffers))
   (unless wamei/claude-usage--timer
     (setq wamei/claude-usage--timer

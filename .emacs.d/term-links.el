@@ -30,6 +30,8 @@
 ;;; Code:
 
 (require 'project)
+(require 'wamei-background
+         (expand-file-name "background-job" (file-name-directory (or load-file-name buffer-file-name))))
 
 ;; init.el は ghostel の :preface で読むので、ghostel 本体は require しない
 ;; (使うのは `wamei/term-links-mode' を ghostel のロード後に有効にしてから)。
@@ -88,12 +90,21 @@
    'nomini t))
 
 (defun wamei/term-links--refresh-index (project)
-  "PROJECT の索引を作り直し、表示中の端末にリンクを付け直す。"
+  "Build PROJECT's index in a child process, retaining the old index on failure."
   (let ((root (expand-file-name (project-root project))))
-    (remhash root wamei/term-links--refresh-pending)
-    (puthash root (cons (current-time) (wamei/term-links--build-index project))
-             wamei/term-links--index-cache)
-    (wamei/term-links--rescan-visible root)))
+    (wamei/background-start
+     (cons 'term-links root)
+     `(progn (require 'project)
+             (let ((default-directory ,root))
+               (project-files ',project)))
+     (lambda (result)
+       (remhash root wamei/term-links--refresh-pending)
+       (when (eq (car result) :ok)
+         (let ((index (make-hash-table :test 'equal)))
+           (dolist (file (cadr result))
+             (push file (gethash (file-name-nondirectory file) index)))
+           (puthash root (cons (current-time) index) wamei/term-links--index-cache))
+         (wamei/term-links--rescan-visible root))))))
 
 (defun wamei/term-links--lookup (project name)
   "PROJECT の中で basename が NAME のファイルの絶対パスのリスト。
