@@ -90,11 +90,17 @@
    'nomini t))
 
 (defun wamei/term-links--refresh-index (project)
-  "Build PROJECT's index in a child process, retaining the old index on failure."
+  "Build PROJECT's index in a child process, retaining the old index on failure.
+The child is a bare `emacs -Q', so the VC backend that `project-files' calls
+into (vc-git for a Git project) is loaded explicitly; without it the worker
+fails with void-function and no bare file name ever becomes a link."
   (let ((root (expand-file-name (project-root project))))
     (wamei/background-start
      (cons 'term-links root)
      `(progn (require 'project)
+             ,@(when (eq (car-safe project) 'vc)
+                 (let ((backend (downcase (symbol-name (cadr project)))))
+                   `((require ',(intern (concat "vc-" backend))))))
              (let ((default-directory ,root))
                (project-files ',project)))
      (lambda (result)

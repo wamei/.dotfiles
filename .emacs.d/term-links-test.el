@@ -53,6 +53,17 @@
     (should (equal (wamei/term-links--resolve "init.el" root)
                    (expand-file-name ".emacs.d/init.el" root)))))
 
+(ert-deftest wamei/term-links-test-resolve-unique-basename-in-git-project ()
+  "git のプロジェクトでも、索引を作る子プロセス (emacs -Q) でファイル一覧が取れる。
+子プロセスは vc-git を読んでいないので、読ませないと project-files が落ちる。"
+  (wamei/term-links-test--with-project '("lib/deep.el")
+    (let ((default-directory root)
+          (project-find-functions (list #'project-try-vc)))
+      (call-process "git" nil nil nil "init" "-q")
+      (call-process "git" nil nil nil "add" ".")
+      (should (equal (wamei/term-links--resolve "deep.el" root)
+                     (expand-file-name "lib/deep.el" root))))))
+
 (ert-deftest wamei/term-links-test-resolve-ambiguous-is-nil ()
   "同じ basename が複数あれば決められないので nil。"
   (wamei/term-links-test--with-project '("a/foo.el" "b/foo.el")
