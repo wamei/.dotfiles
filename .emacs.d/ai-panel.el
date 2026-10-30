@@ -24,6 +24,9 @@
 (defvar wamei/ai-panel--previous-window nil)
 (defvar wamei/ai-panel--previous-buffer nil)
 (defvar wamei/ai-panel--grid-timer nil)
+(defvar wamei/ai-panel--buried nil
+  "C-x C-a で bury した AI。bury すると buffer-list の末尾に回るので、
+開き直すときはこちらを優先する。")
 
 (defun wamei/ai-panel--directory (&optional buffer)
   (let* ((buffer (or buffer (current-buffer)))
@@ -232,27 +235,44 @@ side window を使わない設定にして、パッケージの `display-buffer'
   (interactive "P") (wamei/ai-panel--cycle -1))
 
 (defun wamei/ai-panel-toggle (&optional arg)
-  "共通パネルへ出入りする。未起動なら Claude。ARG 付きなら閉じる。"
+  "共通パネルへ出入りする。未起動なら Claude。ARG 付きなら閉じる。
+AI の window を選択中なら、その AI を bury して元の window へ戻る。
+window にはその前のバッファが出る。開き直すと同じ window に AI が戻る。"
   (interactive "P")
   (let ((window (wamei/ai-panel--window)))
     (cond
      (arg (when window (wamei/ai-panel--close window)))
      ((eq window (selected-window))
+      ;; 前のバッファが別の AI なら出さない (それを bury した意味が無くなる)
+      (setq wamei/ai-panel--buried (window-buffer window))
+      (let ((switch-to-prev-buffer-skip
+             (lambda (_window buffer _bury-or-kill) (wamei/ai--backend buffer))))
+        (with-current-buffer wamei/ai-panel--buried (bury-buffer)))
+      ;; 戻り先が無ければ (本体いっぱいのパネルなど) その場に留まる。
+      ;; window にはもう元のバッファが出ている
       (when-let* ((back (or (and (window-live-p wamei/ai-panel--previous-window)
                                 (eq (window-buffer wamei/ai-panel--previous-window)
                                     wamei/ai-panel--previous-buffer)
                                 wamei/ai-panel--previous-window)
                            (and (buffer-live-p wamei/ai-panel--previous-buffer)
                                 (get-buffer-window wamei/ai-panel--previous-buffer))
-                           (get-mru-window nil t t t))))
-        (unless (eq back window) (select-window back))))
+                           (and (window-live-p wamei/ai-panel--previous-window)
+                                wamei/ai-panel--previous-window))))
+        (select-window back)))
      (t
       (setq wamei/ai-panel--previous-window (selected-window)
             wamei/ai-panel--previous-buffer (current-buffer))
       (if window (select-window window)
-        (let ((target (wamei/ai--target)))
-          (if (cdr target)
-              (when-let* ((shown (wamei/ai-panel-show (cdr target)))) (select-window shown))
+        (let* ((target (cdr (wamei/ai--target)))
+               (buried wamei/ai-panel--buried)
+               (buffer (if (and target (buffer-live-p buried) (wamei/ai--backend buried)
+                                (wamei/ai-panel--same-directory-p
+                                 (wamei/ai-panel--directory target)
+                                 (wamei/ai-panel--directory buried)))
+                           buried
+                         target)))
+          (if buffer
+              (when-let* ((shown (wamei/ai-panel-show buffer))) (select-window shown))
             (wamei/claude-toggle))))))))
 
 (defun wamei/ai-panel--hand-over (buffer)
