@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>jp.wamei.chrome-profiles.build</string>
+  <!-- Chrome の更新は書き換えが続くので、落ち着くまで待ってから複製を作り直す -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>@HOME@/.local/bin/chrome-profiles</string>
+    <string>build</string>
+    <string>--quiet</string>
+    <string>--settle</string>
+    <string>60</string>
+  </array>
+  <key>WatchPaths</key>
+  <array><string>/Applications/Google Chrome.app/Contents/Info.plist</string></array>
+  <!-- WatchPaths を取りこぼしたときのため、6 時間ごとにも確かめる (変わっていなければ何もしない) -->
+  <key>StartInterval</key><integer>21600</integer>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>StandardOutPath</key><string>@HOME@/.local/state/chrome-profiles/build.log</string>
+  <key>StandardErrorPath</key><string>@HOME@/.local/state/chrome-profiles/build.log</string>
+</dict>
+</plist>

@@ -291,7 +291,18 @@ run = [
   "cd tools/project-move && bun test",
   "cd tools/notes-sync && bun test",
   "cd tools/gh-account && bun test",
+  "cd tools/chrome-profiles && bun test",
 ]
+
+[tasks."chrome-profiles:install"]
+description = "chrome-profiles をビルドして ~/.local/bin に入れ、plist を置く (launchd には読み込まない)"
+dir = "{{config_root}}"
+run = ["sh tools/chrome-profiles/install.sh"]
+
+[tasks."chrome-profiles:enable"]
+description = "chrome-profiles を入れた上で、起動の監視と Chrome 更新時の作り直しを launchd に読み込む"
+dir = "{{config_root}}"
+run = ["sh tools/chrome-profiles/install.sh --load"]
 
 [tasks."notes-sync:install"]
 description = "notes-sync をビルドして ~/.local/bin に入れ、plist を置く (launchd には読み込まない)"
