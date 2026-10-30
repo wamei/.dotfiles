@@ -1530,7 +1530,10 @@ startup hook が side window のバッファで走って、control buffer のバ
   (add-hook 'ediff-suspend-hook #'wamei/ediff--restore-window-config 90)
   ;; 既定の ediff-setup-windows-default は GUI だと制御パネルを別フレームに出す。
   ;; 同じフレームの window に出してフレームを増やさない。
-  :custom ((ediff-window-setup-function . #'ediff-setup-windows-plain)))
+  ;; 比べる 2 つ (3 つ) は上下ではなく左右に並べる (magit の e もこれで開く)。
+  ;; | (ediff-toggle-split) で上下に切り替えられる。
+  :custom ((ediff-window-setup-function . #'ediff-setup-windows-plain)
+           (ediff-split-window-function . #'split-window-horizontally)))
 
 (leaf docker
   :doc "コンテナ / イメージ / compose の操作 (transient)"
