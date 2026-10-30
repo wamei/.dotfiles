@@ -604,6 +604,80 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
         (wamei/term-toggle '(4))
         (should (eq (selected-window) panel))))))
 
+;;; GUI の子フレーム
+
+(ert-deftest wamei/term-panel-child-geometry-covers-right-of-main-area ()
+  "子フレームは親の本体領域 (タブバーの下〜エコー領域の上) の右側を、割合の幅で覆う。"
+  (should (equal (wamei/term--child-geometry 0 30 1000 770 0.35)
+                 '(650 30 350 740)))
+  ;; 狭すぎ・広すぎにはしない
+  (should (equal (car (cddr (wamei/term--child-geometry 0 0 1000 500 0.01)))
+                 wamei/term-child-frame-min-width))
+  (should (= (car (cddr (wamei/term--child-geometry 0 0 1000 500 2.0))) 1000)))
+
+(ert-deftest wamei/term-panel-child-width-ratio ()
+  "ドラッグ後の子フレームの幅から割合を求める。極端な値は覚えない。"
+  (should (= (wamei/term--child-width-ratio 300 0 1000) 0.3))
+  ;; 子フレームの既定は本体の半分
+  (should (= (default-value 'wamei/term-child-width) 0.5))
+  (should-not (wamei/term--child-width-ratio 10 0 1000))
+  (should-not (wamei/term--child-width-ratio 990 0 1000)))
+
+(ert-deftest wamei/term-panel-gui-prefix-toggles-side-window ()
+  "GUI でも C-u C-z は子フレームを使わず、右の side window をトグルする。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((origin (selected-window))
+          (child-used nil))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+                ((symbol-function 'wamei/term--child-show)
+                 (lambda (&rest _) (setq child-used t) nil)))
+        (wamei/term-toggle '(4))
+        (let ((panel (wamei/term--window)))
+          (should (eq (window-parameter panel 'window-side) 'right))
+          (should (eq (selected-window) panel))
+          (wamei/term-toggle '(4))
+          (should-not (window-live-p panel))
+          (should (eq (selected-window) origin)))
+        (should-not child-used)
+        (wamei/term-toggle)
+        (should child-used)))))
+
+(ert-deftest wamei/term-panel-child-visibility-is-remembered-per-tab ()
+  "子フレームの表示・非表示はタブごとに覚え、切り替えるとそのタブの状態に戻す。
+新しいタブは隠した状態で始まる。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((visible nil))
+      (with-current-buffer (window-buffer) (setq default-directory alpha))
+      (wamei/term-panel-test--in alpha (wamei/term--create 1))
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+                ((symbol-function 'wamei/term--child-window)
+                 (lambda () (and visible (selected-window))))
+                ((symbol-function 'wamei/term--child-show)
+                 (lambda (_buffer)
+                   (setq visible t)
+                   (wamei/term--set-tab-child-visible t)
+                   (selected-window)))
+                ((symbol-function 'make-frame-invisible)
+                 (lambda (&rest _) (setq visible nil))))
+        (unwind-protect
+            (progn
+              (wamei/term--set-tab-child-visible t)
+              (setq visible t)
+              (tab-bar-new-tab)
+              (should-not visible)
+              (tab-bar-select-tab 1)
+              (should visible)
+              (wamei/term--hide-child)
+              (tab-bar-select-tab 2)
+              (should-not visible)
+              (wamei/term--child-show (wamei/term--current))
+              (tab-bar-select-tab 1)
+              (should-not visible)
+              (tab-bar-select-tab 2)
+              (should visible))
+          (set-frame-parameter nil 'tabs nil))))))
+
 ;;; 下端揃えの端数
 
 (ert-deftest wamei/term-anchor-vscroll-keeps-the-fraction-on-the-top-row ()

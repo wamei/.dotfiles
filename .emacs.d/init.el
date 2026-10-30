@@ -496,7 +496,7 @@ org の見出しを隠す -hide は前景がテーマの背景色 (暗い色) �
   (eval-after-load "dired-aux" '(require 'dired-async)))
 
 (leaf ghostel
-  :doc "フレーム下部に固定する端末パネル"
+  :doc "フレーム右の端末パネル (GUI では子フレーム)"
   ;; spinner は ghostel-spinner-progress (OSC 9;4 の進捗表示) が要求する。
   :ensure t spinner
   :bind (("C-z" . wamei/term-toggle)
@@ -2021,11 +2021,13 @@ desktop-side-windows が SPEC の :directory を default-directory に束縛し�
 (SPEC の :buffer) をそのまま出す。
 記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
 幅は display-buffer-alist の wamei/term--set-width が wamei/term-width
-(desktop に保存) から決める。端末タブ (header-line) は wamei/term--show が付ける。"
-    (wamei/term--show (or (get-buffer (plist-get spec :buffer))
-                          (wamei/term--current)
-                          (wamei/term--create 1))
-                      t))
+(desktop に保存) から決める。端末タブ (header-line) は wamei/term--show が付ける。
+記録は side window に出ていた端末なので、GUI でも子フレームではなく side window に出す。"
+    (let ((wamei/term--force-side t))
+      (wamei/term--show (or (get-buffer (plist-get spec :buffer))
+                            (wamei/term--current)
+                            (wamei/term--create 1))
+                        t)))
 
   (defun wamei/desktop--restore-claude (spec)
     "claude パネルを `wamei/desktop-claude-restore-command' で開き直し、幅を SPEC に合わせる。
@@ -2073,6 +2075,7 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
           desktop-base-lock-name ".emacs.desktop-nw.lock"))
   ;; 端末パネルの幅の割合も次回に引き継ぐ
   (add-to-list 'desktop-globals-to-save 'wamei/term-width)
+  (add-to-list 'desktop-globals-to-save 'wamei/term-child-width)
   ;; バッファ名で開き直し方を選ぶ。sidebar は " *sidebar: " で始まる。
   (setq wamei/desktop-side-restorers
         '(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)

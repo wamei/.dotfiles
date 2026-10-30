@@ -49,6 +49,25 @@
   "端末ウィンドウの幅 (フレームに対する割合)。
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
 
+(defvar wamei/term-child-width 0.5
+  "GUI の子フレームの幅 (フレームに対する割合)。side window の幅とは別に持つ。
+枠をドラッグすると更新され、次に開くときも同じ割合になる。")
+
+(defvar wamei/term-use-child-frame t
+  "非 nil なら GUI では端末を子フレームに出す。tty では常に side window。")
+
+(defvar wamei/term-child-frame-border 4
+  "子フレームの枠の幅 (ピクセル)。左端のこの幅を掴んでリサイズする。")
+
+(defvar wamei/term-child-frame-min-width 200
+  "子フレームの最小の幅 (ピクセル)。")
+
+(defvar wamei/term--force-side nil
+  "非 nil の間は GUI でも子フレームを使わない (C-u C-z)。")
+
+(defvar wamei/term--child-layout-busy nil
+  "子フレームを揃え直している間は非 nil。その間の大きさの変化は覚えない。")
+
 (defgroup wamei/term-panel nil
   "フレーム右の端末パネルと端末タブ。"
   :group 'tools)
@@ -165,12 +184,15 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
     index))
 
 (defun wamei/term--window ()
-  "端末本体を表示している window。"
-  (seq-find (lambda (window)
-              (and (eq (window-parameter window 'window-side) 'right)
-                   (eql (window-parameter window 'window-slot) 0)
-                   (string-match-p "\\`\\*term: " (buffer-name (window-buffer window)))))
-            (window-list nil 'no-mini)))
+  "端末本体を表示している window。
+右の side window を優先し、無ければ表示中の子フレーム (GUI) の window。
+子フレームの中から呼ばれても親フレームの side window を探す。"
+  (or (seq-find (lambda (window)
+                  (and (eq (window-parameter window 'window-side) 'right)
+                       (eql (window-parameter window 'window-slot) 0)
+                       (string-match-p "\\`\\*term: " (buffer-name (window-buffer window)))))
+                (window-list (wamei/term--parent-frame) 'no-mini))
+      (wamei/term--child-window)))
 
 (defun wamei/term--current ()
   "パネルに出すべき端末バッファ。無ければ nil。"
@@ -422,16 +444,27 @@ dedicated のままだと set-window-buffer が失敗する。"
         (progn (set-window-dedicated-p window nil)
                (set-window-buffer window buffer)
                (set-window-dedicated-p window t))
-      (setq window (display-buffer buffer)))
+      (setq window (if (wamei/term--child-frame-p)
+                       (wamei/term--child-show buffer)
+                     (display-buffer buffer))))
     (unless no-select
-      (when (window-live-p window) (select-window window))))
+      (when (window-live-p window) (wamei/term--select window))))
   (wamei/term--tabs-update)
   (get-buffer-window buffer))
 
 (defun wamei/term--close ()
-  "パネルを閉じる。"
+  "パネルを閉じる。子フレームなら隠す (作り直さずに使い回す)。"
   (when-let* ((window (wamei/term--window)))
-    (delete-window window)))
+    (if (frame-parameter (window-frame window) 'wamei/term-child)
+        (progn (make-frame-invisible (window-frame window))
+               (wamei/term--set-tab-child-visible nil))
+      (delete-window window))))
+
+(defun wamei/term--select (window)
+  "WINDOW を選ぶ。別のフレーム (子フレームと親) ならキー入力もそちらへ移す。"
+  (unless (eq (window-frame window) (selected-frame))
+    (select-frame-set-input-focus (window-frame window)))
+  (select-window window))
 
 (defun wamei/term--cycle (offset)
   "現在の端末から OFFSET 個ずれた端末に切り替える。端は巻き戻る。"
@@ -480,33 +513,244 @@ NO-OTHER 指定で候補から外れる。"
            (get-buffer-window wamei/term--previous-buffer))
       (and (window-live-p wamei/term--previous-window)
            wamei/term--previous-window)
-      (get-mru-window nil t t t)))
+      (get-mru-window (wamei/term--parent-frame) t t t)))
 
-(defun wamei/term-toggle (&optional arg)
-  "端末パネルを出し入れする。
+(defun wamei/term--toggle (&optional arg)
+  "端末パネルを出し入れする。`wamei/term-toggle' の本体。
 
 - 非表示なら開いてフォーカスする
 - 表示中でフォーカスが無ければフォーカスを移す
 - フォーカス中なら閉じて元の window へ戻る
-- ARG (C-u) 付きならフォーカス中でも閉じず、元の window へ戻るだけ
-
-C-u 付きは sidebar 側の move-back と同じ出入り。"
-  (interactive "P")
+- ARG 付きならフォーカス中でも閉じず、元の window へ戻るだけ"
   (let ((window (wamei/term--window)))
     (cond
      ((and window (eq window (selected-window)))
       (let ((back (wamei/term--back-window)))
         (when (and back (not (eq back window)))
-          (select-window back)))
+          (wamei/term--select back)))
       (unless arg
         (wamei/term--close)))
      (window
       (wamei/term--remember-previous)
-      (select-window window))
+      (wamei/term--select window))
      (t
       (wamei/term--remember-previous)
       (wamei/term--show (or (wamei/term--current)
                             (wamei/term--create 1)))))))
+
+(defun wamei/term-toggle (&optional arg)
+  "端末パネルを出し入れする (C-z)。
+
+開く先は GUI ではフレーム右に被せる子フレーム、tty では右の side window。
+出し入れの規則は `wamei/term--toggle'。
+
+ARG (C-u) 付きは、GUI では子フレームを隠して右の side window を同じ規則で
+出し入れする。tty ではフォーカス中でも閉じずに元の window へ戻るだけ
+\(sidebar 側の move-back と同じ出入り)。"
+  (interactive "P")
+  (if (and arg (wamei/term--child-frame-p))
+      (let ((wamei/term--force-side t))
+        (wamei/term--hide-child)
+        (wamei/term--toggle))
+    (wamei/term--toggle arg)))
+
+;;; GUI の子フレーム
+;;
+;; GUI では端末を side window ではなく子フレームに出し、フレーム右の本体領域
+;; (タブバーの下〜エコー領域の上) に被せる。window の配置を崩さずに出し入れ
+;; できる。子フレームは親フレームごとに 1 つ作って隠して使い回し、親の
+;; `wamei/term-child-frame' パラメータに持つ。
+;;
+;; 幅はフレーム幅に対する `wamei/term-child-width' の割合 (side window とは別)。
+;; 枠 (`child-frame-border-width') をドラッグするとリサイズでき
+;; (`drag-internal-border')、`window-size-change-functions' で幅を覚えてから
+;; 右端・上下を親に揃え直す。左端以外を掴んでも幅だけが変わる。親の大きさが
+;; 変わったときも同じ関数で揃え直す。
+;; 出しているかどうかはタブごとに覚える (親フレームのタブの `wamei-term-child')。
+;; タブを切り替えたら切り替え先の状態に戻し、出すならそのタブのプロジェクトの
+;; 端末にする。記録の無いタブ (新しいタブなど) では隠す。
+;; 子フレームはタブを持たないので、子フレームの中で打ったタブの操作は
+;; 親フレームで行う (`wamei/term--tab-command-in-parent')。
+
+(defun wamei/term--child-frame-p ()
+  "端末を子フレームに出すか。"
+  (and wamei/term-use-child-frame
+       (not wamei/term--force-side)
+       (display-graphic-p)))
+
+(defun wamei/term--parent-frame (&optional frame)
+  "FRAME (既定は選択中) が端末の子フレームならその親、そうでなければ FRAME。"
+  (let ((frame (or frame (selected-frame))))
+    (if (frame-parameter frame 'wamei/term-child)
+        (frame-parent frame)
+      frame)))
+
+(defun wamei/term--child-frame (&optional frame)
+  "FRAME (既定は選択中) の端末の子フレーム。まだ無ければ nil。"
+  (let ((child (frame-parameter (wamei/term--parent-frame frame)
+                                'wamei/term-child-frame)))
+    (and (frame-live-p child) child)))
+
+(defun wamei/term--child-window ()
+  "表示中の子フレームの端末 window。隠れていれば nil。"
+  (when-let* ((child (wamei/term--child-frame))
+              ((eq (frame-visible-p child) t)))
+    (frame-root-window child)))
+
+(defun wamei/term--child-geometry (left top right bottom ratio)
+  "親の本体領域 LEFT TOP RIGHT BOTTOM (ピクセル) の右側を RATIO の幅で覆う配置。
+戻り値は (LEFT TOP WIDTH HEIGHT)。幅は最小幅と本体領域の幅の間に収める。"
+  (let ((width (min (- right left)
+                    (max wamei/term-child-frame-min-width
+                         (round (* ratio (- right left)))))))
+    (list (- right width) top width (- bottom top))))
+
+(defun wamei/term--child-width-ratio (width left right)
+  "子フレームの幅 WIDTH の、本体領域 LEFT..RIGHT に対する割合。
+極端な値 (5% 以下・95% 以上) なら nil。"
+  (let ((ratio (/ (float width) (- right left))))
+    (and (< 0.05 ratio 0.95) ratio)))
+
+(defun wamei/term--child-area (parent)
+  "PARENT の本体領域 (LEFT TOP RIGHT BOTTOM)。タブバーの下〜エコー領域の上。"
+  (let ((root (window-pixel-edges (frame-root-window parent)))
+        (mini (window-pixel-edges (minibuffer-window parent))))
+    (list (nth 0 root) (nth 1 root) (nth 2 root) (nth 1 mini))))
+
+(defun wamei/term--child-layout (child)
+  "CHILD を親の本体領域の右側、`wamei/term-child-width' の幅に揃える。"
+  (pcase-let* ((`(,left ,top ,right ,bottom) (wamei/term--child-area (frame-parent child)))
+               (`(,x ,y ,width ,height)
+                (wamei/term--child-geometry left top right bottom wamei/term-child-width))
+               (extra-width (- (frame-native-width child) (frame-text-width child)))
+               (extra-height (- (frame-native-height child) (frame-text-height child)))
+               (wamei/term--child-layout-busy t))
+    (unless (and (= (frame-native-width child) width)
+                 (= (frame-native-height child) height))
+      (set-frame-size child (- width extra-width) (- height extra-height) t))
+    (unless (equal (frame-position child) (cons x y))
+      (set-frame-position child x y))))
+
+(defun wamei/term--child-size-changed (frame)
+  "`window-size-change-functions' 用。
+FRAME が端末の子フレームなら幅を覚えて揃え直す (枠のドラッグ)。
+子フレームを持つ親なら、表示中の子フレームを揃え直す。"
+  (unless wamei/term--child-layout-busy
+    (cond
+     ((frame-parameter frame 'wamei/term-child)
+      (when (eq (frame-visible-p frame) t)
+        (pcase-let ((`(,left ,_ ,right ,_) (wamei/term--child-area (frame-parent frame))))
+          (when-let* ((ratio (wamei/term--child-width-ratio
+                              (frame-native-width frame) left right)))
+            (setq wamei/term-child-width ratio)))
+        (wamei/term--child-layout frame)))
+     ((when-let* ((child (frame-parameter frame 'wamei/term-child-frame))
+                  ((frame-live-p child))
+                  ((eq (frame-visible-p child) t)))
+        (wamei/term--child-layout child))))))
+
+(defun wamei/term--child-make (parent)
+  "PARENT に端末用の子フレームを隠した状態で作る。
+`default-frame-alist' などから来るタブバーやタイトルバーの設定は打ち消す。"
+  (let ((child (make-frame
+                `((parent-frame . ,parent)
+                  (minibuffer . ,(minibuffer-window parent))
+                  (wamei/term-child . t)
+                  (visibility . nil)
+                  (undecorated . t)
+                  (undecorated-round . nil)
+                  (child-frame-border-width . ,wamei/term-child-frame-border)
+                  (drag-internal-border . t)
+                  (tab-bar-lines . 0)
+                  (tool-bar-lines . 0)
+                  (menu-bar-lines . 0)
+                  (vertical-scroll-bars . nil)
+                  (no-other-frame . t)
+                  (skip-taskbar . t)
+                  (unsplittable . t)
+                  (no-special-glyphs . t)
+                  (desktop-dont-save . t)
+                  (alpha . ,(frame-parameter parent 'alpha))))))
+    (set-frame-parameter parent 'wamei/term-child-frame child)
+    child))
+
+(defun wamei/term--child-show (buffer)
+  "BUFFER を子フレームに出し、その window を返す。子フレームが無ければ作る。"
+  (let* ((parent (wamei/term--parent-frame))
+         (child (or (wamei/term--child-frame parent)
+                    (wamei/term--child-make parent)))
+         (window (frame-root-window child)))
+    (set-window-dedicated-p window nil)
+    (set-window-buffer window buffer)
+    (set-window-dedicated-p window t)
+    (wamei/term--child-layout child)
+    (make-frame-visible child)
+    (wamei/term--set-tab-child-visible t)
+    window))
+
+(defun wamei/term--set-tab-child-visible (visible)
+  "親フレームのカレントタブに、子フレームの端末を出しているか (VISIBLE) を記録する。
+タブを切り替えても `tab-bar--tab' が独自のキーを持ち越すので、タブごとに残る。"
+  (when-let* ((frame (wamei/term--parent-frame))
+              ((fboundp 'tab-bar-tabs))
+              ;; タブ一覧がまだ無いフレームでも記録できるよう先に用意する
+              (tab (assq 'current-tab (tab-bar-tabs frame))))
+    (setf (alist-get 'wamei-term-child (cdr tab)) visible)))
+
+(defun wamei/term--hide-child ()
+  "子フレームを隠す。フォーカスが中にあれば先に元の window へ戻す。"
+  (when-let* ((window (wamei/term--child-window)))
+    (when (eq window (selected-window))
+      (let ((back (wamei/term--back-window)))
+        (when (and back (not (eq back window)))
+          (wamei/term--select back))))
+    (make-frame-invisible (window-frame window))
+    (wamei/term--set-tab-child-visible nil)))
+
+(defun wamei/term--tab-command-in-parent (orig &rest args)
+  "タブの操作 ORIG を、子フレームの中から呼ばれたら親フレームで行う。
+フォーカスは端末に残す。切り替え先のタブに端末が無く子フレームが隠れたら、
+親フレームへ移す。"
+  (let ((frame (selected-frame)))
+    (if (not (frame-parameter frame 'wamei/term-child))
+        (apply orig args)
+      (prog1 (with-selected-frame (frame-parent frame)
+               (apply orig args))
+        (unless (eq (frame-visible-p frame) t)
+          (select-frame-set-input-focus (frame-parent frame)))))))
+
+(defconst wamei/term--tab-commands
+  '(tab-bar-select-tab
+    tab-bar-switch-to-next-tab tab-bar-switch-to-prev-tab
+    tab-bar-switch-to-tab tab-bar-switch-to-recent-tab tab-bar-switch-to-last-tab
+    tab-bar-new-tab tab-bar-new-tab-to tab-bar-duplicate-tab
+    tab-bar-close-tab tab-bar-close-other-tabs tab-bar-rename-tab
+    tab-bar-move-tab tab-bar-move-tab-to)
+  "子フレームの中からでも親フレームのタブに効かせる関数。
+`tab-bar-select-tab' だけでは足りない。tab-next などは移動先の番号を
+選択中のフレームのタブ一覧 (子フレームでは 1 つだけ) から先に計算する。
+入れ子で呼ばれても、外側で親フレームに移っていれば内側は素通りする。")
+
+(defun wamei/term--follow-tab (_from-tab to-tab)
+  "`tab-bar-tab-post-select-functions' 用。子フレームを TO-TAB の記録どおりにする。
+出していたタブならそのタブのプロジェクトの端末を出し (フォーカスは動かさない)、
+そうでなければ、あるいは端末が無ければ隠す。"
+  (when (wamei/term--child-frame-p)
+    ;; フックはタブを切り替えたコマンドの中で走るので、カレントバッファは
+    ;; 切り替え前のままのことがある。切り替え先の選択 window を基準にする。
+    (if-let* (((alist-get 'wamei-term-child (cdr to-tab)))
+              (buffer (with-current-buffer (window-buffer (selected-window))
+                        (wamei/term--current))))
+        (progn (setq wamei/term--last buffer)
+               (wamei/term--child-show buffer)
+               (wamei/term--tabs-update))
+      (wamei/term--hide-child))))
+
+(defun wamei/term--hide-on-new-tab (&rest _)
+  "`tab-bar-tab-post-open-functions' 用。新しいタブは子フレームを隠して始める。"
+  (when (wamei/term--child-frame-p)
+    (wamei/term--hide-child)))
+
 ;;; 下端揃えの端数
 
 ;; ghostel は端末グリッドをウィンドウの下端に揃える (`ghostel--anchor-window')。
@@ -591,7 +835,13 @@ ghostel がロードされる前に登録しておく必要があるので、ini
   (add-hook 'ghostel-command-start-functions #'wamei/term--on-command-state t)
   (add-hook 'ghostel-command-finish-functions #'wamei/term--on-command-state t)
   ;; 実行中の ● の呼吸は term-modeline.el のタイマーに相乗りする。
-  (add-hook 'wamei/term-modeline-tick-functions #'wamei/term--tabs-tick))
+  (add-hook 'wamei/term-modeline-tick-functions #'wamei/term--tabs-tick)
+  ;; GUI の子フレームを、ドラッグ・親の大きさ・タブの切り替えに追従させる。
+  (add-hook 'window-size-change-functions #'wamei/term--child-size-changed)
+  (add-hook 'tab-bar-tab-post-select-functions #'wamei/term--follow-tab)
+  (add-hook 'tab-bar-tab-post-open-functions #'wamei/term--hide-on-new-tab)
+  (dolist (command wamei/term--tab-commands)
+    (advice-add command :around #'wamei/term--tab-command-in-parent)))
 
 (provide 'term-panel)
 ;;; term-panel.el ends here
