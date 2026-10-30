@@ -42,6 +42,7 @@
            (wamei/ai-panel--previous-window nil)
            (wamei/ai-panel--previous-buffer nil)
            (wamei/ai-panel--grid-timer nil)
+           (wamei/ai-panel--buried nil)
            (wamei/ai-panel-test--buffers nil)
            (wamei/claude-panel--order nil)
            (wamei/codex-panel--order nil))
@@ -126,11 +127,17 @@
       (wamei/ai-panel-show claude)
       (wamei/ai-toggle)
       (let ((panel (selected-window)))
+        (should-not (eq panel origin))
         (wamei/ai-panel-show codex)
+        ;; AI の window を選択中なら、そのバッファを bury して元の window へ戻る。
         (wamei/ai-toggle)
         (should (eq (selected-window) origin))
-        (wamei/ai-toggle)
+        (should-not (wamei/ai--backend (window-buffer panel)))
+        (should (eq (car (last (buffer-list))) codex))
+        ;; 開き直すと同じ window に直前の AI が戻る。
+        (let ((default-directory "/tmp/")) (wamei/ai-toggle))
         (should (eq (selected-window) panel))
+        (should (eq (window-buffer panel) codex))
         (wamei/ai-toggle '(4))
         (should-not (window-live-p panel))
         (should (buffer-live-p codex))
@@ -298,6 +305,15 @@ AI 側で C-x 1 すれば AI だけが残る。"
         (should (equal (wamei/ai-panel-test--main-windows) (list window)))
         (should (window-live-p term))
         (should (eq window (wamei/ai-panel--window t)))
+        ;; 選択中に C-x C-a すると AI を bury して元のバッファに戻る。
+        (select-window window)
+        (wamei/ai-toggle)
+        (should (eq (selected-window) editor))
+        (should (eq (window-buffer editor) code))
+        ;; もう一度で AI が戻る。
+        (let ((default-directory "/tmp/")) (wamei/ai-toggle))
+        (should (eq (selected-window) editor))
+        (should (eq (window-buffer editor) buffer))
         ;; 閉じると元のバッファに戻り、普通の window に戻る。
         (wamei/ai-toggle '(4))
         (should (window-live-p editor))
