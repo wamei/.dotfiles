@@ -1255,7 +1255,8 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
     (require 'magit)
     (let ((default-directory (or (wamei/magit--tab-toplevel) default-directory)))
       (call-interactively #'magit-status)))
-  :bind ("C-x g" . wamei/magit-status)
+  :bind (("C-x g" . wamei/magit-status)
+         (:magit-mode-map ("|" . wamei/delta-view-dwim)))
   :init
   ;; 閉じたときに本体の window だけを戻す (magit-main-window.el)。
   ;; init.el は symlink なので実体の隣から読む。
@@ -1269,6 +1270,11 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
                           (file-name-directory (file-truename user-init-file)))
         nil t)
   (add-hook 'magit-diff-wash-diffs-hook #'wamei/magit-diff-line-numbers 90)
+  ;; diff を delta の表示 (幅があれば左右 2 列) で別バッファに開く
+  ;; (delta-view.el)。magit の | で point の diff、C-u | で全部。
+  (load (expand-file-name "delta-view"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
   ;; status は side window (sidebar / claude-code-ide / 端末パネル) を残して
   ;; 主領域いっぱいに表示し、q で開く前の主領域の window 構成に戻す。
   ;; fullframe 化は delete-other-windows で行われるため、side window 側に
@@ -1310,34 +1316,15 @@ magit の色に戻す。`face-remapping-alist' は set するとバッファロ�
 
   (defun wamei/magit-delta--extend-background (orig &rest args)
     "`xterm-color-colorize-buffer' (ORIG) の :around。追加・削除行の背景を右端まで伸ばす。
-delta は行の末尾に「背景色 + ESC[0K (行末まで消去)」を出し、端末はそれで
-右端まで塗る。xterm-color は ESC[0K を捨てるので色が文字の終わりで止まる。
-色を付ける前にその行 (先頭からの行数) と色を覚え、付けた後にその行の改行へ
-:extend t の背景を載せる。xterm-color はバッファを消して入れ直すので marker は
-先頭に寄ってしまうが、行数は変わらない。xterm-color を使うのは magit-delta
-だけだが、magit のバッファに限っておく。truecolor (48;2) の出力だけを扱う。"
+xterm-color は delta の ESC[0K (行末まで背景色で塗る) を捨てるので、色を
+付ける前に塗る行と色を覚え、付けた後にその行の改行へ載せ直す
+\(delta-view.el の `wamei/delta-view-eol-backgrounds')。xterm-color を使うのは
+magit-delta だけだが、magit のバッファに限っておく。"
     (if (not (derived-mode-p 'magit-mode))
         (apply orig args)
-      (let (eols)
-        (save-excursion
-          (goto-char (point-min))
-          (while (re-search-forward
-                  "\e\\[48;2;\\([0-9]+\\);\\([0-9]+\\);\\([0-9]+\\)m\e\\[0K\\(?:\e\\[0m\\)?$"
-                  nil t)
-            (push (cons (count-lines (point-min) (point))
-                        (apply #'format "#%02x%02x%02x"
-                               (mapcar (lambda (n) (string-to-number (match-string n)))
-                                       '(1 2 3))))
-                  eols)))
+      (let ((eols (wamei/delta-view-eol-backgrounds)))
         (apply orig args)
-        (save-excursion
-          (pcase-dolist (`(,line . ,color) eols)
-            (goto-char (point-min))
-            (forward-line (1- line))
-            (let* ((eol (line-end-position))
-                   (overlay (make-overlay eol (1+ eol))))
-              (overlay-put overlay 'face (list :background color :extend t))
-              (overlay-put overlay 'evaporate t)))))))
+        (wamei/delta-view-extend-backgrounds eols))))
   ;; magit-delta-mode はバッファごとに face の付け替えを入れるので、
   ;; magit のバッファを作るたびに有効にする。
   ;; delta の行番号 (.gitconfig の pager) は --color-only でも行を崩すので、
