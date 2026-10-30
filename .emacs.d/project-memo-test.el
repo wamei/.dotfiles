@@ -699,6 +699,21 @@ BODY の中でさらに `cl-letf' して上書きする。"
           (should-not (wamei/project-memo--popup-color face :background)))
       (put face 'face-defface-spec nil))))
 
+(ert-deftest wamei/project-memo-posframe-show-inherits-the-frame-alpha ()
+  "小窓も親フレームと同じく透過する (他のポップアップと揃える)。"
+  (wamei/project-memo-test--with-project root
+    (wamei/project-memo-test--with-posframe-stub calls
+      (let ((alpha (frame-parameter nil 'alpha)))
+        (unwind-protect
+            (progn
+              (set-frame-parameter nil 'alpha 90)
+              (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
+              (should (equal (alist-get 'alpha (plist-get (cddr (car calls))
+                                                          :override-parameters))
+                             90)))
+          (set-frame-parameter nil 'alpha alpha)))
+      (wamei/project-memo-posframe-hide))))
+
 (ert-deftest wamei/project-memo-posframe-show-sizes-from-the-ratios ()
   (wamei/project-memo-test--with-project root
     (wamei/project-memo-test--with-posframe-stub calls

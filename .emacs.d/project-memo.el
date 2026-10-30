@@ -487,6 +487,9 @@ window を取る。posframe.el 自身が同じ window を `posframe--create-posf
            :border-color (wamei/project-memo--popup-color 'wamei/popup-border :background)
            :background-color (wamei/project-memo--popup-color 'wamei/popup-body :background)
            :accept-focus t
+           ;; 他のポップアップ (corfu / eldoc-box / tooltip) と同じく親フレームの
+           ;; 透過に揃える。NS は alpha-background が無く frame 全体の alpha だけ。
+           :override-parameters `((alpha . ,(frame-parameter nil 'alpha)))
            :cursor 'box
            :respect-mode-line t
            :window-point (with-current-buffer buffer (point))))
