@@ -65,6 +65,9 @@
 (ert-deftest wamei/desktop-background-test-defers-terminal-scrollback-too ()
   (wamei/desktop-test--with-directory
     (let ((wamei/term-restore-directory (expand-file-name "scrollback/" desktop-dirname))
+          ;; As in init.el: the record makes each snapshot differ.  Without it
+          ;; the second save is skipped as unchanged once the frame is stable.
+          (desktop-globals-to-save '(wamei/desktop-test-value wamei/term-restore-saved))
           (desktop-save-hook '(wamei/term-restore-save))
           (terminal (generate-new-buffer "*term: background-test*")))
       (unwind-protect
@@ -111,5 +114,47 @@
           (let ((wamei/desktop-test-value nil))
             (load (desktop-full-file-name) nil t)
             (should (equal wamei/desktop-test-value "manual save"))))
+      (advice-remove 'desktop-auto-save #'wamei/desktop-background--auto-save)
+      (advice-remove 'desktop-save #'wamei/desktop-background--manual-save))))
+
+(defun wamei/desktop-test--commit-without-acknowledgement ()
+  "Start an auto-save and let it commit, but drop its result.
+This is what happens when the timeout fires first, e.g. after sleep."
+  (wamei/desktop-background--auto-save #'desktop-auto-save)
+  (let ((process (car (gethash 'desktop-save wamei/background--jobs)))
+        (deadline (+ (float-time) 8)))
+    (remhash 'desktop-save wamei/background--jobs)
+    (while (and (process-live-p process) (< (float-time) deadline))
+      (accept-process-output nil 0.02))
+    (should (file-exists-p (desktop-full-file-name)))))
+
+(ert-deftest wamei/desktop-background-test-adopts-own-unacknowledged-commit ()
+  (wamei/desktop-test--with-directory
+    (wamei/desktop-test--commit-without-acknowledgement)
+    (setq wamei/desktop-test-value "after lost acknowledgement")
+    (wamei/desktop-background--auto-save #'desktop-auto-save)
+    (let ((deadline (+ (float-time) 8)))
+      (while (and (wamei/background-running-p 'desktop-save) (< (float-time) deadline))
+        (accept-process-output nil 0.02)))
+    (should (time-equal-p desktop-file-modtime
+                          (file-attribute-modification-time
+                           (file-attributes (desktop-full-file-name)))))
+    (let ((wamei/desktop-test-value nil))
+      (load (desktop-full-file-name) nil t)
+      (should (equal wamei/desktop-test-value "after lost acknowledgement")))))
+
+(ert-deftest wamei/desktop-background-test-manual-save-adopts-unacknowledged-commit ()
+  (wamei/desktop-test--with-directory
+    (unwind-protect
+        (progn
+          (wamei/desktop-background-enable)
+          (wamei/desktop-test--commit-without-acknowledgement)
+          (setq wamei/desktop-test-value "manual after lost acknowledgement")
+          (cl-letf (((symbol-function 'yes-or-no-p)
+                     (lambda (&rest _) (ert-fail "asked about our own desktop write"))))
+            (desktop-save desktop-dirname))
+          (let ((wamei/desktop-test-value nil))
+            (load (desktop-full-file-name) nil t)
+            (should (equal wamei/desktop-test-value "manual after lost acknowledgement"))))
       (advice-remove 'desktop-auto-save #'wamei/desktop-background--auto-save)
       (advice-remove 'desktop-save #'wamei/desktop-background--manual-save))))
