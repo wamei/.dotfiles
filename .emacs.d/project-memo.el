@@ -1,10 +1,10 @@
-;;; project-memo.el --- org のメモ (プロジェクト別 / 全体) -*- lexical-binding: t; -*-
+;;; project-memo.el --- Markdown のメモ (プロジェクト別 / 全体) -*- lexical-binding: t; -*-
 ;;; Commentary:
 ;;
-;; プロジェクトごとのメモと、プロジェクトに紐づかない全体メモを org で持つ。
+;; プロジェクトごとのメモと、プロジェクトに紐づかない全体メモを Markdown で持つ。
 ;;
-;; - 実体は `wamei/project-memo-directory' (既定 ~/org/) 直下のフラットな
-;;   org ファイル。プロジェクトメモは <project-name>.org、全体メモは global.org
+;; - 実体は `wamei/project-memo-directory' (既定 ~/notes/) 直下のフラットな
+;;   Markdown ファイル。プロジェクトメモは <project-name>.md、全体メモは global.md
 ;; - 保存は意識しなくてよい。アイドル中も、メモから離れるときも、
 ;;   `wamei/project-memo-save-all' が実ファイルへ書く。アイドル分は
 ;;   このモジュール専用の `run-with-idle-timer' で回す
@@ -21,7 +21,7 @@
 ;;   するか C-<tab> / C-S-<tab> でそのメモに差し替える。差し替えるのはメモだけで、
 ;;   tab-bar のタブは動かさない。本文 window に出したメモにはタブを出さない
 ;; - posframe はフォーカスが外れたときと、もう一度トグルしたときに閉じる。
-;;   いずれも閉じる前に保存する。ESC / C-g では閉じない (どちらも org の
+;;   いずれも閉じる前に保存する。ESC / C-g では閉じない (どちらもメモの
 ;;   編集中に使う)。`posframe-show' は child frame の root window を強い
 ;;   dedicated にする (posframe.el) が、`wamei/project-memo-posframe-show' は
 ;;   show の直後にそれを解除する。メモの小窓にフォーカスがある状態で
@@ -37,14 +37,14 @@
 ;;
 ;; 既知の制限:
 ;;
-;; - `wamei/project-memo-directory' (~/org) 自体を git repo にすると、
+;; - `wamei/project-memo-directory' (~/notes) 自体を git repo にすると、
 ;;   `wamei/project-sidebar--follow' がメモを「別プロジェクトのファイル」と
-;;   見なして sidebar を ~/org の dired に引っ張る。あちらは
+;;   見なして sidebar を ~/notes の dired に引っ張る。あちらは
 ;;   `(file-name-directory file)' からプロジェクトを出すので、メモバッファの
 ;;   `project-current-directory-override' も `default-directory' も見ない
 ;;   (`wamei/project-sidebar--follow' の file-root の計算)。このモジュール側は
 ;;   `wamei/project-memo--usable-project' で自分の判定を守っているが、
-;;   sidebar 側には手を入れていない。~/org を repo にするなら project-sidebar.el
+;;   sidebar 側には手を入れていない。~/notes を repo にするなら project-sidebar.el
 ;;   にも同じ手当てが要る。
 ;; - バッファローカルの `project-current-directory-override' と window
 ;;   パラメータ `wamei/project-memo-back' は再起動をまたがない。desktop は
@@ -65,15 +65,15 @@
 (require 'header-tabs)
 
 (defgroup wamei/project-memo nil
-  "org のメモ (プロジェクト別 / 全体)。"
+  "Markdown のメモ (プロジェクト別 / 全体)。"
   :group 'convenience)
 
-(defcustom wamei/project-memo-directory "~/org/"
+(defcustom wamei/project-memo-directory "~/notes/"
   "メモを置くディレクトリ。"
   :type 'directory
   :group 'wamei/project-memo)
 
-(defcustom wamei/project-memo-global-name "global.org"
+(defcustom wamei/project-memo-global-name "global.md"
   "全体メモのファイル名。`wamei/project-memo-directory' からの相対。"
   :type 'string
   :group 'wamei/project-memo)
@@ -107,7 +107,7 @@
 
 名前は `project-name' を使う。タブに出ている名前 (project-tabs.el) と
 同じものにして、タブとメモの対応を見た目から追えるようにする。"
-  (expand-file-name (concat (wamei/project-memo--sanitize (project-name project)) ".org")
+  (expand-file-name (concat (wamei/project-memo--sanitize (project-name project)) ".md")
                     (wamei/project-memo--directory)))
 
 (defun wamei/project-memo-global-file ()
@@ -121,7 +121,7 @@
 メモバッファには目印が付かないが、自動保存はそれにも効く必要がある。"
   (let ((file (buffer-file-name (or buffer (current-buffer)))))
     (and file
-         (equal (file-name-extension file) "org")
+         (equal (file-name-extension file) "md")
          (file-in-directory-p file (expand-file-name wamei/project-memo-directory))
          t)))
 
@@ -130,11 +130,12 @@
 (defun wamei/project-memo-buffer (&optional project)
   "PROJECT のメモバッファ。PROJECT が nil なら全体メモ。
 
-中身が空なら #+title: の 1 行だけ入れる。ファイルは最初の保存で生まれる
-(自動保存があるので、開いたまま数秒放置すれば実体ができる)。
+中身が空なら title の 1 行 (`# 名前') だけ入れる。Apple メモとの同期
+(notes-sync.el) も先頭の `# ' 行をタイトルとして読む。ファイルは最初の
+保存で生まれる (自動保存があるので、開いたまま数秒放置すれば実体ができる)。
 
 プロジェクトメモには `project-current-directory-override' をバッファ
-ローカルで持たせる。メモの実体は ~/org/ にあってプロジェクト外なので、
+ローカルで持たせる。メモの実体は ~/notes/ にあってプロジェクト外なので、
 これが無いとタブ名の判定 (`wamei/tab-bar-tab-name-project') が外れ、
 project-find-file などの起点もメモのディレクトリになってしまう。
 
@@ -142,7 +143,7 @@ project-find-file などの起点もメモのディレクトリになってし�
 `project-current' 越しにしか見えないので、default-directory を生で読む
 利用者には届かない。たとえば `wamei/project-sidebar-toggle' の「sidebar が
 出ていない」枝は本文 window のバッファの default-directory をそのまま
-使うため、メモが本文にいると ~/org/ の dired が開いてしまう
+使うため、メモが本文にいると ~/notes/ の dired が開いてしまう
 (カレントバッファがメモ自身なら override が効いて隠れるが、端末パネル等に
 フォーカスがあるときに露呈する)。1 行で default-directory の利用者を
 まとめて正しくする。
@@ -166,7 +167,7 @@ project-find-file などの起点もメモのディレクトリになってし�
         ;; 書いてしまう。buffer-undo-list を後から潰すのではなく let で
         ;; 抑止するのは、既に編集中のバッファの履歴を巻き添えにしないため。
         (let ((buffer-undo-list t))
-          (insert "#+title: "
+          (insert "# "
                   (if project (project-name project) (file-name-base file))
                   "\n\n")))
       (if project
@@ -182,13 +183,13 @@ project-find-file などの起点もメモのディレクトリになってし�
 (defun wamei/project-memo--usable-project (project)
   "PROJECT をメモの対象にしてよければそのまま返す。だめなら nil。
 
-root がメモディレクトリ自身のものを弾く。spec §2 の「将来 ~/org 自体を
-git repo にしても ~/org のプロジェクトとは判定されない」を、パスから
+root がメモディレクトリ自身のものを弾く。spec §2 の「将来 ~/notes 自体を
+git repo にしても ~/notes のプロジェクトとは判定されない」を、パスから
 プロジェクトを計算するこの経路でも守るため。override が守るのはメモ
 バッファ自身の `project-current' だけで、ここには届かない。
 
 弾かないと、root の無いタブで全体メモを出しているときに `C-x C-m' が
-~/org/org.org を開く。それ自体がメモなので、メモを開くつもりの操作が
+~/notes/notes.md を開く。それ自体がメモなので、メモを開くつもりの操作が
 別のメモを増やすだけになる。"
   (and project
        (not (equal (wamei/project-memo--truename-directory (project-root project))
@@ -763,7 +764,9 @@ tab-bar で開いているプロジェクトのメモをタブの順に、最後
 
 (defvar wamei/project-memo-tabs-mode-map
   (let ((map (make-sparse-keymap)))
-    ;; org-mode-map の C-<tab> より優先させるためマイナーモードに持つ
+    ;; メジャーモードの keymap より優先させるためマイナーモードに持つ。
+    ;; markdown-mode-map / gfm-mode-map は今は C-<tab> を束縛していないが
+    ;; (TAB / S-TAB の見出し折り畳みだけ)、将来足されても小窓では奪われない
     (dolist (binding '(("C-<tab>" . wamei/project-memo-tab-next)
                        ("C-S-<tab>" . wamei/project-memo-tab-previous)
                        ("C-S-<iso-lefttab>" . wamei/project-memo-tab-previous)))

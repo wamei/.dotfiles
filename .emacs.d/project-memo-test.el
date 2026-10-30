@@ -23,13 +23,13 @@
   "一時ディレクトリを transient プロジェクトにして VAR に束縛し BODY を評価する。
 
 `wamei/project-memo-directory' も一時ディレクトリに差し替える。実ユーザーの
-~/org/ にテストが書き込まないようにするため、この束縛は必須。
+~/notes/ にテストが書き込まないようにするため、この束縛は必須。
 VAR は `file-truename' 済み (macOS では make-temp-file の結果が
 /var/folders/… → /private/var/… と symlink 越しになる)。"
   (declare (indent 1))
   `(let* ((,var (file-name-as-directory (file-truename (make-temp-file "memo-proj-" t))))
           (wamei/project-memo-directory
-           (file-name-as-directory (file-truename (make-temp-file "memo-org-" t))))
+           (file-name-as-directory (file-truename (make-temp-file "memo-notes-" t))))
           (project-find-functions
            (list (lambda (dir)
                    (when (string-prefix-p ,var (file-truename (expand-file-name dir)))
@@ -55,19 +55,19 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
   (wamei/project-memo-test--with-project root
     (should (equal (wamei/project-memo-file (wamei/project-memo-test--project root))
                    (expand-file-name
-                    (concat (file-name-nondirectory (directory-file-name root)) ".org")
+                    (concat (file-name-nondirectory (directory-file-name root)) ".md")
                     wamei/project-memo-directory)))))
 
 (ert-deftest wamei/project-memo-file-replaces-slash-in-name ()
   (wamei/project-memo-test--with-project root
     (cl-letf (((symbol-function 'project-name) (lambda (_project) "group/app")))
       (should (equal (wamei/project-memo-file (wamei/project-memo-test--project root))
-                     (expand-file-name "group-app.org" wamei/project-memo-directory))))))
+                     (expand-file-name "group-app.md" wamei/project-memo-directory))))))
 
 (ert-deftest wamei/project-memo-global-file-is-global-name ()
   (wamei/project-memo-test--with-project root
     (should (equal (wamei/project-memo-global-file)
-                   (expand-file-name "global.org" wamei/project-memo-directory)))))
+                   (expand-file-name "global.md" wamei/project-memo-directory)))))
 
 (ert-deftest wamei/project-memo-file-creates-memo-directory ()
   (wamei/project-memo-test--with-project root
@@ -78,7 +78,7 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
 
 ;;; メモバッファの判定
 
-(ert-deftest wamei/project-memo-buffer-p-matches-org-under-memo-directory ()
+(ert-deftest wamei/project-memo-buffer-p-matches-md-under-memo-directory ()
   (wamei/project-memo-test--with-project root
     (let ((buffer (find-file-noselect (wamei/project-memo-global-file))))
       (should (wamei/project-memo-buffer-p buffer)))))
@@ -90,10 +90,18 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
           (should-not (wamei/project-memo-buffer-p buffer))
         (kill-buffer buffer)))))
 
-(ert-deftest wamei/project-memo-buffer-p-rejects-non-org-in-memo-directory ()
+(ert-deftest wamei/project-memo-buffer-p-rejects-non-md-in-memo-directory ()
   (wamei/project-memo-test--with-project root
     (let ((buffer (find-file-noselect
                    (expand-file-name "notes.txt" wamei/project-memo-directory))))
+      (should-not (wamei/project-memo-buffer-p buffer)))))
+
+(ert-deftest wamei/project-memo-buffer-p-rejects-org-in-memo-directory ()
+  (wamei/project-memo-test--with-project root
+    ;; メモは org から Markdown に移した。置き場に org が残っていても
+    ;; メモとして自動保存やタブの対象にしない。
+    (let ((buffer (find-file-noselect
+                   (expand-file-name "global.org" wamei/project-memo-directory))))
       (should-not (wamei/project-memo-buffer-p buffer)))))
 
 ;;; メモバッファ
@@ -103,7 +111,7 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
     (let ((buffer (wamei/project-memo-buffer (wamei/project-memo-test--project root))))
       (with-current-buffer buffer
         (should (string-prefix-p
-                 (concat "#+title: " (file-name-nondirectory (directory-file-name root)))
+                 (concat "# " (file-name-nondirectory (directory-file-name root)))
                  (buffer-string)))))))
 
 (ert-deftest wamei/project-memo-buffer-inserts-title-for-existing-empty-file ()
@@ -115,15 +123,15 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
       (with-temp-file file)
       (should (= 0 (file-attribute-size (file-attributes file))))
       (with-current-buffer (wamei/project-memo-buffer nil)
-        (should (string-prefix-p "#+title: " (buffer-string)))))))
+        (should (string-prefix-p "# " (buffer-string)))))))
 
 (ert-deftest wamei/project-memo-buffer-does-not-put-title-on-undo-list ()
   (wamei/project-memo-test--with-project root
-    ;; 新規メモで 1 回 undo すると #+title: 行が消え、そのまま放置すると
+    ;; 新規メモで 1 回 undo すると title の行が消え、そのまま放置すると
     ;; 自動保存が 0 バイトで書いてしまう。title は undo の対象にしない。
     (with-current-buffer (wamei/project-memo-buffer nil)
       (let ((before (buffer-string)))
-        (should (string-prefix-p "#+title: " before))
+        (should (string-prefix-p "# " before))
         (should (null buffer-undo-list))
         (ignore-errors (undo))
         (should (equal (buffer-string) before))))))
@@ -184,7 +192,7 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
     ;; C-x C-p でプロジェクトを開き、sidebar を q で閉じ、端末パネル等から
     ;; C-x C-n で開き直す経路。`wamei/project-sidebar-toggle' の「非表示」枝は
     ;; 本文 window のバッファの default-directory を生で読むので、そこにメモが
-    ;; いるとメモディレクトリの dired (" *sidebar: org*") が出てしまう。
+    ;; いるとメモディレクトリの dired (" *sidebar: notes*") が出てしまう。
     ;;
     ;; カレントバッファをメモ以外にしておくのが再現の条件。メモ自身が
     ;; カレントだと、そのバッファローカルな
@@ -207,10 +215,10 @@ VAR は `file-truename' 済み (macOS では make-temp-file の結果が
           (delete-window side))
         (select-window main)))))
 
-(ert-deftest wamei/project-memo-buffer-is-org-mode ()
+(ert-deftest wamei/project-memo-buffer-is-markdown-mode ()
   (wamei/project-memo-test--with-project root
     (with-current-buffer (wamei/project-memo-buffer nil)
-      (should (derived-mode-p 'org-mode)))))
+      (should (derived-mode-p 'markdown-mode)))))
 
 ;;; posframe のスタブ
 
@@ -431,11 +439,11 @@ BODY の中でさらに `cl-letf' して上書きする。"
 
 (ert-deftest wamei/project-memo--project-ignores-project-rooted-at-memo-directory ()
   (wamei/project-memo-test--with-project root
-    ;; spec §2 の「将来 ~/org 自体を git repo にしても ~/org のプロジェクト
+    ;; spec §2 の「将来 ~/notes 自体を git repo にしても ~/notes のプロジェクト
     ;; とは判定されない」。override はメモバッファ自身の project-current しか
     ;; 守らないので、パスから計算するこの関数にも同じ保証を持たせる。
     ;; さもないと root 無しのタブで全体メモを出しているとき C-x C-m が
-    ;; ~/org/org.org (= それ自体がメモ) を開いてしまう。
+    ;; ~/notes/notes.md (= それ自体がメモ) を開いてしまう。
     (let* ((memo-dir wamei/project-memo-directory)
            (project-find-functions
             (cons (lambda (dir)
@@ -448,7 +456,7 @@ BODY の中でさらに `cl-letf' して上書きする。"
       (set-window-buffer main global-memo)
       (set-window-parameter main 'wamei/project-memo-back nil)
       (should-not (wamei/project-memo--project))
-      ;; その帰結として、開かれるのは global.org のまま。
+      ;; その帰結として、開かれるのは global.md のまま。
       (should (equal (buffer-file-name
                       (wamei/project-memo-buffer (wamei/project-memo--project)))
                      (wamei/project-memo-global-file))))))
@@ -1362,7 +1370,7 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
                     vars)
           (--roots (list ,@vars))
           (wamei/project-memo-directory
-           (file-name-as-directory (file-truename (make-temp-file "memo-org-" t))))
+           (file-name-as-directory (file-truename (make-temp-file "memo-notes-" t))))
           (project-find-functions
            (list (lambda (dir)
                    (seq-some (lambda (root)
@@ -1462,7 +1470,7 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
   "小窓の中で別のファイルを開いたらタブを外し、メモに戻ったらまた出す。"
   (wamei/project-memo-test--with-tabs (alpha)
     (wamei/project-memo-test--with-posframe-stub calls
-      (let ((other (find-file-noselect (expand-file-name "x.org" alpha))))
+      (let ((other (find-file-noselect (expand-file-name "x.md" alpha))))
         (unwind-protect
             (progn
               (wamei/project-memo-posframe-show (wamei/project-memo-buffer nil))
@@ -1528,9 +1536,9 @@ hook と advice はレキシカルな束縛で隔離できるが、アイドル�
     (let ((find-file-hook nil)
           (window-buffer-change-functions nil))
       (wamei/project-memo-tabs-setup)
-      (let ((memo (find-file-noselect (expand-file-name "other.org"
+      (let ((memo (find-file-noselect (expand-file-name "other.md"
                                                         wamei/project-memo-directory)))
-            (other (find-file-noselect (expand-file-name "x.org" alpha))))
+            (other (find-file-noselect (expand-file-name "x.md" alpha))))
         (unwind-protect
             (progn
               (should (buffer-local-value 'wamei/project-memo-tabs-mode memo))

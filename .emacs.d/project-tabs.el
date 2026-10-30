@@ -183,7 +183,7 @@ window change 関数の中では直接呼ばない。"
 
 (defvar wamei/project-tabs-extra-buffer-functions nil
   "root を受け取り、project-buffers 以外でそのプロジェクトに属するバッファを返す関数のリスト。
-メモ (実体は ~/org/ にあり、desktop から復元すると default-directory が
+メモ (実体は ~/notes/ にあり、desktop から復元すると default-directory が
 root を向かない) や sidebar (空白始まりの内部バッファ) を足すのに使う。")
 
 (defvar wamei/project-tabs-before-kill-functions nil

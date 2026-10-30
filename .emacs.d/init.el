@@ -1081,7 +1081,7 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   ;; (dispatch メニューを出さない)。root の dired が要るときは C-u C-x C-j
   ;; (dired-toggle-current-or-project-directory の project-dired 側)。
   ;; プレフィクス無しの C-x C-j は dired-jump で、これは default-directory では
-  ;; なく buffer-file-name のディレクトリへ飛ぶので、メモからだと ~/org/ に着く。
+  ;; なく buffer-file-name のディレクトリへ飛ぶので、メモからだと ~/notes/ に着く。
   (project-switch-commands . #'wamei/project-memo-switch-setup)
   ;; プロジェクトを選ぶすべての入口 (project-switch-project / project-forget-project
   ;; など) を名前カラム付きのプロンプタにする。
@@ -1877,19 +1877,16 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
               (ensure-list (get-buffer (wamei/project-sidebar--buffer-name root))))))
 
 (leaf org
-  :doc "メモに使う分だけの org 設定 (agenda / capture は入れない)"
+  :doc "org を開いたときの表示だけ (agenda / capture は入れない。メモは Markdown)"
   :ensure nil
   :custom
-  ;; メモの置き場もここに従う (leaf project-memo の
-  ;; wamei/project-memo-directory)。パスの出どころはこの 1 箇所。
-  (org-directory . "~/org/")
   (org-startup-indented . t)          ; 見出しの深さをインデントで見せる
-  (org-startup-folded . 'showall)     ; メモなので畳まずに開く
+  (org-startup-folded . 'showall)     ; 畳まずに開く
   :hook
   (org-mode-hook . visual-line-mode)) ; 長い行は折り返して表示する
 
 (leaf project-memo
-  :doc "org のメモ (プロジェクト別 / 全体)"
+  :doc "Markdown のメモ (プロジェクト別 / 全体)"
   :ensure nil
   ;; C-x C-m は C-x RET と同じキー列なので、標準の mule-keymap
   ;; (set-buffer-file-coding-system / universal-coding-system-argument /
@@ -1920,10 +1917,11 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
                           (file-name-directory (file-truename user-init-file)))
         nil t)
   :custom
-  ;; メモの置き場は org-directory (leaf org) に従わせる。同じパスを 2 箇所に
-  ;; 書くと、片方だけ変えたときに黙って食い違う (メモが org-directory の外に
-  ;; 出ても誰も気づかない)。
-  (wamei/project-memo-directory . org-directory)
+  ;; メモの置き場。Apple メモとの同期 (notes-sync.el) の対象もこれに従わせる
+  ;; (下の :config)。同じパスを 2 箇所に書くと、片方だけ変えたときに黙って
+  ;; 食い違う (同期対象のメモが置き場の外に出ても誰も気づかない)。パスの
+  ;; 出どころはこの 1 箇所。
+  (wamei/project-memo-directory . "~/notes/")
   :config
   ;; メモ専用のアイドルタイマーによる保存と、メモから離れたときの保存。
   ;; auto-save-visited-mode は使わない (save-some-buffers 経由なので
@@ -1932,7 +1930,11 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
   ;; 小窓のメモのタブを、小窓の中身に合わせて付け外しする。desktop の復元
   ;; など toggle を通らずに開いたメモにも C-<tab> の切り替えを付ける
   (wamei/project-memo-tabs-setup)
-  ;; タブを閉じたときの後始末 (project-tabs.el) でメモも消す。実体は ~/org/ に
+  ;; メモは長い行を折り返して表示する。.md 全般 (README など) は対象にしない。
+  ;; gfm-mode も親の markdown-mode-hook を走らせる
+  (add-hook 'markdown-mode-hook
+            (lambda () (when (wamei/project-memo-buffer-p) (visual-line-mode 1))))
+  ;; タブを閉じたときの後始末 (project-tabs.el) でメモも消す。実体は ~/notes/ に
   ;; あり、desktop から復元したメモは default-directory が root を向かないので
   ;; project-buffers では拾えない。消す前に保存しておく (変更ありのまま
   ;; kill-buffer すると確認が出る)。
@@ -1942,12 +1944,14 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
                 (ensure-list (get-file-buffer (wamei/project-memo-file project))))))
   (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/project-memo-save-all)
 
-  ;; Apple Notes との同期 (org-notes-sync.el)。保存で launchd のジョブを蹴る。
+  ;; Apple Notes との同期 (notes-sync.el)。保存で launchd のジョブを蹴る。
+  ;; 対象の置き場はメモと同じ (上の :custom)。
   ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
-  (load (expand-file-name "org-notes-sync"
+  (load (expand-file-name "notes-sync"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
-  (wamei/org-notes-sync-setup))
+  (setq wamei/notes-sync-directory wamei/project-memo-directory)
+  (wamei/notes-sync-setup))
 
 (leaf dired-toggle-sudo
   :ensure t

@@ -63,7 +63,7 @@
   "子フレームの最小の幅 (ピクセル)。")
 
 (defvar wamei/term--force-side nil
-  "非 nil の間は GUI でも子フレームを使わない (C-u C-z)。")
+  "非 nil の間は GUI でも子フレームを使わない (desktop の復元)。")
 
 (defvar wamei/term--child-layout-busy nil
   "子フレームを揃え直している間は非 nil。その間の大きさの変化は覚えない。")
@@ -517,21 +517,19 @@ NO-OTHER 指定で候補から外れる。"
            wamei/term--previous-window)
       (get-mru-window (wamei/term--parent-frame) t t t)))
 
-(defun wamei/term--toggle (&optional arg)
+(defun wamei/term--toggle ()
   "端末パネルを出し入れする。`wamei/term-toggle' の本体。
 
 - 非表示なら開いてフォーカスする
 - 表示中でフォーカスが無ければフォーカスを移す
-- フォーカス中なら閉じて元の window へ戻る
-- ARG 付きならフォーカス中でも閉じず、元の window へ戻るだけ"
+- フォーカス中なら閉じて元の window へ戻る"
   (let ((window (wamei/term--window)))
     (cond
      ((and window (eq window (selected-window)))
       (let ((back (wamei/term--back-window)))
         (when (and back (not (eq back window)))
           (wamei/term--select back)))
-      (unless arg
-        (wamei/term--close)))
+      (wamei/term--close))
      (window
       (wamei/term--remember-previous)
       (wamei/term--select window))
@@ -540,21 +538,74 @@ NO-OTHER 指定で候補から外れる。"
       (wamei/term--show (or (wamei/term--current)
                             (wamei/term--create 1)))))))
 
+;;; 本体の window に出す (C-u C-z)
+
+(defun wamei/term--main-window-p (window)
+  "WINDOW が本体の window か。side window と端末の子フレームは除く。"
+  (not (or (window-parameter window 'window-side)
+           (window-parameter window 'no-other-window)
+           (frame-parameter (window-frame window) 'wamei/term-child))))
+
+(defun wamei/term--main-window ()
+  "端末を出す本体の window。
+選択中の window が本体ならそれ。端末パネルの中ならパネルへ入る前の window、
+それ以外の side window (sidebar や claude パネル) なら直近の本体の window。"
+  (let ((selected (selected-window)))
+    (cond
+     ((wamei/term--main-window-p selected) selected)
+     ((eq selected (wamei/term--window)) (wamei/term--back-window))
+     (t (or (get-mru-window (wamei/term--parent-frame) nil t t) selected)))))
+
+(defun wamei/term--displayed-in-main ()
+  "現在のプロジェクトの端末を出している本体の window。無ければ nil。"
+  (let ((buffers (wamei/term--buffers)))
+    (seq-find (lambda (window)
+                (and (wamei/term--main-window-p window)
+                     (memq (window-buffer window) buffers)))
+              (window-list (wamei/term--parent-frame) 'no-mini))))
+
+(defun wamei/term--toggle-in-window ()
+  "端末を本体の window で普通のバッファとして扱う。`wamei/term-toggle' の C-u 付き。
+
+- 選択中の本体の window が端末なら bury する (前のバッファに戻る)
+- 端末が本体の別の window に出ていれば、そこへフォーカスを移す
+- どちらでもなければ、本体の window を端末に切り替える
+
+パネルに同じ端末が出ていたらパネルは閉じる。端末は window の大きさに
+合わせて画面を作り直すので、同じ端末を 2 つの window に出さない。
+`switch-to-buffer' は GUI で端末を子フレームへ回す advice
+\(`wamei/term--switch-to-terminal') が掛かっているので使わない。"
+  (let ((selected (selected-window)))
+    (cond
+     ((and (wamei/term--main-window-p selected)
+           (with-current-buffer (window-buffer selected)
+             (wamei/term--panel-buffer-p)))
+      (bury-buffer))
+     ((when-let* ((window (wamei/term--displayed-in-main)))
+        (wamei/term--select window)
+        t))
+     (t
+      (let ((target (wamei/term--main-window))
+            (buffer (or (wamei/term--current) (wamei/term--create 1)))
+            (panel (wamei/term--window)))
+        (when (and panel (eq (window-buffer panel) buffer))
+          (wamei/term--close))
+        (setq wamei/term--last buffer)
+        (set-window-buffer target buffer)
+        (wamei/term--select target))))))
+
 (defun wamei/term-toggle (&optional arg)
   "端末パネルを出し入れする (C-z)。
 
 開く先は GUI ではフレーム右に被せる子フレーム、tty では右の side window。
 出し入れの規則は `wamei/term--toggle'。
 
-ARG (C-u) 付きは、GUI では子フレームを隠して右の side window を同じ規則で
-出し入れする。tty ではフォーカス中でも閉じずに元の window へ戻るだけ
-\(sidebar 側の move-back と同じ出入り)。"
+ARG (C-u) 付きはパネルを使わず、本体の window に端末を出す
+\(`wamei/term--toggle-in-window')。"
   (interactive "P")
-  (if (and arg (wamei/term--child-frame-p))
-      (let ((wamei/term--force-side t))
-        (wamei/term--hide-child)
-        (wamei/term--toggle))
-    (wamei/term--toggle arg)))
+  (if arg
+      (wamei/term--toggle-in-window)
+    (wamei/term--toggle)))
 
 ;;; GUI の子フレーム
 ;;

@@ -590,19 +590,50 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
         (should (eq (selected-window) origin))
         (should (buffer-live-p terminal))))))
 
-(ert-deftest wamei/term-panel-toggle-with-prefix-moves-in-and-out ()
-  "C-u C-z: パネルは開いたまま出入りする (以前の C-z)。"
+(ert-deftest wamei/term-panel-toggle-with-prefix-shows-in-selected-window ()
+  "C-u C-z: 選択中の window を端末に切り替え、端末の中でもう一度押すと bury する。
+パネルは開かない。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let* ((origin (selected-window))
+           (before (window-buffer origin)))
+      (with-current-buffer before (setq default-directory alpha))
+      (wamei/term-toggle '(4))
+      (should (eq (selected-window) origin))
+      (should (string-prefix-p "*term: alpha" (buffer-name (window-buffer origin))))
+      (should-not (wamei/term--window))
+      (wamei/term-toggle '(4))
+      (should (eq (selected-window) origin))
+      (should (eq (window-buffer origin) before)))))
+
+(ert-deftest wamei/term-panel-toggle-with-prefix-focuses-displayed-terminal ()
+  "C-u C-z: 端末が別の window に出ていれば、そこへフォーカスを移す。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let* ((origin (selected-window))
+           (other (split-window origin)))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (select-window other)
+      (wamei/term-toggle '(4))
+      (let ((terminal (window-buffer other)))
+        (should (string-prefix-p "*term: alpha" (buffer-name terminal)))
+        (select-window origin)
+        (wamei/term-toggle '(4))
+        (should (eq (selected-window) other))
+        (should-not (eq (window-buffer origin) terminal))))))
+
+(ert-deftest wamei/term-panel-toggle-with-prefix-moves-terminal-out-of-panel ()
+  "C-u C-z をパネルの中で押すと、パネルを閉じて同じ端末を元の window に出す。
+同じ端末を 2 つの window に出さない。"
   (wamei/term-panel-test--with-projects (alpha)
     (let ((origin (selected-window)))
       (with-current-buffer (window-buffer origin) (setq default-directory alpha))
-      (wamei/term-toggle '(4))
-      (let ((panel (wamei/term--window)))
+      (wamei/term-toggle)
+      (let* ((panel (wamei/term--window))
+             (terminal (window-buffer panel)))
         (should (eq (selected-window) panel))
         (wamei/term-toggle '(4))
-        (should (window-live-p panel))
+        (should-not (window-live-p panel))
         (should (eq (selected-window) origin))
-        (wamei/term-toggle '(4))
-        (should (eq (selected-window) panel))))))
+        (should (eq (window-buffer origin) terminal))))))
 
 ;;; GUI の子フレーム
 
@@ -623,8 +654,8 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
   (should-not (wamei/term--child-width-ratio 10 0 1000))
   (should-not (wamei/term--child-width-ratio 990 0 1000)))
 
-(ert-deftest wamei/term-panel-gui-prefix-toggles-side-window ()
-  "GUI でも C-u C-z は子フレームを使わず、右の side window をトグルする。"
+(ert-deftest wamei/term-panel-gui-prefix-shows-in-selected-window ()
+  "GUI でも C-u C-z は子フレームを使わず、選択中の window に端末を出す。"
   (wamei/term-panel-test--with-projects (alpha)
     (let ((origin (selected-window))
           (child-used nil))
@@ -633,15 +664,9 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
                 ((symbol-function 'wamei/term--child-show)
                  (lambda (&rest _) (setq child-used t) nil)))
         (wamei/term-toggle '(4))
-        (let ((panel (wamei/term--window)))
-          (should (eq (window-parameter panel 'window-side) 'right))
-          (should (eq (selected-window) panel))
-          (wamei/term-toggle '(4))
-          (should-not (window-live-p panel))
-          (should (eq (selected-window) origin)))
-        (should-not child-used)
-        (wamei/term-toggle)
-        (should child-used)))))
+        (should (eq (selected-window) origin))
+        (should (string-prefix-p "*term: alpha" (buffer-name (window-buffer origin))))
+        (should-not child-used)))))
 
 (ert-deftest wamei/term-panel-child-visibility-is-remembered-per-tab ()
   "子フレームの表示・非表示はタブごとに覚え、切り替えるとそのタブの状態に戻す。

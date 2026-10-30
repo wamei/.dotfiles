@@ -429,7 +429,7 @@
 (ert-deftest wamei/project-tabs-cleanup-kills-extra-buffers ()
   "`wamei/project-tabs-extra-buffer-functions' が返すバッファも消す (メモや sidebar)。"
   (wamei/project-tabs-test--with-cleanup-env
-    (wamei/project-tabs-test--with-buffers ((memo "proj-a.org" "/tmp/org/")
+    (wamei/project-tabs-test--with-buffers ((memo "proj-a.md" "/tmp/notes/")
                                             (sidebar " *sidebar: proj-a*" "/tmp/proj-a/"))
       (let ((wamei/project-tabs-extra-buffer-functions
              (list (lambda (root)

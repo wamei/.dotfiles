@@ -8,7 +8,7 @@
 ;; - バッファは dired そのもの。dired-tree (展開記憶・監視・D&D)、
 ;;   dired-git-status (色)、nerd-icons-dired、右クリックメニューがそのまま効く
 ;; - 見た目: 詳細を隠し、見出し行と . .. を隠し、header-line にプロジェクト名
-;; - トグル (C-x C-n) は端末パネル (wamei/term-toggle) と同じ 4 態
+;; - トグル (C-x C-n) は開く・フォーカスを移す・元の window へ戻るの 3 態で、C-u は閉じる
 ;; - メイン window のファイルに sidebar を追従させる follow-mode を持つ
 ;; - クリックでプレビュー、ダブルクリック / RET で開く。q は window を閉じる
 ;; - 現在行 (本文で開いているファイル / カーソル行) を行背景と左フリンジの
