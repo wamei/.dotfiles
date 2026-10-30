@@ -172,6 +172,11 @@ run = [
   # bootstrap は毎回走る以上、ここは「無ければ入れる」だけに留める。
   # 更新は `mise run update` (brew upgrade) 側の明示操作に委ねる。
   "command -v brew >/dev/null 2>&1 && { brew list --cask emacs-plus-app >/dev/null 2>&1 || brew install --cask emacs-plus-app; } || true",
+  # cask の Emacs.app は ad-hoc 署名で、TCC の許可がビルドごとに外れる。証明書で
+  # 署名し直して許可を identifier と証明書に結び付ける (bin/sign-emacs-app.sh)。
+  # 署名済みなら何もしない。update は最後にこのタスクを呼ぶので、brew upgrade で
+  # 差し替わった Emacs.app もここで署名し直る。
+  "sh {{config_root}}/bin/sign-emacs-app.sh",
 ]
 
 # ---------------------------------------------------------------------------

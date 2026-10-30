@@ -66,7 +66,10 @@ ghq get <url>
 - `[dotfiles]` のエントリ内の未知キーは警告なしに無視される。編集したら必ず
   `mise run verify` で確認すること (`mise config explain` で未知キーを検出する)
 - `emacs-plus-app` は tap の cask で mise の brew backend では入れられないため、
-  `[tasks.bootstrap]` から brew で入れている
+  `[tasks.bootstrap]` から brew で入れている。cask の Emacs.app は ad-hoc 署名で TCC の許可がビルドごとに
+  外れるので、同じタスクで `bin/sign-emacs-app.sh` が Apple Development 証明書で
+  署名し直す (署名済みなら何もしない。`mise run update` も最後にこのタスクを呼ぶ)。
+  初回だけ、システム設定の各許可から Emacs を一度削除して追加し直す必要がある
 - cask は `[bootstrap.brew] adopt = true` で扱っている。入れ直すと
   `/Applications/*.app` が置き換わり macOS の TCC 権限がリセットされるため、
   画面収録やアクセシビリティなどの許可をアプリごとに UI から再承認する必要が
