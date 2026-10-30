@@ -318,6 +318,14 @@ Claude Code が長い行を自分で改行して字下げを揃えるのと同�
         (wamei/term-links--on-show-help nil)
         (should-not (wamei/term-links-test--highlighted))))))
 
+(ert-deftest wamei/term-links-test-mouse-outside-frame-is-nil ()
+  "マウスが frame の外 (負の座標) にあるときは位置を求めない。"
+  ;; `posn-at-x-y' は負の座標で wrong-type-argument wholenump を投げる
+  (dolist (xy '((448 . -25) (-3 . 10)))
+    (cl-letf (((symbol-function 'mouse-pixel-position)
+               (lambda () (cons (selected-frame) xy))))
+      (should-not (wamei/term-links--mouse-buffer-pos)))))
+
 ;;; 右クリックメニューでリンクのアドレスをコピーする
 
 (defun wamei/term-links-test--context-menu-at (pos)

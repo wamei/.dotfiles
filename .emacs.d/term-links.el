@@ -333,8 +333,10 @@ ghostel の `ghostel--detect-urls' と同じく、折り返しを繋いだ論理
 
 (defun wamei/term-links--mouse-buffer-pos ()
   "マウスの下の (バッファ . 位置)。文字の上でなければ nil。"
+  ;; frame の外 (タイトルバーや別 frame の上) では座標が負になり、
+  ;; `posn-at-x-y' は負の座標を受け付けない
   (pcase (mouse-pixel-position)
-    (`(,(and frame (pred framep)) ,(and x (pred integerp)) . ,(and y (pred integerp)))
+    (`(,(and frame (pred framep)) ,(and x (pred natnump)) . ,(and y (pred natnump)))
      (let* ((posn (posn-at-x-y x y frame))
             (window (posn-window posn))
             (point (posn-point posn)))
