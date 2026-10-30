@@ -118,3 +118,8 @@ npm.shell_out = true
 # バージョン一覧を mise-versions.jdx.dev ではなく各配布元 (GitHub など) から直接取る。
 # 一覧サーバは更新が遅れ、codex 0.164.0 は公開 4 日後も載っていなかった。
 use_versions_host = false
+# 上の設定で GitHub API を直接叩く回数が増え、未認証 (60 回/時) では mise run update が
+# rate limit で落ちる。github.gh_cli_tokens (既定 true) は gh の hosts.yml しか読まず、
+# gh がトークンを keyring に置いていると拾えない。gh auth は gh-account ラッパーを
+# 素通しするので、アクティブアカウントのトークンが返る。
+github.credential_command = "gh auth token"
