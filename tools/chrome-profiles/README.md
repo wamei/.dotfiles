@@ -38,6 +38,17 @@ mise run chrome-profiles:enable    # 監視と作り直しを launchd に読み�
 
 ログは `~/.local/state/chrome-profiles/{watch,build}.log`。
 
+## アイコンの画像
+
+既定ではプロファイルの Google アカウントの写真 (`<プロファイル>/Google Profile Picture.png`、複写先のものを優先) を重ねる。
+Chrome は既存のプロファイルの写真をなかなか取り直さない (アカウント側で変えても古い写真のまま) ので、変えたいときは設定の `picture` に画像を指定して `chrome-profiles build` する。
+
+```json
+{ "id": "rit", "name": "RIT", "profileDir": "Default", "picture": "~/.config/chrome-profiles/pictures/rit.png" }
+```
+
+アイコンを直したくて複製の Chrome でプロファイルを消して作り直すと、データフォルダの中のプロファイルが別のもの (`Profile 5` など) になり、設定と食い違って起動が壊れる。やり直すときは、壊れたデータフォルダを退けて `chrome-profiles seed <id>` で複写し直す。
+
 ## 注意
 
 - 複写したデータフォルダは、その時点の元のものの写し。以後は元の Chrome と別々に育つ。

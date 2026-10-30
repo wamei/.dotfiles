@@ -98,11 +98,13 @@ function cmdSeed(ids: string[]) {
 const sha256 = (file: string): string =>
   fs.existsSync(file) ? createHash("sha256").update(fs.readFileSync(file)).digest("hex") : ""
 
-// 写真は複写先のものを優先する (その Chrome でアカウントの写真が変われば追従する)
+// 設定で画像を指定していればそれを使う。無ければ複写先の写真を優先する (その Chrome でアカウントの写真が変われば追従する)。
+// Chrome は既存のプロファイルの写真をなかなか取り直さないので、写真を変えたときは設定で指定する
 const pictureOf = (p: Profile): string | undefined =>
-  [paths.dataDir(p), paths.sourceDataDir]
-    .map((d) => path.join(d, p.profileDir, "Google Profile Picture.png"))
-    .find((f) => fs.existsSync(f))
+  [
+    ...(p.picture ? [p.picture.replace(/^~(?=\/)/, os.homedir())] : []),
+    ...[paths.dataDir(p), paths.sourceDataDir].map((d) => path.join(d, p.profileDir, "Google Profile Picture.png")),
+  ].find((f) => fs.existsSync(f))
 
 function setIcon(p: Profile) {
   sh([helper("chrome-profiles-icon"), paths.chromeApp, pictureOf(p) ?? "-", paths.app(p)])
