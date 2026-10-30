@@ -8,6 +8,7 @@
 #   mise bootstrap -n     dry-run (適用せず差分だけ表示)
 #   mise bootstrap status 収束状態の確認
 #   mise run update       brew と mise の管理下をまとめて最新化
+#   mise run update --now 同上。公開 24h 以内の版も待たずに上げる
 #
 # ランタイム定義 ([tools] / [settings]) はこのファイルではなく
 # .config/mise/config.toml にある。あちらは ~/.config/mise/config.toml へ
@@ -246,6 +247,11 @@ exit $status
 # ---------------------------------------------------------------------------
 [tasks.update]
 description = "brew と mise の管理下をまとめて最新化する"
+# mise upgrade は既定で公開から 24h 経っていない版を見送る (minimum_release_age)。
+# --now はそれを外して、出たばかりの版まで上げる。
+usage = '''
+flag "--now" help="公開 24h 以内の版も含めて mise の [tools] を最新まで上げる"
+'''
 run = [
   '''
 if command -v brew >/dev/null 2>&1; then
@@ -262,7 +268,7 @@ else
   echo "brew not found; skipping system packages"
 fi
 ''',
-  "mise upgrade",
+  "mise upgrade{% if usage.now %} --minimum-release-age 0s{% endif %}",
   # mise が注いだ cask は brew の記録 (Caskroom/<token>/.metadata) を持たず、上の
   # brew upgrade には見えない。auto_updates でない background-music だけ個別に上げる
   # (chatgpt も mise 製だが自己更新する)。-m brew-cask で一括にしないのは、brew 製の
