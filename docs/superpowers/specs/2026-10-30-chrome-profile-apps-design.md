@@ -48,6 +48,6 @@ Chrome のプロファイルごとに、Dock と Cmd+Tab で別のアプリと�
 
 ## Finicky (2026-10-30 追加)
 
-- 既定のブラウザを Finicky にする。Finicky の browser は `{ name: <複製のパス>, appType: "path", args: ["-n", "--args", "--user-data-dir=…", "--profile-directory=…", url] }`。Finicky 4.2.2 は `args` に `--args` が入っていると自分では付けず URL も足さないので、`open -a <複製> -n --args …` になる。`-n` が無いと、動いている複製に対しては引数ごと URL が捨てられる。
+- 既定のブラウザを Finicky にする。Finicky の browser は `{ name: <複製のパス>, appType: "path", args: [url, "--args", "--user-data-dir=…", "--profile-directory=…"] }`。Finicky 4.2.2 は `args` に `--args` が入っていると自分では付けず URL も足さないので、`open -a <複製> <URL> --args …` になる。動いている複製には URL だけが届き、止まっていれば引数付きで起動する。最初は `-n` を付けていたが、リンクのたびに複製のプロセスが増えて Dock にちらつくのでやめた。Finicky の `isAppRunning` は複製を見分けられない (`localizedName` がどれも Google Chrome) ので、動いているかで分岐させる方法は取れない。
 - この関数は `chrome-profiles` が `~/.config/chrome-profiles/finicky.js` に生成し (`launchArgs` から組み立てて起動の指定を 1 か所に保つ)、マシンごとの Finicky の設定 (`~/.config/finicky/finicky.js`) が絶対パスで import する (Finicky は設定を Caches に変換してからまとめるので相対パスは解決できない)。
 - Finicky は設定ファイル自体の更新時刻と書き込みしか見ないので、生成ファイルが変わったら設定ファイルを同じ中身で書き直す。
