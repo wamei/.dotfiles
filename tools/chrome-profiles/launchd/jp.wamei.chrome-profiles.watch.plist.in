@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>jp.wamei.chrome-profiles.watch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@HOME@/.local/bin/chrome-profiles-watch</string>
+    <string>@HOME@/.local/bin/chrome-profiles</string>
+  </array>
+  <!-- NSWorkspace の通知を受けるので、ログイン中の GUI セッションでだけ動かす -->
+  <key>LimitLoadToSessionType</key><string>Aqua</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>@HOME@/.local/state/chrome-profiles/watch.log</string>
+  <key>StandardErrorPath</key><string>@HOME@/.local/state/chrome-profiles/watch.log</string>
+</dict>
+</plist>
