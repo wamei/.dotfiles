@@ -448,9 +448,11 @@ dedicated のままだと set-window-buffer が失敗する。"
                        (wamei/term--child-show buffer)
                      (display-buffer buffer))))
     (unless no-select
-      (when (window-live-p window) (wamei/term--select window))))
-  (wamei/term--tabs-update)
-  (get-buffer-window buffer))
+      (when (window-live-p window) (wamei/term--select window)))
+    (wamei/term--tabs-update)
+    ;; 子フレームの window は `get-buffer-window' (選択中のフレームだけを見る)
+    ;; では見つからないので、出した window をそのまま返す
+    (and (window-live-p window) window)))
 
 (defun wamei/term--close ()
   "パネルを閉じる。子フレームなら隠す (作り直さずに使い回す)。"
@@ -746,6 +748,58 @@ FRAME が端末の子フレームなら幅を覚えて揃え直す (枠のドラ
                (wamei/term--tabs-update))
       (wamei/term--hide-child))))
 
+(defun wamei/term--display-action (buffer alist)
+  "端末バッファの `display-buffer' のアクション (display-buffer-alist に登録)。
+GUI では子フレームに出す (表示中なら中身を差し替える)。それ以外は親フレームの
+右の side window に出す。子フレームの中から呼ばれても子フレームの中に
+side window を切らない (切ると小さな枠が入れ子になる)。"
+  (if (wamei/term--child-frame-p)
+      (wamei/term--show buffer t)
+    (with-selected-frame (wamei/term--parent-frame)
+      (display-buffer-in-side-window buffer alist))))
+
+(defun wamei/term--switch-to-terminal (orig buffer-or-name &optional norecord force-same-window)
+  "`switch-to-buffer' (ORIG) の :around。GUI では端末バッファを子フレームに出す。
+C-x b / C-x C-b で端末を選んだとき、本体の window ではなく子フレームに出して
+フォーカスを移す。NORECORD 付き (consult のプレビュー) は普通に表示する。"
+  (let ((buffer (get-buffer buffer-or-name)))
+    (if (and buffer (not norecord)
+             (wamei/term--child-frame-p)
+             (string-match-p "\\`\\*term: " (buffer-name buffer)))
+        (progn (wamei/term--show buffer) buffer)
+      (funcall orig buffer-or-name norecord force-same-window))))
+
+(defun wamei/term--display-from-child (buffer alist)
+  "子フレームの中から出す端末以外のバッファを、親フレームの window に出す。
+`display-buffer-base-action' に入れる。子フレームの外では何もしない。
+端末のリンク (find-file-other-window) などが子フレームの中や新しいフレームに
+開かないようにする。"
+  (let ((frame (selected-frame)))
+    (when (frame-parameter frame 'wamei/term-child)
+      (let* ((parent (frame-parent frame))
+             (window (or (get-buffer-window buffer parent)
+                         (car (sort (seq-remove
+                                     (lambda (window)
+                                       (or (window-dedicated-p window)
+                                           (window-parameter window 'window-side)))
+                                     (window-list parent 'no-mini))
+                                    (lambda (a b)
+                                      (> (window-use-time a) (window-use-time b))))))))
+        (when window
+          (window--display-buffer buffer window 'reuse alist))))))
+
+(defun wamei/term--command-in-parent (orig &rest args)
+  "バッファを選ぶコマンド ORIG を、子フレームの中から呼ばれたら親フレームで行う。
+フォーカスを親フレームへ移してから呼ぶので、プレビューも親フレームに出る。
+端末を選べば `wamei/term--switch-to-terminal' が子フレームへ戻す。"
+  (let ((frame (selected-frame)))
+    (when (frame-parameter frame 'wamei/term-child)
+      (select-frame-set-input-focus (frame-parent frame))))
+  (apply orig args))
+
+(defconst wamei/term--buffer-commands '(consult-buffer consult-project-buffer)
+  "子フレームの中から呼ばれたら親フレームで行うバッファ選択のコマンド。")
+
 (defun wamei/term--hide-on-new-tab (&rest _)
   "`tab-bar-tab-post-open-functions' 用。新しいタブは子フレームを隠して始める。"
   (when (wamei/term--child-frame-p)
@@ -817,7 +871,7 @@ FN に渡す VSCROLL を `wamei/term-anchor-vscroll' で差し替える。
 ghostel がロードされる前に登録しておく必要があるので、init.el の :init から呼ぶ。"
   (add-to-list 'display-buffer-alist
                '("\\`\\*term: "
-                 (display-buffer-in-side-window)
+                 (wamei/term--display-action)
                  (side . right)
                  (slot . 0)
                  (window-width . wamei/term--set-width)
@@ -841,7 +895,16 @@ ghostel がロードされる前に登録しておく必要があるので、ini
   (add-hook 'tab-bar-tab-post-select-functions #'wamei/term--follow-tab)
   (add-hook 'tab-bar-tab-post-open-functions #'wamei/term--hide-on-new-tab)
   (dolist (command wamei/term--tab-commands)
-    (advice-add command :around #'wamei/term--tab-command-in-parent)))
+    (advice-add command :around #'wamei/term--tab-command-in-parent))
+  (dolist (command wamei/term--buffer-commands)
+    (advice-add command :around #'wamei/term--command-in-parent))
+  (advice-add 'switch-to-buffer :around #'wamei/term--switch-to-terminal)
+  (unless (memq #'wamei/term--display-from-child
+                (ensure-list (car display-buffer-base-action)))
+    (setq display-buffer-base-action
+          (cons (cons #'wamei/term--display-from-child
+                      (ensure-list (car display-buffer-base-action)))
+                (cdr display-buffer-base-action)))))
 
 (provide 'term-panel)
 ;;; term-panel.el ends here

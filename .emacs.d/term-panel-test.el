@@ -678,6 +678,30 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
               (should visible))
           (set-frame-parameter nil 'tabs nil))))))
 
+(ert-deftest wamei/term-panel-gui-shows-terminals-in-child-frame ()
+  "GUI では display-buffer や switch-to-buffer で端末を出しても子フレームに出す。
+side window を新たに切らない (子フレームの中に切ると小さな枠が入れ子になる)。
+プレビュー (norecord) は普通に表示する。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((shown nil)
+          (origin (selected-window)))
+      (wamei/term-panel-test--in alpha (wamei/term--create 1))
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+                ((symbol-function 'wamei/term--child-show)
+                 (lambda (buffer) (push buffer shown) origin)))
+        (let ((term (get-buffer "*term: alpha*")))
+          (should (eq (display-buffer term) origin))
+          (should (equal shown (list term)))
+          (should-not (seq-some (lambda (w) (window-parameter w 'window-side))
+                                (window-list nil 'no-mini)))
+          (setq shown nil)
+          (switch-to-buffer term)
+          (should (equal shown (list term)))
+          (setq shown nil)
+          (switch-to-buffer term t)
+          (should-not shown)
+          (should (eq (window-buffer origin) term)))))))
+
 ;;; 下端揃えの端数
 
 (ert-deftest wamei/term-anchor-vscroll-keeps-the-fraction-on-the-top-row ()
