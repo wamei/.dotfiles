@@ -1,5 +1,6 @@
 // Chrome の Local State (データフォルダ直下の JSON) からプロファイルを読み、複写先に合わせて剪定する
-export type Profile = { id: string; name: string; profileDir: string }
+// picture: アイコンに重ねる画像 (省略時は Chrome が取り込んだ Google アカウントの写真)
+export type Profile = { id: string; name: string; profileDir: string; picture?: string }
 
 type Json = Record<string, unknown>
 type ProfileSection = {
