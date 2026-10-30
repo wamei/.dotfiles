@@ -5,11 +5,13 @@
 //   chrome-profiles launch <id> [url...]    複製をデータフォルダ付きで起動する
 //   chrome-profiles classify <bundle> -- <argv...>  監視から呼ばれる。ignore / relaunch <id> / redirect を出す
 //   chrome-profiles redirect <bundle> -- <argv...>  複製に来た起動を、同じ引数で元の Chrome に回す
+//   chrome-profiles finicky                 Finicky の設定から import する finicky.js を書き出す (build も書き出す)
 //   chrome-profiles list
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { finickyModule } from "../src/finicky"
 import { classifyLaunch, launchArgs, redirectArgs } from "../src/launch"
 import { type Paths, pathsFor } from "../src/paths"
 import { type BuildStamp, planBuild } from "../src/plan"
@@ -134,11 +136,27 @@ function replaceContents(p: Profile) {
   sh(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "-f", app], { allowFail: true })
 }
 
+function writeFinicky(profiles: Profile[]) {
+  const content = finickyModule(paths, profiles)
+  // 中身が同じなら書かない (Finicky は設定の変化を見て読み直す)
+  if (fs.existsSync(paths.finicky) && fs.readFileSync(paths.finicky, "utf8") === content) return
+  fs.mkdirSync(path.dirname(paths.finicky), { recursive: true })
+  fs.writeFileSync(paths.finicky, content)
+  info(`書きました: ${paths.finicky}`)
+  // Finicky は設定ファイル自体の更新時刻でしかキャッシュを捨てず、変化も書き込みでしか拾わない。
+  // import しているだけのこのファイルが変わっても読み直さないので、設定ファイルを同じ中身で書き直す
+  for (const name of [".finicky.js", ".finicky.ts", ".config/finicky.js", ".config/finicky.ts", ".config/finicky/finicky.js", ".config/finicky/finicky.ts"]) {
+    const config = path.join(os.homedir(), name)
+    if (fs.existsSync(config)) fs.writeFileSync(config, fs.readFileSync(config))
+  }
+}
+
 async function cmdBuild(args: string[]) {
   quiet = args.includes("--quiet")
   const settle = Number(args[args.indexOf("--settle") + 1] ?? 0)
   if (args.includes("--settle") && settle > 0) await Bun.sleep(settle * 1000)
   const profiles = loadProfiles()
+  writeFinicky(profiles)
   const lock = path.join(paths.state, "build.lock")
   fs.mkdirSync(paths.state, { recursive: true })
   try {
@@ -224,6 +242,7 @@ switch (cmd) {
   case "launch": cmdLaunch(rest); break
   case "classify": cmdClassify(rest); break
   case "redirect": cmdRedirect(rest); break
+  case "finicky": writeFinicky(loadProfiles()); break
   case "list": cmdList(); break
-  default: fail("usage: chrome-profiles init|seed|build|launch|classify|redirect|list")
+  default: fail("usage: chrome-profiles init|seed|build|launch|classify|redirect|finicky|list")
 }

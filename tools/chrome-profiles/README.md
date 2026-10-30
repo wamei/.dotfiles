@@ -33,10 +33,34 @@ mise run chrome-profiles:enable    # 監視と作り直しを launchd に読み�
 | `seed [id...]` | 元のデータフォルダから `Local State` と担当のプロファイルだけを複写する。Chrome が動いていると断る。複写済みなら飛ばす |
 | `build [--quiet] [--settle 秒]` | 複製を作る/作り直す/アイコンを付け直す。記録 (`~/.local/state/chrome-profiles/build.json`) と同じなら何もしない |
 | `launch <id> [url...]` | 複製をデータフォルダ付きで起動する。動いていれば URL をそこで開く |
+| `finicky` | Finicky の設定から import する `~/.config/chrome-profiles/finicky.js` を書き出す (`build` も毎回書き出す) |
 | `list` | 設定と、複写・複製の有無 |
 | `classify` / `redirect` | 監視から呼ばれる。起動の引数から、そのまま動かす・その複製として起動し直す・元の Chrome に回す、を決めて実行する |
 
 ログは `~/.local/state/chrome-profiles/{watch,build}.log`。
+
+## Finicky でリンクを振り分ける
+
+Finicky (`brew-cask:finicky`) を既定のブラウザにして、外部アプリから開いたリンクを複製に振り分ける。
+`chrome-profiles` が書き出す `~/.config/chrome-profiles/finicky.js` には、プロファイルごとに「URL を受けて Finicky の browser を返す関数」が入る。
+Finicky の設定 (`~/.config/finicky/finicky.js`、取引先のドメインなどが入るので dotfiles には入れない) からこれを import する。
+
+```js
+// Finicky は変換した設定を ~/Library/Caches に置いてからまとめるので、相対パスでは解決できない。絶対パスで書く
+import { chromeProfiles as cp } from "/Users/<you>/.config/chrome-profiles/finicky.js"
+
+export default {
+  options: { logRequests: false }, // 既定では開いた URL をログに書く
+  defaultBrowser: cp.rit,
+  handlers: [
+    { match: (url, { opener }) => opener?.bundleId === "com.tinyspeck.slackmacgap", browser: cp.linka },
+    { match: ["*.example.com/*"], browser: cp.wamei },
+  ],
+}
+```
+
+- Finicky は `open -a <複製> -n --args --user-data-dir=… --profile-directory=… <URL>` を実行する (`args` に `--args` があると Finicky は自分では付け足さず、URL も足さない)。`-n` で新しく起動した複製は、同じデータフォルダの複製が動いていればそこに URL を渡して終わり、動いていなければそのまま開く。
+- Finicky のキャッシュは設定ファイル自体の更新時刻しか見ない。`chrome-profiles` は書き出した内容が変わったら Finicky の設定ファイルを同じ中身で書き直して読み直させる。
 
 ## アイコンの画像
 

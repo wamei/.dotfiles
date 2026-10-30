@@ -7,6 +7,7 @@ export const pathsFor = (home: string) => ({
   chromeApp: "/Applications/Google Chrome.app",
   sourceDataDir: path.join(home, "Library/Application Support/Google/Chrome"),
   config: path.join(home, ".config/chrome-profiles/config.json"),
+  finicky: path.join(home, ".config/chrome-profiles/finicky.js"),
   state: path.join(home, ".local/state/chrome-profiles"),
   app: (p: Profile) => path.join(home, "Applications", `Chrome ${p.name}.app`),
   dataDir: (p: Profile) => path.join(home, "Library/Application Support/Chrome Profiles", p.id),

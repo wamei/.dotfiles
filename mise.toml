@@ -72,6 +72,8 @@ adopt = true
 "brew-cask:chatgpt" = "latest"
 "brew-cask:google-chrome" = "latest"
 "brew-cask:google-chrome@canary" = "latest"
+# 既定のブラウザにして、リンクを Chrome のプロファイルごとの複製に振り分ける (tools/chrome-profiles)
+"brew-cask:finicky" = "latest"
 "brew-cask:slack" = "latest"
 "brew-cask:orbstack" = "latest"
 "brew-cask:postman" = "latest"
