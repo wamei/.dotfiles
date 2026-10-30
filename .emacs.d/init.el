@@ -1262,6 +1262,13 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
   (load (expand-file-name "magit-main-window"
                           (file-name-directory (file-truename user-init-file)))
         nil t)
+  ;; diff の本文行の左に旧・新の行番号を出す (magit-diff-line-numbers.el)。
+  ;; magit-delta は同じフックでバッファを入れ直してプロパティを消すので、
+  ;; 深さ 90 でそれより後に走らせる。
+  (load (expand-file-name "magit-diff-line-numbers"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (add-hook 'magit-diff-wash-diffs-hook #'wamei/magit-diff-line-numbers 90)
   ;; status は side window (sidebar / claude-code-ide / 端末パネル) を残して
   ;; 主領域いっぱいに表示し、q で開く前の主領域の window 構成に戻す。
   ;; fullframe 化は delete-other-windows で行われるため、side window 側に
