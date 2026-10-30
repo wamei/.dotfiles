@@ -97,7 +97,9 @@
 (defun wamei/ai-panel--display-action (buffer _alist)
   "BUFFER を本体左端のパネルに出す `display-buffer' のアクション。
 パネルが無ければ作る。本体の window が 1 つならそれをパネルにする。
-dedicated にして他の `display-buffer' に使わせない。"
+dedicated にはしない。パネルで C-x b すればその場で替わり、他の表示に
+使われても構わない。パネルから出すバッファだけは
+`wamei/ai-panel--display-beside' が別の window に出す。"
   (let ((window (or (wamei/ai-panel--window t)
                     (let ((main (window-main-window)))
                       (if (window-live-p main)
@@ -105,8 +107,32 @@ dedicated にして他の `display-buffer' に使わせない。"
                         (wamei/ai-panel--split))))))
     (set-window-dedicated-p window nil)
     (set-window-buffer window buffer)
-    (set-window-dedicated-p window t)
     window))
+
+(defun wamei/ai-panel--code-window (panel)
+  "PANEL と同じフレームで、AI から開くバッファの出し先にする window。
+PANEL 自身・side window・dedicated な window (sidebar など) を除き、直近に使ったもの。"
+  (car (sort (seq-remove (lambda (window)
+                           (or (eq window panel)
+                               (window-dedicated-p window)
+                               (window-parameter window 'window-side)))
+                         (window-list (window-frame panel) 'no-mini))
+             (lambda (a b) (> (window-use-time a) (window-use-time b))))))
+
+(defun wamei/ai-panel--display-beside (buffer alist)
+  "AI パネルから出すバッファを、本体の AI 以外の window に出す `display-buffer' のアクション。
+`display-buffer-base-action' に入れる。選択中の window が AI パネルでなければ
+何もしない (nil を返して後のアクションに任せる)。
+リンクのクリック (find-file-other-window) などで AI 自身を置き換えず、
+標準の pop-up-window で window を分割し続けもしない。
+出し先が無ければ (AI が本体いっぱい) AI を左右に分ける。"
+  (let ((panel (selected-window)))
+    (when (window-parameter panel 'wamei/ai-panel)
+      (or (display-buffer-reuse-window buffer alist)
+          (if-let* ((window (wamei/ai-panel--code-window panel)))
+              (window--display-buffer buffer window 'reuse alist)
+            (window--display-buffer buffer (split-window panel nil 'right)
+                                    'window alist))))))
 
 (defconst wamei/ai-panel--display-override '((wamei/ai-panel--display-action))
   "表示を本体左端のパネルへ向ける `display-buffer-overriding-action'。")
@@ -231,7 +257,9 @@ side window を使わない設定にして、パッケージの `display-buffer'
 
 (defun wamei/ai-panel--hand-over (buffer)
   "終了する BUFFER のパネルを別の AI に引き継ぐ。
-引き継ぐ先が無く、本体いっぱいのパネルなら普通の window に戻す。"
+引き継ぐ先が無ければ、切り出したパネルは閉じ、本体いっぱいのパネルは
+普通の window に戻す (dedicated ではないので、放っておくと別のバッファを
+出したまま残る)。"
   (when (buffer-live-p buffer)
     (let ((others (remq buffer (wamei/ai-panel--buffers (wamei/ai-panel--directory buffer)))))
       (dolist (window (get-buffer-window-list buffer nil 'visible))
@@ -239,8 +267,9 @@ side window を使わない設定にして、パッケージの `display-buffer'
           (if others
               (with-selected-window window
                 (wamei/ai-panel-show (car others)))
-            (when (eq window (window-main-window))
-              (wamei/ai-panel--release window)))))))
+            (if (eq window (window-main-window))
+                (wamei/ai-panel--release window)
+              (delete-window window)))))))
   (force-mode-line-update t)
   (wamei/ai-panel--schedule-grid))
 
@@ -311,6 +340,12 @@ side window を使わない設定にして、パッケージの `display-buffer'
 (defun wamei/ai-panel-enable ()
   "両バックエンドの表示・タブ・復元を統合する。何度呼んでもよい。"
   (setq wamei/ai-panel-enabled t)
+  ;; AI パネルから出すバッファは本体の別の window へ。指定の無い表示だけが対象。
+  (unless (memq #'wamei/ai-panel--display-beside (ensure-list (car display-buffer-base-action)))
+    (setq display-buffer-base-action
+          (cons (cons #'wamei/ai-panel--display-beside
+                      (ensure-list (car display-buffer-base-action)))
+                (cdr display-buffer-base-action))))
   ;; 旧形式の各 AI の直近1会話の記録は使わず、ai-session の ID 一覧で復元する。
   (advice-remove 'wamei/desktop-side--spec #'wamei/ai-panel--save-spec)
   (advice-add 'wamei/claude-panel--setup :after #'wamei/ai-panel--setup)

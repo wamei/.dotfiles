@@ -317,3 +317,57 @@ AI 側で C-x 1 すれば AI だけが残る。"
       (should (eq (window-buffer editor) code))
       (should-not (window-parameter editor 'wamei/ai-panel))
       (should-not (window-dedicated-p editor)))))
+
+(ert-deftest wamei/ai-panel-links-open-beside-without-more-splits ()
+  "AI パネルから開くファイル (find-file-other-window) は右の window で入れ替わる。
+本体いっぱいの AI からの 1 つ目だけ左右に分け、2 つ目以降は分けない。"
+  (wamei/ai-panel-test--with-env
+    (let* ((claude (wamei/ai-panel-test--claude "/tmp/"))
+           (panel (wamei/ai-panel-show claude))
+           (one (get-buffer-create "*ai-panel-test-one*"))
+           (two (get-buffer-create "*ai-panel-test-two*"))
+           (split-height-threshold 10))
+      (unwind-protect
+          (progn
+            (select-window panel)
+            (switch-to-buffer-other-window one)
+            (should (= (length (window-list nil 'no-mini)) 2))
+            (let ((code (selected-window)))
+              (should-not (eq code panel))
+              (should (> (window-left-column code) (window-left-column panel)))
+              (select-window panel)
+              (switch-to-buffer-other-window two)
+              (should (eq (selected-window) code))
+              (should (eq (window-buffer code) two))
+              (should (= (length (window-list nil 'no-mini)) 2))
+              (should (eq (window-buffer panel) claude))))
+        (kill-buffer one)
+        (kill-buffer two)))))
+
+(ert-deftest wamei/ai-panel-switch-to-buffer-replaces-in-place ()
+  "AI パネルは dedicated ではなく、switch-to-buffer (C-x b / consult のプレビュー) は
+普通の window と同じくその場で替わる。window は増えない。"
+  (wamei/ai-panel-test--with-code-env
+    (let* ((claude (wamei/ai-panel-test--claude "/tmp/"))
+           (panel (wamei/ai-panel-show claude))
+           (count (length (window-list nil 'no-mini)))
+           (other (get-buffer-create "*ai-panel-test-other*"))
+           (split-height-threshold 10))
+      (unwind-protect
+          (progn
+            (should-not (window-dedicated-p panel))
+            (select-window panel)
+            (switch-to-buffer other)
+            (should (= (length (window-list nil 'no-mini)) count))
+            (should (eq (window-buffer panel) other))
+            ;; C-x C-a で同じ window に AI が戻る
+            (should (eq (wamei/ai-panel-show claude) panel)))
+        (kill-buffer other)))))
+
+(ert-deftest wamei/ai-panel-closes-split-window-when-last-session-ends ()
+  "最後の AI が終わったら、切り出したパネルの window は閉じる。"
+  (wamei/ai-panel-test--with-code-env
+    (let* ((claude (wamei/ai-panel-test--claude "/tmp/"))
+           (panel (wamei/ai-panel-show claude)))
+      (wamei/ai-panel--hand-over claude)
+      (should-not (window-live-p panel)))))
