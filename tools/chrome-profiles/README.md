@@ -59,7 +59,8 @@ export default {
 }
 ```
 
-- Finicky は `open -a <複製> -n --args --user-data-dir=… --profile-directory=… <URL>` を実行する (`args` に `--args` があると Finicky は自分では付け足さず、URL も足さない)。`-n` で新しく起動した複製は、同じデータフォルダの複製が動いていればそこに URL を渡して終わり、動いていなければそのまま開く。
+- Finicky は `open -a <複製> <URL> --args --user-data-dir=… --profile-directory=…` を実行する (`args` に `--args` があると Finicky は自分では付け足さず、URL も足さないので、URL を `--args` の前に置く)。複製が動いていれば URL だけがそのアプリに届き、新しいプロセスは起動しない。止まっていれば引数付きで起動して URL を開く。`-n` を付けると、リンクのたびに複製のプロセスがもう 1 つ起動して Dock にちらつく。
+- `logRequests: false` にしても、それまで開いていたログファイルには書き続ける。設定を変えたら Finicky を再起動する。
 - Finicky のキャッシュは設定ファイル自体の更新時刻しか見ない。`chrome-profiles` は書き出した内容が変わったら Finicky の設定ファイルを同じ中身で書き直して読み直させる。
 
 ## アイコンの画像

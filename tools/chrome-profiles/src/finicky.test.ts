@@ -21,16 +21,17 @@ async function load(): Promise<Record<string, (url: URL) => unknown>> {
 test("プロファイルごとに、URL を受けて Finicky の browser を返す関数を出す", async () => {
   const cp = await load()
   expect(Object.keys(cp)).toEqual(["rit", "linka"])
-  // Finicky は args に --args があれば自分では付けず、open -a <name> <args...> を実行する。
-  // -n が無いと、複製が動いているとき引数ごと URL が捨てられる
+  // Finicky は args に --args があれば自分では付けず URL も足さず、open -a <name> <args...> を実行する。
+  // URL を --args より前に置くと、動いている複製にはそのまま URL が届き (新しいプロセスを起動しない)、
+  // 止まっていれば引数付きで起動して URL を開く。-n を付けると毎回プロセスが増えて Dock にちらつく
   expect(cp.linka!(new URL("https://example.com/a?b=c"))).toEqual({
     name: "/Users/u/Applications/Chrome LINKA.app",
     appType: "path",
     args: [
-      "-n", "--args",
+      "https://example.com/a?b=c",
+      "--args",
       "--user-data-dir=/Users/u/Library/Application Support/Chrome Profiles/linka",
       "--profile-directory=Profile 2",
-      "https://example.com/a?b=c",
     ],
   })
 })
