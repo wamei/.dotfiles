@@ -81,7 +81,11 @@
 戻り先はバッファでも覚えておく。")
 
 (defvar wamei/term--last nil
-  "最後に表示した端末バッファ。プロジェクトごとの復帰先として使う。")
+  "最後にパネル (C-z) に出した端末バッファ。プロジェクトごとの復帰先として使う。")
+
+(defvar wamei/term--last-main nil
+  "最後に本体の window (C-u C-z) に出した端末バッファ。
+パネルとは別に覚え、C-u C-z で開き直したときの復帰先にする。")
 
 ;;; 幅の記憶
 
@@ -194,10 +198,12 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
                 (window-list (wamei/term--parent-frame) 'no-mini))
       (wamei/term--child-window)))
 
-(defun wamei/term--current ()
-  "パネルに出すべき端末バッファ。無ければ nil。"
-  (let ((buffers (wamei/term--buffers)))
-    (or (seq-find (lambda (b) (eq b wamei/term--last)) buffers)
+(defun wamei/term--current (&optional main)
+  "パネルに出すべき端末バッファ。無ければ nil。
+MAIN が非 nil なら本体の window (C-u C-z) に出すべき端末。"
+  (let ((buffers (wamei/term--buffers))
+        (last (if main wamei/term--last-main wamei/term--last)))
+    (or (car (memq last buffers))
         (car buffers))))
 
 (defun wamei/term--setup-buffer ()
@@ -421,6 +427,7 @@ kill-buffer-hook から呼ぶ。パネルは dedicated な side window なので
          (window (wamei/term--window))
          (others (remq dying (wamei/term--buffers))))
     (when (eq dying wamei/term--last) (setq wamei/term--last nil))
+    (when (eq dying wamei/term--last-main) (setq wamei/term--last-main nil))
     (when (and window (eq (window-buffer window) dying) others)
       ;; フォーカスは動かさない。端末内で exit した場合はパネルが
       ;; 選択されたまま次の端末に切り替わる。
@@ -469,22 +476,32 @@ dedicated のままだと set-window-buffer が失敗する。"
   (select-window window))
 
 (defun wamei/term--cycle (offset)
-  "現在の端末から OFFSET 個ずれた端末に切り替える。端は巻き戻る。"
-  (let* ((buffers (wamei/term--buffers))
-         (count (length buffers)))
-    (when (> count 1)
-      (let* ((current (wamei/term--current))
-             (index (or (seq-position buffers current) 0)))
-        ;; 切り替えだけを行い、フォーカスは呼び出し元に残す
-        (wamei/term--show (nth (mod (+ index offset) count) buffers) t)))))
+  "選択中の window の端末から OFFSET 個ずれた端末に切り替える。端は巻き戻る。
+
+端末の window (パネルか、C-u C-z で端末を出した本体の window) にいるときだけ
+切り替え、それ以外では何もしない。並ぶのはその端末のプロジェクトの端末。"
+  (let ((window (selected-window)))
+    (with-current-buffer (window-buffer window)
+      (when (wamei/term--panel-buffer-p)
+        (let* ((buffers (wamei/term--buffers))
+               (count (length buffers))
+               (index (or (seq-position buffers (current-buffer)) 0))
+               (next (nth (mod (+ index offset) count) buffers)))
+          (cond
+           ((<= count 1))
+           ((eq window (wamei/term--window))
+            ;; 切り替えだけを行い、フォーカスは呼び出し元に残す
+            (wamei/term--show next t))
+           ((wamei/term--main-window-p window)
+            (wamei/term--show-in-main window next))))))))
 
 (defun wamei/term-next ()
-  "次の端末に切り替える。"
+  "端末の window にいれば、次の端末に切り替える。"
   (interactive)
   (wamei/term--cycle 1))
 
 (defun wamei/term-previous ()
-  "前の端末に切り替える。"
+  "端末の window にいれば、前の端末に切り替える。"
   (interactive)
   (wamei/term--cycle -1))
 
@@ -585,14 +602,19 @@ NO-OTHER 指定で候補から外れる。"
         (wamei/term--select window)
         t))
      (t
-      (let ((target (wamei/term--main-window))
-            (buffer (or (wamei/term--current) (wamei/term--create 1)))
-            (panel (wamei/term--window)))
-        (when (and panel (eq (window-buffer panel) buffer))
-          (wamei/term--close))
-        (setq wamei/term--last buffer)
-        (set-window-buffer target buffer)
+      (let ((target (wamei/term--main-window)))
+        (wamei/term--show-in-main
+         target (or (wamei/term--current t) (wamei/term--create 1)))
         (wamei/term--select target))))))
+
+(defun wamei/term--show-in-main (window buffer)
+  "本体の WINDOW に端末 BUFFER を出す。フォーカスは動かさない。
+パネルに同じ端末が出ていたらパネルは閉じる (同じ端末を 2 つの window に出さない)。"
+  (let ((panel (wamei/term--window)))
+    (when (and panel (eq (window-buffer panel) buffer))
+      (wamei/term--close)))
+  (setq wamei/term--last-main buffer)
+  (set-window-buffer window buffer))
 
 (defun wamei/term-toggle (&optional arg)
   "端末パネルを出し入れする (C-z)。

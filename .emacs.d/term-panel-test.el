@@ -65,6 +65,7 @@
           (wamei/term-panel-test--roots (list ,@vars))
           (project-find-functions (list #'wamei/term-panel-test--find-project))
           (wamei/term--last nil)
+          (wamei/term--last-main nil)
           (wamei/term--previous-window nil)
           (wamei/term--previous-buffer nil))
      (unwind-protect
@@ -546,6 +547,62 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
         (should (eq (window-buffer (wamei/term--window)) first))
         (wamei/term-previous)
         (should (eq (window-buffer (wamei/term--window)) second))))))
+
+;; C-tab は端末の window にいるときだけ
+
+(ert-deftest wamei/term-panel-cycle-ignored-outside-terminal ()
+  "端末の window にいないときの C-tab は、パネルの端末を切り替えない。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((origin (selected-window)))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (wamei/term-panel-test--in alpha
+        (let ((first (wamei/term--create 1)))
+          (wamei/term--create 2)
+          (wamei/term--show first t)
+          (should (eq (selected-window) origin))
+          (wamei/term-next)
+          (should (eq (window-buffer (wamei/term--window)) first))
+          (should (eq (window-buffer origin) (window-buffer (selected-window)))))))))
+
+(ert-deftest wamei/term-panel-cycle-in-main-window ()
+  "本体の window に出した端末 (C-u C-z) の中の C-tab は、その window の端末を切り替える。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((origin (selected-window)))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (let ((first (wamei/term-panel-test--in alpha (wamei/term--create 1)))
+            (second (wamei/term-panel-test--in alpha (wamei/term--create 2))))
+        (wamei/term-toggle '(4))
+        (should (eq (window-buffer origin) first))
+        (wamei/term-next)
+        (should (eq (window-buffer origin) second))
+        (should (eq (selected-window) origin))
+        (should-not (wamei/term--window))
+        (wamei/term-previous)
+        (should (eq (window-buffer origin) first))))))
+
+(ert-deftest wamei/term-panel-remembers-panel-and-main-separately ()
+  "C-z (パネル) と C-u C-z (本体の window) は、最後に出した端末を別々に覚える。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((origin (selected-window)))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (let ((first (wamei/term-panel-test--in alpha (wamei/term--create 1)))
+            (second (wamei/term-panel-test--in alpha (wamei/term--create 2))))
+        ;; パネルには 2 つ目、本体の window には 1 つ目を出す
+        (wamei/term--show second t)
+        (wamei/term-toggle '(4))
+        (should (eq (window-buffer origin) first))
+        (should (eq (window-buffer (wamei/term--window)) second))
+        ;; 本体の端末をしまい、パネルも閉じる
+        (wamei/term-toggle '(4))
+        (wamei/term-toggle)
+        (wamei/term-toggle)
+        (should-not (wamei/term--window))
+        ;; 開き直すとそれぞれ前に出していた端末が出る
+        (wamei/term-toggle)
+        (should (eq (window-buffer (wamei/term--window)) second))
+        (select-window origin)
+        (wamei/term-toggle '(4))
+        (should (eq (window-buffer origin) first))))))
 
 ;;; 右の side window と出し入れ
 
