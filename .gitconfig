@@ -24,6 +24,10 @@
 [delta]
     # n / N で次 / 前のファイル・hunk へ移動する。
     navigate = true
+    # 既定は左右 2 列 (delta 組み込みの side-by-side feature)。side-by-side = true
+    # ではなく features に書くのは、DELTA_FEATURES を空にすれば外せるから
+    # (.zshrc の delta-sbs)。--color-only (magit-delta / git add -p) では無視される。
+    features = side-by-side
 [ghq]
     root = ~/projects
 [filter "lfs"]

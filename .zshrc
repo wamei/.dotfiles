@@ -174,6 +174,19 @@ function extract() {
 #圧縮ファイルを実行すると解凍するように
 alias -s {gz,tgz,zip,lzh,bz2,tbz,Z,tar,arj,xz}=extract
 
+# git の pager (delta) の左右 2 列と 1 列を、このシェルの中で切り替える。
+# 2 列は .gitconfig の [delta] features で、DELTA_FEATURES を空にするとそれが外れる
+# (未設定なら gitconfig のまま)。1 回だけ 1 列で見るなら DELTA_FEATURES= git diff。
+delta-sbs() {
+    if (( ${+DELTA_FEATURES} )); then
+        unset DELTA_FEATURES
+        echo "delta: side-by-side"
+    else
+        export DELTA_FEATURES=
+        echo "delta: unified"
+    fi
+}
+
 # gh のアカウントを cwd で切り替える仕組みは tools/gh-account/gh (実行ファイル) にある。
 # シェル関数だと Claude Code や Codex から効かないため。
 
