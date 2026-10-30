@@ -8,7 +8,7 @@
 ;; 右の side window は端末パネル (term-panel.el) が使う。
 ;; Claude も Codex も表示は `display-buffer' を通るので、
 ;; `display-buffer-overriding-action' でこの window へ向ける。
-;; C-x 1 や magit の全画面化でも消えないよう no-delete-other-windows を付ける。
+;; 普通の window と同じく C-x 1 や magit の全画面化で消える (C-x C-a で開き直す)。
 ;; desktop には残さず (desktop-side-windows.el が外す)、ai-session が開き直す。
 ;;; Code:
 (require 'ai-shortcuts)
@@ -67,14 +67,12 @@
                      (round (* (window-total-width main) wamei/ai-panel-width))))
          (window (split-window main (- width) 'left)))
     (set-window-parameter window 'wamei/ai-panel t)
-    (set-window-parameter window 'no-delete-other-windows t)
     window))
 
 (defun wamei/ai-panel--adopt (window)
   "本体ただ 1 つの WINDOW をパネルにする。閉じるときに戻すバッファを覚える。"
   (set-window-parameter window 'wamei/ai-panel-previous (window-buffer window))
   (set-window-parameter window 'wamei/ai-panel t)
-  (set-window-parameter window 'no-delete-other-windows t)
   window)
 
 (defun wamei/ai-panel--release (window)
@@ -83,7 +81,7 @@
   (let ((previous (window-parameter window 'wamei/ai-panel-previous))
         (current (window-buffer window)))
     (set-window-dedicated-p window nil)
-    (dolist (parameter '(wamei/ai-panel wamei/ai-panel-previous no-delete-other-windows))
+    (dolist (parameter '(wamei/ai-panel wamei/ai-panel-previous))
       (set-window-parameter window parameter nil))
     (set-window-buffer window (if (and (buffer-live-p previous) (not (eq previous current)))
                                   previous

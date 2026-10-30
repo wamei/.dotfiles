@@ -225,15 +225,21 @@
           (should (= (window-total-width window) (round (* main-width 0.5))))
           (should (eq window (wamei/ai-panel--window t))))))))
 
-(ert-deftest wamei/ai-panel-survives-delete-other-windows ()
-  "コードの window で C-x 1 しても AI の window は残る。"
+(ert-deftest wamei/ai-panel-closes-on-delete-other-windows ()
+  "コードの window で C-x 1 すると AI の window も消える (普通の window と同じ)。
+AI 側で C-x 1 すれば AI だけが残る。"
   (wamei/ai-panel-test--with-code-env
     (let* ((editor (selected-window))
-           (window (wamei/ai-panel-show (wamei/ai-panel-test--claude "/tmp/"))))
-      (split-window editor nil 'below)
+           (claude (wamei/ai-panel-test--claude "/tmp/"))
+           (window (wamei/ai-panel-show claude)))
+      (should-not (window-parameter window 'no-delete-other-windows))
       (delete-other-windows editor)
-      (should (window-live-p window))
-      (should (= (length (window-list nil 'no-mini)) 2)))))
+      (should-not (window-live-p window))
+      (should (equal (window-list nil 'no-mini) (list editor)))
+      (let ((window (wamei/ai-panel-show claude)))
+        (should-not (window-parameter window 'no-delete-other-windows))
+        (delete-other-windows window)
+        (should (equal (window-list nil 'no-mini) (list window)))))))
 
 (ert-deftest wamei/ai-panel-desktop-strips-and-reopens-main-window ()
   "desktop には AI の window を残さず、本体の左端の spec として開き直す。"
