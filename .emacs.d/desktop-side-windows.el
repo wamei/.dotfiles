@@ -54,14 +54,23 @@ frameset--id パラメータ、TAB-INDEX は 0 始まりのタブ位置。SPEC �
 spec の :buffer が REGEXP にマッチしたら FUNCTION を spec を引数に呼ぶ。
 どれにもマッチしなければ `wamei/desktop-side-display' を使う。")
 
-(defconst wamei/desktop-side--order '(left right top bottom)
+(defvar wamei/desktop-side-panel-parameters nil
+  "side window と同じく保存から外して開き直す、本体の window の印。
+このパラメータのどれかが非 nil の window (ai-panel.el の AI パネルなど) は
+spec の :side を main、:size を幅にして記録する。印は
+`window-persistent-parameters' に writable で登録しておくこと
+\(しないと保存データに残らず見分けられない)。")
+
+(defconst wamei/desktop-side--order '(left right top bottom main)
   "side window を開き直す順序。
 `window-sides-vertical' が t のとき、下部の side window の寸法は左右の
-side window の有無で決まる。左右を先に作らないと幅が合わない。")
+side window の有無で決まる。左右を先に作らないと幅が合わない。
+本体の window (main) は side window が揃って本体の幅が決まってから切り出す。")
 
 (defconst wamei/desktop-side--parameters
   '(window-side window-slot no-other-window no-delete-other-windows)
-  "side window を通常の window に戻すときに外す window パラメータ。")
+  "side window を通常の window に戻すときに外す window パラメータ。
+`wamei/desktop-side-panel-parameters' も合わせて外す。")
 
 (defconst wamei/desktop-side--size-keys
   '(pixel-width pixel-height total-width total-height normal-width normal-height)
@@ -90,8 +99,13 @@ side window の有無で決まる。左右を先に作らないと幅が合わ�
   (cdr (assq 'parameters (cdr node))))
 
 (defun wamei/desktop-side--side (node)
-  "NODE が side window なら その side、そうでなければ nil。"
-  (cdr (assq 'window-side (wamei/desktop-side--parameters node))))
+  "NODE が side window なら その side、本体のパネルなら main、そうでなければ nil。
+本体のパネルは `wamei/desktop-side-panel-parameters' の印で見分ける。"
+  (let ((parameters (wamei/desktop-side--parameters node)))
+    (or (cdr (assq 'window-side parameters))
+        (and (seq-some (lambda (key) (cdr (assq key parameters)))
+                       wamei/desktop-side-panel-parameters)
+             'main))))
 
 (defun wamei/desktop-side--spec (node)
   "side window の leaf NODE から復元用の spec を作る。
@@ -109,7 +123,7 @@ restorer は :directory を使ってプロジェクトを決める。"
           :side side
           :slot (or (cdr (assq 'window-slot (wamei/desktop-side--parameters node))) 0)
           :size (wamei/desktop-side--attr
-                 node (if (memq side '(left right)) 'total-width 'total-height))
+                 node (if (memq side '(left right main)) 'total-width 'total-height))
           :dedicated (cdr (assq 'dedicated (cdr buffer))))))
 
 (defun wamei/desktop-side--inherit (child parent)
@@ -245,7 +259,9 @@ window--sides-check-failed -> split-window が無限再帰して落ちるため�
                ('parameters
                 (cons 'parameters
                       (seq-remove (lambda (parameter)
-                                    (memq (car parameter) wamei/desktop-side--parameters))
+                                    (or (memq (car parameter) wamei/desktop-side--parameters)
+                                        (memq (car parameter)
+                                              wamei/desktop-side-panel-parameters)))
                                   (cdr item))))
                ('buffer
                 `(buffer "*scratch*"

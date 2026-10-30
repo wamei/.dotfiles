@@ -1,6 +1,6 @@
-;;; term-panel.el --- フレーム下部の端末パネルと端末タブ -*- lexical-binding: t; -*-
+;;; term-panel.el --- フレーム右の端末パネルと端末タブ -*- lexical-binding: t; -*-
 ;;; Commentary:
-;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム下部の side window に
+;; ghostel の端末をプロジェクト (タブ) ごとにまとめ、フレーム右の side window に
 ;; 出す。端末が 2 つ以上あるときは端末 window の上端 (header-line) にタブを並べる。
 ;; タブは window の幅を等分し、" ● ls -al" の形で、● はその端末の実行状態
 ;; (term-modeline.el)。
@@ -45,12 +45,12 @@
 ;; いない) の最初の C-z が void-function ghostel-create で落ちる。
 (autoload 'ghostel-create "ghostel")
 
-(defvar wamei/term-height 0.3
-  "端末ウィンドウの高さ (フレームに対する割合)。
+(defvar wamei/term-width 0.35
+  "端末ウィンドウの幅 (フレームに対する割合)。
 手動でリサイズすると更新され、次に開くときも同じ割合になる。")
 
 (defgroup wamei/term-panel nil
-  "フレーム下部の端末パネルと端末タブ。"
+  "フレーム右の端末パネルと端末タブ。"
   :group 'tools)
 
 (defvar wamei/term--previous-window nil
@@ -64,24 +64,24 @@
 (defvar wamei/term--last nil
   "最後に表示した端末バッファ。プロジェクトごとの復帰先として使う。")
 
-;;; 高さの記憶
+;;; 幅の記憶
 
-(defun wamei/term--set-height (window)
-  "WINDOW を wamei/term-height の割合にリサイズする。
-display-buffer-alist の window-height に関数として渡す。数値を直接書くと
+(defun wamei/term--set-width (window)
+  "WINDOW を wamei/term-width の割合にリサイズする。
+display-buffer-alist の window-width に関数として渡す。数値を直接書くと
 alist 登録時の値で固定されてしまい、リサイズを覚えられない。"
-  (let ((delta (- (round (* wamei/term-height (frame-height)))
-                  (window-total-height window))))
+  (let ((delta (- (round (* wamei/term-width (frame-width)))
+                  (window-total-width window))))
     (unless (zerop delta)
-      (ignore-errors (window-resize window delta nil t)))))
+      (ignore-errors (window-resize window delta t t)))))
 
-(defun wamei/term--remember-height ()
-  "現在の高さの割合を wamei/term-height に覚える。"
+(defun wamei/term--remember-width ()
+  "現在の幅の割合を wamei/term-width に覚える。"
   (when-let* ((window (get-buffer-window (current-buffer))))
     (when (window-parameter window 'window-side)
-      (let ((ratio (/ (float (window-total-height window)) (frame-height))))
+      (let ((ratio (/ (float (window-total-width window)) (frame-width))))
         (when (< 0.05 ratio 0.95)
-          (setq wamei/term-height ratio))))))
+          (setq wamei/term-width ratio))))))
 
 ;;; 端末バッファの管理
 
@@ -167,7 +167,7 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
 (defun wamei/term--window ()
   "端末本体を表示している window。"
   (seq-find (lambda (window)
-              (and (eq (window-parameter window 'window-side) 'bottom)
+              (and (eq (window-parameter window 'window-side) 'right)
                    (eql (window-parameter window 'window-slot) 0)
                    (string-match-p "\\`\\*term: " (buffer-name (window-buffer window)))))
             (window-list nil 'no-mini)))
@@ -182,12 +182,12 @@ project-tabs.el を後の tab-bar ブロックで読むので `fboundp' で守�
   "端末バッファのパネル向け設定。`ghostel-mode-hook' から呼ぶ。
 非選択の window では Emacs が point の位置に中抜きカーソルを描くが、端末では
 シェルのカーソル位置と重なって紛らわしいだけなので、パネルが非アクティブの
-ときは出さない。高さの記憶と kill 時の後始末もここで登録する。"
+ときは出さない。幅の記憶と kill 時の後始末もここで登録する。"
   (setq-local cursor-in-non-selected-windows nil)
   (when-let* (((not wamei/term--project-root))
               (name (wamei/term--name-project (buffer-name))))
     (setq wamei/term--project-root (wamei/term--locate-root default-directory name)))
-  (add-hook 'window-configuration-change-hook #'wamei/term--remember-height nil t)
+  (add-hook 'window-configuration-change-hook #'wamei/term--remember-width nil t)
   ;; シェル終了などでバッファが消えたらパネルと端末タブを追従させる
   (add-hook 'kill-buffer-hook #'wamei/term--on-kill nil t))
 
@@ -483,23 +483,23 @@ NO-OTHER 指定で候補から外れる。"
       (get-mru-window nil t t t)))
 
 (defun wamei/term-toggle (&optional arg)
-  "端末パネルへ出入りする。
+  "端末パネルを出し入れする。
 
 - 非表示なら開いてフォーカスする
 - 表示中でフォーカスが無ければフォーカスを移す
-- フォーカス中なら元の window へ戻る (パネルは開いたまま)
-- ARG (C-u) 付きならパネルを閉じる
+- フォーカス中なら閉じて元の window へ戻る
+- ARG (C-u) 付きならフォーカス中でも閉じず、元の window へ戻るだけ
 
-sidebar 側の move-back と同じ考え方に揃えている。"
+C-u 付きは sidebar 側の move-back と同じ出入り。"
   (interactive "P")
   (let ((window (wamei/term--window)))
     (cond
-     (arg
-      (wamei/term--close))
      ((and window (eq window (selected-window)))
       (let ((back (wamei/term--back-window)))
         (when (and back (not (eq back window)))
-          (select-window back))))
+          (select-window back)))
+      (unless arg
+        (wamei/term--close)))
      (window
       (wamei/term--remember-previous)
       (select-window window))
@@ -569,14 +569,14 @@ FN に渡す VSCROLL を `wamei/term-anchor-vscroll' で差し替える。
 (defun wamei/term-panel-setup ()
   "端末の display-buffer-alist と、端末タブを描き直すフックを登録する。
 
-端末は下部 side window の slot 0 へ。
+端末は右の side window の slot 0 へ。
 ghostel がロードされる前に登録しておく必要があるので、init.el の :init から呼ぶ。"
   (add-to-list 'display-buffer-alist
                '("\\`\\*term: "
                  (display-buffer-in-side-window)
-                 (side . bottom)
+                 (side . right)
                  (slot . 0)
-                 (window-height . wamei/term--set-height)
+                 (window-width . wamei/term--set-width)
                  (dedicated . t)
                  ;; no-other-window: C-x o (other-window) の巡回対象から外す。
                  ;; select-window は影響を受けないので C-z のトグルは通る。

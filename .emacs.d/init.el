@@ -57,8 +57,8 @@
             (user-mail-address . "wamei@gmail.com")
             (user-login-name . "wamei")
             (create-lockfiles . nil)
-            ;; 左右の side window (sidebar / claude-code-ide) をフレーム全高にし、
-            ;; 下部の side window (端末パネル) はその内側に収める。VSCode と同じ配置。
+            ;; 左右の side window (sidebar / 端末パネル) をフレーム全高にする。
+            ;; AI パネルは本体の左端の普通の window (ai-panel.el)。
             (window-sides-vertical . t)
             (tab-width . 4)
             (debug-on-error . t)
@@ -751,17 +751,6 @@ TUI は字下げや余白に U+00A0 を使う (`  ⎿ ' の後ろ、空のプロ
   (wamei/ai-panel-enable)
   (wamei/ai-session-enable)
 
-  (defun wamei/claude-code-ide--no-other-window (window)
-    "claude のウィンドウを C-x o (other-window) の巡回対象から外す。
-パッケージは表示時に display-buffer-alist を let で丸ごと束縛するので、
-こちらの display-buffer-alist に window-parameters を書いても効かない。
-表示関数の戻り値のウィンドウに直接パラメータを付ける。
-なお no-other-window は移動先から外すだけで、select-window は素通りするため
-claude-code-ide 側のフォーカス制御 (focus-on-open など) には影響しない。"
-    (when (window-live-p window)
-      (set-window-parameter window 'no-other-window t))
-    window)
-
   (defvar wamei/claude--previous-window nil
     "claude パネルへ移動する直前に選択していた window。")
 
@@ -877,11 +866,10 @@ Claude Code は会話を <設定ディレクトリ>/projects/<作業ディレク
   ;; claude-code-ide-terminal-backend の docstring が ghostel を推奨バックエンドと
   ;; して挙げており、TUI の描画アーティファクトが最も少ないため。
   (claude-code-ide-terminal-backend . 'ghostel)
-  ;; sidebar が左、端末パネルが下なので右に出す
+  ;; 表示は ai-panel.el が本体左端のパネルへ向けるので、side window の設定は
+  ;; ai-panel を外したときだけ効く。sidebar が左なので右に出す
   (claude-code-ide-window-side . 'right)
   :config
-  (advice-add 'claude-code-ide--display-buffer-in-side-window
-              :filter-return #'wamei/claude-code-ide--no-other-window)
   ;; 起動と切り替えの起点を、開いているバッファではなくタブに紐づいた
   ;; プロジェクトにする (project-tabs.el)
   (advice-add 'claude-code-ide--get-working-directory
@@ -1217,9 +1205,8 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
 (leaf transient
   :doc "magit 等のキー操作メニュー"
   ;; 既定の (display-buffer-in-side-window (side . bottom)) は slot 指定なし
-  ;; (= 0) で、端末パネル (bottom / slot 0) と同じ位置になる。
-  ;; display-buffer-in-side-window は同じ side・slot の window を dedicated でも
-  ;; 再利用するため、メニューが端末パネルの window を奪い、終了時に端末が消える。
+  ;; (= 0) で、下部の side window を奪う (端末パネルが下にあった頃は、
+  ;; dedicated でも再利用されて終了時に端末が消えた)。
   ;; 選択中の window (magit status 等) の直下、主領域内に出すようにする。
   ;; 既定の mode-line (line = 1px の区切り線) は下端の window divider と重なって、
   ;; メニューの幅の分だけ境界が太くなる。区切りは divider に任せる。
@@ -2134,7 +2121,7 @@ desktop-side-windows が SPEC の :directory を default-directory に束縛し�
 (desktop-after-read-hook の先頭) が復元しているので、パネルに出ていたもの
 (SPEC の :buffer) をそのまま出す。
 記録が無い (初回や旧形式の desktop) ときは同プロジェクトの端末か新しい端末を使う。
-高さは display-buffer-alist の wamei/term--set-height が wamei/term-height
+幅は display-buffer-alist の wamei/term--set-width が wamei/term-width
 (desktop に保存) から決める。端末タブ (header-line) は wamei/term--show が付ける。"
     (wamei/term--show (or (get-buffer (plist-get spec :buffer))
                           (wamei/term--current)
@@ -2185,8 +2172,8 @@ desktop-side-windows が SPEC の :directory (保存時の claude バッファ�
   (unless (display-graphic-p)
     (setq desktop-base-file-name ".emacs.desktop-nw"
           desktop-base-lock-name ".emacs.desktop-nw.lock"))
-  ;; 端末パネルの高さの割合も次回に引き継ぐ
-  (add-to-list 'desktop-globals-to-save 'wamei/term-height)
+  ;; 端末パネルの幅の割合も次回に引き継ぐ
+  (add-to-list 'desktop-globals-to-save 'wamei/term-width)
   ;; バッファ名で開き直し方を選ぶ。sidebar は " *sidebar: " で始まる。
   (setq wamei/desktop-side-restorers
         '(("\\` \\*sidebar: " . wamei/desktop--restore-sidebar)

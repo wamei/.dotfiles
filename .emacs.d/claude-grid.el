@@ -150,11 +150,18 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
 
 ;;; 組み立て
 
+(defun wamei/claude-grid--panel-window-p (window)
+  "WINDOW が `delete-other-windows' で消えないパネルなら非 nil。
+side window と、本体にあっても no-delete-other-windows の付いた window
+\(ai-panel.el の AI パネル)。"
+  (or (window-parameter window 'window-side)
+      (window-parameter window 'no-delete-other-windows)))
+
 (defun wamei/claude-grid--delete-side-windows ()
-  "選択フレームの side window を消す。バッファは残る。"
+  "選択フレームのパネル (`wamei/claude-grid--panel-window-p') を消す。バッファは残る。"
   (dolist (window (window-list nil 'no-mini))
     (when (and (window-live-p window)
-               (window-parameter window 'window-side)
+               (wamei/claude-grid--panel-window-p window)
                (not (eq window (frame-root-window))))
       (delete-window window))))
 
@@ -165,7 +172,7 @@ COUNT より少なくなることがある。COUNT が 0 なら nil。"
 \(ミニバッファ入力中にも呼ばれ得る) ため。ミニバッファの window では
 `delete-other-windows' が通らない。"
   (let ((windows (window-list nil 'no-mini)))
-    (or (seq-find (lambda (window) (not (window-parameter window 'window-side)))
+    (or (seq-find (lambda (window) (not (wamei/claude-grid--panel-window-p window)))
                   windows)
         (car windows)
         (selected-window))))

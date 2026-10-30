@@ -184,7 +184,7 @@ session-id を status line の先頭に設定している。本文中の UUID �
   (when-let* ((buffer (gethash (plist-get spec :buffer) wamei/ai-session--names))
               ((buffer-live-p buffer))
               (window (wamei/ai-panel-show buffer)))
-    (wamei/desktop-side-resize window (plist-get spec :size))
+    (wamei/ai-panel--resize window (plist-get spec :size))
     window))
 
 (defun wamei/ai-session-enable ()

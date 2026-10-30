@@ -1,20 +1,25 @@
 ;;; ai-panel.el --- Claude と Codex の共通セッションパネル -*- lexical-binding: t; -*-
 ;;; Commentary:
 ;; バックエンドの起動・入力・usage は従来の処理を使い、表示と巡回を共有する。
+;;
+;; 表示先は side window ではなく本体 (`window-main-window') の左端の普通の
+;; window。AI とのやりとりが作業の中心なので、sidebar の右・コードの左に置く。
+;; 本体の window が 1 つだけなら分割せず、その window を本体いっぱいに使う。
+;; 右の side window は端末パネル (term-panel.el) が使う。
+;; Claude も Codex も表示は `display-buffer' を通るので、
+;; `display-buffer-overriding-action' でこの window へ向ける。
+;; C-x 1 や magit の全画面化でも消えないよう no-delete-other-windows を付ける。
+;; desktop には残さず (desktop-side-windows.el が外す)、ai-session が開き直す。
 ;;; Code:
 (require 'ai-shortcuts)
 (require 'header-tabs)
 (require 'claude-grid)
 (eval-when-compile (require 'claude-code-ide-mcp nil t))
 
-(defvar claude-code-ide-window-width)
-(defvar claude-code-ide-window-side)
 (defvar claude-code-ide-use-side-window)
 (defvar claude-code-ide-focus-on-open)
-(defvar wamei/codex-panel-width)
-(defvar wamei/codex-panel-slot)
-(defvar wamei/ai-panel-width 0.4
-  "共通 AI パネルの初期幅 (フレーム幅の割合)。")
+(defvar wamei/ai-panel-width 0.5
+  "共通 AI パネルの初期幅 (本体の幅に対する割合)。")
 (defvar wamei/ai-panel--order nil)
 (defvar wamei/ai-panel--previous-window nil)
 (defvar wamei/ai-panel--previous-buffer nil)
@@ -47,13 +52,73 @@
                     wamei/ai-panel--order)
       wamei/ai-panel--order)))
 
-(defun wamei/ai-panel--window (&optional side-only)
-  "選択フレームの AI window。SIDE-ONLY なら右パネルのみ。"
+(defun wamei/ai-panel--window (&optional panel-only)
+  "選択フレームの AI window。PANEL-ONLY なら本体左端のパネルのみ。"
   (seq-find (lambda (window)
-              (and (or (not side-only) (eq (window-parameter window 'window-side) 'right))
-                   (or (and side-only (window-parameter window 'wamei/ai-panel))
-                       (wamei/ai--backend (window-buffer window)))))
+              (if panel-only
+                  (window-parameter window 'wamei/ai-panel)
+                (wamei/ai--backend (window-buffer window))))
             (window-list nil 'no-mini)))
+
+(defun wamei/ai-panel--split ()
+  "本体の左端を `wamei/ai-panel-width' の幅で切り出し、パネルにした window を返す。"
+  (let* ((main (window-main-window))
+         (width (max window-min-width
+                     (round (* (window-total-width main) wamei/ai-panel-width))))
+         (window (split-window main (- width) 'left)))
+    (set-window-parameter window 'wamei/ai-panel t)
+    (set-window-parameter window 'no-delete-other-windows t)
+    window))
+
+(defun wamei/ai-panel--adopt (window)
+  "本体ただ 1 つの WINDOW をパネルにする。閉じるときに戻すバッファを覚える。"
+  (set-window-parameter window 'wamei/ai-panel-previous (window-buffer window))
+  (set-window-parameter window 'wamei/ai-panel t)
+  (set-window-parameter window 'no-delete-other-windows t)
+  window)
+
+(defun wamei/ai-panel--release (window)
+  "本体いっぱいのパネル WINDOW を普通の window に戻し、パネルを開く前のバッファを出す。
+本体ただ 1 つの window は消せないため、閉じる代わりにこうする。"
+  (let ((previous (window-parameter window 'wamei/ai-panel-previous))
+        (current (window-buffer window)))
+    (set-window-dedicated-p window nil)
+    (dolist (parameter '(wamei/ai-panel wamei/ai-panel-previous no-delete-other-windows))
+      (set-window-parameter window parameter nil))
+    (set-window-buffer window (if (and (buffer-live-p previous) (not (eq previous current)))
+                                  previous
+                                (other-buffer current t)))))
+
+(defun wamei/ai-panel--close (window)
+  "AI の WINDOW を閉じる。本体ただ 1 つの window なら普通の window に戻す。"
+  (cond
+   ((and (window-parameter window 'wamei/ai-panel) (eq window (window-main-window)))
+    (wamei/ai-panel--release window))
+   ((window-parent window) (delete-window window))))
+
+(defun wamei/ai-panel--display-action (buffer _alist)
+  "BUFFER を本体左端のパネルに出す `display-buffer' のアクション。
+パネルが無ければ作る。本体の window が 1 つならそれをパネルにする。
+dedicated にして他の `display-buffer' に使わせない。"
+  (let ((window (or (wamei/ai-panel--window t)
+                    (let ((main (window-main-window)))
+                      (if (window-live-p main)
+                          (wamei/ai-panel--adopt main)
+                        (wamei/ai-panel--split))))))
+    (set-window-dedicated-p window nil)
+    (set-window-buffer window buffer)
+    (set-window-dedicated-p window t)
+    window))
+
+(defconst wamei/ai-panel--display-override '((wamei/ai-panel--display-action))
+  "表示を本体左端のパネルへ向ける `display-buffer-overriding-action'。")
+
+(defun wamei/ai-panel--resize (window size)
+  "パネル WINDOW の幅を SIZE (列数) に合わせる。"
+  (when (and (window-live-p window) size)
+    (let ((delta (- size (window-total-width window))))
+      (unless (zerop delta)
+        (ignore-errors (window-resize window delta t t))))))
 
 (defvar wamei/ai-panel-tab-map
   (let ((map (make-sparse-keymap)))
@@ -97,34 +162,20 @@
       (add-hook 'kill-buffer-hook #'wamei/ai-panel--before-kill nil t))))
 
 (defun wamei/ai-panel--display-claude (orig buffer)
-  "Claude の native 表示を共有パネルの slot と幅で実行する。"
-  (let* ((window (wamei/ai-panel--window t))
-         (claude-code-ide-window-side 'right)
-         (claude-code-ide-use-side-window t)
-         (claude-code-ide-window-width
-          (if window (window-body-width window)
-            (round (* (frame-width) wamei/ai-panel-width)))))
-    (when-let* ((session (claude-code-ide--buffer-session buffer)))
-      (setf (claude-code-ide-mcp-session-window-slot session)
-            (if window (window-parameter window 'window-slot) 100)))
-    (let ((shown (funcall orig buffer)))
-      (when shown
-        (unless window
-          ;; Claude の指定は本文幅なので、枠を含む幅を Codex と揃える。
-          (let ((delta (- (round (* (frame-width) wamei/ai-panel-width))
-                          (window-total-width shown))))
-            (unless (zerop delta) (window-resize shown delta t))))
-        (set-window-parameter shown 'wamei/ai-panel t))
-      (wamei/ai-panel--setup buffer)
-      (wamei/ai-panel--schedule-grid)
-      shown)))
+  "Claude の native 表示を本体左端のパネルで実行する。
+side window を使わない設定にして、パッケージの `display-buffer' を
+パネルへ向ける。フォーカスや端末寸法の同期はパッケージ側に任せる。"
+  (let* ((claude-code-ide-use-side-window nil)
+         (display-buffer-overriding-action wamei/ai-panel--display-override)
+         (shown (funcall orig buffer)))
+    (wamei/ai-panel--setup buffer)
+    (wamei/ai-panel--schedule-grid)
+    shown))
 
 (defun wamei/ai-panel--display-codex (orig buffer)
-  (let* ((window (wamei/ai-panel--window t))
-         (wamei/codex-panel-slot (if window (window-parameter window 'window-slot) 100))
-         (wamei/codex-panel-width (if window (window-total-width window) wamei/ai-panel-width))
+  "Codex の表示を本体左端のパネルへ向ける。"
+  (let* ((display-buffer-overriding-action wamei/ai-panel--display-override)
          (shown (funcall orig buffer)))
-    (when shown (set-window-parameter shown 'wamei/ai-panel t))
     (wamei/ai-panel--setup buffer)
     (wamei/ai-panel--schedule-grid)
     shown))
@@ -161,7 +212,7 @@
   (interactive "P")
   (let ((window (wamei/ai-panel--window)))
     (cond
-     (arg (when (and window (window-parent window)) (delete-window window)))
+     (arg (when window (wamei/ai-panel--close window)))
      ((eq window (selected-window))
       (when-let* ((back (or (and (window-live-p wamei/ai-panel--previous-window)
                                 (eq (window-buffer wamei/ai-panel--previous-window)
@@ -181,13 +232,17 @@
             (wamei/claude-toggle))))))))
 
 (defun wamei/ai-panel--hand-over (buffer)
-  "終了する BUFFER の右パネルを別の AI に引き継ぐ。"
+  "終了する BUFFER のパネルを別の AI に引き継ぐ。
+引き継ぐ先が無く、本体いっぱいのパネルなら普通の window に戻す。"
   (when (buffer-live-p buffer)
     (let ((others (remq buffer (wamei/ai-panel--buffers (wamei/ai-panel--directory buffer)))))
       (dolist (window (get-buffer-window-list buffer nil 'visible))
-        (when (and others (eq (window-parameter window 'window-side) 'right))
-          (with-selected-window window
-            (wamei/ai-panel-show (car others)))))))
+        (when (window-parameter window 'wamei/ai-panel)
+          (if others
+              (with-selected-window window
+                (wamei/ai-panel-show (car others)))
+            (when (eq window (window-main-window))
+              (wamei/ai-panel--release window)))))))
   (force-mode-line-update t)
   (wamei/ai-panel--schedule-grid))
 
@@ -248,6 +303,12 @@
 (defun wamei/ai-panel-restore (spec)
   "会話を ID 指定で復元し、保存時に表示していたパネルだけを開き直す。"
   (wamei/ai-session-restore-panel spec))
+
+;; desktop の保存データから外して開き直せるよう、パネルの印を window 状態に残す。
+(add-to-list 'window-persistent-parameters '(wamei/ai-panel . writable))
+(defvar wamei/desktop-side-panel-parameters)
+(with-eval-after-load 'desktop-side-windows
+  (add-to-list 'wamei/desktop-side-panel-parameters 'wamei/ai-panel))
 
 (defun wamei/ai-panel-enable ()
   "両バックエンドの表示・タブ・復元を統合する。何度呼んでもよい。"

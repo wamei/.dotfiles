@@ -84,10 +84,13 @@
     (wamei/codex-panel-keys-mode 1)))
 
 (defun wamei/codex-panel-show (buffer)
-  "BUFFER を右の専用 side window に表示し、window を返す。"
+  "BUFFER を右の専用 side window に表示し、window を返す。
+`display-buffer' を通すので、`display-buffer-overriding-action' で
+表示先を差し替えられる (ai-panel.el は本体左端のパネルへ向ける)。"
   (wamei/codex-panel--setup buffer)
-  (display-buffer-in-side-window
-   buffer `((side . right) (slot . ,wamei/codex-panel-slot)
+  (display-buffer
+   buffer `((display-buffer-in-side-window)
+            (side . right) (slot . ,wamei/codex-panel-slot)
             (window-width . ,wamei/codex-panel-width)
             (window-parameters . ((no-other-window . t)
                                   (no-delete-other-windows . t))))))

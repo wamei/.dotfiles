@@ -547,6 +547,63 @@ project.el (`project-buffers') も consult のプロジェクトバッファも
         (wamei/term-previous)
         (should (eq (window-buffer (wamei/term--window)) second))))))
 
+;;; 右の side window と出し入れ
+
+(ert-deftest wamei/term-panel-opens-on-the-right-at-width-ratio ()
+  "端末は右の side window に、フレーム幅の `wamei/term-width' の幅で出る。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((wamei/term-width 0.35))
+      (wamei/term-panel-test--in alpha
+        (let ((window (wamei/term--show (wamei/term--create 1))))
+          (should (eq (window-parameter window 'window-side) 'right))
+          (should (eq window (wamei/term--window)))
+          (should (= (window-total-width window)
+                     (round (* 0.35 (frame-width))))))))))
+
+(ert-deftest wamei/term-panel-remembers-width-ratio ()
+  "手で広げた幅の割合を次に開くときのために覚える。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((wamei/term-width 0.35))
+      (wamei/term-panel-test--in alpha
+        (let* ((buffer (wamei/term--create 1))
+               (window (wamei/term--show buffer)))
+          (window-resize window 4 t)
+          (with-current-buffer buffer (wamei/term--remember-width))
+          (should (= wamei/term-width
+                     (/ (float (window-total-width window)) (frame-width)))))))))
+
+(ert-deftest wamei/term-panel-toggle-opens-focuses-and-closes ()
+  "C-z: 無ければ開いてフォーカス、フォーカスが無ければ移し、フォーカス中なら閉じて戻る。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((origin (selected-window)))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (wamei/term-toggle)
+      (let* ((panel (wamei/term--window))
+             (terminal (window-buffer panel)))
+        (should (eq (selected-window) panel))
+        (select-window origin)
+        (wamei/term-toggle)
+        (should (eq (selected-window) panel))
+        (wamei/term-toggle)
+        (should-not (window-live-p panel))
+        (should-not (wamei/term--window))
+        (should (eq (selected-window) origin))
+        (should (buffer-live-p terminal))))))
+
+(ert-deftest wamei/term-panel-toggle-with-prefix-moves-in-and-out ()
+  "C-u C-z: パネルは開いたまま出入りする (以前の C-z)。"
+  (wamei/term-panel-test--with-projects (alpha)
+    (let ((origin (selected-window)))
+      (with-current-buffer (window-buffer origin) (setq default-directory alpha))
+      (wamei/term-toggle '(4))
+      (let ((panel (wamei/term--window)))
+        (should (eq (selected-window) panel))
+        (wamei/term-toggle '(4))
+        (should (window-live-p panel))
+        (should (eq (selected-window) origin))
+        (wamei/term-toggle '(4))
+        (should (eq (selected-window) panel))))))
+
 ;;; 下端揃えの端数
 
 (ert-deftest wamei/term-anchor-vscroll-keeps-the-fraction-on-the-top-row ()
