@@ -13,6 +13,17 @@
     default = nothing
 [core]
     excludesfile = ~/.gitignore
+    # diff / log -p / show を delta で表示する (mise で導入)。magit は --no-pager で
+    # git を呼ぶので影響しない。
+    # 行番号は pager だけに付ける。[delta] に書くと --color-only でも効いてしまい、
+    # 行の中身を崩す (magit-delta の stage と git add -p が壊れる)。
+    pager = delta --line-numbers
+[interactive]
+    # git add -p の hunk 表示も delta で色付けする (--color-only は行を崩さない)。
+    diffFilter = delta --color-only
+[delta]
+    # n / N で次 / 前のファイル・hunk へ移動する。
+    navigate = true
 [ghq]
     root = ~/projects
 [filter "lfs"]

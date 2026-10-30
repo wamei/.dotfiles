@@ -1275,6 +1275,72 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
            (magit-pre-display-buffer-hook . '(wamei/magit-save-main-window))
            (magit-bury-buffer-function . #'wamei/magit-restore-main-window)))
 
+(leaf magit-delta
+  :doc "magit の diff を delta (mise で導入) でシンタックスハイライトする"
+  :ensure t
+  :preface
+  (defvar wamei/magit-delta-max-lines 2000
+    "これより行数の多い diff は delta に通さず、magit 標準の色で出す。
+delta は 1000 行あたり約 0.1 秒かかり、色ごとに overlay を作る
+\(8000 行で 4 万個強) ので、大きな diff では表示もスクロールも重くなる。")
+
+  (defun wamei/magit-delta--limit (orig)
+    "`magit-delta-call-delta-and-convert-ansi-escape-sequences' (ORIG) の :around。
+diff が `wamei/magit-delta-max-lines' を超えたら delta を通さない。
+`magit-delta-mode' は diff の face を default に付け替える (色は delta の
+overlay で付く) ので、通さないときはこのバッファの付け替えを外して
+magit の色に戻す。`face-remapping-alist' は set するとバッファローカルになる。"
+    (if (<= (count-lines (point-min) (point-max)) wamei/magit-delta-max-lines)
+        (funcall orig)
+      (setq face-remapping-alist
+            (seq-remove (lambda (entry)
+                          (memq (car entry) '(magit-diff-context-highlight
+                                              magit-diff-added
+                                              magit-diff-added-highlight
+                                              magit-diff-removed
+                                              magit-diff-removed-highlight)))
+                        face-remapping-alist))))
+
+  (defun wamei/magit-delta--extend-background (orig &rest args)
+    "`xterm-color-colorize-buffer' (ORIG) の :around。追加・削除行の背景を右端まで伸ばす。
+delta は行の末尾に「背景色 + ESC[0K (行末まで消去)」を出し、端末はそれで
+右端まで塗る。xterm-color は ESC[0K を捨てるので色が文字の終わりで止まる。
+色を付ける前にその行 (先頭からの行数) と色を覚え、付けた後にその行の改行へ
+:extend t の背景を載せる。xterm-color はバッファを消して入れ直すので marker は
+先頭に寄ってしまうが、行数は変わらない。xterm-color を使うのは magit-delta
+だけだが、magit のバッファに限っておく。truecolor (48;2) の出力だけを扱う。"
+    (if (not (derived-mode-p 'magit-mode))
+        (apply orig args)
+      (let (eols)
+        (save-excursion
+          (goto-char (point-min))
+          (while (re-search-forward
+                  "\e\\[48;2;\\([0-9]+\\);\\([0-9]+\\);\\([0-9]+\\)m\e\\[0K\\(?:\e\\[0m\\)?$"
+                  nil t)
+            (push (cons (count-lines (point-min) (point))
+                        (apply #'format "#%02x%02x%02x"
+                               (mapcar (lambda (n) (string-to-number (match-string n)))
+                                       '(1 2 3))))
+                  eols)))
+        (apply orig args)
+        (save-excursion
+          (pcase-dolist (`(,line . ,color) eols)
+            (goto-char (point-min))
+            (forward-line (1- line))
+            (let* ((eol (line-end-position))
+                   (overlay (make-overlay eol (1+ eol))))
+              (overlay-put overlay 'face (list :background color :extend t))
+              (overlay-put overlay 'evaporate t)))))))
+  ;; magit-delta-mode はバッファごとに face の付け替えを入れるので、
+  ;; magit のバッファを作るたびに有効にする。
+  ;; delta の行番号 (.gitconfig の pager) は --color-only でも行を崩すので、
+  ;; [delta] セクションには書かないこと。magit の stage が壊れる。
+  :hook (magit-mode-hook . magit-delta-mode)
+  :advice ((:around magit-delta-call-delta-and-convert-ansi-escape-sequences
+                    wamei/magit-delta--limit)
+           (:around xterm-color-colorize-buffer
+                    wamei/magit-delta--extend-background)))
+
 (leaf smerge-mode
   :doc "コンフリクトマーカーの解決 (Emacs 組み込み)"
   :ensure nil

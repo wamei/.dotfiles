@@ -54,6 +54,8 @@ go = "1"
 "aqua:git-lfs/git-lfs" = "latest"
 "aqua:jqlang/jq" = "latest"
 "aqua:BurntSushi/ripgrep" = "latest"
+# git の diff / log -p / show の pager (.gitconfig の [core] pager)。
+"aqua:dandavison/delta" = "latest"
 "aqua:tmux/tmux-builds" = "latest"
 "aqua:pypa/pipx" = "latest"
 # pipx backend は PATH に uv があると pipx ではなく uv で入れる (pipx.uvx 既定 true)。
