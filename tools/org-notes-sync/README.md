@@ -31,10 +31,11 @@ mise run org-notes-sync:enable    # 確認が済んだら launchd に読み込�
    初回の実行時に「org-notes-sync が "メモ" を制御しようとしています」と聞かれる (osascript の JXA と `open` 経由)。許可する。
    後から変えるには システム設定 → プライバシーとセキュリティ → オートメーション。
 
-Emacs で同期対象のメモを保存したときの同期 (保存フック) は Emacs の子プロセスとして走るので、**Emacs.app の権限** で動く。
-保存フックからも同期させるなら、Emacs.app にもフルディスクアクセスとオートメーション (メモ) を与える。
-与えたくなければ保存フックからの同期は失敗するに任せ、launchd の同期 (DB の書き換え時と 30 分ごと) に頼る。
-ターミナルから手で走らせるときも同じで、権限はそのターミナルのものになる。
+Emacs で同期対象のメモを保存したときの同期 (保存フック、`.emacs.d/org-notes-sync.el`) は CLI を直接動かさず、launchd のジョブを `launchctl kickstart` する。
+子プロセスとして動かすと権限の判定を受けるのは Emacs.app になり、Emacs.app を更新するたびに許可が外れるため。
+Emacs.app に権限は要らない。その代わり保存フックからの同期は launchd にジョブが読み込まれている (`mise run org-notes-sync:enable` 済み) ことが前提になる。
+走っている最中に保存したときは state ディレクトリに `pending` を置き、走っている側にもう 1 周させる。
+ターミナルから手で走らせるときは、権限はそのターミナルのものになる。
 
 ## 使い方
 
@@ -82,7 +83,7 @@ Emacs で同期対象のメモを保存したときの同期 (保存フック) �
 
 ## ログ
 
-- 警告は stderr に `org-notes-sync: ` を付けて出て、`~/.local/state/org-notes-sync/log` にも残る。
+- 警告は stderr に `org-notes-sync: ` を付けて出て、`~/.local/state/org-notes-sync/log` にも残る。保存フックから蹴った同期の警告は、Emacs がジョブの終了後に `launchd.err` から拾ってエコーエリアに出す。
 - launchd の出力は `~/.local/state/org-notes-sync/launchd.out` / `launchd.err`。
 
 ## テスト
@@ -110,7 +111,7 @@ rm ~/.local/bin/org-notes-sync ~/.local/bin/notes-bridge
 本物のメモと iPhone を使う確認。順序は install → 権限 → 手で確認 → enable。
 
 1. ビルドして入れる (`mise run org-notes-sync:install`)。launchd には読み込まれない。
-2. フルディスクアクセスを `~/.local/bin/org-notes-sync` に与える。保存フックからも同期させるなら Emacs.app にも与える (「権限」を参照)。
+2. フルディスクアクセスを `~/.local/bin/org-notes-sync` に与える (「権限」を参照)。
 3. 念のためエージェントが止まっていることを確かめる: `launchctl bootout "gui/$(id -u)/jp.wamei.org-notes-sync" || true`。
 4. 一時の org ディレクトリとテスト用のメモのフォルダを作り、手で走らせる。最初の実行でオートメーション (メモ) の許可を求められるので許可する。
    `~/.local/bin/org-notes-sync --org-dir /tmp/org-test --state-dir /tmp/org-test-state --folder org-test`
@@ -123,6 +124,6 @@ rm ~/.local/bin/org-notes-sync ~/.local/bin/notes-bridge
    6. メモ.app が最前面のときは反映が延期され、離れると届く。
    7. 同期済みの org ファイルをリネームしても、メモが消えたり増えたりせず、iPhone の編集がリネーム後のファイルに戻る。
    8. Mac をオフラインにして org を編集し保存する。送信が時間切れになった後、15 分経つまでメモ.app が起動し直されないこと、オンラインに戻すと届くことを確かめる。
-   9. Emacs で同期対象のメモを保存すると同期が走る (`*org-notes-sync-stderr*` に権限のエラーが出ない)。出るなら Emacs.app に権限を与えるか、launchd に任せる。
 6. 問題なければ launchd を有効にする: `mise run org-notes-sync:enable`。
+   Emacs で同期対象のメモを保存すると同期が走ることを確かめる (`~/.local/state/org-notes-sync/log` に行が足され、エコーエリアに権限のエラーが出ない)。
 7. 実際のメモ 1 つに `#+notes_sync: yes` を付けて様子を見る。

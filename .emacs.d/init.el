@@ -1942,113 +1942,12 @@ dired 組み込みの `dired-context-menu' (Find / Open / Open With) に続け�
                 (ensure-list (get-file-buffer (wamei/project-memo-file project))))))
   (add-hook 'wamei/project-tabs-before-kill-functions #'wamei/project-memo-save-all)
 
-  ;; Apple Notes との同期。本体は tools/org-notes-sync の CLI で、ここは
-  ;; 保存をきっかけに蹴るだけ。対象は org-directory 配下で先頭に
-  ;; `#+notes_sync: yes' を書いたメモ (opt-in)。
-  ;; tty での画像表示は後日 (GUI だけ inline 画像を出す)。
-  (defvar wamei/org-notes-sync-program (expand-file-name "~/.local/bin/org-notes-sync")
-    "org-notes-sync CLI のパス。")
-
-  (defvar wamei/org-notes-sync--stderr-buffer "*org-notes-sync-stderr*"
-    "CLI の stderr だけを溜めるバッファ名。警告行はここから拾う。")
-
-  (defvar wamei/org-notes-sync--rerun nil
-    "実行中に保存が来たら non-nil。終了時にもう 1 回だけ走らせる。")
-
-  (defun wamei/org-notes-sync-buffer-p (&optional buffer)
-    "BUFFER (省略時は現在) が同期対象の org メモなら non-nil。
-リモートのファイルと org-directory 未設定は対象外。"
-    (with-current-buffer (or buffer (current-buffer))
-      (and buffer-file-name
-           org-directory
-           (not (file-remote-p buffer-file-name))
-           (file-in-directory-p buffer-file-name org-directory)
-           (save-excursion
-             (save-restriction
-               (widen)
-               (goto-char (point-min))
-               (let ((case-fold-search t))
-                 ;; CRLF のファイルでも合うよう行末の \r を許す
-                 (re-search-forward "^#\\+notes_sync:[ \t]*yes[ \t\r]*$"
-                                    (min (point-max) 4097) t)))))))
-
-  (defun wamei/org-notes-sync--sentinel (process _event)
-    "PROCESS の終了時に、stderr の警告行を出し、保存が重なっていたら再実行する。"
-    (unless (process-live-p process)
-      (let ((found nil)
-            (status (process-exit-status process)))
-        (when (buffer-live-p (get-buffer wamei/org-notes-sync--stderr-buffer))
-          (with-current-buffer wamei/org-notes-sync--stderr-buffer
-            (goto-char (point-min))
-            (while (re-search-forward "^org-notes-sync: .*$" nil t)
-              (setq found t)
-              (message "%s" (match-string 0)))))
-        ;; 警告行も無いのに失敗したときは、黙って壊れないよう必ず知らせる
-        (when (and (not found) (/= status 0))
-          (message "org-notes-sync: 異常終了しました (exit %d)。%s を確認してください"
-                   status wamei/org-notes-sync--stderr-buffer))
-        (when wamei/org-notes-sync--rerun
-          (setq wamei/org-notes-sync--rerun nil)
-          (org-notes-sync)))))
-
-  (defun org-notes-sync ()
-    "org-notes-sync を非同期に 1 回走らせる。
-実行中なら起こさず、終了時にもう 1 回だけ走らせる (実行中の保存を取りこぼさない。
-CLI 側の pending は 2 つ目の CLI が走ったときにしか効かない)。"
-    (interactive)
-    (cond
-     ((not (file-executable-p wamei/org-notes-sync-program))
-      (message "org-notes-sync: %s が実行できない" wamei/org-notes-sync-program))
-     ((process-live-p (get-process "org-notes-sync"))
-      (setq wamei/org-notes-sync--rerun t))
-     (t
-      (dolist (name (list " *org-notes-sync*" wamei/org-notes-sync--stderr-buffer))
-        (with-current-buffer (get-buffer-create name)
-          (erase-buffer)))
-      (make-process
-       :name "org-notes-sync"
-       :buffer " *org-notes-sync*"
-       :stderr wamei/org-notes-sync--stderr-buffer
-       :command (list wamei/org-notes-sync-program)
-       :noquery t
-       :sentinel #'wamei/org-notes-sync--sentinel))))
-
-  (defvar-local wamei/org-notes-sync--viewing nil
-    "このバッファで自動 revert・inline 画像を有効にしたら non-nil。")
-
-  (defun wamei/org-notes-sync--enable-view ()
-    "自動 revert と inline 画像 (GUI) を有効にする。2 回目以降は何もしない。
-Notes 側の変更が CLI でファイルに書き戻されるので auto-revert で追従する。"
-    (unless wamei/org-notes-sync--viewing
-      (setq wamei/org-notes-sync--viewing t)
-      (auto-revert-mode 1)
-      (when (display-graphic-p)
-        (setq-local org-image-actual-width '(480))
-        (wamei/org-notes-sync--display-images)
-        (add-hook 'after-revert-hook #'wamei/org-notes-sync--display-images nil t))))
-
-  (defun wamei/org-notes-sync--display-images ()
-    "inline 画像を表示する。画像リンクはファイルからの相対パスなので、
-ファイルの場所を基準に解決する (プロジェクトのメモとして開くと
-default-directory はプロジェクトの root を向いている)。"
-    (let ((default-directory (file-name-directory buffer-file-name)))
-      (org-display-inline-images)))
-
-  (defun wamei/org-notes-sync--after-save ()
-    "同期対象のメモなら保存後に org-notes-sync を蹴る。
-after-save-hook に全体で 1 回だけ入れ、対象かどうかは保存のたびに見る
-(開いた後で `#+notes_sync: yes' を書いても開き直さずに効く)。"
-    (when (and (derived-mode-p 'org-mode) (wamei/org-notes-sync-buffer-p))
-      (wamei/org-notes-sync--enable-view)
-      (org-notes-sync)))
-
-  (defun wamei/org-notes-sync--setup-buffer ()
-    "同期対象のメモなら、開いたときに自動 revert・inline 画像 (GUI) を有効にする。"
-    (when (wamei/org-notes-sync-buffer-p)
-      (wamei/org-notes-sync--enable-view)))
-
-  (add-hook 'after-save-hook #'wamei/org-notes-sync--after-save)
-  (add-hook 'org-mode-hook #'wamei/org-notes-sync--setup-buffer))
+  ;; Apple Notes との同期 (org-notes-sync.el)。保存で launchd のジョブを蹴る。
+  ;; init.el は ~/.emacs.d/init.el への symlink なので実体の隣から読む。
+  (load (expand-file-name "org-notes-sync"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (wamei/org-notes-sync-setup))
 
 (leaf dired-toggle-sudo
   :ensure t
