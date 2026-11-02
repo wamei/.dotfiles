@@ -56,3 +56,28 @@
     (let ((deadline (+ (float-time) 0.6)))
       (while (< (float-time) deadline) (accept-process-output nil 0.02)))
     (should (equal result '(:ok new)))))
+
+(ert-deftest wamei/background-test-cancel-after-exit-drops-unread-output ()
+  "Late output must not reach a filter whose buffer the cancel killed.
+After sleep the timeout timer can run before the parent has read the
+output of a worker that already exited, so the process is no longer live."
+  (let (errors proc)
+    (cl-letf (((symbol-function 'wamei/background-test--record-filter-error)
+               (lambda (orig &rest args)
+                 (condition-case err (apply orig args)
+                   (error (push err errors))))))
+      (advice-add 'async-read-from-client :around
+                  'wamei/background-test--record-filter-error)
+      (unwind-protect
+          (progn
+            (setq proc (wamei/background-start 'test '42 #'ignore))
+            ;; Block without reading process output until the worker exits.
+            (call-process "sleep" nil nil nil "3")
+            (should-not (process-live-p proc))
+            (wamei/background-cancel 'test)
+            (let ((deadline (+ (float-time) 0.5)))
+              (while (< (float-time) deadline) (accept-process-output nil 0.02)))
+            (should-not errors))
+        (advice-remove 'async-read-from-client
+                       'wamei/background-test--record-filter-error)
+        (wamei/background-cancel 'test)))))

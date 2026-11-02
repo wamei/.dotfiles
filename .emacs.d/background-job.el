@@ -15,8 +15,11 @@
     (remhash key wamei/background--jobs)
     (when (timerp (cdr job)) (cancel-timer (cdr job)))
     (when (processp (car job))
+      ;; An exited worker can still have unread output (the timeout timer
+      ;; may run first after sleep), so drop the filter and delete it too.
+      (set-process-filter (car job) #'ignore)
       (set-process-sentinel (car job) #'ignore)
-      (when (process-live-p (car job)) (delete-process (car job)))
+      (delete-process (car job))
       (when (buffer-live-p (process-buffer (car job)))
         (kill-buffer (process-buffer (car job)))))))
 
