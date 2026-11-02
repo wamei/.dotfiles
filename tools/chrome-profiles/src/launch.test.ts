@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { classifyLaunch, launchArgs, redirectArgs } from "./launch"
+import { classifyLaunch, launchArgs, openArgs, redirectArgs } from "./launch"
 import { pathsFor } from "./paths"
 
 const paths = pathsFor("/Users/u")
@@ -20,6 +20,17 @@ test("起動の引数はデータフォルダとプロファイルを指定し�
     "--user-data-dir=/Users/u/Library/Application Support/Chrome Profiles/client",
     "--profile-directory=Profile 2",
     "https://example.com/a b",
+  ])
+})
+
+test("URL を開く引数は -n を付けず、URL を --args の前に置く", () => {
+  // 動いている複製には URL だけが届き (新しいプロセスを起動しない)、止まっていれば引数付きで起動する
+  expect(openArgs(paths, client, ["https://example.com/a b", "https://x.test/"])).toEqual([
+    "-a", "/Users/u/Applications/Chrome Client.app",
+    "https://example.com/a b", "https://x.test/",
+    "--args",
+    "--user-data-dir=/Users/u/Library/Application Support/Chrome Profiles/client",
+    "--profile-directory=Profile 2",
   ])
 })
 

@@ -33,6 +33,8 @@ mise run chrome-profiles:enable    # 監視と作り直しを launchd に読み�
 | `seed [id...]` | 元のデータフォルダから `Local State` と担当のプロファイルだけを複写する。Chrome が動いていると断る。複写済みなら飛ばす |
 | `build [--quiet] [--settle 秒]` | 複製を作る/作り直す/アイコンを付け直す。記録 (`~/.local/state/chrome-profiles/build.json`) と同じなら何もしない |
 | `launch <id> [url...]` | 複製をデータフォルダ付きで起動する。動いていれば URL をそこで開く |
+| `open <id> <url...>` | 複製で URL を開く。Finicky と同じく `-n` を付けないので、動いている複製に新しいプロセスがちらつかない |
+| `open --dir <dir> <url...>` | `dir` を設定の `dirs` に含むプロファイルで開く。どれにも当たらなければ既定のブラウザで開く |
 | `finicky` | Finicky の設定から import する `~/.config/chrome-profiles/finicky.js` を書き出す (`build` も毎回書き出す) |
 | `list` | 設定と、複写・複製の有無 |
 | `classify` / `redirect` | 監視から呼ばれる。起動の引数から、そのまま動かす・その複製として起動し直す・元の Chrome に回す、を決めて実行する |
@@ -62,6 +64,17 @@ export default {
 - Finicky は `open -a <複製> <URL> --args --user-data-dir=… --profile-directory=…` を実行する (`args` に `--args` があると Finicky は自分では付け足さず、URL も足さないので、URL を `--args` の前に置く)。複製が動いていれば URL だけがそのアプリに届き、新しいプロセスは起動しない。止まっていれば引数付きで起動して URL を開く。`-n` を付けると、リンクのたびに複製のプロセスがもう 1 つ起動して Dock にちらつく。
 - `logRequests: false` にしても、それまで開いていたログファイルには書き続ける。設定を変えたら Finicky を再起動する。
 - Finicky のキャッシュは設定ファイル自体の更新時刻しか見ない。`chrome-profiles` は書き出した内容が変わったら Finicky の設定ファイルを同じ中身で書き直して読み直させる。
+
+## Emacs からプロファイルを指定して開く
+
+Finicky にはどの Emacs のタブから開いたかが届かないので、Emacs (`init.el` の `browse-url` ブロック) は http(s) のリンクを
+`chrome-profiles open --dir <タブのプロジェクト (無ければ default-directory)> <url>` で開く。
+どのディレクトリをどのプロファイルで開くかは、設定のプロファイルに `dirs` で書く (取引先の名前が入るので dotfiles には書かない)。
+どれにも当たらなければ既定のブラウザ (Finicky) に任せる。
+
+```json
+{ "id": "client", "name": "Client", "profileDir": "Profile 2", "dirs": ["~/projects/github.com.client/"] }
+```
 
 ## アイコンの画像
 

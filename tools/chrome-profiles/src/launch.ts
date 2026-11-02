@@ -11,6 +11,13 @@ export const launchArgs = (paths: Paths, p: Profile, urls: string[]): string[] =
   ...urls,
 ]
 
+// URL を開く open(1) の引数。-n を付けないので、動いている複製には URL だけが届き (新しいプロセスを起動しない)、
+// 止まっていれば引数付きで起動して URL を開く。URL は --args より前に置く (後ろだと Chrome の引数になる)
+export const openArgs = (paths: Paths, p: Profile, urls: string[]): string[] => {
+  const [, app, , ...flags] = launchArgs(paths, p, [])
+  return ["-a", app as string, ...urls, "--args", ...flags]
+}
+
 export const redirectArgs = (paths: Paths, args: string[]): string[] => ["-na", paths.chromeApp, "--args", ...args]
 
 // ignore: そのまま動かす / relaunch: 止めてその複製のデータフォルダで起動し直す

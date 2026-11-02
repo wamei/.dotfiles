@@ -1,6 +1,9 @@
+import path from "node:path"
+
 // Chrome の Local State (データフォルダ直下の JSON) からプロファイルを読み、複写先に合わせて剪定する
 // picture: アイコンに重ねる画像 (省略時は Chrome が取り込んだ Google アカウントの写真)
-export type Profile = { id: string; name: string; profileDir: string; picture?: string }
+// dirs: open --dir でこのプロファイルに振り分けるディレクトリ (Emacs のタブのプロジェクトなど)
+export type Profile = { id: string; name: string; profileDir: string; picture?: string; dirs?: string[] }
 
 type Json = Record<string, unknown>
 type ProfileSection = {
@@ -38,4 +41,13 @@ export function pruneLocalState(localState: unknown, keep: string): unknown {
     ...(localState as Json),
     profile: { ...profile, info_cache: { [keep]: entry }, profiles_order: [keep], last_used: keep, last_active_profiles: [keep] },
   }
+}
+
+// dir を中に含む dirs を持つプロファイル。先に書いたものを優先する
+export function profileForDir(profiles: Profile[], dir: string, home: string): Profile | undefined {
+  const inside = (base: string): boolean => {
+    const rel = path.relative(path.resolve(base.replace(/^~(?=\/|$)/, home)), path.resolve(dir))
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
+  }
+  return profiles.find((p) => p.dirs?.some(inside))
 }

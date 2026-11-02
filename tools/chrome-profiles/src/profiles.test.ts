@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { profilesFromLocalState, pruneLocalState } from "./profiles"
+import { profileForDir, profilesFromLocalState, pruneLocalState } from "./profiles"
 
 const localState = {
   browser: { enabled_labs_experiments: [] },
@@ -57,4 +57,16 @@ test("剪定すると担当のプロファイルだけが残り、それが最�
 
 test("無いプロファイルで剪定しようとしたら失敗する", () => {
   expect(() => pruneLocalState(localState, "Profile 7")).toThrow("Profile 7")
+})
+
+test("ディレクトリの中にあるプロファイルを選ぶ。~ はホームにする", () => {
+  const ps = [
+    { id: "work", name: "Work", profileDir: "Default" },
+    { id: "client", name: "Client", profileDir: "Profile 2", dirs: ["~/projects/client/", "/srv/client"] },
+  ]
+  expect(profileForDir(ps, "/Users/u/projects/client/app/src", "/Users/u")?.id).toBe("client")
+  expect(profileForDir(ps, "/srv/client", "/Users/u")?.id).toBe("client")
+  // 名前が前方一致するだけの別ディレクトリは当たらない
+  expect(profileForDir(ps, "/Users/u/projects/client-old", "/Users/u")).toBeUndefined()
+  expect(profileForDir(ps, "/Users/u/projects/other", "/Users/u")).toBeUndefined()
 })

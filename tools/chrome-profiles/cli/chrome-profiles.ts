@@ -3,6 +3,8 @@
 //   chrome-profiles seed <id>...            元のデータフォルダを複写して担当外のプロファイルを消す (Chrome を終了して使う)
 //   chrome-profiles build [--quiet] [--settle 秒]   複製を作る/作り直す
 //   chrome-profiles launch <id> [url...]    複製をデータフォルダ付きで起動する
+//   chrome-profiles open <id> <url...>      複製で URL を開く。動いていれば新しいプロセスを起動しない
+//   chrome-profiles open --dir <dir> <url...>  dir を dirs に含むプロファイルで開く。無ければ既定のブラウザ
 //   chrome-profiles classify <bundle> -- <argv...>  監視から呼ばれる。ignore / relaunch <id> / redirect を出す
 //   chrome-profiles redirect <bundle> -- <argv...>  複製に来た起動を、同じ引数で元の Chrome に回す
 //   chrome-profiles finicky                 Finicky の設定から import する finicky.js を書き出す (build も書き出す)
@@ -12,10 +14,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { finickyModule } from "../src/finicky"
-import { classifyLaunch, launchArgs, redirectArgs } from "../src/launch"
+import { classifyLaunch, launchArgs, openArgs, redirectArgs } from "../src/launch"
 import { type Paths, pathsFor } from "../src/paths"
 import { type BuildStamp, planBuild } from "../src/plan"
-import { type Profile, profilesFromLocalState, pruneLocalState } from "../src/profiles"
+import { type Profile, profileForDir, profilesFromLocalState, pruneLocalState } from "../src/profiles"
 
 // アイコンの描き方を変えたら上げる (全部の複製のアイコンを付け直す)
 const ICON_VERSION = 1
@@ -201,12 +203,32 @@ async function cmdBuild(args: string[]) {
   }
 }
 
-function cmdLaunch([id, ...urls]: string[]) {
-  if (!id) fail("usage: chrome-profiles launch <id> [url...]")
-  const p = byId(loadProfiles(), id as string)
+function launchable(id: string): Profile {
+  const p = byId(loadProfiles(), id)
   if (!fs.existsSync(paths.dataDir(p))) fail(`データフォルダがありません。先に chrome-profiles seed ${p.id} を実行してください`)
   if (!fs.existsSync(paths.app(p))) fail(`複製がありません。先に chrome-profiles build を実行してください`)
-  sh(["open", ...launchArgs(paths, p, urls)])
+  return p
+}
+
+function cmdLaunch([id, ...urls]: string[]) {
+  if (!id) fail("usage: chrome-profiles launch <id> [url...]")
+  sh(["open", ...launchArgs(paths, launchable(id as string), urls)])
+}
+
+// Emacs などから URL を開く。launch と違い -n を付けないので、動いている複製に新しいプロセスがちらつかない
+function cmdOpen(args: string[]) {
+  const usage = "usage: chrome-profiles open <id> <url...> | open --dir <dir> <url...>"
+  if (args[0] === "--dir") {
+    const [, dir, ...urls] = args
+    if (!dir || urls.length === 0) fail(usage)
+    const p = profileForDir(loadProfiles(), dir as string, os.homedir())
+    // どのプロファイルにも当たらなければ既定のブラウザ (Finicky) に任せる
+    sh(["open", ...(p ? openArgs(paths, launchable(p.id), urls) : urls)])
+    return
+  }
+  const [id, ...urls] = args
+  if (!id || urls.length === 0) fail(usage)
+  sh(["open", ...openArgs(paths, launchable(id as string), urls)])
 }
 
 function cmdClassify(args: string[]) {
@@ -240,9 +262,10 @@ switch (cmd) {
   case "seed": cmdSeed(rest); break
   case "build": await cmdBuild(rest); break
   case "launch": cmdLaunch(rest); break
+  case "open": cmdOpen(rest); break
   case "classify": cmdClassify(rest); break
   case "redirect": cmdRedirect(rest); break
   case "finicky": writeFinicky(loadProfiles()); break
   case "list": cmdList(); break
-  default: fail("usage: chrome-profiles init|seed|build|launch|classify|redirect|finicky|list")
+  default: fail("usage: chrome-profiles init|seed|build|launch|open|classify|redirect|finicky|list")
 }
