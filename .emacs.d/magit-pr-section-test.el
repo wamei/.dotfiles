@@ -63,18 +63,16 @@
                  "MERGED")))
 
 (ert-deftest magit-pr-section-renders-all-lines ()
-  "見出しに番号・タイトル・状態、本文に URL・ブランチと差分量・チェック・レビュー。"
+  "見出しに番号・タイトル・状態、本文に URL と、ブランチ・差分量・チェック・レビューの 1 行。"
   (should (equal (car (magit-pr-section-test--render (magit-pr-section-test--pr)))
                  "Pull request #42 Add things [OPEN]
   https://github.com/o/r/pull/42
-  main <- feature/x  +120 -30
-  Checks: ✓2 ✗2 ●2 -1
-  Review: APPROVED
+  main <- feature/x  +120 -30  ✓2 ✗2 ●2 -1  APPROVED
 
 ")))
 
 (ert-deftest magit-pr-section-omits-empty-checks-and-review ()
-  "チェックが無ければ Checks 行を、レビュー判定が空なら Review 行を出さない。"
+  "チェックが無ければチェックの件数を、レビュー判定が空ならレビューを出さない。"
   (should (equal (car (magit-pr-section-test--render
                        (magit-pr-section-test--pr 'statusCheckRollup nil
                                                   'reviewDecision "")))

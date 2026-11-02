@@ -2,8 +2,8 @@
 ;;; Commentary:
 ;;
 ;; magit-status の見出しの下に、今のブランチの GitHub の pull request を
-;; 1 section 出す (番号・タイトル・状態・URL・base <- head と差分量・
-;; チェックの結果・レビューの判定)。section の上で RET を押すとブラウザで開く。
+;; 1 section 出す (見出しに番号・タイトル・状態、本文に URL と、base <- head・差分量・
+;; チェックの結果・レビューの判定の 1 行)。section の上で RET を押すとブラウザで開く。
 ;;
 ;; forge は使わず `gh pr view --json' を非同期に呼ぶ。refresh のたびに待つと
 ;; status が遅くなるので、結果は (ワークツリー . ブランチ) ごとにキャッシュして
@@ -150,16 +150,13 @@ magit は section の範囲に section のキーマップを `keymap' プロパ�
                           'font-lock-face 'magit-diffstat-added)
               " "
               (propertize (format "-%d" (alist-get 'deletions pr))
-                          'font-lock-face 'magit-diffstat-removed)
-              "\n")
+                          'font-lock-face 'magit-diffstat-removed))
       (when rollup
-        (insert "  Checks: " (wamei/magit-pr--checks-string rollup) "\n"))
+        (insert "  " (wamei/magit-pr--checks-string rollup)))
       (when (and review (not (string-empty-p review)))
-        (insert "  Review: "
-                (propertize review 'font-lock-face
-                            (wamei/magit-pr--review-face review))
-                "\n"))
-      (insert "\n"))))
+        (insert "  " (propertize review 'font-lock-face
+                                 (wamei/magit-pr--review-face review))))
+      (insert "\n\n"))))
 
 ;;; 取得
 
