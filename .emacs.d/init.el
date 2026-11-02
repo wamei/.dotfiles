@@ -3487,6 +3487,13 @@ sqls は同時に 1 接続しか見ないので、複数 DB を行き来する�
                                                    tab-width)
                                        :insertSpaces ,(if indent-tabs-mode :json-false t)))))
         (cl-call-next-method))))
+  ;; TS 7 の tsc --lsp は、eglot が動的登録に対応していると申告していないのに
+  ;; workspace/didChangeConfiguration を登録しに来て、接続のたびに警告が出る。
+  ;; eglot は登録の有無と関係なく接続時と設定変更時に通知を送るので、受け流すだけでよい。
+  (cl-defmethod eglot-register-capability
+    (_server (_method (eql workspace/didChangeConfiguration)) _id &rest _params)
+    "登録は不要なので何もしない。"
+    nil)
   ;; @prisma/language-server は起動直後に workspace/configuration (section "prisma")
   ;; を要求し、null が返ると settings.enableDiagnostics の参照でクラッシュする
   ;; (31.12.2 で確認)。eglot はこの値を一時バッファ (major-mode 変数だけ設定、
