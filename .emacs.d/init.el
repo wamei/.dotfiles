@@ -1202,6 +1202,28 @@ PROMPT・PREDICATE・REQUIRE-KNOWN と戻り値は本体と同じ。"
   (advice-add 'tab-bar-mouse-down-1 :around #'wamei/tab-bar-drag-frame)
   :global-minor-mode tab-bar-mode)
 
+(leaf browse-url
+  :doc "リンクをタブのプロジェクトに応じた Chrome のプロファイルで開く"
+  ;; プロファイルは tools/chrome-profiles の複製。ディレクトリとプロファイルの
+  ;; 対応はマシンごとの ~/.config/chrome-profiles/config.json の dirs に書き、
+  ;; ここでは持たない。どれにも当たらなければ chrome-profiles が既定の
+  ;; ブラウザ (Finicky) に任せる。
+  :preface
+  (defun wamei/browse-url (url &rest args)
+    "URL をタブのプロジェクト (無ければ `default-directory') に応じた Chrome で開く。
+http(s) 以外や chrome-profiles が無いときは `browse-url-default-browser'。"
+    (let ((dir (or (and (fboundp 'wamei/project-tabs-current-root)
+                        (wamei/project-tabs-current-root))
+                   default-directory)))
+      (if (and dir
+               (not (file-remote-p dir))
+               (string-match-p "\\`https?://" url)
+               (executable-find "chrome-profiles"))
+          (call-process "chrome-profiles" nil 0 nil
+                        "open" "--dir" (expand-file-name dir) url)
+        (apply #'browse-url-default-browser url args))))
+  :custom ((browse-url-browser-function . #'wamei/browse-url)))
+
 (leaf transient
   :doc "magit 等のキー操作メニュー"
   ;; 既定の (display-buffer-in-side-window (side . bottom)) は slot 指定なし
