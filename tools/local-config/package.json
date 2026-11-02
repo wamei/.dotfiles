@@ -1,0 +1,13 @@
+{
+  "name": "local-config",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  },
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "type-check": "tsc --noEmit"
+  },
+  "type": "module"
+}

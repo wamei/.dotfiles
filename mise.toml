@@ -111,6 +111,9 @@ adopt = true
 # 書き戻されており、移動と同じタイミングでは触れないため。
 "~/bin/project-move" = { source = "tools/project-move/cli/project-move.ts", mode = "symlink" }
 "~/bin/claude-state-move" = { source = "tools/project-move/cli/claude-state-move.ts", mode = "symlink" }
+# マシンだけにある設定 (private の dotfiles-local の identities.toml) から git / gh /
+# ssh / chrome-profiles の設定を書き出す。
+"~/bin/local-config" = { source = "tools/local-config/cli/local-config.ts", mode = "symlink" }
 # gh のアカウントを cwd で切り替えるラッパー。~/bin ではなく専用ディレクトリに置き、
 # .config/mise/config.toml の [env] _.path で mise のツールより前に出す。
 "~/.local/libexec/gh-account/gh" = { source = "tools/gh-account/gh", mode = "symlink" }
@@ -294,6 +297,7 @@ run = [
   "cd tools/notes-sync && bun test",
   "cd tools/gh-account && bun test",
   "cd tools/chrome-profiles && bun test",
+  "cd tools/local-config && bun test",
 ]
 
 [tasks."chrome-profiles:install"]
