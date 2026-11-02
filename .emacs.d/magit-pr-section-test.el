@@ -92,6 +92,30 @@
     (should (eq (keymap-lookup map "<remap> <magit-visit-thing>")
                 #'wamei/magit-pr-browse))))
 
+(ert-deftest magit-pr-section-url-is-clickable ()
+  "URL の文字列だけがクリックで開く (mouse-1 は follow-link で mouse-2 になる)。"
+  (with-temp-buffer
+    (magit-section-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (magit-root-section)
+        (wamei/magit-pr--insert (magit-pr-section-test--pr))))
+    (let ((opened nil)
+          (url-pos (progn (goto-char (point-min))
+                          (search-forward "https://") (match-beginning 0)))
+          (title-pos (progn (goto-char (point-min))
+                            (search-forward "Add things") (match-beginning 0))))
+      (should (get-text-property url-pos 'follow-link))
+      (should (get-text-property url-pos 'mouse-face))
+      (should-not (get-text-property title-pos 'follow-link))
+      (should (eq (keymap-lookup (get-text-property url-pos 'keymap) "<mouse-2>")
+                  #'wamei/magit-pr-browse-at-mouse))
+      (cl-letf (((symbol-function 'browse-url) (lambda (url &rest _) (push url opened))))
+        (set-window-buffer (selected-window) (current-buffer))
+        (dolist (pos (list url-pos title-pos))
+          (wamei/magit-pr-browse-at-mouse
+           `(mouse-2 (,(selected-window) ,pos (0 . 0) 0)))))
+      (should (equal opened '("https://github.com/o/r/pull/42"))))))
+
 (ert-deftest magit-pr-section-fetch-parses-output ()
   "コマンドの出力を JSON として読んでコールバックに渡す。"
   (let ((wamei/magit-pr-command

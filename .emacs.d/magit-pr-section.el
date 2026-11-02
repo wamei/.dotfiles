@@ -101,7 +101,9 @@ CheckRun は status と conclusion、StatusContext は state を持つ。"
 
 (defvar-keymap wamei/magit-pr-section-map
   :doc "PR の section の上のキー。"
-  "<remap> <magit-visit-thing>" #'wamei/magit-pr-browse)
+  "<remap> <magit-visit-thing>" #'wamei/magit-pr-browse
+  ;; URL の文字列は follow-link なので mouse-1 のクリックも mouse-2 になる
+  "<mouse-2>" #'wamei/magit-pr-browse-at-mouse)
 
 (defclass wamei/magit-pr-section (magit-section)
   ((keymap :initform 'wamei/magit-pr-section-map)))
@@ -110,6 +112,18 @@ CheckRun は status と conclusion、StatusContext は state を持つ。"
   "point の PR をブラウザで開く。"
   (interactive)
   (browse-url (oref (magit-current-section) value)))
+
+(defun wamei/magit-pr-browse-at-mouse (event)
+  "EVENT でクリックした先が PR の URL ならブラウザで開く。
+magit は section の範囲に section のキーマップを `keymap' プロパティで
+上書きするので、URL の文字列だけにキーマップを付けられない。section の
+キーマップで受けて、クリック位置の `wamei/magit-pr-url' で判定する。"
+  (interactive "e")
+  (let* ((posn (event-end event))
+         (url (with-current-buffer (window-buffer (posn-window posn))
+                (get-text-property (posn-point posn) 'wamei/magit-pr-url))))
+    (when url
+      (browse-url url))))
 
 (defun wamei/magit-pr--insert (pr)
   "PR の section を挿入する。"
@@ -124,7 +138,12 @@ CheckRun は status と conclusion、StatusContext は state を持つ。"
         (alist-get 'title pr) " "
         (propertize (format "[%s]" label)
                     'font-lock-face (wamei/magit-pr--state-face label)))
-      (insert "  " (propertize url 'font-lock-face 'link) "\n")
+      (insert "  " (propertize url 'font-lock-face 'link
+                               'wamei/magit-pr-url url
+                               'mouse-face 'highlight
+                               'follow-link t
+                               'help-echo "mouse-1: ブラウザで開く")
+              "\n")
       (insert (format "  %s <- %s  " (alist-get 'baseRefName pr)
                       (alist-get 'headRefName pr))
               (propertize (format "+%d" (alist-get 'additions pr))
