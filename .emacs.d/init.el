@@ -1286,7 +1286,16 @@ interactive 部が `magit-toplevel' を見るところごと束縛して渡す
   ;; sidebar の幅まで q で巻き戻る。
   :custom ((magit-display-buffer-function . #'magit-display-buffer-fullframe-status-v1)
            (magit-pre-display-buffer-hook . '(wamei/magit-save-main-window))
-           (magit-bury-buffer-function . #'wamei/magit-restore-main-window)))
+           (magit-bury-buffer-function . #'wamei/magit-restore-main-window))
+  :config
+  ;; 今のブランチの PR を見出しの下に出す (magit-pr-section.el)。gh を裏で呼ぶ。
+  ;; magit-section のクラスを定義するので magit を読んだ後に読む。
+  (load (expand-file-name "magit-pr-section"
+                          (file-name-directory (file-truename user-init-file)))
+        nil t)
+  (magit-add-section-hook 'magit-status-sections-hook
+                          #'wamei/magit-insert-pull-request
+                          'magit-insert-status-headers t))
 
 (leaf magit-delta
   :doc "magit の diff を delta (mise で導入) でシンタックスハイライトする"
