@@ -1,4 +1,4 @@
-// dotfiles-local の identities.toml (このマシンでどのディレクトリを誰として扱うか) を読む。
+// .dotfiles-local の identities.toml (このマシンでどのディレクトリを誰として扱うか) を読む。
 // 身元 1 つにつき、git の user・gh のアカウント・ssh の別名ホスト・Chrome のプロファイルを持つ
 import path from "node:path"
 

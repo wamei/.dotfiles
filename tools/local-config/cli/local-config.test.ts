@@ -23,7 +23,7 @@ chrome = "client"
 
 function setup(): { home: string; src: string } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "local-config-"))
-  const src = path.join(home, "dotfiles-local")
+  const src = path.join(home, ".dotfiles-local")
   fs.mkdirSync(src)
   fs.writeFileSync(path.join(src, "identities.toml"), TOML)
   return { home, src }

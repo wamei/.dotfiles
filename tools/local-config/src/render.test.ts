@@ -17,7 +17,7 @@ const gen = "/Users/u/.config/local-config"
 test("gitconfig.local は git を持つ身元のディレクトリごとに includeIf を並べる", () => {
   expect(renderGitconfigLocal([me, client], gen)).toBe(
     [
-      "# local-config が生成する。手で編集しない (dotfiles-local の identities.toml を直して local-config apply)",
+      "# local-config が生成する。手で編集しない (.dotfiles-local の identities.toml を直して local-config apply)",
       "",
       '[includeIf "gitdir:/Users/u/projects/github.com.client/"]',
       "\tpath = /Users/u/.config/local-config/git/client.gitconfig",
@@ -35,7 +35,7 @@ test("includeIf は浅いディレクトリから並べて、深いほうが後�
 test("身元ごとの gitconfig は user を書く", () => {
   expect(renderGitIdentity(client)).toBe(
     [
-      "# local-config が生成する。手で編集しない (dotfiles-local の identities.toml を直して local-config apply)",
+      "# local-config が生成する。手で編集しない (.dotfiles-local の identities.toml を直して local-config apply)",
       "[user]",
       "\tname = client-admin",
       "\temail = admin@client.test",
@@ -47,7 +47,7 @@ test("身元ごとの gitconfig は user を書く", () => {
 test("gh の対応表は gh を持つ身元のディレクトリを 1 行ずつ書く", () => {
   expect(renderGhUsersByDir([me, client, wide])).toBe(
     [
-      "# local-config が生成する。手で編集しない (dotfiles-local の identities.toml を直して local-config apply)",
+      "# local-config が生成する。手で編集しない (.dotfiles-local の identities.toml を直して local-config apply)",
       "# dotfiles の tools/gh-account/gh が読む。cwd を含むもののうち最も深いものが勝つ",
       "/Users/u/projects  me",
       "/Users/u/projects/github.com.client  client-admin",
@@ -59,7 +59,7 @@ test("gh の対応表は gh を持つ身元のディレクトリを 1 行ずつ�
 test("ssh は GitHub の別名ホストをまとめて 443 番に逃がす Match と、Host ブロックを書く", () => {
   expect(renderSshGithub([me, client])).toBe(
     [
-      "# local-config が生成する。手で編集しない (dotfiles-local の identities.toml を直して local-config apply)",
+      "# local-config が生成する。手で編集しない (.dotfiles-local の identities.toml を直して local-config apply)",
       "",
       "# 22 番で github.com に届かない (オフィスの規制など) ときは 443 番 (ssh.github.com) に向ける。",
       "# Host ブロックより先に置くこと (先に決まった値が勝つので Port 22 を上書きできる)。",

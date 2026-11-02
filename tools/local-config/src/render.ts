@@ -1,7 +1,7 @@
 // identities から各ツールの設定を組み立てる。ファイルの読み書きは cli 側
 import type { Identity } from "./identities"
 
-const HEADER = "# local-config が生成する。手で編集しない (dotfiles-local の identities.toml を直して local-config apply)"
+const HEADER = "# local-config が生成する。手で編集しない (.dotfiles-local の identities.toml を直して local-config apply)"
 
 const depth = (dir: string): number => dir.split("/").length
 

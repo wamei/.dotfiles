@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-// マシンだけにある設定 (dotfiles-local の identities.toml) から、各ツールの設定を書き出す
+// マシンだけにある設定 (.dotfiles-local の identities.toml) から、各ツールの設定を書き出す
 //   local-config apply [--dry-run]
-// 定義の場所は $LOCAL_CONFIG_DIR (既定は ~/projects/github.com/wamei/dotfiles-local)
+// 定義の場所は $LOCAL_CONFIG_DIR (既定は ~/projects/github.com/wamei/.dotfiles-local)
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -9,7 +9,7 @@ import { parseIdentities } from "../src/identities"
 import { applyChromeDirs, renderGhUsersByDir, renderGitconfigLocal, renderGitIdentity, renderSshGithub } from "../src/render"
 
 const home = os.homedir()
-const src = process.env.LOCAL_CONFIG_DIR ?? path.join(home, "projects/github.com/wamei/dotfiles-local")
+const src = process.env.LOCAL_CONFIG_DIR ?? path.join(home, "projects/github.com/wamei/.dotfiles-local")
 const gen = path.join(home, ".config/local-config")
 const GENERATED = "# local-config が生成する"
 
