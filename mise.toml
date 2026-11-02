@@ -182,6 +182,9 @@ run = [
   # 署名済みなら何もしない。update は最後にこのタスクを呼ぶので、brew upgrade で
   # 差し替わった Emacs.app もここで署名し直る。
   "sh {{config_root}}/bin/sign-emacs-app.sh",
+  # マシンだけにある設定 (private の wamei/.dotfiles-local) を clone して置き、
+  # local-config apply まで済ませる。clone できなければ手順を出すだけで止めない。
+  "sh {{config_root}}/bin/bootstrap-local.sh",
 ]
 
 # ---------------------------------------------------------------------------
