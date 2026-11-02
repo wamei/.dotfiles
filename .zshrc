@@ -211,7 +211,6 @@ export PATH="$HOME/.local/bin:$PATH"
 # brew end
 
 export PATH=${HOME}/bin:${PATH}
-export PATH=${HOME}/fvm/default/bin:${PATH}
 
 # bun (global bin)。PATH から引きたい npm パッケージは mise 管理に寄せた
 # (~/.config/mise/config.toml) ので普段は空。手で bun add -g したときの受け皿。
