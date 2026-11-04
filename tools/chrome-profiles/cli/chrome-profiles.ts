@@ -16,7 +16,7 @@ import path from "node:path"
 import { finickyModule } from "../src/finicky"
 import { classifyLaunch, launchArgs, openArgs, redirectArgs } from "../src/launch"
 import { type Paths, pathsFor } from "../src/paths"
-import { type BuildStamp, planBuild } from "../src/plan"
+import { type BuildStamp, pickSource, planBuild } from "../src/plan"
 import { type Profile, profileForDir, profilesFromLocalState, pruneLocalState } from "../src/profiles"
 
 // アイコンの描き方を変えたら上げる (全部の複製のアイコンを付け直す)
@@ -114,12 +114,19 @@ function setIcon(p: Profile) {
   sh([helper("chrome-profiles-icon"), paths.chromeApp, pictureOf(p) ?? "-", paths.app(p)])
 }
 
+const versionOf = (app: string): string => sh(["plutil", "-extract", "CFBundleShortVersionString", "raw", `${app}/Contents/Info.plist`])
+
+// setIcon が付けたアイコンは .app 直下の Icon\r に入る。Google の更新が複製を上書きすると消える
+const hasIcon = (app: string): boolean => fs.existsSync(path.join(app, "Icon\r"))
+
 // 中身の差し替えは Contents だけ入れ替える。.app のディレクトリ自体は残すので Dock の固定が外れない
-function replaceContents(p: Profile) {
+function replaceContents(p: Profile, sourceApp: string) {
   const app = paths.app(p)
+  // 更新が入った複製そのものが複写元なら、中身はもう新しい
+  if (sourceApp === app) return
   const staged = `${app}.staged`
   fs.rmSync(staged, { recursive: true, force: true })
-  sh(["cp", "-c", "-R", paths.chromeApp, staged])
+  sh(["cp", "-c", "-R", sourceApp, staged])
   // 更新の途中で写すと中身が揃っていない。署名で確かめて、だめなら次の機会に回す
   if (Bun.spawnSync(["codesign", "--verify", staged], { stderr: "pipe" }).exitCode !== 0) {
     fs.rmSync(staged, { recursive: true, force: true })
@@ -176,15 +183,18 @@ async function cmdBuild(args: string[]) {
   try {
     const stampsFile = path.join(paths.state, "build.json")
     const stamps = (fs.existsSync(stampsFile) ? readJson(stampsFile) : {}) as Record<string, BuildStamp>
-    const chromeVersion = sh(["plutil", "-extract", "CFBundleShortVersionString", "raw", `${paths.chromeApp}/Contents/Info.plist`])
+    const clones = profiles.map((p) => paths.app(p)).filter((app) => fs.existsSync(app))
+    const source = pickSource({ path: paths.chromeApp, version: versionOf(paths.chromeApp) }, clones.map((app) => ({ path: app, version: versionOf(app) })))
+    if (source.path !== paths.chromeApp) info(`元の Chrome より新しい複製から写します: ${source.path} (${source.version})`)
+    const chromeVersion = source.version
     let failed = false
     for (const p of profiles) {
       const app = paths.app(p)
       const picture = pictureOf(p)
       const current: BuildStamp = { chromeVersion, pictureHash: picture ? sha256(picture) : "", iconVersion: ICON_VERSION }
-      const action = planBuild({ exists: fs.existsSync(app), running: runningUnder(app), recorded: stamps[p.id], current })
+      const action = planBuild({ exists: fs.existsSync(app), running: runningUnder(app), hasIcon: hasIcon(app), recorded: stamps[p.id], current })
       try {
-        if (action === "create" || action === "rebuild") replaceContents(p)
+        if (action === "create" || action === "rebuild") replaceContents(p, source.path)
         if (action === "create" || action === "rebuild" || action === "icon") {
           setIcon(p)
           // アイコンだけ付け直したときは中身の版を変えない

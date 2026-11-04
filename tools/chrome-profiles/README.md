@@ -11,6 +11,7 @@ Chrome のプロファイルごとに、Dock と Cmd+Tab で別アプリにな�
 - 複製の識別子は元と同じ `com.google.Chrome` なので、PWA の起動用アプリ (`~/Applications/Chrome Apps.localized`) などが元の Chrome のつもりで複製を起動することがある (元のデータフォルダと `--no-startup-window` が付いてくる)。元のデータフォルダを指定した起動は、監視が止めて同じ引数で元の Chrome に回す。
 - 複製は `cp -c` (APFS のクローン) なので、ディスクはほぼ食わない。Chrome が更新されたら (`Info.plist` の変化を launchd が拾う) 作り直す。動いている複製は終了したときに作り直す。
 - 作り直しは `.app` の中の `Contents` だけを入れ替えるので、Dock の固定は外れない。
+- 動いている Chrome は自分の場所を Google の更新 (GoogleUpdater) に登録し直すので、複製しか使っていないと、更新は元の Chrome ではなく複製に入る (複製の `.app` が上書きされてアイコンも消える)。`build` は元の Chrome と複製のうち一番新しい版から写し (古い版に戻すと、新しい版で開いたプロファイルを Chrome が開けない)、アイコン (`.app` 直下の `Icon\r`) が消えていれば動いていても付け直す。元の Chrome は、それ自体を起動したときに更新される。
 
 ## インストール
 
