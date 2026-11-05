@@ -117,3 +117,12 @@ test("chrome-profiles の設定は chrome を指す身元の dirs で置き換�
   // 元の設定は書き換えない
   expect(config.profiles[0]).toHaveProperty("dirs")
 })
+
+test("chrome-profiles の設定の titles も chrome を指す身元から差し替える", () => {
+  const config = { profiles: [{ id: "client", name: "Client", profileDir: "Profile 2", titles: ["Old Org"] }, { id: "work", name: "Work", profileDir: "Default", titles: ["Gone"] }] }
+  const { config: out } = applyChromeDirs(config, [{ ...client, titles: ["Client Corporation"] }])
+  expect(out.profiles).toEqual([
+    { id: "client", name: "Client", profileDir: "Profile 2", dirs: ["/Users/u/projects/github.com.client"], titles: ["Client Corporation"] },
+    { id: "work", name: "Work", profileDir: "Default" },
+  ])
+})

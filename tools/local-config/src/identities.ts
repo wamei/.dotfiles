@@ -14,9 +14,11 @@ export type Identity = {
   ssh: SshHost[]
   // chrome-profiles の id (Emacs のリンクをこのプロファイルで開く)
   chrome?: string
+  // リンクを押したアプリの窓のタイトルに含まれる文字列 (Teams の組織名、Slack のワークスペース名など)。chrome のプロファイルで開く
+  titles?: string[]
 }
 
-const KEYS = new Set(["id", "dirs", "git", "gh", "ssh", "chrome"])
+const KEYS = new Set(["id", "dirs", "git", "gh", "ssh", "chrome", "titles"])
 
 type Raw = Record<string, unknown>
 
@@ -63,6 +65,11 @@ export function parseIdentities(toml: string, home: string): Identity[] {
     if (raw.chrome !== undefined) {
       if (!str(raw.chrome)) fail("chrome は chrome-profiles の id にしてください")
       out.chrome = raw.chrome as string
+    }
+    if (raw.titles !== undefined) {
+      if (!Array.isArray(raw.titles) || raw.titles.length === 0 || !raw.titles.every(str)) fail("titles は窓のタイトルに含まれる文字列の配列にしてください")
+      if (!out.chrome) fail("titles は chrome と一緒に書いてください (どの Chrome で開くか)")
+      out.titles = raw.titles as string[]
     }
     return out
   })

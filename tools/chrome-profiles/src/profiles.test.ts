@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { profileForDir, profilesFromLocalState, pruneLocalState } from "./profiles"
+import { profileForDir, profileForWindowTitle, profilesFromLocalState, pruneLocalState } from "./profiles"
 
 const localState = {
   browser: { enabled_labs_experiments: [] },
@@ -80,4 +80,22 @@ test("dirs の * と ? は / をまたがない 1 段の中で当たる", () => 
   expect(profileForDir(ps, "/Users/u/projects/github.com/org/sub/mc-gpt", "/Users/u")).toBeUndefined()
   expect(profileForDir(ps, "/Users/u/projects/github.com/org/xmc", "/Users/u")).toBeUndefined()
   expect(profileForDir(ps, "/Users/u/projects/github.com/org", "/Users/u")).toBeUndefined()
+})
+
+test("窓のタイトルに titles の文字列を含むプロファイルを選ぶ。先に書いたものを優先する", () => {
+  const ps = [
+    { id: "work", name: "Work", profileDir: "Default" },
+    { id: "mc", name: "MC", profileDir: "Profile 5", titles: ["Example Corporation Group"] },
+    { id: "other", name: "Other", profileDir: "Profile 6", titles: ["Example"] },
+  ]
+  expect(profileForWindowTitle(ps, "チャット | 山田 太郎 | Example Corporation Group(Example CI) | a@example.com")?.id).toBe("mc")
+  expect(profileForWindowTitle(ps, "チャット | Example | Microsoft Teams")?.id).toBe("other")
+  expect(profileForWindowTitle(ps, "チャット | Another Org | Microsoft Teams")).toBeUndefined()
+  // タイトルを読めなかったときは空文字が来る
+  expect(profileForWindowTitle(ps, "")).toBeUndefined()
+})
+
+test("Teams 以外のアプリの窓のタイトルでも同じように選ぶ", () => {
+  const ps = [{ id: "mc", name: "MC", profileDir: "Profile 5", titles: ["Example Workspace"] }]
+  expect(profileForWindowTitle(ps, "general (チャンネル) - Example Workspace - Slack")?.id).toBe("mc")
 })

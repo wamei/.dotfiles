@@ -9,6 +9,8 @@ export const pathsFor = (home: string) => ({
   config: path.join(home, ".config/chrome-profiles/config.json"),
   finicky: path.join(home, ".config/chrome-profiles/finicky.js"),
   state: path.join(home, ".local/state/chrome-profiles"),
+  // Teams などから開かれたリンクを、そのときの前面の窓のタイトルを添えて open --title に渡す補助アプリ
+  windowApp: path.join(home, ".local/share/chrome-profiles/chrome-profiles-window.app"),
   app: (p: Profile) => path.join(home, "Applications", `Chrome ${p.name}.app`),
   dataDir: (p: Profile) => path.join(home, "Library/Application Support/Chrome Profiles", p.id),
 })

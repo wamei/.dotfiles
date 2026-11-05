@@ -5,6 +5,7 @@
 //   chrome-profiles launch <id> [url...]    複製をデータフォルダ付きで起動する
 //   chrome-profiles open <id> <url...>      複製で URL を開く。動いていれば新しいプロセスを起動しない
 //   chrome-profiles open --dir <dir> <url...>  dir を dirs に含むプロファイルで開く。無ければ既定のブラウザ
+//   chrome-profiles open --title <title> <url...>  窓のタイトルに titles の文字列を含むプロファイルで開く
 //   chrome-profiles classify <bundle> -- <argv...>  監視から呼ばれる。ignore / relaunch <id> / redirect を出す
 //   chrome-profiles redirect <bundle> -- <argv...>  複製に来た起動を、同じ引数で元の Chrome に回す
 //   chrome-profiles finicky                 Finicky の設定から import する finicky.js を書き出す (build も書き出す)
@@ -17,7 +18,7 @@ import { finickyModule } from "../src/finicky"
 import { classifyLaunch, launchArgs, openArgs, redirectArgs } from "../src/launch"
 import { type Paths, pathsFor } from "../src/paths"
 import { type BuildStamp, pickSource, planBuild } from "../src/plan"
-import { type Profile, profileForDir, profilesFromLocalState, pruneLocalState } from "../src/profiles"
+import { type Profile, profileForDir, profileForWindowTitle, profilesFromLocalState, pruneLocalState } from "../src/profiles"
 
 // アイコンの描き方を変えたら上げる (全部の複製のアイコンを付け直す)
 const ICON_VERSION = 1
@@ -234,12 +235,21 @@ function cmdLaunch([id, ...urls]: string[]) {
 
 // Emacs などから URL を開く。launch と違い -n を付けないので、動いている複製に新しいプロセスがちらつかない
 function cmdOpen(args: string[]) {
-  const usage = "usage: chrome-profiles open <id> <url...> | open --dir <dir> <url...>"
+  const usage = "usage: chrome-profiles open <id> <url...> | open --dir <dir> <url...> | open --title <title> <url...>"
   if (args[0] === "--dir") {
     const [, dir, ...urls] = args
     if (!dir || urls.length === 0) fail(usage)
     const p = profileForDir(loadProfiles(), dir as string, os.homedir())
     // どのプロファイルにも当たらなければ既定のブラウザ (Finicky) に任せる
+    sh(["open", ...(p ? openArgs(paths, launchable(p.id), urls) : urls)])
+    return
+  }
+  // 補助アプリ (chrome-profiles-window) から呼ばれる。title はリンクを押したときに前面にあった窓のタイトル (読めなければ空)
+  if (args[0] === "--title") {
+    const [, title, ...urls] = args
+    if (title === undefined || urls.length === 0) fail(usage)
+    const p = profileForWindowTitle(loadProfiles(), title as string)
+    // 当たらなければ既定のブラウザ (Finicky) に戻す。開いた元はリンクを押したアプリではないので Finicky はここに回さない
     sh(["open", ...(p ? openArgs(paths, launchable(p.id), urls) : urls)])
     return
   }

@@ -17,5 +17,11 @@ export function finickyModule(paths: Paths, profiles: Profile[]): string {
     ...entries,
     "}",
     "",
+    "// 窓のタイトルで振り分けるアプリ (Teams など) から開かれたリンク用。handlers に",
+    "// { match: (url, { opener }) => [\"com.microsoft.teams2\"].includes(opener?.bundleId), browser: windowRouter }",
+    "// Finicky はリンクを受けると自分を前面に出すので、押したアプリ (opener) の bundleId を引数で補助アプリに渡す。",
+    "// -n で毎回起動し直すので、補助アプリが動いていても引数が届く (補助アプリは Dock に出ない)",
+    `export const windowRouter = (url, { opener }) => ({ name: ${JSON.stringify(paths.windowApp)}, appType: \"path\", args: [\"-n\", url.href, \"--args\", \"--opener\", opener?.bundleId ?? \"\"] })`,
+    "",
   ].join("\n")
 }

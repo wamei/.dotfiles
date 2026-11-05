@@ -42,3 +42,18 @@ test("名前やパスに引用符があっても壊れない", async () => {
   const cp = (await import(file)).chromeProfiles
   expect(cp.q(new URL("https://x.test/")).name).toBe("/Users/u/Applications/Chrome a\"b`c.app")
 })
+
+test("窓のタイトルで振り分けるリンクは、タイトルを読む補助アプリに URL ごと渡す", async () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cp-finicky-")), "finicky.js")
+  fs.writeFileSync(file, finickyModule(paths, profiles))
+  const { windowRouter } = await import(file)
+  // Finicky はリンクを受けると自分を前面に出すので、補助アプリからは押したアプリが分からない。
+  // Finicky が知っている opener の bundleId を引数で渡す。-n で毎回起動するので、引数は必ず届く
+  expect(windowRouter(new URL("https://example.com/a"), { opener: { name: "Microsoft Teams", bundleId: "com.microsoft.teams2", path: "/Applications/Microsoft Teams.app" } })).toEqual({
+    name: "/Users/u/.local/share/chrome-profiles/chrome-profiles-window.app",
+    appType: "path",
+    args: ["-n", "https://example.com/a", "--args", "--opener", "com.microsoft.teams2"],
+  })
+  // opener が無ければ空で渡す (補助アプリは既定のブラウザに戻す)
+  expect(windowRouter(new URL("https://example.com/a"), { opener: null }).args).toEqual(["-n", "https://example.com/a", "--args", "--opener", ""])
+})

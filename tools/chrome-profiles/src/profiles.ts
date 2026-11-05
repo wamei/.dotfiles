@@ -3,7 +3,8 @@ import path from "node:path"
 // Chrome の Local State (データフォルダ直下の JSON) からプロファイルを読み、複写先に合わせて剪定する
 // picture: アイコンに重ねる画像 (省略時は Chrome が取り込んだ Google アカウントの写真)
 // dirs: open --dir でこのプロファイルに振り分けるディレクトリ (Emacs のタブのプロジェクトなど)
-export type Profile = { id: string; name: string; profileDir: string; picture?: string; dirs?: string[] }
+// titles: open --title でこのプロファイルに振り分ける、リンクを押したアプリの窓のタイトルに含まれる文字列 (Teams の組織名など)
+export type Profile = { id: string; name: string; profileDir: string; picture?: string; dirs?: string[]; titles?: string[] }
 
 type Json = Record<string, unknown>
 type ProfileSection = {
@@ -52,4 +53,10 @@ export function profileForDir(profiles: Profile[], dir: string, home: string): P
     return new RegExp(`^${re}(?:/.*)?$`).test(path.resolve(dir))
   }
   return profiles.find((p) => p.dirs?.some(inside))
+}
+
+// 窓のタイトルに titles の文字列を含むプロファイル。先に書いたものを優先する
+export function profileForWindowTitle(profiles: Profile[], title: string): Profile | undefined {
+  if (title === "") return undefined
+  return profiles.find((p) => p.titles?.some((s) => s !== "" && title.includes(s)))
 }

@@ -44,3 +44,10 @@ test("dirs のワイルドカードはそのまま残す (~ だけ展開する)"
   const ids = parseIdentities(`[[identity]]\nid = "mc"\ndirs = ["~/projects/*/mc*/"]\nchrome = "mc"\n`, "/h")
   expect(ids[0]?.dirs).toEqual(["/h/projects/*/mc*"])
 })
+
+test("titles は窓のタイトルに含まれる文字列の配列で、chrome と一緒に書く", () => {
+  const ids = parseIdentities(`[[identity]]\nid = "mc"\ndirs = ["/a"]\nchrome = "mc"\ntitles = ["Example Corporation Group"]\n`, "/h")
+  expect(ids[0]?.titles).toEqual(["Example Corporation Group"])
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\ntitles = ["Org"]\n`, "/h")).toThrow(/x: titles は chrome/)
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\nchrome = "x"\ntitles = "Org"\n`, "/h")).toThrow(/x: titles は窓のタイトルに含まれる文字列の配列/)
+})

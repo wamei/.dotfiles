@@ -26,6 +26,13 @@ for label in $labels; do
 done
 
 sh "$here/swift/build.sh" "$bin"
+# Teams などから開かれたリンクを受け、前面の窓のタイトルで振り分ける補助アプリ。Finicky は open -a で開くので .app にする
+# (以前の名前 chrome-profiles-teams.app は消す)
+rm -rf "$HOME/.local/share/chrome-profiles/chrome-profiles-teams.app"
+window_app="$HOME/.local/share/chrome-profiles/chrome-profiles-window.app"
+mkdir -p "$window_app/Contents/MacOS"
+cp "$here/swift/window-Info.plist" "$window_app/Contents/Info.plist"
+swiftc -O "$here/swift/window.swift" -o "$window_app/Contents/MacOS/chrome-profiles-window"
 (cd "$here" && bun install --frozen-lockfile && bun build --compile cli/chrome-profiles.ts --outfile "$bin/chrome-profiles")
 # 複製は Google の署名付きの .app なので、launchd から動く build が中身を差し替えたりアイコンを付けたりするには
 # 「アプリの管理」の許可が要る (無いと EPERM)。ad-hoc 署名のままだと許可が cdhash に結び付き、作り直すたびに外れる。
@@ -39,7 +46,10 @@ if [ -n "$identity" ]; then
   for name in icon watch; do
     codesign -f -s "$identity" --identifier "jp.wamei.chrome-profiles-$name" "$bin/chrome-profiles-$name"
   done
+  # 窓のタイトルを読む「アクセシビリティ」の許可も、作り直して外れないようにする (identifier は Info.plist から)
+  codesign -f -s "$identity" "$window_app"
 else
+  codesign -f -s - "$window_app"
   echo "警告: コード署名の証明書が無いので ad-hoc 署名のままです。作り直すたびに「アプリの管理」の許可を与え直してください" >&2
 fi
 for label in $labels; do

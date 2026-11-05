@@ -42,6 +42,7 @@ launchd から動く `build` が複製 (Google の署名付きの `.app`) を書
 | `launch <id> [url...]` | 複製をデータフォルダ付きで起動する。動いていれば URL をそこで開く |
 | `open <id> <url...>` | 複製で URL を開く。Finicky と同じく `-n` を付けないので、動いている複製に新しいプロセスがちらつかない |
 | `open --dir <dir> <url...>` | `dir` を設定の `dirs` に含むプロファイルで開く。どれにも当たらなければ既定のブラウザで開く |
+| `open --title <title> <url...>` | 窓のタイトルに設定の `titles` の文字列を含むプロファイルで開く。補助アプリ (`chrome-profiles-window`) から呼ばれる |
 | `finicky` | Finicky の設定から import する `~/.config/chrome-profiles/finicky.js` を書き出す (`build` も毎回書き出す) |
 | `list` | 設定と、複写・複製の有無 |
 | `classify` / `redirect` | 監視から呼ばれる。起動の引数から、そのまま動かす・その複製として起動し直す・元の Chrome に回す、を決めて実行する |
@@ -70,6 +71,7 @@ export default {
 
 - Finicky は `open -a <複製> <URL> --args --user-data-dir=… --profile-directory=…` を実行する (`args` に `--args` があると Finicky は自分では付け足さず、URL も足さないので、URL を `--args` の前に置く)。複製が動いていれば URL だけがそのアプリに届き、新しいプロセスは起動しない。止まっていれば引数付きで起動して URL を開く。`-n` を付けると、リンクのたびに複製のプロセスがもう 1 つ起動して Dock にちらつく。
 - `logRequests: false` にしても、それまで開いていたログファイルには書き続ける。設定を変えたら Finicky を再起動する。
+- 設定ファイルが symlink だと、Finicky が変化に気付かず古い設定のまま動き続けることがある (2026-11 に、11/2 の設定のまま止まっていた)。振り分けが変わらないときは Finicky を終了して起動し直す (`~/Library/Caches/Finicky/finicky_bundle_*.js` に今の設定が入っているかで確かめられる)。
 - Finicky のキャッシュは設定ファイル自体の更新時刻しか見ない。`chrome-profiles` は書き出した内容が変わったら Finicky の設定ファイルを同じ中身で書き直して読み直させる。
 
 ## Emacs からプロファイルを指定して開く
@@ -82,6 +84,25 @@ Finicky にはどの Emacs のタブから開いたかが届かないので、Em
 ```json
 { "id": "client", "name": "Client", "profileDir": "Profile 2", "dirs": ["~/projects/github.com.client/"] }
 ```
+
+## Teams などのリンクを、押した画面の組織で振り分ける
+
+Teams や Slack から開いたリンクは、Finicky には「そのアプリから来た」としか届かず、どの組織 (ワークスペース) の画面で押したかが分からない。
+そこで、そうしたアプリからのリンクを補助アプリ `~/.local/share/chrome-profiles/chrome-profiles-window.app` に回す。
+Finicky はリンクを受けると自分を前面に出すので、前面のアプリを見ても押したアプリは分からない。Finicky が知っている押したアプリ (`opener`) の bundleId を `--opener` で渡し、補助アプリはそのアプリの前面の窓のタイトルを読んで、`chrome-profiles open --title <タイトル> <url>` に渡す。
+タイトルに設定の `titles` の文字列を含むプロファイルで開き、どれにも当たらなければ既定のブラウザ (Finicky) に戻す (開いた元が補助アプリになるので、Finicky はもう一度回さない)。
+
+Teams の窓のタイトルは `チャット | <チャット名> | <組織名>(<テナント名>) | <アカウント>` の形で、組織名が入る。
+
+```js
+import { chromeProfiles as cp, windowRouter } from "/Users/<you>/.config/chrome-profiles/finicky.js"
+// handlers の先頭に。タイトルで振り分けたいアプリの bundleId を並べる
+{ match: (url, { opener }) => ["com.microsoft.teams2"].includes(opener?.bundleId), browser: windowRouter },
+```
+
+- 振り分けの文字列は `identities.toml` の身元に `titles = ["組織名"]` で書き、`tools/local-config` が設定の `titles` に書き込む。
+- 窓のタイトルを読むには補助アプリに「アクセシビリティ」の許可が要る。許可を求めるダイアログは出ないことがあるので、システム設定 > プライバシーとセキュリティ > アクセシビリティ の `+` で補助アプリを加える (許可するまでは既定のブラウザで開く)。`install.sh` が証明書で署名するので、作り直しても許可は残る。
+- ログは `~/.local/state/chrome-profiles/window.log` (押したアプリと、読めたタイトルも残る)。
 
 ## アイコンの画像
 

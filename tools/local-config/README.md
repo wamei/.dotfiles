@@ -29,6 +29,7 @@ git = { name = "client-admin", email = "admin@client.example" }
 gh = "client-admin"
 ssh = [{ host = "github.com.client", hostname = "github.com", key = "~/.ssh/client" }]
 chrome = "client"   # chrome-profiles の id
+titles = ["Client Inc."] # 窓のタイトルに含まれる文字列 (Teams の組織名など。その画面で押したリンクを chrome で開く。chrome と一緒に書く)
 ```
 
 ## 書き出すもの
@@ -39,7 +40,7 @@ chrome = "client"   # chrome-profiles の id
 | `~/.config/local-config/git/<id>.gitconfig` | `git` の user | 上の includeIf |
 | `~/.config/gh/users-by-dir` | `gh` を持つ身元の `dirs` | `tools/gh-account/gh` |
 | `~/.config/local-config/ssh/github` | `ssh` の Host ブロックと、GitHub の別名ホストをまとめて 443 番に逃がす `Match` | `~/.ssh/config` の `Include` |
-| `~/.config/chrome-profiles/config.json` の `dirs` | `chrome` を指す身元の `dirs` (ほかのキーは触らない) | `chrome-profiles open --dir` (Emacs のリンク) |
+| `~/.config/chrome-profiles/config.json` の `dirs` | `chrome` を指す身元の `dirs` と `titles` (ほかのキーは触らない) | `chrome-profiles open --dir` (Emacs のリンク) / `open --title` (Teams などのリンク) |
 
 - 中身が同じなら書かない。生成したものでないファイルを初めて上書きするときは `<ファイル>.pre-local-config` に退避する。
 - git の includeIf は後に読んだものが勝つので、浅いディレクトリから並べる (深いほうが勝つ)。
