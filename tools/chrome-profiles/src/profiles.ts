@@ -45,9 +45,11 @@ export function pruneLocalState(localState: unknown, keep: string): unknown {
 
 // dir を中に含む dirs を持つプロファイル。先に書いたものを優先する
 export function profileForDir(profiles: Profile[], dir: string, home: string): Profile | undefined {
+  // * と ? は git の includeIf "gitdir:" と同じく / をまたがない
   const inside = (base: string): boolean => {
-    const rel = path.relative(path.resolve(base.replace(/^~(?=\/|$)/, home)), path.resolve(dir))
-    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
+    const glob = path.resolve(base.replace(/^~(?=\/|$)/, home))
+    const re = glob.replace(/[.+^${}()|[\]\\*?]/g, (c) => (c === "*" ? "[^/]*" : c === "?" ? "[^/]" : `\\${c}`))
+    return new RegExp(`^${re}(?:/.*)?$`).test(path.resolve(dir))
   }
   return profiles.find((p) => p.dirs?.some(inside))
 }

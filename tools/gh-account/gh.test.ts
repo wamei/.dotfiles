@@ -143,3 +143,16 @@ test("PATH に本物の gh が無ければ自分を呼び続けずに失敗す�
   expect(r.code).not.toBe(0);
   expect(r.err).toContain("gh");
 });
+
+test("ディレクトリの * と ? は / をまたがない 1 段の中で当たる", () => {
+  writeMap(`${home}/projects me\n${home}/projects/*/mc* mc-user\n`);
+  expect(run(join(home, "projects/org/mc-gpt/src"), ["api"]).out).toBe(
+    "token=tok-mc-user args=api",
+  );
+  expect(run(join(home, "projects/org/sub/mc-gpt"), ["api"]).out).toBe(
+    "token=tok-me args=api",
+  );
+  expect(run(join(home, "projects/org/other"), ["api"]).out).toBe(
+    "token=tok-me args=api",
+  );
+});

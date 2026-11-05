@@ -39,3 +39,8 @@ test("書き間違いは id を添えてエラーにする", () => {
   expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\n[[identity]]\nid = "x"\ndirs = ["/b"]\n`, "/h")).toThrow(/x: id が重複/)
   expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["a"]\n`, "/h")).toThrow(/x: dirs は絶対パスか ~/)
 })
+
+test("dirs のワイルドカードはそのまま残す (~ だけ展開する)", () => {
+  const ids = parseIdentities(`[[identity]]\nid = "mc"\ndirs = ["~/projects/*/mc*/"]\nchrome = "mc"\n`, "/h")
+  expect(ids[0]?.dirs).toEqual(["/h/projects/*/mc*"])
+})

@@ -22,6 +22,7 @@ if ! whence -p gh >/dev/null; then
   exit 127
 fi
 
+setopt extended_glob
 map=$HOME/.config/gh/users-by-dir
 if [[ -z $GH_TOKEN && $1 != auth && -r $map ]]; then
   best= user=
@@ -29,7 +30,11 @@ if [[ -z $GH_TOKEN && $1 != auth && -r $map ]]; then
     [[ -z $dir || $dir == \#* ]] && continue
     dir=${dir/#\~/$HOME}
     dir=${dir%/}
-    if [[ $PWD/ == $dir/* && ${#dir} -gt ${#best} ]]; then
+    # * と ? は git の includeIf "gitdir:" と同じく / をまたがない。それ以外の文字はそのまま比べる
+    pat=${(b)dir}
+    pat=${pat//\\\*/[^\/]#}
+    pat=${pat//\\\?/[^\/]}
+    if [[ $PWD/ == ${~pat}/* && ${#dir} -gt ${#best} ]]; then
       best=$dir user=$u
     fi
   done < $map

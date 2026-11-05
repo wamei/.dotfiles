@@ -76,7 +76,7 @@ export default {
 
 Finicky にはどの Emacs のタブから開いたかが届かないので、Emacs (`init.el` の `browse-url` ブロック) は http(s) のリンクを
 `chrome-profiles open --dir <タブのプロジェクト (無ければ default-directory)> <url>` で開く。
-どのディレクトリをどのプロファイルで開くかは、設定のプロファイルの `dirs` で決まる (取引先の名前が入るので dotfiles には書かない)。`dirs` は `tools/local-config` が private の `identities.toml` から書き込む。
+どのディレクトリをどのプロファイルで開くかは、設定のプロファイルの `dirs` で決まる (取引先の名前が入るので dotfiles には書かない)。`dirs` は `tools/local-config` が private の `identities.toml` から書き込む。`dirs` の `*` と `?` は `/` をまたがない 1 段の中で当たる (`~/projects/github.com/*/mc*` は各 owner の下の `mc` で始まるリポジトリとその中)。
 どれにも当たらなければ既定のブラウザ (Finicky) に任せる。
 
 ```json

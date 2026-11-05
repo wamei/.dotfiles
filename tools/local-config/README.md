@@ -44,4 +44,5 @@ chrome = "client"   # chrome-profiles の id
 - 中身が同じなら書かない。生成したものでないファイルを初めて上書きするときは `<ファイル>.pre-local-config` に退避する。
 - git の includeIf は後に読んだものが勝つので、浅いディレクトリから並べる (深いほうが勝つ)。
 - `~/.ssh/config` 自体は生成しない。.dotfiles-local の `files/ssh/config` に置き、そこから生成した `ssh/github` を `Include` する。
+- `dirs` には `*` と `?` が書ける (`"~/projects/github.com/*/mc*"`)。git の `includeIf "gitdir:"` と同じく `/` をまたがず、git・gh・chrome-profiles で同じ意味になる。`{a,b}` は git が解釈しないので使えない。
 - chrome-profiles の `config.json` はプロファイルの対応 (`profileDir`) がマシンの Chrome ごとに違うので、`dirs` だけを差し替える。chrome-profiles が無いマシンでは飛ばす。

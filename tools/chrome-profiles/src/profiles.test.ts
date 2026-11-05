@@ -70,3 +70,14 @@ test("ディレクトリの中にあるプロファイルを選ぶ。~ はホー
   expect(profileForDir(ps, "/Users/u/projects/client-old", "/Users/u")).toBeUndefined()
   expect(profileForDir(ps, "/Users/u/projects/other", "/Users/u")).toBeUndefined()
 })
+
+test("dirs の * と ? は / をまたがない 1 段の中で当たる", () => {
+  const ps = [{ id: "mc", name: "MC", profileDir: "Profile 5", dirs: ["~/projects/github.com/*/mc*", "~/projects/github.com/*/quirre?"] }]
+  expect(profileForDir(ps, "/Users/u/projects/github.com/org/mc-gpt", "/Users/u")?.id).toBe("mc")
+  expect(profileForDir(ps, "/Users/u/projects/github.com/org/mcwf-web/src/app", "/Users/u")?.id).toBe("mc")
+  expect(profileForDir(ps, "/Users/u/projects/github.com/other/quirrel", "/Users/u")?.id).toBe("mc")
+  // * は / をまたがないので、1 段深い所の mc は当たらない
+  expect(profileForDir(ps, "/Users/u/projects/github.com/org/sub/mc-gpt", "/Users/u")).toBeUndefined()
+  expect(profileForDir(ps, "/Users/u/projects/github.com/org/xmc", "/Users/u")).toBeUndefined()
+  expect(profileForDir(ps, "/Users/u/projects/github.com/org", "/Users/u")).toBeUndefined()
+})
