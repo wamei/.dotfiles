@@ -160,6 +160,9 @@ function writeFinicky(profiles: Profile[]) {
   }
 }
 
+const notify = (message: string) =>
+  Bun.spawnSync(["osascript", "-e", `display notification ${JSON.stringify(message)} with title "chrome-profiles"`], { stderr: "pipe" })
+
 async function cmdBuild(args: string[]) {
   quiet = args.includes("--quiet")
   const settle = Number(args[args.indexOf("--settle") + 1] ?? 0)
@@ -207,7 +210,11 @@ async function cmdBuild(args: string[]) {
         console.error(`${p.name}: ${(e as Error).message}`)
       }
     }
-    if (failed) process.exitCode = 1
+    if (failed) {
+      process.exitCode = 1
+      // launchd から動くと失敗は build.log にしか残らず、気付くのはアイコンがフォルダになってから。通知で知らせる
+      if (quiet) notify("Chrome の複製を更新できませんでした。「アプリの管理」の許可を確かめるか、chrome-profiles build を手で実行してください")
+    }
   } finally {
     fs.rmSync(lock, { force: true })
   }

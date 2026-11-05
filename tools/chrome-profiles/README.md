@@ -26,6 +26,11 @@ mise run chrome-profiles:enable    # 監視と作り直しを launchd に読み�
 
 最後に `~/Applications` の `Chrome <名前>.app` を Dock にドラッグして固定する。
 
+launchd から動く `build` が複製 (Google の署名付きの `.app`) を書き換えるには「アプリの管理」の許可が要る。
+システム設定 > プライバシーとセキュリティ > アプリの管理 の `+` で `~/.local/bin/chrome-profiles` を加える (隠しフォルダは Cmd+Shift+. で出る)。
+許可が無いと、ターミナルから実行すれば通るのに launchd からは `EPERM` / `アイコンを付けられません` で失敗し、更新が入った複製がフォルダのアイコンになる (失敗は通知で知らせる)。
+`install.sh` は Apple Development の証明書があればそれで署名し直すので、作り直しても許可は残る (`CHROME_PROFILES_SIGN_IDENTITY` で証明書を指定できる)。
+
 ## コマンド
 
 | コマンド | 内容 |

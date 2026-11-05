@@ -27,6 +27,21 @@ done
 
 sh "$here/swift/build.sh" "$bin"
 (cd "$here" && bun install --frozen-lockfile && bun build --compile cli/chrome-profiles.ts --outfile "$bin/chrome-profiles")
+# 複製は Google の署名付きの .app なので、launchd から動く build が中身を差し替えたりアイコンを付けたりするには
+# 「アプリの管理」の許可が要る (無いと EPERM)。ad-hoc 署名のままだと許可が cdhash に結び付き、作り直すたびに外れる。
+# 証明書で署名すれば許可は identifier と証明書に結び付き、作り直しても残る
+identity="${CHROME_PROFILES_SIGN_IDENTITY:-}"
+if [ -z "$identity" ] && security find-identity -v -p codesigning 2>/dev/null | grep -q '"Apple Development'; then
+  identity="Apple Development"
+fi
+if [ -n "$identity" ]; then
+  codesign -f -s "$identity" --identifier jp.wamei.chrome-profiles "$bin/chrome-profiles"
+  for name in icon watch; do
+    codesign -f -s "$identity" --identifier "jp.wamei.chrome-profiles-$name" "$bin/chrome-profiles-$name"
+  done
+else
+  echo "警告: コード署名の証明書が無いので ad-hoc 署名のままです。作り直すたびに「アプリの管理」の許可を与え直してください" >&2
+fi
 for label in $labels; do
   sed "s|@HOME@|$HOME|g" "$here/launchd/$label.plist.in" > "$agents/$label.plist"
 done
