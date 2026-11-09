@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { profileForDir, profileForWindowTitle, profilesFromLocalState, pruneLocalState } from "./profiles"
+import { profileForDir, profileForEmail, profileForWindowTitle, profilesFromLocalState, pruneLocalState } from "./profiles"
 
 const localState = {
   browser: { enabled_labs_experiments: [] },
@@ -98,4 +98,40 @@ test("窓のタイトルに titles の文字列を含むプロファイルを選
 test("Teams 以外のアプリの窓のタイトルでも同じように選ぶ", () => {
   const ps = [{ id: "mc", name: "MC", profileDir: "Profile 5", titles: ["Example Workspace"] }]
   expect(profileForWindowTitle(ps, "general (チャンネル) - Example Workspace - Slack")?.id).toBe("mc")
+})
+
+test("主催者のメールアドレスが emails に当たるプロファイルを選ぶ。@ で始まればドメイン、そうでなければアドレスそのもの", () => {
+  const ps = [
+    { id: "work", name: "Work", profileDir: "Default" },
+    { id: "mc", name: "MC", profileDir: "Profile 5", emails: ["@example.com"] },
+    { id: "boss", name: "Boss", profileDir: "Profile 6", emails: ["boss@other.example"] },
+  ]
+  expect(profileForEmail(ps, "taro@example.com")?.id).toBe("mc")
+  // 大文字小文字は区別しない
+  expect(profileForEmail(ps, "Taro@EXAMPLE.com")?.id).toBe("mc")
+  expect(profileForEmail(ps, "BOSS@other.example")?.id).toBe("boss")
+  // ドメインの末尾が同じだけのものや、アドレスの一部だけが同じものには当たらない
+  expect(profileForEmail(ps, "taro@notexample.com")).toBeUndefined()
+  expect(profileForEmail(ps, "bigboss@other.example")).toBeUndefined()
+  // 主催者を読めなかったときは空文字が来る
+  expect(profileForEmail(ps, "")).toBeUndefined()
+})
+
+test("emails の * は @ をまたがずに何にでも当たり、より詳しい (* 以外の文字が多い) ものが勝つ", () => {
+  const ps = [
+    { id: "other", name: "Other", profileDir: "Default", emails: ["@*"] },
+    { id: "mc", name: "MC", profileDir: "Profile 5", emails: ["@example.com", "@*.example.com"] },
+    { id: "boss", name: "Boss", profileDir: "Profile 6", emails: ["boss@sub.example.com"] },
+  ]
+  expect(profileForEmail(ps, "a@example.com")?.id).toBe("mc")
+  expect(profileForEmail(ps, "a@jp.example.com")?.id).toBe("mc")
+  expect(profileForEmail(ps, "a@x.y.example.com")?.id).toBe("mc")
+  expect(profileForEmail(ps, "boss@sub.example.com")?.id).toBe("boss")
+  // どれにも当たらなければ「その他」(@*)
+  expect(profileForEmail(ps, "a@unknown.example")?.id).toBe("other")
+  expect(profileForEmail(ps, "a@notexample.com")?.id).toBe("other")
+  // 主催者を読めなかったときは「その他」にもしない
+  expect(profileForEmail(ps, "")).toBeUndefined()
+  // . や + は文字どおり
+  expect(profileForEmail([{ id: "x", name: "X", profileDir: "D", emails: ["@a.b"] }], "z@aXb")).toBeUndefined()
 })

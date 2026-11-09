@@ -43,6 +43,7 @@ launchd から動く `build` が複製 (Google の署名付きの `.app`) を書
 | `open <id> <url...>` | 複製で URL を開く。Finicky と同じく `-n` を付けないので、動いている複製に新しいプロセスがちらつかない |
 | `open --dir <dir> <url...>` | `dir` を設定の `dirs` に含むプロファイルで開く。どれにも当たらなければ既定のブラウザで開く |
 | `open --title <title> <url...>` | 窓のタイトルに設定の `titles` の文字列を含むプロファイルで開く。補助アプリ (`chrome-profiles-window`) から呼ばれる |
+| `open --email <email> <url...>` | 予定の主催者のメールアドレスが設定の `emails` に当たるプロファイルで開く。補助アプリがカレンダー.app のリンクで呼ぶ |
 | `finicky` | Finicky の設定から import する `~/.config/chrome-profiles/finicky.js` を書き出す (`build` も毎回書き出す) |
 | `list` | 設定と、複写・複製の有無 |
 | `classify` / `redirect` | 監視から呼ばれる。起動の引数から、そのまま動かす・その複製として起動し直す・元の Chrome に回す、を決めて実行する |
@@ -103,6 +104,23 @@ import { chromeProfiles as cp, windowRouter } from "/Users/<you>/.config/chrome-
 - 振り分けの文字列は `identities.toml` の身元に `titles = ["組織名"]` で書き、`tools/local-config` が設定の `titles` に書き込む。
 - 窓のタイトルを読むには補助アプリに「アクセシビリティ」の許可が要る。許可を求めるダイアログは出ないことがあるので、システム設定 > プライバシーとセキュリティ > アクセシビリティ の `+` で補助アプリを加える (許可するまでは既定のブラウザで開く)。`install.sh` が証明書で署名するので、作り直しても許可は残る。
 - ログは `~/.local/state/chrome-profiles/window.log` (押したアプリと、読めたタイトルも残る)。
+
+## カレンダー.app のリンクを、予定の主催者で振り分ける
+
+カレンダー.app の窓のタイトルは「カレンダー」だけで、どの予定のリンクかは誰も教えてくれない。
+そこで補助アプリは、押したアプリがカレンダー.app (`com.apple.iCal`) のときは窓のタイトルを読まず、EventKit で
+「そのリンクを URL・メモ・場所のどれかに含む予定」(60 日前から 180 日先まで) を探し、今に一番近い予定の主催者のメールアドレスを
+`chrome-profiles open --email <email> <url>` に渡す。設定の `emails` に当たるプロファイルで開き、当たらなければ (予定が見つからない・主催者がいない・自分が主催者など) 既定のブラウザに戻す。
+
+```js
+// windowRouter に回すアプリに com.apple.iCal を足す
+{ match: (url, { opener }) => ["com.microsoft.teams2", "com.apple.iCal"].includes(opener?.bundleId), browser: windowRouter },
+```
+
+- 対応は `identities.toml` の身元に `emails = ["@example.com", "@*.example.com", "boss@example.org"]` で書く。`@` で始めるとドメイン、そうでなければアドレスそのものと比べる (大文字小文字は区別しない)。`*` は `@` をまたがずに何にでも当たる。
+- 複数に当たれば、より詳しい (`*` 以外の文字が多い) ものが勝つ。`emails = ["@*"]` はどれにも当たらなかった主催者の受け皿になる (予定や主催者を読めなかったときは使わず、既定のブラウザ)。
+- 予定を読むには補助アプリに「カレンダー」(フルアクセス) の許可が要る。初回にダイアログが出る (カレンダーの許可はシステム設定の `+` で足せない)。許可されていなければ既定のブラウザで開く。
+- ログの `email=` に、引き当てた主催者が残る。
 
 ## アイコンの画像
 

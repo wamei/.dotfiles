@@ -60,18 +60,19 @@ export function renderSshGithub(ids: Identity[]): string {
   return [HEADER, "", ...match, ...blocks].join("\n")
 }
 
-type ChromeProfile = { id: string; dirs?: string[]; titles?: string[] } & Record<string, unknown>
+type ChromeProfile = { id: string; dirs?: string[]; titles?: string[]; emails?: string[] } & Record<string, unknown>
 type ChromeConfig = { profiles: ChromeProfile[] } & Record<string, unknown>
 
-// chrome-profiles の config.json (プロファイルの対応はマシンの Chrome ごとに違うので生成しない) の dirs と titles だけを差し替える
+// chrome-profiles の config.json (プロファイルの対応はマシンの Chrome ごとに違うので生成しない) の dirs・titles・emails だけを差し替える
 export function applyChromeDirs(config: ChromeConfig, ids: Identity[]): { config: ChromeConfig; missing: string[] } {
   const known = new Set(config.profiles.map((p) => p.id))
   const profiles = config.profiles.map((p) => {
-    const { dirs: _d, titles: _t, ...rest } = p
+    const { dirs: _d, titles: _t, emails: _e, ...rest } = p
     const mine = ids.filter((i) => i.chrome === p.id)
     const dirs = mine.flatMap((i) => i.dirs)
     const titles = mine.flatMap((i) => i.titles ?? [])
-    return { ...rest, ...(dirs.length ? { dirs } : {}), ...(titles.length ? { titles } : {}) }
+    const emails = mine.flatMap((i) => i.emails ?? [])
+    return { ...rest, ...(dirs.length ? { dirs } : {}), ...(titles.length ? { titles } : {}), ...(emails.length ? { emails } : {}) }
   })
   const missing = ids.flatMap((i) => (i.chrome && !known.has(i.chrome) ? [i.chrome] : []))
   return { config: { ...config, profiles }, missing }

@@ -4,7 +4,16 @@ import path from "node:path"
 // picture: アイコンに重ねる画像 (省略時は Chrome が取り込んだ Google アカウントの写真)
 // dirs: open --dir でこのプロファイルに振り分けるディレクトリ (Emacs のタブのプロジェクトなど)
 // titles: open --title でこのプロファイルに振り分ける、リンクを押したアプリの窓のタイトルに含まれる文字列 (Teams の組織名など)
-export type Profile = { id: string; name: string; profileDir: string; picture?: string; dirs?: string[]; titles?: string[] }
+// emails: open --email でこのプロファイルに振り分ける、予定の主催者のメールアドレス (@ で始めるとドメイン、* も書ける。カレンダー.app のリンク)
+export type Profile = {
+  id: string
+  name: string
+  profileDir: string
+  picture?: string
+  dirs?: string[]
+  titles?: string[]
+  emails?: string[]
+}
 
 type Json = Record<string, unknown>
 type ProfileSection = {
@@ -59,4 +68,25 @@ export function profileForDir(profiles: Profile[], dir: string, home: string): P
 export function profileForWindowTitle(profiles: Profile[], title: string): Profile | undefined {
   if (title === "") return undefined
   return profiles.find((p) => p.titles?.some((s) => s !== "" && title.includes(s)))
+}
+
+// 主催者のメールアドレスが emails に当たるプロファイル。@ で始まればドメイン、そうでなければアドレスそのものと比べる。
+// * は @ をまたがずに何にでも当たる ("@*.example.com" はサブドメイン、"@*" はどれにも当たらなかったときの受け皿)。
+// 複数に当たれば、より詳しい (* 以外の文字が多い) ものが勝つ。同じなら先に書いたもの。大文字小文字は区別しない
+export function profileForEmail(profiles: Profile[], email: string): Profile | undefined {
+  const e = email.toLowerCase()
+  if (e === "") return undefined
+  const matches = (pattern: string): boolean => {
+    const s = pattern.toLowerCase()
+    const re = s.replace(/[.+^${}()|[\]\\?*]/g, (c) => (c === "*" ? "[^@]*" : `\\${c}`))
+    return new RegExp(s.startsWith("@") ? `^[^@]*${re}$` : `^${re}$`).test(e)
+  }
+  let best: { profile: Profile; score: number } | undefined
+  for (const profile of profiles) {
+    for (const s of profile.emails ?? []) {
+      const score = s.replaceAll("*", "").length
+      if (matches(s) && (!best || score > best.score)) best = { profile, score }
+    }
+  }
+  return best?.profile
 }

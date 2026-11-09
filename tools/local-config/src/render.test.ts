@@ -126,3 +126,12 @@ test("chrome-profiles の設定の titles も chrome を指す身元から差し
     { id: "work", name: "Work", profileDir: "Default" },
   ])
 })
+
+test("chrome-profiles の設定の emails も chrome を指す身元から差し替える", () => {
+  const config = { profiles: [{ id: "client", name: "Client", profileDir: "Profile 2", emails: ["@old.example"] }, { id: "work", name: "Work", profileDir: "Default", emails: ["@gone.example"] }] }
+  const { config: out } = applyChromeDirs(config, [{ ...client, emails: ["@client.example"] }])
+  expect(out.profiles).toEqual([
+    { id: "client", name: "Client", profileDir: "Profile 2", dirs: ["/Users/u/projects/github.com.client"], emails: ["@client.example"] },
+    { id: "work", name: "Work", profileDir: "Default" },
+  ])
+})

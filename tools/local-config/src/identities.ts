@@ -5,7 +5,7 @@ import path from "node:path"
 export type SshHost = { host: string; hostname: string; key: string }
 export type Identity = {
   id: string
-  // この身元で扱うディレクトリ (末尾の / は落とす)
+  // この身元で扱うディレクトリ (末尾の / は落とす)。Chrome のリンクの振り分けだけの身元では空
   dirs: string[]
   // 無ければ公開側 .gitconfig の user のまま
   git?: { name: string; email: string }
@@ -16,9 +16,11 @@ export type Identity = {
   chrome?: string
   // リンクを押したアプリの窓のタイトルに含まれる文字列 (Teams の組織名、Slack のワークスペース名など)。chrome のプロファイルで開く
   titles?: string[]
+  // カレンダー.app の予定の主催者のメールアドレス (@ で始めるとドメイン。* は @ をまたがず何にでも当たる)。その予定のリンクを chrome のプロファイルで開く
+  emails?: string[]
 }
 
-const KEYS = new Set(["id", "dirs", "git", "gh", "ssh", "chrome", "titles"])
+const KEYS = new Set(["id", "dirs", "git", "gh", "ssh", "chrome", "titles", "emails"])
 
 type Raw = Record<string, unknown>
 
@@ -38,7 +40,10 @@ export function parseIdentities(toml: string, home: string): Identity[] {
     seen.add(id)
     for (const k of Object.keys(raw)) if (!KEYS.has(k)) fail(`知らないキー ${k}`)
 
-    if (!Array.isArray(raw.dirs) || raw.dirs.length === 0 || !raw.dirs.every(str)) fail("dirs に 1 つ以上のディレクトリを書いてください")
+    // Chrome のリンクを窓のタイトルや主催者で振り分けるだけの身元 (git / gh / ssh を持たない) は dirs を省ける
+    const linksOnly = raw.git === undefined && raw.gh === undefined && raw.ssh === undefined && (raw.titles !== undefined || raw.emails !== undefined)
+    if (raw.dirs === undefined && linksOnly) raw = { ...raw, dirs: [] }
+    else if (!Array.isArray(raw.dirs) || raw.dirs.length === 0 || !raw.dirs.every(str)) fail("dirs に 1 つ以上のディレクトリを書いてください")
     const dirs = (raw.dirs as string[]).map((d) => {
       if (!d.startsWith("/") && !d.startsWith("~")) fail(`dirs は絶対パスか ~ で書いてください: ${d}`)
       return path.resolve(expand(d))
@@ -70,6 +75,13 @@ export function parseIdentities(toml: string, home: string): Identity[] {
       if (!Array.isArray(raw.titles) || raw.titles.length === 0 || !raw.titles.every(str)) fail("titles は窓のタイトルに含まれる文字列の配列にしてください")
       if (!out.chrome) fail("titles は chrome と一緒に書いてください (どの Chrome で開くか)")
       out.titles = raw.titles as string[]
+    }
+    if (raw.emails !== undefined) {
+      const ok = (v: unknown) => str(v) && /^[^@\s]*@[^@\s]+$/.test(v)
+      if (!Array.isArray(raw.emails) || raw.emails.length === 0 || !raw.emails.every(ok))
+        fail("emails はメールアドレスか @ で始まるドメイン (\"@example.com\"、\"@*.example.com\") の配列にしてください")
+      if (!out.chrome) fail("emails は chrome と一緒に書いてください (どの Chrome で開くか)")
+      out.emails = (raw.emails as string[]).map((e) => e.toLowerCase())
     }
     return out
   })

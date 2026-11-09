@@ -51,3 +51,19 @@ test("titles は窓のタイトルに含まれる文字列の配列で、chrome 
   expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\ntitles = ["Org"]\n`, "/h")).toThrow(/x: titles は chrome/)
   expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\nchrome = "x"\ntitles = "Org"\n`, "/h")).toThrow(/x: titles は窓のタイトルに含まれる文字列の配列/)
 })
+
+test("emails は主催者のメールアドレス (@ で始めるとドメイン) の配列で、chrome と一緒に書く", () => {
+  const ids = parseIdentities(`[[identity]]\nid = "mc"\ndirs = ["/a"]\nchrome = "mc"\nemails = ["@example.com", "Boss@Other.Example"]\n`, "/h")
+  // 比べるときに大文字小文字を無視するので、小文字にそろえておく
+  expect(ids[0]?.emails).toEqual(["@example.com", "boss@other.example"])
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\nemails = ["@example.com"]\n`, "/h")).toThrow(/x: emails は chrome/)
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\nchrome = "x"\nemails = ["example.com"]\n`, "/h")).toThrow(/x: emails は/)
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\ndirs = ["/a"]\nchrome = "x"\nemails = "@example.com"\n`, "/h")).toThrow(/x: emails は/)
+})
+
+test("chrome のリンクの振り分けだけの身元は dirs を省ける。git / gh は dirs が要る", () => {
+  const ids = parseIdentities(`[[identity]]\nid = "other"\nchrome = "w"\nemails = ["@*", "@*.example.com"]\n`, "/h")
+  expect(ids[0]).toEqual({ id: "other", dirs: [], ssh: [], chrome: "w", emails: ["@*", "@*.example.com"] })
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\ngh = "x"\n`, "/h")).toThrow(/x: dirs/)
+  expect(() => parseIdentities(`[[identity]]\nid = "x"\nchrome = "x"\n`, "/h")).toThrow(/x: dirs/)
+})
